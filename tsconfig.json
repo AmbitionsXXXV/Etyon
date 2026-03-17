@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "strict": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true
+  },
+  "references": [{ "path": "apps/desktop" }, { "path": "apps/cli" }],
+  "files": []
+}

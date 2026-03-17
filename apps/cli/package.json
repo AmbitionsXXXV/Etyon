@@ -1,0 +1,25 @@
+{
+  "name": "@etyon/cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Etyon command-line interface",
+  "license": "MIT",
+  "author": {
+    "name": "etcetera",
+    "email": "yilonglei790@gmail.com"
+  },
+  "bin": {
+    "etyon": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "oxlint",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0"
+  }
+}
