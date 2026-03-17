@@ -1,3 +1,4 @@
+import { Button } from "@etyon/ui/components/button"
 import { createFileRoute } from "@tanstack/react-router"
 
 const HomePage = () => (
@@ -7,6 +8,8 @@ const HomePage = () => (
       <p className="mt-2 text-lg text-gray-600">
         Welcome to your Electron application.
       </p>
+
+      <Button>Click me</Button>
     </div>
   </div>
 )

@@ -8,6 +8,13 @@
     "noImplicitAny": true,
     "sourceMap": true,
     "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@renderer/*": ["./src/renderer/*"],
+      "@main/*": ["./src/main/*"],
+      "@preload/*": ["./src/preload/*"],
+      "@etyon/ui/*": ["../../packages/ui/src/*"]
+    },
     "outDir": "dist",
     "moduleResolution": "node",
     "resolveJsonModule": true,

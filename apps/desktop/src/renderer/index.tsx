@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client"
 
 import { App } from "./app"
 
-import "./index.css"
+import "@etyon/ui/globals.css"
 
 const root = document.querySelector("#root")
 

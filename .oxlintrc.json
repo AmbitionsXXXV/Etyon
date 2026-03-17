@@ -9,5 +9,8 @@
     ".claude/**/*",
     ".cursor/**/*",
     "**/routeTree.gen.ts"
-  ]
+  ],
+  "rules": {
+    "eslint/sort-keys": "off"
+  }
 }
