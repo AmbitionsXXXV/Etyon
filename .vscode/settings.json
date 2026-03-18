@@ -54,5 +54,19 @@
   },
   "editor.codeActionsOnSave": {
     "source.fixAll.oxc": "explicit"
-  }
+  },
+  "cSpell.words": ["jscoverage", "pids", "vuepress", "wscript"],
+  "cSpell.ignorePaths": [
+    "*-lock.*",
+    "package.json",
+    "node_modules",
+    "vscode-extension",
+    ".git/{info,lfs,logs,refs,objects}/**",
+    ".git/{index,*refs,*HEAD}",
+    ".vscode",
+    ".vscode-insiders",
+    ".gitignore",
+    "AGENTS.md",
+    "CLAUDE.md"
+  ]
 }

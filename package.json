@@ -12,6 +12,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:desktop": "turbo run dev --filter=@etyon/desktop",
     "lint": "turbo run lint",
     "check": "turbo run check",
     "fix": "turbo run fix",
@@ -25,11 +26,11 @@
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
     "tslib": "^2.8.1",
-    "turbo": "^2.5.0",
+    "turbo": "^2.8.18",
     "typescript": "~5.9.3",
     "ultracite": "7.3.1"
   },
-  "packageManager": "pnpm@10.8.1",
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",

@@ -1,12 +1,24 @@
 import { TanStackDevtools } from "@tanstack/react-devtools"
+import { useHotkey } from "@tanstack/react-hotkeys"
+import { hotkeysDevtoolsPlugin } from "@tanstack/react-hotkeys-devtools"
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 
-export const Route = createRootRoute({
-  component: () => (
+import { TITLE_BAR_HEIGHT, TitleBar } from "../components/title-bar"
+
+const RootComponent = () => {
+  useHotkey("Mod+,", () => {
+    window.electron.ipcRenderer.send("open-settings")
+  })
+
+  return (
     <>
-      <Outlet />
+      <TitleBar />
+
+      <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
+        <Outlet />
+      </div>
 
       <TanStackDevtools
         plugins={[
@@ -17,9 +29,14 @@ export const Route = createRootRoute({
           {
             name: "TanStack Router",
             render: <TanStackRouterDevtoolsPanel />
-          }
+          },
+          hotkeysDevtoolsPlugin()
         ]}
       />
     </>
   )
+}
+
+export const Route = createRootRoute({
+  component: RootComponent
 })

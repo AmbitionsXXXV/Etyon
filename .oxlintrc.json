@@ -11,6 +11,8 @@
     "**/routeTree.gen.ts"
   ],
   "rules": {
-    "eslint/sort-keys": "off"
+    "eslint/sort-keys": "off",
+    "eslint/func-style": "off",
+    "eslint/no-use-before-define": "off"
   }
 }

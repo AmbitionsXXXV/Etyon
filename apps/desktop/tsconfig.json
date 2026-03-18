@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "commonjs",
+    "module": "ESNext",
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -13,10 +13,13 @@
       "@renderer/*": ["./src/renderer/*"],
       "@main/*": ["./src/main/*"],
       "@preload/*": ["./src/preload/*"],
+      "@etyon/logger/*": ["../../packages/logger/src/*"],
+      "@etyon/rpc": ["../../packages/rpc/src/index.ts"],
+      "@etyon/rpc/*": ["../../packages/rpc/src/*"],
       "@etyon/ui/*": ["../../packages/ui/src/*"]
     },
     "outDir": "dist",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "strictNullChecks": true,
     "jsx": "react-jsx"

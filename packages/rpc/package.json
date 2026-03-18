@@ -1,0 +1,19 @@
+{
+  "name": "@etyon/rpc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas/*": "./src/schemas/*.ts"
+  },
+  "scripts": {
+    "lint": "oxlint",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  },
+  "dependencies": {
+    "@orpc/server": "^1.13.8",
+    "zod": "catalog:"
+  }
+}

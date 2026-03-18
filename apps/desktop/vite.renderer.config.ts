@@ -7,6 +7,12 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
 export default defineConfig({
+  optimizeDeps: {
+    include: [
+      "use-sync-external-store/shim",
+      "use-sync-external-store/shim/with-selector"
+    ]
+  },
   plugins: [
     // devtools(),
     tanstackRouter({

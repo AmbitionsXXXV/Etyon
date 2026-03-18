@@ -20,7 +20,14 @@
     "fix": "ultracite fix"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@orpc/client": "^1.13.8",
+    "@orpc/server": "^1.13.8",
+    "@orpc/tanstack-query": "^1.13.8",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^11.0.2",
+    "font-list": "^2.0.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
@@ -33,11 +40,14 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
     "@electron/fuses": "^2.1.0",
+    "@etyon/logger": "workspace:*",
+    "@etyon/rpc": "workspace:*",
     "@etyon/ui": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/devtools-vite": "^0.6.0",
     "@tanstack/react-devtools": "^0.10.0",
     "@tanstack/react-hotkeys": "^0.4.1",
+    "@tanstack/react-hotkeys-devtools": "^0.4.2",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-query-devtools": "^5.91.3",
     "@tanstack/react-router": "^1.167.4",

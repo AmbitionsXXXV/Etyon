@@ -17,7 +17,9 @@ const config: ForgeConfig = {
     new MakerDMG({})
   ],
   packagerConfig: {
-    asar: true
+    name: "Etyon",
+    asar: true,
+    executableName: "etyon"
   },
   plugins: [
     new VitePlugin({
