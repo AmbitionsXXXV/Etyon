@@ -1,5 +1,4 @@
 import { optimizer, platform } from "@electron-toolkit/utils"
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 

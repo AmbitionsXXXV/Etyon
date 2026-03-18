@@ -26,19 +26,19 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ### 包结构
 
-| 层级               | 路径                                                     | 职责                                                                          |
-| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Schema             | `packages/rpc/src/schemas/settings.ts`                   | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`） |
-| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                      | `FontListOutputSchema` — 系统字体列表返回值 schema                            |
-| Main Store         | `apps/desktop/src/main/settings.ts`                      | `electron-store` 封装，提供 `getSettings()` / `updateSettings()`              |
-| Main Fonts         | `apps/desktop/src/main/fonts.ts`                         | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存   |
-| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                    | `settings.get` / `settings.update` / `fonts.list` 路由                        |
-| Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                         |
-| Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`               |
-| IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                           |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                              |
-| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用            |
-| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                |
+| 层级               | 路径                                                     | 职责                                                                                                       |
+| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Schema             | `packages/rpc/src/schemas/settings.ts`                   | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                              |
+| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                      | `FontListOutputSchema` — 系统字体列表返回值 schema                                                         |
+| Main Store         | `apps/desktop/src/main/settings.ts`                      | `electron-store` 封装，提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
+| Main Fonts         | `apps/desktop/src/main/fonts.ts`                         | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                |
+| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                    | `settings.get` / `settings.update` / `fonts.list` 路由                                                     |
+| Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                      |
+| Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                            |
+| IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                        |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                                                           |
+| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                         |
+| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                             |
 
 ## 数据模型
 
@@ -64,7 +64,7 @@ interface AppSettings {
 
 - **主题**：切换 `document.documentElement` 的 `dark` / `light` class
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
-- **启动加载**：`index.tsx` 中在渲染前调用 `rpcClient.settings.get().then(applySettings)` 确保首帧即应用用户配置
+- **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
 
 ## Scrollbar 样式
 
@@ -115,8 +115,17 @@ Font Family 选择器使用 `ComboboxTrigger` + 弹出式下拉菜单：
 - `apps/desktop/src/renderer/index.tsx` — 启动分流 + 设置加载
 - `packages/ui/src/styles/globals.css` — CSS 变量 + scrollbar 样式
 
+## Partial Update Schema 设计
+
+`UpdateSettingsSchema` 使用显式 `z.object` 定义，每个字段标记为 `.optional()`，**不含** `.default()`。这是一个关键设计决策：
+
+- `AppSettingsSchema` 中的字段带有 `.default()` 修饰，用于创建完整的设置对象
+- 如果直接用 `AppSettingsSchema.partial()` 生成 update schema，Zod 在 parse 时会为缺失字段自动填充 `.default()` 值
+- 这会导致只修改单个字段（如 theme）时，其他字段（如 fontFamily、fontSize）被意外重置为默认值
+- 因此 `UpdateSettingsSchema` 必须独立定义，仅使用 `.optional()` 而不带 `.default()`，确保未传入的字段保持 `undefined`，不会覆盖已有存储值
+
 ## 扩展
 
-1. 新增设置字段：在 `AppSettingsSchema` 中添加，`DEFAULTS` 中设默认值
+1. 新增设置字段：在 `AppSettingsSchema` 中添加（带 `.default()`），在 `UpdateSettingsSchema` 中添加对应的 `.optional()` 字段（不带 `.default()`），在 `DEFAULTS` 中设默认值
 2. 新增设置分区：在 `settings-page.tsx` 的 `NAV_ITEMS` 和 JSX 中添加对应 section
 3. 新增菜单项：在 `menu.ts` 的 `template` 中添加

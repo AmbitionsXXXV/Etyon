@@ -1,5 +1,4 @@
 import { platform } from "@electron-toolkit/utils"
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import { app, Menu } from "electron"
 
 import { createSettingsWindow } from "./window"

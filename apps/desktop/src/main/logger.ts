@@ -1,4 +1,3 @@
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import fs from "node:fs"
 import path from "node:path"
 

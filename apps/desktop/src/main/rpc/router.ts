@@ -1,4 +1,3 @@
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import {
   AppSettingsSchema,
   FontListOutputSchema,

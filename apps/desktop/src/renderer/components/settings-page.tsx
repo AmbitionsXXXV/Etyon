@@ -306,14 +306,36 @@ export const SettingsPage = () => {
 
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
 
-  const updateMutation = useMutation({
-    mutationFn: (partial: Partial<AppSettings>) =>
-      rpcClient.settings.update(partial),
+  const settingsQueryKey = orpc.settings.get.queryOptions({}).queryKey
+
+  const updateMutation = useMutation<
+    AppSettings,
+    Error,
+    Partial<AppSettings>,
+    AppSettings | undefined
+  >({
+    mutationFn: (partial) => rpcClient.settings.update(partial),
+    onError: (_error, _partial, context) => {
+      if (context) {
+        queryClient.setQueryData(settingsQueryKey, context)
+      }
+    },
+    onMutate: async (partial) => {
+      await queryClient.cancelQueries({ queryKey: settingsQueryKey })
+
+      const previous = queryClient.getQueryData<AppSettings>(settingsQueryKey)
+
+      if (previous) {
+        queryClient.setQueryData(settingsQueryKey, {
+          ...previous,
+          ...partial
+        })
+      }
+
+      return previous
+    },
     onSuccess: (data) => {
-      queryClient.setQueryData(
-        orpc.settings.get.queryOptions({}).queryKey,
-        data
-      )
+      queryClient.setQueryData(settingsQueryKey, data)
     }
   })
 

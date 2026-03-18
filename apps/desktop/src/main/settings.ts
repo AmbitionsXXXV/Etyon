@@ -1,5 +1,9 @@
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
+import path from "node:path"
+
 import type { AppSettings } from "@etyon/rpc"
+import { app } from "electron"
+
+const SETTINGS_DIR = path.join(app.getPath("home"), ".config", "etyon")
 
 const DEFAULTS: AppSettings = {
   fontFamily: "System Default",
@@ -19,6 +23,7 @@ const getStore = async (): Promise<Store> => {
   }
   const { default: ElectronStore } = await import("electron-store")
   store = new ElectronStore({
+    cwd: SETTINGS_DIR,
     defaults: { settings: DEFAULTS },
     name: "settings"
   }) as Store
