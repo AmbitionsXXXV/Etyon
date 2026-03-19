@@ -30,7 +30,8 @@
     "@orpc/tanstack-query": "^1.13.8",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
-    "font-list": "^2.0.2"
+    "font-list": "^2.0.2",
+    "motion": "^12.38.0"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",

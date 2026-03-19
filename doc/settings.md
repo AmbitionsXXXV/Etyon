@@ -64,7 +64,19 @@ interface AppSettings {
 
 - **主题**：切换 `document.documentElement` 的 `dark` / `light` class
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
+- **字号生效机制**：`--user-font-size` 应用在 `:root` 的 `font-size` 上（而非 `body`），确保所有使用 `rem` 单位的 Tailwind 类（`text-sm`、`text-xs`、`text-lg` 等）按比例缩放。早期版本放在 `body` 上导致 Tailwind 工具类覆盖失效
 - **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
+
+## Motion 动效
+
+页面使用 [`motion`](https://motion.dev/)（原 framer-motion 精简版）实现入场动效：
+
+- **设置页**：侧边导航从左滑入（x: -12 → 0），标题和各 section 卡片依次向下淡入（staggered，delay 0.1s → 0.15s → 0.25s）
+- **首页**：主内容区整体向上淡入，oRPC 测试卡片延迟淡入，数据结果加载后淡入显示
+- **缓动函数**：统一使用 `[0.25, 0.1, 0.25, 1]`（ease-out-quart 变体），避免 bounce/elastic 等过时缓动
+- **时长**：0.2s-0.4s 范围内，遵循"轻量 → 快速"原则
+
+依赖安装在 `apps/desktop`，通过 `import { motion } from "motion/react"` 引入。
 
 ## Scrollbar 样式
 
@@ -96,6 +108,8 @@ Font Family 选择器使用 `ComboboxTrigger` + 弹出式下拉菜单：
 - 下拉面板包含搜索输入框和虚拟化字体列表
 - 每项字体使用对应字体渲染，直观预览效果
 - 如果系统字体获取失败，回退到硬编码的常用字体列表
+
+Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/input`），统一了输入框的视觉样式和交互行为（focus ring、border transition 等），内部右侧叠加 "px" 单位标签。
 
 ## 涉及文件
 

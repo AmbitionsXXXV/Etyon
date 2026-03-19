@@ -3,6 +3,8 @@ import type { AppSettings } from "@etyon/rpc"
 export const applySettings = (settings: AppSettings) => {
   const root = document.documentElement
 
+  root.classList.add("theme-transitioning")
+
   root.classList.remove("dark", "light")
   if (settings.theme === "system") {
     const prefersDark = window.matchMedia(
@@ -20,4 +22,8 @@ export const applySettings = (settings: AppSettings) => {
 
   root.style.setProperty("--user-font-family", fontFamily)
   root.style.setProperty("--user-font-size", `${settings.fontSize}px`)
+
+  setTimeout(() => {
+    root.classList.remove("theme-transitioning")
+  }, 200)
 }

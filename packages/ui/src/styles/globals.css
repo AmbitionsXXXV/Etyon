@@ -123,6 +123,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  :root {
+    font-size: var(--user-font-size, 16px);
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(
@@ -131,7 +134,16 @@
       system-ui,
       sans-serif
     );
-    font-size: var(--user-font-size, 16px);
+  }
+
+  .theme-transitioning,
+  .theme-transitioning *,
+  .theme-transitioning *::before,
+  .theme-transitioning *::after {
+    transition:
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease !important;
   }
 
   ::-webkit-scrollbar {

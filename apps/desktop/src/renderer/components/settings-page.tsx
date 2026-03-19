@@ -10,10 +10,13 @@ import {
   ComboboxTrigger,
   ComboboxValue
 } from "@etyon/ui/components/combobox"
+import { Input } from "@etyon/ui/components/input"
+import { Skeleton } from "@etyon/ui/components/skeleton"
 import { cn } from "@etyon/ui/lib/utils"
 import { ComputerIcon, Moon02Icon, Sun02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { motion } from "motion/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { orpc, rpcClient } from "../lib/rpc"
@@ -235,22 +238,20 @@ const FontSizeInput = ({
 
   return (
     <div>
-      <div className="flex items-center gap-2">
-        <div className="relative">
-          <input
-            className="h-9 w-20 rounded-md border border-input bg-transparent px-3 pr-8 text-sm transition-colors hover:border-muted-foreground/40 focus:border-ring focus:outline-none"
-            max={FONT_SIZE_MAX}
-            min={FONT_SIZE_MIN}
-            onBlur={commit}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            type="number"
-            value={localValue}
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-            px
-          </span>
-        </div>
+      <div className="relative w-20">
+        <Input
+          className="pr-8"
+          max={FONT_SIZE_MAX}
+          min={FONT_SIZE_MIN}
+          onBlur={commit}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          type="number"
+          value={localValue}
+        />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          px
+        </span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
         {FONT_SIZE_MIN} - {FONT_SIZE_MAX} px
@@ -323,15 +324,53 @@ export const SettingsPage = () => {
 
   if (!settings) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex h-svh">
+        <aside className="w-[160px] shrink-0 border-r border-border bg-background p-3 pt-10">
+          <Skeleton className="h-7 w-full rounded-md" />
+        </aside>
+
+        <main className="flex-1 overflow-y-auto pt-8">
+          <div className="mx-auto p-6">
+            <Skeleton className="mb-6 h-6 w-36" />
+
+            <div className="space-y-8">
+              <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+                <Skeleton className="h-4 w-16" />
+                <div className="grid grid-cols-3 gap-3">
+                  <Skeleton className="h-[72px] rounded-lg" />
+                  <Skeleton className="h-[72px] rounded-lg" />
+                  <Skeleton className="h-[72px] rounded-lg" />
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+                <Skeleton className="h-4 w-28" />
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-9 w-full" />
+                  <Skeleton className="h-3 w-64" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-9 w-20" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
 
   return (
     <div className="flex h-svh">
-      <aside className="shrink-0 border-r border-border bg-background p-3 pt-10">
+      <motion.aside
+        animate={{ opacity: 1, x: 0 }}
+        className="shrink-0 border-r border-border bg-background p-3 pt-10"
+        initial={{ opacity: 0, x: -12 }}
+        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+      >
         <nav className="space-y-0.5">
           {NAV_ITEMS.map((item) => (
             <button
@@ -348,14 +387,34 @@ export const SettingsPage = () => {
             </button>
           ))}
         </nav>
-      </aside>
+      </motion.aside>
 
       <main className="flex-1 overflow-y-auto pt-8">
         <div className="mx-auto p-6">
-          <h1 className="mb-6 text-lg font-semibold">User Interface</h1>
+          <motion.h1
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 text-lg font-semibold"
+            initial={{ opacity: 0, y: -8 }}
+            transition={{
+              delay: 0.1,
+              duration: 0.3,
+              ease: [0.25, 0.1, 0.25, 1]
+            }}
+          >
+            User Interface
+          </motion.h1>
 
           <div className="space-y-8">
-            <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+            <motion.section
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4 rounded-lg border border-border bg-card p-5"
+              initial={{ opacity: 0, y: 10 }}
+              transition={{
+                delay: 0.15,
+                duration: 0.35,
+                ease: [0.25, 0.1, 0.25, 1]
+              }}
+            >
               <h2 className="text-sm font-semibold">Theme</h2>
 
               <div className="space-y-2">
@@ -367,9 +426,18 @@ export const SettingsPage = () => {
                   value={settings.theme}
                 />
               </div>
-            </section>
+            </motion.section>
 
-            <section className="space-y-4 rounded-lg border border-border bg-card p-5">
+            <motion.section
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4 rounded-lg border border-border bg-card p-5"
+              initial={{ opacity: 0, y: 10 }}
+              transition={{
+                delay: 0.25,
+                duration: 0.35,
+                ease: [0.25, 0.1, 0.25, 1]
+              }}
+            >
               <h2 className="text-sm font-semibold">Font Settings</h2>
 
               <div className="space-y-2">
@@ -395,7 +463,7 @@ export const SettingsPage = () => {
                   value={settings.fontSize}
                 />
               </div>
-            </section>
+            </motion.section>
           </div>
         </div>
       </main>
