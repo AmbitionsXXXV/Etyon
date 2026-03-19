@@ -36,7 +36,8 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                                          |
 | Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
 | IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                                                                               |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                    |
+| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`           | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                             |
 | Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
 | Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                                                 |
 | i18n Package       | `packages/i18n/`                                         | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
@@ -138,7 +139,8 @@ interface CustomTheme {
 
 - **设置页**：侧边导航从左滑入（x: -12 → 0），标题和各 section 卡片依次向下淡入（staggered，delay 0.1s → 0.15s → 0.25s）
 - **首页**：主内容区整体向上淡入，oRPC 测试卡片延迟淡入，数据结果加载后淡入显示
-- **缓动函数**：统一使用 `[0.25, 0.1, 0.25, 1]`（ease-out-quart 变体），避免 bounce/elastic 等过时缓动
+- **缓动函数**：统一使用 `[0.25, 0.1, 0.25, 1]`（ease-out-quart 变体），避免 bounce/elastic 等过时缓动；数值定义在 `lib/settings-page/constants.ts` 的 `SETTINGS_PAGE_EASE_CURVE`
+- **侧栏宽度**：`SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS`（`min-w-[17rem] w-[17rem]`）固定设置页左侧导航列宽，避免切换语言后导航文案长度变化导致主内容区水平偏移
 - **时长**：0.2s-0.4s 范围内，遵循"轻量 → 快速"原则
 
 依赖安装在 `apps/desktop`，通过 `import { motion } from "motion/react"` 引入。
@@ -190,6 +192,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/main/menu.ts` — 原生应用菜单
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
+- `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动、侧栏宽度）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
 - `apps/desktop/src/renderer/components/settings/custom-themes/custom-themes-tab.tsx` — `Color Schema` tab 内的 `Custom Themes` area 与创建对话框
 - `apps/desktop/src/renderer/components/settings/custom-themes/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `CustomThemesTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）

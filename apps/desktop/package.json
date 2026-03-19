@@ -17,6 +17,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "check": "ultracite check",
+    "typecheck": "tsc --noEmit",
     "fix": "ultracite fix"
   },
   "dependencies": {
