@@ -13,14 +13,20 @@ import {
 import { Input } from "@etyon/ui/components/input"
 import { Skeleton } from "@etyon/ui/components/skeleton"
 import { cn } from "@etyon/ui/lib/utils"
-import { ComputerIcon, Moon02Icon, Sun02Icon } from "@hugeicons/core-free-icons"
+import {
+  ComputerIcon,
+  MinusSignIcon,
+  Moon02Icon,
+  PlusSignIcon,
+  Sun02Icon
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { motion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { orpc, rpcClient } from "../lib/rpc"
-import { applySettings } from "../lib/settings"
+import { applySettings, applyThemePreview } from "../lib/settings"
 
 const FALLBACK_FONTS = [
   "System Default",
@@ -211,17 +217,22 @@ const FontSizeInput = ({
     setLocalValue(String(value))
   }, [value])
 
+  const clamp = useCallback(
+    (n: number) => Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, n)),
+    []
+  )
+
   const commit = useCallback(() => {
     setLocalValue((prev) => {
       const parsed = Number.parseInt(prev, 10)
       if (Number.isNaN(parsed)) {
         return String(value)
       }
-      const clamped = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, parsed))
+      const clamped = clamp(parsed)
       onChange(clamped)
       return String(clamped)
     })
-  }, [onChange, value])
+  }, [clamp, onChange, value])
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalValue(e.target.value)
@@ -236,22 +247,48 @@ const FontSizeInput = ({
     [commit]
   )
 
+  const decrement = useCallback(() => {
+    const next = clamp(value - 1)
+    onChange(next)
+  }, [clamp, onChange, value])
+
+  const increment = useCallback(() => {
+    const next = clamp(value + 1)
+    onChange(next)
+  }, [clamp, onChange, value])
+
   return (
     <div>
-      <div className="relative w-20">
-        <Input
-          className="pr-8"
-          max={FONT_SIZE_MAX}
-          min={FONT_SIZE_MIN}
-          onBlur={commit}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          type="number"
-          value={localValue}
-        />
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-          px
-        </span>
+      <div className="flex items-center gap-1">
+        <Button
+          disabled={value <= FONT_SIZE_MIN}
+          onClick={decrement}
+          size="icon"
+          variant="outline"
+        >
+          <HugeiconsIcon icon={MinusSignIcon} size={14} />
+        </Button>
+        <div className="relative w-16">
+          <Input
+            className="text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            max={FONT_SIZE_MAX}
+            min={FONT_SIZE_MIN}
+            onBlur={commit}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            type="number"
+            value={localValue}
+          />
+        </div>
+        <Button
+          disabled={value >= FONT_SIZE_MAX}
+          onClick={increment}
+          size="icon"
+          variant="outline"
+        >
+          <HugeiconsIcon icon={PlusSignIcon} size={14} />
+        </Button>
+        <span className="ml-1 text-xs text-muted-foreground">px</span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
         {FONT_SIZE_MIN} - {FONT_SIZE_MAX} px
@@ -265,64 +302,76 @@ export const SettingsPage = () => {
   const [activeSection] = useState("user-interface")
 
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
-
   const settingsQueryKey = orpc.settings.get.queryOptions({}).queryKey
+  const saved = settingsQuery.data
 
-  const updateMutation = useMutation<
-    AppSettings,
-    Error,
-    Partial<AppSettings>,
-    AppSettings | undefined
-  >({
-    mutationFn: (partial) => rpcClient.settings.update(partial),
-    onError: (_error, _partial, context) => {
-      if (context) {
-        queryClient.setQueryData(settingsQueryKey, context)
-      }
-    },
-    onMutate: async (partial) => {
-      await queryClient.cancelQueries({ queryKey: settingsQueryKey })
+  const [draft, setDraft] = useState<AppSettings | null>(null)
 
-      const previous = queryClient.getQueryData<AppSettings>(settingsQueryKey)
+  useEffect(() => {
+    if (saved && !draft) {
+      setDraft(saved)
+    }
+  }, [saved, draft])
 
-      if (previous) {
-        queryClient.setQueryData(settingsQueryKey, {
-          ...previous,
-          ...partial
-        })
-      }
+  const isDirty = useMemo(() => {
+    if (!saved || !draft) {
+      return false
+    }
+    return (
+      saved.theme !== draft.theme ||
+      saved.fontFamily !== draft.fontFamily ||
+      saved.fontSize !== draft.fontSize
+    )
+  }, [saved, draft])
 
-      return previous
-    },
+  const updateMutation = useMutation<AppSettings, Error, AppSettings>({
+    mutationFn: (next) => rpcClient.settings.update(next),
     onSuccess: (data) => {
       queryClient.setQueryData(settingsQueryKey, data)
+      setDraft(data)
+      applySettings(data)
     }
   })
 
-  const settings = settingsQuery.data
+  // Live-preview theme changes
+  const draftTheme = draft?.theme
+  useEffect(() => {
+    if (draftTheme) {
+      applyThemePreview(draftTheme)
+    }
+  }, [draftTheme])
 
   const handleThemeChange = useCallback(
-    (theme: Theme) => updateMutation.mutate({ theme }),
-    [updateMutation]
+    (theme: Theme) => setDraft((prev) => (prev ? { ...prev, theme } : prev)),
+    []
   )
 
   const handleFontFamilyChange = useCallback(
-    (fontFamily: string) => updateMutation.mutate({ fontFamily }),
-    [updateMutation]
+    (fontFamily: string) =>
+      setDraft((prev) => (prev ? { ...prev, fontFamily } : prev)),
+    []
   )
 
   const handleFontSizeChange = useCallback(
-    (fontSize: number) => updateMutation.mutate({ fontSize }),
-    [updateMutation]
+    (fontSize: number) =>
+      setDraft((prev) => (prev ? { ...prev, fontSize } : prev)),
+    []
   )
 
-  useEffect(() => {
-    if (settings) {
-      applySettings(settings)
+  const handleSave = useCallback(() => {
+    if (draft) {
+      updateMutation.mutate(draft)
     }
-  }, [settings])
+  }, [draft, updateMutation])
 
-  if (!settings) {
+  const handleCancel = useCallback(() => {
+    if (saved) {
+      setDraft(saved)
+      applyThemePreview(saved.theme)
+    }
+  }, [saved])
+
+  if (!draft) {
     return (
       <div className="flex h-svh">
         <aside className="w-[160px] shrink-0 border-r border-border bg-background p-3 pt-10">
@@ -423,7 +472,7 @@ export const SettingsPage = () => {
                 </h3>
                 <ThemeSelector
                   onChange={handleThemeChange}
-                  value={settings.theme}
+                  value={draft.theme}
                 />
               </div>
             </motion.section>
@@ -446,7 +495,7 @@ export const SettingsPage = () => {
                 </h3>
                 <FontFamilyCombobox
                   onChange={handleFontFamilyChange}
-                  value={settings.fontFamily}
+                  value={draft.fontFamily}
                 />
                 <p className="text-xs text-muted-foreground">
                   Select a font for the application interface. Leave as System
@@ -460,13 +509,36 @@ export const SettingsPage = () => {
                 </h3>
                 <FontSizeInput
                   onChange={handleFontSizeChange}
-                  value={settings.fontSize}
+                  value={draft.fontSize}
                 />
               </div>
             </motion.section>
           </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {isDirty && (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed bottom-4 right-4 flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-lg"
+            exit={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+          >
+            <Button
+              disabled={updateMutation.isPending}
+              onClick={handleCancel}
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+            <Button disabled={updateMutation.isPending} onClick={handleSave}>
+              {updateMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
