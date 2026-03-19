@@ -1,305 +1,102 @@
-import type { AppSettings, Theme } from "@etyon/rpc"
+import type { LocalePreference } from "@etyon/i18n"
+import { useI18n } from "@etyon/i18n/react"
+import type { AppIcon, AppSettings, Theme } from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-  ComboboxValue
-} from "@etyon/ui/components/combobox"
-import { Input } from "@etyon/ui/components/input"
 import { Skeleton } from "@etyon/ui/components/skeleton"
-import { cn } from "@etyon/ui/lib/utils"
 import {
   ComputerIcon,
-  MinusSignIcon,
   Moon02Icon,
-  PlusSignIcon,
+  PaintBrush01Icon,
+  Settings02Icon,
   Sun02Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "motion/react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { orpc, rpcClient } from "../lib/rpc"
+import { orpc, rpcClient } from "@/renderer/lib/rpc"
+
 import { applySettings, applyThemePreview } from "../lib/settings"
+import {
+  AppIconSelector,
+  AutoStartCheckbox,
+  LanguageSelect
+} from "./settings/general-tab"
+import { NavButton } from "./settings/nav-button"
+import type { ThemeOption } from "./settings/ui-tab"
+import {
+  FontFamilyCombobox,
+  FontSizeInput,
+  ThemeSelector
+} from "./settings/ui-tab"
 
-const FALLBACK_FONTS = [
-  "System Default",
-  "Inter",
-  "SF Pro",
-  "Helvetica Neue",
-  "Roboto",
-  "Menlo",
-  "Fira Code",
-  "JetBrains Mono",
-  "Source Code Pro"
+const EASE_CURVE = [0.25, 0.1, 0.25, 1] as const
+
+const sectionAnimation = (delay: number) => ({
+  animate: { opacity: 1, y: 0 },
+  initial: { opacity: 0, y: 10 },
+  transition: { delay, duration: 0.35, ease: EASE_CURVE }
+})
+
+const SETTINGS_KEYS: (keyof AppSettings)[] = [
+  "appIcon",
+  "autoStart",
+  "fontFamily",
+  "fontSize",
+  "locale",
+  "theme"
 ]
 
-const FONT_SIZE_MIN = 12
-const FONT_SIZE_MAX = 24
-
-interface ThemeOption {
-  icon: React.ReactNode
-  label: string
-  value: Theme
-}
-
-const THEME_OPTIONS: ThemeOption[] = [
-  {
-    icon: <HugeiconsIcon icon={Sun02Icon} size={24} />,
-    label: "Light",
-    value: "light"
-  },
-  {
-    icon: <HugeiconsIcon icon={Moon02Icon} size={24} />,
-    label: "Dark",
-    value: "dark"
-  },
-  {
-    icon: <HugeiconsIcon icon={ComputerIcon} size={24} />,
-    label: "System",
-    value: "system"
-  }
-]
-
-const NAV_ITEMS = [{ id: "user-interface", label: "User Interface" }]
-
-const ThemeButton = ({
-  isActive,
-  onChange,
-  option
-}: {
-  isActive: boolean
-  onChange: (theme: Theme) => void
-  option: ThemeOption
-}) => {
-  const handleClick = useCallback(
-    () => onChange(option.value),
-    [onChange, option.value]
-  )
-
-  return (
-    <button
-      className={cn(
-        "flex flex-col items-center gap-2 rounded-lg border p-4 transition-all",
-        isActive
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
-      )}
-      onClick={handleClick}
-      type="button"
-    >
-      {option.icon}
-      <span className="text-xs font-medium">{option.label}</span>
-    </button>
-  )
-}
-
-const ThemeSelector = ({
-  onChange,
-  value
-}: {
-  onChange: (theme: Theme) => void
-  value: Theme
-}) => (
-  <div className="grid grid-cols-3 gap-3">
-    {THEME_OPTIONS.map((option) => (
-      <ThemeButton
-        isActive={value === option.value}
-        key={option.value}
-        onChange={onChange}
-        option={option}
-      />
-    ))}
-  </div>
-)
-
-interface FontItem {
-  label: string
-  value: string
-}
-
-const renderFontLabel = (item: FontItem) => (
-  <span
-    style={{
-      fontFamily: item.value === "System Default" ? "inherit" : item.value
-    }}
-  >
-    {item.label}
-  </span>
-)
-
-const renderFontValue = (selected: FontItem) => renderFontLabel(selected)
-
-const renderFontItem = (item: FontItem) => (
-  <ComboboxItem key={item.value} value={item}>
-    {renderFontLabel(item)}
-  </ComboboxItem>
-)
-
-const FontFamilyCombobox = ({
-  onChange,
-  value
-}: {
-  onChange: (family: string) => void
-  value: string
-}) => {
-  const fontsQuery = useQuery(orpc.fonts.list.queryOptions({}))
-  const fonts = useMemo(() => {
-    if (fontsQuery.data && fontsQuery.data.length > 0) {
-      const systemFonts = fontsQuery.data.filter(
-        (f) => !FALLBACK_FONTS.includes(f)
-      )
-      return ["System Default", ...systemFonts]
-    }
-    return FALLBACK_FONTS
-  }, [fontsQuery.data])
-
-  const items = useMemo<FontItem[]>(
-    () => fonts.map((f) => ({ label: f, value: f })),
-    [fonts]
-  )
-
-  const selectedItem = useMemo(
-    () => items.find((i) => i.value === value) ?? items[0],
-    [items, value]
-  )
-
-  const handleValueChange = useCallback(
-    (val: FontItem | null) => {
-      if (val) {
-        onChange(val.value)
-      }
-    },
-    [onChange]
-  )
-
-  return (
-    <Combobox
-      items={items}
-      onValueChange={handleValueChange}
-      value={selectedItem}
-    >
-      <ComboboxTrigger
-        render={
-          <Button
-            className="w-full justify-between font-normal"
-            variant="outline"
-          >
-            <ComboboxValue>{renderFontValue}</ComboboxValue>
-          </Button>
-        }
-      />
-      <ComboboxContent>
-        <ComboboxInput placeholder="Search fonts..." showTrigger={false} />
-        <ComboboxEmpty>No fonts found</ComboboxEmpty>
-        <ComboboxList>{renderFontItem}</ComboboxList>
-      </ComboboxContent>
-    </Combobox>
-  )
-}
-
-const FontSizeInput = ({
-  onChange,
-  value
-}: {
-  onChange: (size: number) => void
-  value: number
-}) => {
-  const [localValue, setLocalValue] = useState(String(value))
-
-  useEffect(() => {
-    setLocalValue(String(value))
-  }, [value])
-
-  const clamp = useCallback(
-    (n: number) => Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, n)),
-    []
-  )
-
-  const commit = useCallback(() => {
-    setLocalValue((prev) => {
-      const parsed = Number.parseInt(prev, 10)
-      if (Number.isNaN(parsed)) {
-        return String(value)
-      }
-      const clamped = clamp(parsed)
-      onChange(clamped)
-      return String(clamped)
-    })
-  }, [clamp, onChange, value])
-
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalValue(e.target.value)
-  }, [])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
-        commit()
-      }
-    },
-    [commit]
-  )
-
-  const decrement = useCallback(() => {
-    const next = clamp(value - 1)
-    onChange(next)
-  }, [clamp, onChange, value])
-
-  const increment = useCallback(() => {
-    const next = clamp(value + 1)
-    onChange(next)
-  }, [clamp, onChange, value])
-
-  return (
-    <div>
-      <div className="flex items-center gap-1">
-        <Button
-          disabled={value <= FONT_SIZE_MIN}
-          onClick={decrement}
-          size="icon"
-          variant="outline"
-        >
-          <HugeiconsIcon icon={MinusSignIcon} size={14} />
-        </Button>
-        <div className="relative w-16">
-          <Input
-            className="text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            max={FONT_SIZE_MAX}
-            min={FONT_SIZE_MIN}
-            onBlur={commit}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            type="number"
-            value={localValue}
-          />
-        </div>
-        <Button
-          disabled={value >= FONT_SIZE_MAX}
-          onClick={increment}
-          size="icon"
-          variant="outline"
-        >
-          <HugeiconsIcon icon={PlusSignIcon} size={14} />
-        </Button>
-        <span className="ml-1 text-xs text-muted-foreground">px</span>
-      </div>
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        {FONT_SIZE_MIN} - {FONT_SIZE_MAX} px
-      </p>
-    </div>
-  )
-}
+const shallowEqual = (a: AppSettings, b: AppSettings) =>
+  SETTINGS_KEYS.every((key) => a[key] === b[key])
 
 export const SettingsPage = () => {
+  const { t } = useI18n()
   const queryClient = useQueryClient()
-  const [activeSection] = useState("user-interface")
+  const [activeSection, setActiveSection] = useState("general")
+
+  const handleNavGeneral = useCallback(() => setActiveSection("general"), [])
+  const handleNavUI = useCallback(() => setActiveSection("user-interface"), [])
+
+  const navItems = useMemo(
+    () => [
+      {
+        handleSelect: handleNavGeneral,
+        icon: Settings02Icon,
+        id: "general" as const,
+        label: t("settings.nav.general")
+      },
+      {
+        handleSelect: handleNavUI,
+        icon: PaintBrush01Icon,
+        id: "user-interface" as const,
+        label: t("settings.nav.userInterface")
+      }
+    ],
+    [t, handleNavGeneral, handleNavUI]
+  )
+
+  const themeOptions = useMemo<ThemeOption[]>(
+    () => [
+      {
+        icon: <HugeiconsIcon icon={Sun02Icon} size={24} />,
+        label: t("settings.theme.option.light"),
+        value: "light"
+      },
+      {
+        icon: <HugeiconsIcon icon={Moon02Icon} size={24} />,
+        label: t("settings.theme.option.dark"),
+        value: "dark"
+      },
+      {
+        icon: <HugeiconsIcon icon={ComputerIcon} size={24} />,
+        label: t("settings.theme.option.system"),
+        value: "system"
+      }
+    ],
+    [t]
+  )
 
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
   const settingsQueryKey = orpc.settings.get.queryOptions({}).queryKey
@@ -317,15 +114,12 @@ export const SettingsPage = () => {
     if (!saved || !draft) {
       return false
     }
-    return (
-      saved.theme !== draft.theme ||
-      saved.fontFamily !== draft.fontFamily ||
-      saved.fontSize !== draft.fontSize
-    )
-  }, [saved, draft])
+
+    return !shallowEqual(saved, draft)
+  }, [draft, saved])
 
   const updateMutation = useMutation<AppSettings, Error, AppSettings>({
-    mutationFn: (next) => rpcClient.settings.update(next),
+    mutationFn: (nextSettings) => rpcClient.settings.update(nextSettings),
     onSuccess: (data) => {
       queryClient.setQueryData(settingsQueryKey, data)
       setDraft(data)
@@ -333,28 +127,45 @@ export const SettingsPage = () => {
     }
   })
 
-  // Live-preview theme changes
   const draftTheme = draft?.theme
+
   useEffect(() => {
     if (draftTheme) {
       applyThemePreview(draftTheme)
     }
   }, [draftTheme])
 
-  const handleThemeChange = useCallback(
-    (theme: Theme) => setDraft((prev) => (prev ? { ...prev, theme } : prev)),
+  const updateDraft = useCallback(
+    <K extends keyof AppSettings>(field: K, value: AppSettings[K]) =>
+      setDraft((prev) => (prev ? { ...prev, [field]: value } : prev)),
     []
   )
+
+  const updateDraftRef = useRef(updateDraft)
+  updateDraftRef.current = updateDraft
 
   const handleFontFamilyChange = useCallback(
-    (fontFamily: string) =>
-      setDraft((prev) => (prev ? { ...prev, fontFamily } : prev)),
+    (v: string) => updateDraftRef.current("fontFamily", v),
     []
   )
-
   const handleFontSizeChange = useCallback(
-    (fontSize: number) =>
-      setDraft((prev) => (prev ? { ...prev, fontSize } : prev)),
+    (v: number) => updateDraftRef.current("fontSize", v),
+    []
+  )
+  const handleLocaleChange = useCallback(
+    (v: LocalePreference) => updateDraftRef.current("locale", v),
+    []
+  )
+  const handleAppIconChange = useCallback(
+    (v: AppIcon) => updateDraftRef.current("appIcon", v),
+    []
+  )
+  const handleAutoStartChange = useCallback(
+    (v: boolean) => updateDraftRef.current("autoStart", v),
+    []
+  )
+  const handleThemeChange = useCallback(
+    (v: Theme) => updateDraftRef.current("theme", v),
     []
   )
 
@@ -383,6 +194,12 @@ export const SettingsPage = () => {
             <Skeleton className="mb-6 h-6 w-36" />
 
             <div className="space-y-8">
+              <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+
               <div className="space-y-4 rounded-lg border border-border bg-card p-5">
                 <Skeleton className="h-4 w-16" />
                 <div className="grid grid-cols-3 gap-3">
@@ -418,22 +235,17 @@ export const SettingsPage = () => {
         animate={{ opacity: 1, x: 0 }}
         className="shrink-0 border-r border-border bg-background p-3 pt-10"
         initial={{ opacity: 0, x: -12 }}
-        transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+        transition={{ duration: 0.3, ease: EASE_CURVE }}
       >
         <nav className="space-y-0.5">
-          {NAV_ITEMS.map((item) => (
-            <button
-              className={cn(
-                "flex w-full items-center rounded-md px-3 py-1.5 text-sm transition-colors",
-                activeSection === item.id
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
+          {navItems.map((item) => (
+            <NavButton
+              icon={item.icon}
+              isActive={activeSection === item.id}
               key={item.id}
-              type="button"
-            >
-              {item.label}
-            </button>
+              label={item.label}
+              onSelect={item.handleSelect}
+            />
           ))}
         </nav>
       </motion.aside>
@@ -444,76 +256,124 @@ export const SettingsPage = () => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-6 text-lg font-semibold"
             initial={{ opacity: 0, y: -8 }}
-            transition={{
-              delay: 0.1,
-              duration: 0.3,
-              ease: [0.25, 0.1, 0.25, 1]
-            }}
+            key={activeSection}
+            transition={{ delay: 0.1, duration: 0.3, ease: EASE_CURVE }}
           >
-            User Interface
+            {activeSection === "general"
+              ? t("settings.nav.general")
+              : t("settings.nav.userInterface")}
           </motion.h1>
 
-          <div className="space-y-8">
-            <motion.section
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-4 rounded-lg border border-border bg-card p-5"
-              initial={{ opacity: 0, y: 10 }}
-              transition={{
-                delay: 0.15,
-                duration: 0.35,
-                ease: [0.25, 0.1, 0.25, 1]
-              }}
-            >
-              <h2 className="text-sm font-semibold">Theme</h2>
+          {activeSection === "general" && (
+            <div className="space-y-8">
+              <motion.section
+                {...sectionAnimation(0.15)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.language.title")}
+                </h2>
 
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Appearance
-                </h3>
-                <ThemeSelector
-                  onChange={handleThemeChange}
-                  value={draft.theme}
-                />
-              </div>
-            </motion.section>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.language.label")}
+                  </h3>
+                  <LanguageSelect
+                    onChange={handleLocaleChange}
+                    value={draft.locale}
+                  />
+                </div>
+              </motion.section>
 
-            <motion.section
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-4 rounded-lg border border-border bg-card p-5"
-              initial={{ opacity: 0, y: 10 }}
-              transition={{
-                delay: 0.25,
-                duration: 0.35,
-                ease: [0.25, 0.1, 0.25, 1]
-              }}
-            >
-              <h2 className="text-sm font-semibold">Font Settings</h2>
+              <motion.section
+                {...sectionAnimation(0.25)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.appIcon.title")}
+                </h2>
 
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Font Family
-                </h3>
-                <FontFamilyCombobox
-                  onChange={handleFontFamilyChange}
-                  value={draft.fontFamily}
-                />
                 <p className="text-xs text-muted-foreground">
-                  Select a font for the application interface. Leave as System
-                  Default to use your OS font.
+                  {t("settings.appIcon.description")}
                 </p>
-              </div>
 
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">
-                  Font Size
-                </h3>
-                <FontSizeInput
-                  onChange={handleFontSizeChange}
-                  value={draft.fontSize}
+                <AppIconSelector
+                  onChange={handleAppIconChange}
+                  value={draft.appIcon}
                 />
-              </div>
-            </motion.section>
-          </div>
+              </motion.section>
+
+              <motion.section
+                {...sectionAnimation(0.35)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.startup.title")}
+                </h2>
+
+                <AutoStartCheckbox
+                  onChange={handleAutoStartChange}
+                  value={draft.autoStart}
+                />
+              </motion.section>
+            </div>
+          )}
+
+          {activeSection === "user-interface" && (
+            <div className="space-y-8">
+              <motion.section
+                {...sectionAnimation(0.15)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.theme.title")}
+                </h2>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.theme.appearance")}
+                  </h3>
+                  <ThemeSelector
+                    onChange={handleThemeChange}
+                    options={themeOptions}
+                    value={draft.theme}
+                  />
+                </div>
+              </motion.section>
+
+              <motion.section
+                {...sectionAnimation(0.25)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.fonts.title")}
+                </h2>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.fonts.family.label")}
+                  </h3>
+                  <FontFamilyCombobox
+                    onChange={handleFontFamilyChange}
+                    value={draft.fontFamily}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("settings.fonts.family.description")}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.fonts.size.label")}
+                  </h3>
+                  <FontSizeInput
+                    onChange={handleFontSizeChange}
+                    value={draft.fontSize}
+                  />
+                </div>
+              </motion.section>
+            </div>
+          )}
         </div>
       </main>
 
@@ -524,17 +384,19 @@ export const SettingsPage = () => {
             className="fixed bottom-4 right-4 flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-lg"
             exit={{ opacity: 0, y: 8 }}
             initial={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            transition={{ duration: 0.2, ease: EASE_CURVE }}
           >
             <Button
               disabled={updateMutation.isPending}
               onClick={handleCancel}
               variant="ghost"
             >
-              Cancel
+              {t("settings.common.cancel")}
             </Button>
             <Button disabled={updateMutation.isPending} onClick={handleSave}>
-              {updateMutation.isPending ? "Saving..." : "Save"}
+              {updateMutation.isPending
+                ? t("settings.common.saving")
+                : t("settings.common.save")}
             </Button>
           </motion.div>
         )}

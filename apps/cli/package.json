@@ -19,6 +19,9 @@
     "check": "ultracite check",
     "fix": "ultracite fix"
   },
+  "dependencies": {
+    "@etyon/i18n": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.15.0"
   }

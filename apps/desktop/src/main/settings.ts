@@ -1,16 +1,16 @@
 import path from "node:path"
 
+import { AppSettingsSchema } from "@etyon/rpc"
 import type { AppSettings } from "@etyon/rpc"
 import { app } from "electron"
 import ElectronStore from "electron-store"
 
 const SETTINGS_DIR = path.join(app.getPath("home"), ".config", "etyon")
 
-const DEFAULTS: AppSettings = {
-  fontFamily: "System Default",
-  fontSize: 16,
-  theme: "system"
-}
+const DEFAULTS: AppSettings = AppSettingsSchema.parse({})
+
+const parseStoredSettings = (value: unknown): AppSettings =>
+  AppSettingsSchema.parse(value ?? {})
 
 const store = new ElectronStore({
   cwd: SETTINGS_DIR,
@@ -19,11 +19,11 @@ const store = new ElectronStore({
 })
 
 export const getSettings = (): AppSettings =>
-  (store.get("settings") as AppSettings) ?? DEFAULTS
+  parseStoredSettings(store.get("settings"))
 
 export const updateSettings = (partial: Partial<AppSettings>): AppSettings => {
-  const current = (store.get("settings") as AppSettings) ?? DEFAULTS
-  const next = { ...current, ...partial }
+  const current = getSettings()
+  const next = AppSettingsSchema.parse({ ...current, ...partial })
   store.set("settings", next)
   return next
 }

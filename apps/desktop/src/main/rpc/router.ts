@@ -11,6 +11,7 @@ import { BrowserWindow } from "electron"
 
 import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
+import { refreshLocalizedAppShell } from "@/main/native-ui"
 import { getSettings, updateSettings } from "@/main/settings"
 
 const loggerEmit = os.input(LogEventSchema).handler(({ input }) => {
@@ -38,6 +39,7 @@ const settingsUpdate = os
   .output(AppSettingsSchema)
   .handler(({ input }) => {
     const result = updateSettings(input)
+    refreshLocalizedAppShell()
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send("settings-changed", result)
     }

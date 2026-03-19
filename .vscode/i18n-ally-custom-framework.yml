@@ -1,0 +1,12 @@
+languageIds:
+  - javascript
+  - javascriptreact
+  - typescript
+  - typescriptreact
+
+usageMatchRegex:
+  - "[^\\w\\d]t\\(['\"`]({key})['\"`]"
+
+scopeRangeRegex: "useI18n\\(\\s*\\{[^\\}]*keyPrefix:\\s*['\"`](.*?)['\"`]"
+
+monopoly: false

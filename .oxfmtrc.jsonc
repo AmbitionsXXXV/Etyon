@@ -20,5 +20,13 @@
   "tabWidth": 2,
   "trailingComma": "none",
   "useTabs": false,
-  "ignorePatterns": [".agents/**/*", ".claude/**/*", ".cursor/**/*"]
+  "ignorePatterns": [
+    ".agents/**/*",
+    ".claude/**/*",
+    ".cursor/**/*",
+    "**/.vite/**",
+    "**/dist/**",
+    "**/out/**",
+    "**/routeTree.gen.ts"
+  ]
 }

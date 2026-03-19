@@ -1,0 +1,135 @@
+{
+  "cli": {
+    "error": {
+      "invalidLocale": "不支持的语言环境：{locale}",
+      "missingLocaleValue": "--lang 缺少值。",
+      "unknownCommand": "未知命令：{command}"
+    },
+    "help": {
+      "commands": "命令：",
+      "help": "  help       显示帮助信息",
+      "usage": "用法：etyon <command>",
+      "version": "  version    显示版本号"
+    },
+    "status": {
+      "empty": "Etyon CLI - 运行 'etyon help' 查看用法"
+    },
+    "version": "etyon v{version}"
+  },
+  "home": {
+    "description": "欢迎使用你的 Electron 应用。",
+    "directCall": {
+      "button": "调用 rpcClient.ping()",
+      "label": "直接调用"
+    },
+    "ping": {
+      "cardTitle": "oRPC IPC 测试",
+      "directMessage": "来自 direct call 的 hello",
+      "error": "错误：{message}",
+      "loading": "加载中...",
+      "queryLabel": "TanStack Query（自动）",
+      "queryMessage": "来自 TanStack Query 的 hello"
+    }
+  },
+  "menu": {
+    "app": {
+      "about": "关于 {appName}",
+      "hide": "隐藏 {appName}",
+      "hideOthers": "隐藏其他",
+      "quit": "退出 {appName}",
+      "settings": "设置...",
+      "showAll": "全部显示"
+    },
+    "edit": {
+      "copy": "复制",
+      "cut": "剪切",
+      "label": "编辑",
+      "paste": "粘贴",
+      "redo": "重做",
+      "selectAll": "全选",
+      "undo": "撤销"
+    },
+    "file": {
+      "close": "关闭",
+      "label": "文件",
+      "quit": "退出",
+      "settings": "设置"
+    },
+    "view": {
+      "actualSize": "实际大小",
+      "label": "视图",
+      "reload": "重新载入",
+      "toggleDevTools": "切换开发者工具",
+      "toggleFullScreen": "切换全屏",
+      "zoomIn": "放大",
+      "zoomOut": "缩小"
+    },
+    "window": {
+      "bringAllToFront": "全部置于顶层",
+      "close": "关闭",
+      "label": "窗口",
+      "minimize": "最小化",
+      "zoom": "缩放"
+    }
+  },
+  "settings": {
+    "appIcon": {
+      "alt": "备选",
+      "default": "默认",
+      "description": "选择用于 Dock、任务栏和托盘的应用图标。",
+      "title": "应用图标"
+    },
+    "common": {
+      "cancel": "取消",
+      "save": "保存",
+      "saving": "保存中..."
+    },
+    "fonts": {
+      "empty": "未找到字体",
+      "family": {
+        "description": "为应用界面选择字体。保留为 System Default 时，将使用操作系统字体。",
+        "label": "字体"
+      },
+      "search": "搜索字体...",
+      "size": {
+        "label": "字号",
+        "range": "{min} - {max} px"
+      },
+      "systemDefault": "System Default",
+      "title": "字体设置"
+    },
+    "language": {
+      "description": "选择整个应用界面使用的显示语言。",
+      "label": "应用语言",
+      "option": {
+        "english": "English",
+        "japanese": "日本語",
+        "simplifiedChinese": "简体中文",
+        "system": "跟随系统"
+      },
+      "title": "语言"
+    },
+    "nav": {
+      "general": "通用",
+      "userInterface": "用户界面"
+    },
+    "startup": {
+      "autoStart": "开机自动启动",
+      "title": "启动设置"
+    },
+    "theme": {
+      "appearance": "外观",
+      "option": {
+        "dark": "深色",
+        "light": "浅色",
+        "system": "跟随系统"
+      },
+      "title": "主题"
+    }
+  },
+  "window": {
+    "settings": {
+      "title": "设置"
+    }
+  }
+}

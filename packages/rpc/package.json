@@ -13,6 +13,7 @@
     "fix": "ultracite fix"
   },
   "dependencies": {
+    "@etyon/i18n": "workspace:*",
     "@orpc/server": "^1.13.8",
     "zod": "catalog:"
   }

@@ -12,7 +12,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:desktop": "turbo run dev --filter=@etyon/desktop",
+    "dev:desktop": "turbo run dev --filter=@etyon/desktop...",
     "lint": "turbo run lint",
     "check": "turbo run check",
     "fix": "turbo run fix",

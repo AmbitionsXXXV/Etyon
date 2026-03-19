@@ -6,11 +6,12 @@
 
 ## 包结构
 
-| 包/应用          | 路径                                   | 职责                                    |
-| ---------------- | -------------------------------------- | --------------------------------------- |
-| `@etyon/rpc`     | `packages/rpc/`                        | 共享 Zod schema，不依赖 Electron API    |
-| `@etyon/desktop` | `apps/desktop/src/main/rpc/`           | 定义 router + handler，创建 RPCHandler  |
-| `@etyon/desktop` | `apps/desktop/src/renderer/lib/rpc.ts` | 创建 oRPC client + TanStack Query utils |
+| 包/应用          | 路径                                   | 职责                                       |
+| ---------------- | -------------------------------------- | ------------------------------------------ |
+| `@etyon/rpc`     | `packages/rpc/`                        | 共享 Zod schema，不依赖 Electron API       |
+| `@etyon/i18n`    | `packages/i18n/`                       | 共享 locale schema 与翻译能力，供 RPC 消费 |
+| `@etyon/desktop` | `apps/desktop/src/main/rpc/`           | 定义 router + handler，创建 RPCHandler     |
+| `@etyon/desktop` | `apps/desktop/src/renderer/lib/rpc.ts` | 创建 oRPC client + TanStack Query utils    |
 
 ## 架构
 
@@ -103,6 +104,14 @@ Logger SDK 在 `index.tsx` 中通过 `initLogger()` 初始化，注入 RPC emit 
 1. 在 `packages/rpc/src/schemas/` 下新增 Zod schema 文件，并在 `src/index.ts` 中导出
 2. 在 `apps/desktop/src/main/rpc/router.ts` 中新增 procedure，添加到 router 对象
 3. Renderer 端自动获得类型提示，无需额外配置
+
+### Settings Schema 扩展
+
+`settings.get` / `settings.update` 现在会携带 `locale` 字段，因此：
+
+- `packages/rpc/src/schemas/settings.ts` 依赖 `@etyon/i18n` 导出的 `LocalePreferenceSchema`
+- 旧的本地设置文件即使没有 `locale` 字段，也会由 `AppSettingsSchema.parse()` 自动补默认值 `"system"`
+- `renderer` 与 `main` 会继续通过同一条 `settings-changed` 广播链路同步完整的设置对象
 
 ### 新增本地 HTTP 服务
 

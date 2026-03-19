@@ -41,5 +41,6 @@
 
 字段来源参考 Electron Forge 配置文档与 Electron Packager `Options` 文档：
 
-- <https://www.electronforge.io/config/configuration>
-- <https://electron.github.io/packager/main/interfaces/Options.html>
+- [https://www.electronforge.io/config/configuration](https://www.electronforge.io/config/configuration)
+- [https://electron.github.io/packager/main/interfaces/Options.html](https://electron.github.io/packager/main/interfaces/Options.html)
+

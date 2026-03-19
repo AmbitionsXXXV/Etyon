@@ -39,6 +39,7 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                                                                               |
 | Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
 | Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                                                 |
+| i18n Package       | `packages/i18n/`                                         | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
 
 ## 数据模型
 
@@ -47,6 +48,7 @@ interface AppSettings {
   theme: "light" | "dark" | "system"
   fontFamily: string // 默认 "System Default"
   fontSize: number // 12-24，默认 16
+  locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
 }
 ```
 
@@ -66,6 +68,30 @@ interface AppSettings {
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
 - **字号生效机制**：`--user-font-size` 应用在 `:root` 的 `font-size` 上（而非 `body`），确保所有使用 `rem` 单位的 Tailwind 类（`text-sm`、`text-xs`、`text-lg` 等）按比例缩放。早期版本放在 `body` 上导致 Tailwind 工具类覆盖失效
 - **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
+
+## 语言设置
+
+`AppSettings` 新增了 `locale` 字段，支持：
+
+- `system`
+- `en-US`
+- `zh-CN`
+- `ja-JP`
+
+### 解析顺序
+
+- 当 `locale !== "system"` 时，直接使用用户显式选择
+- 当 `locale === "system"` 时：
+  `main` 使用 `app.getLocale()`，`renderer` 使用 `navigator.language`
+- 不支持的 locale 会回退到 `en-US`
+
+### 生效范围
+
+- `renderer` 页面文案
+- `Settings` 独立窗口标题
+- `Electron` 原生菜单
+
+语言切换后，`main` 会立即重建菜单并更新 `Settings` 窗口标题，所有窗口继续通过 `"settings-changed"` 广播同步新的 `AppSettings`
 
 ## Motion 动效
 
@@ -117,6 +143,8 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `packages/rpc/src/schemas/fonts.ts` — Font list Zod schema
 - `packages/rpc/src/index.ts` — 导出 settings + fonts schema
 - `apps/desktop/src/main/settings.ts` — electron-store 封装
+- `apps/desktop/src/main/localization.ts` — `main` 进程 locale 解析与翻译入口
+- `apps/desktop/src/main/native-ui.ts` — 菜单与窗口标题的本地化刷新
 - `apps/desktop/src/main/fonts.ts` — 系统字体枚举（跨平台，带缓存）
 - `apps/desktop/src/main/rpc/router.ts` — settings + fonts RPC 路由
 - `apps/desktop/src/main/window.ts` — 主窗口 + settings 窗口创建
@@ -127,6 +155,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/renderer/routes/__root.tsx` — 快捷键 IPC 触发
 - `apps/desktop/src/renderer/lib/settings.ts` — DOM 应用逻辑
 - `apps/desktop/src/renderer/index.tsx` — 启动分流 + 设置加载
+- `packages/i18n/` — 共享 i18n 基础设施
 - `packages/ui/src/styles/globals.css` — CSS 变量 + scrollbar 样式
 
 ## Partial Update Schema 设计
@@ -165,6 +194,6 @@ import { HugeiconsIcon } from "@hugeicons/react"
 
 ## 扩展
 
-1. 新增设置字段：在 `AppSettingsSchema` 中添加（带 `.default()`），在 `UpdateSettingsSchema` 中添加对应的 `.optional()` 字段（不带 `.default()`），在 `DEFAULTS` 中设默认值
+1. 新增设置字段：在 `AppSettingsSchema` 中添加（带 `.default()`），在 `UpdateSettingsSchema` 中添加对应的 `.optional()` 字段（不带 `.default()`），并确保 `main/settings.ts` 继续通过 `AppSettingsSchema.parse()` 兼容旧配置
 2. 新增设置分区：在 `settings-page.tsx` 的 `NAV_ITEMS` 和 JSX 中添加对应 section
 3. 新增菜单项：在 `menu.ts` 的 `template` 中添加

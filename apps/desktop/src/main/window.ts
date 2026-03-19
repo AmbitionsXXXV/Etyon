@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url"
 import { is, platform } from "@electron-toolkit/utils"
 import { BrowserWindow } from "electron"
 
+import { translate } from "./localization"
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const preloadPath = path.join(__dirname, "preload.js")
@@ -47,6 +49,7 @@ let settingsWindow: BrowserWindow | null = null
 
 export const createSettingsWindow = () => {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    syncSettingsWindowTitle()
     settingsWindow.focus()
     return settingsWindow
   }
@@ -56,7 +59,7 @@ export const createSettingsWindow = () => {
     maximizable: false,
     minHeight: 400,
     minWidth: 520,
-    title: "Settings",
+    title: translate("window.settings.title"),
     titleBarStyle: "hidden",
     ...(platform.isMacOS
       ? { trafficLightPosition: { x: 12, y: 10 } }
@@ -73,4 +76,10 @@ export const createSettingsWindow = () => {
   })
 
   return settingsWindow
+}
+
+export const syncSettingsWindowTitle = () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.setTitle(translate("window.settings.title"))
+  }
 }

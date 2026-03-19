@@ -8,6 +8,9 @@
     ".agents/**/*",
     ".claude/**/*",
     ".cursor/**/*",
+    "**/.vite/**",
+    "**/dist/**",
+    "**/out/**",
     "**/routeTree.gen.ts"
   ],
   "rules": {

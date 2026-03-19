@@ -1,37 +1,49 @@
 import { platform } from "@electron-toolkit/utils"
 import { app, Menu } from "electron"
 
+import { translate } from "./localization"
 import { createSettingsWindow } from "./window"
 
 export const setupMenu = () => {
+  const t = translate
+
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(platform.isMacOS
       ? [
           {
             label: app.name,
             submenu: [
-              { label: `About ${app.name}`, role: "about" as const },
+              {
+                label: t("menu.app.about", { appName: app.name }),
+                role: "about" as const
+              },
               { type: "separator" as const },
               {
                 accelerator: "Cmd+,",
                 click: () => createSettingsWindow(),
-                label: "Settings..."
+                label: t("menu.app.settings")
               },
               { type: "separator" as const },
               {
-                label: `Hide ${app.name}`,
+                label: t("menu.app.hide", { appName: app.name }),
                 role: "hide" as const
               },
-              { role: "hideOthers" as const },
-              { role: "unhide" as const },
+              {
+                label: t("menu.app.hideOthers"),
+                role: "hideOthers" as const
+              },
+              { label: t("menu.app.showAll"), role: "unhide" as const },
               { type: "separator" as const },
-              { role: "quit" as const }
+              {
+                label: t("menu.app.quit", { appName: app.name }),
+                role: "quit" as const
+              }
             ]
           }
         ]
       : []),
     {
-      label: "File",
+      label: t("menu.file.label"),
       submenu: [
         ...(platform.isMacOS
           ? []
@@ -39,49 +51,61 @@ export const setupMenu = () => {
               {
                 accelerator: "Ctrl+,",
                 click: () => createSettingsWindow(),
-                label: "Settings"
+                label: t("menu.file.settings")
               },
               { type: "separator" as const }
             ]),
         platform.isMacOS
-          ? { role: "close" as const }
-          : { role: "quit" as const }
+          ? { label: t("menu.file.close"), role: "close" as const }
+          : { label: t("menu.file.quit"), role: "quit" as const }
       ]
     },
     {
-      label: "Edit",
+      label: t("menu.edit.label"),
       submenu: [
-        { role: "undo" as const },
-        { role: "redo" as const },
+        { label: t("menu.edit.undo"), role: "undo" as const },
+        { label: t("menu.edit.redo"), role: "redo" as const },
         { type: "separator" as const },
-        { role: "cut" as const },
-        { role: "copy" as const },
-        { role: "paste" as const },
-        { role: "selectAll" as const }
+        { label: t("menu.edit.cut"), role: "cut" as const },
+        { label: t("menu.edit.copy"), role: "copy" as const },
+        { label: t("menu.edit.paste"), role: "paste" as const },
+        { label: t("menu.edit.selectAll"), role: "selectAll" as const }
       ]
     },
     {
-      label: "View",
+      label: t("menu.view.label"),
       submenu: [
-        { role: "reload" as const },
-        { role: "forceReload" as const },
-        { role: "toggleDevTools" as const },
+        { label: t("menu.view.reload"), role: "reload" as const },
+        { label: t("menu.view.reload"), role: "forceReload" as const },
+        {
+          label: t("menu.view.toggleDevTools"),
+          role: "toggleDevTools" as const
+        },
         { type: "separator" as const },
-        { role: "resetZoom" as const },
-        { role: "zoomIn" as const },
-        { role: "zoomOut" as const },
+        { label: t("menu.view.actualSize"), role: "resetZoom" as const },
+        { label: t("menu.view.zoomIn"), role: "zoomIn" as const },
+        { label: t("menu.view.zoomOut"), role: "zoomOut" as const },
         { type: "separator" as const },
-        { role: "togglefullscreen" as const }
+        {
+          label: t("menu.view.toggleFullScreen"),
+          role: "togglefullscreen" as const
+        }
       ]
     },
     {
-      label: "Window",
+      label: t("menu.window.label"),
       submenu: [
-        { role: "minimize" as const },
-        { role: "zoom" as const },
+        { label: t("menu.window.minimize"), role: "minimize" as const },
+        { label: t("menu.window.zoom"), role: "zoom" as const },
         ...(platform.isMacOS
-          ? [{ type: "separator" as const }, { role: "front" as const }]
-          : [{ role: "close" as const }])
+          ? [
+              { type: "separator" as const },
+              {
+                label: t("menu.window.bringAllToFront"),
+                role: "front" as const
+              }
+            ]
+          : [{ label: t("menu.window.close"), role: "close" as const }])
       ]
     }
   ]

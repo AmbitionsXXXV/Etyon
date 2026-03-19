@@ -1,0 +1,135 @@
+{
+  "cli": {
+    "error": {
+      "invalidLocale": "Unsupported locale: {locale}",
+      "missingLocaleValue": "Missing value for --lang.",
+      "unknownCommand": "Unknown command: {command}"
+    },
+    "help": {
+      "commands": "Commands:",
+      "help": "  help       Show this help message",
+      "usage": "Usage: etyon <command>",
+      "version": "  version    Show version number"
+    },
+    "status": {
+      "empty": "Etyon CLI - run 'etyon help' for usage"
+    },
+    "version": "etyon v{version}"
+  },
+  "home": {
+    "description": "Welcome to your Electron application.",
+    "directCall": {
+      "button": "Call rpcClient.ping()",
+      "label": "Direct Call"
+    },
+    "ping": {
+      "cardTitle": "oRPC IPC Test",
+      "directMessage": "hello from direct call",
+      "error": "Error: {message}",
+      "loading": "Loading...",
+      "queryLabel": "TanStack Query (auto)",
+      "queryMessage": "hello from TanStack Query"
+    }
+  },
+  "menu": {
+    "app": {
+      "about": "About {appName}",
+      "hide": "Hide {appName}",
+      "hideOthers": "Hide Others",
+      "quit": "Quit {appName}",
+      "settings": "Settings...",
+      "showAll": "Show All"
+    },
+    "edit": {
+      "copy": "Copy",
+      "cut": "Cut",
+      "label": "Edit",
+      "paste": "Paste",
+      "redo": "Redo",
+      "selectAll": "Select All",
+      "undo": "Undo"
+    },
+    "file": {
+      "close": "Close",
+      "label": "File",
+      "quit": "Quit",
+      "settings": "Settings"
+    },
+    "view": {
+      "actualSize": "Actual Size",
+      "label": "View",
+      "reload": "Reload",
+      "toggleDevTools": "Toggle Developer Tools",
+      "toggleFullScreen": "Toggle Full Screen",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out"
+    },
+    "window": {
+      "bringAllToFront": "Bring All to Front",
+      "close": "Close",
+      "label": "Window",
+      "minimize": "Minimize",
+      "zoom": "Zoom"
+    }
+  },
+  "settings": {
+    "appIcon": {
+      "alt": "Alt",
+      "default": "Default",
+      "description": "Choose your preferred app icon for the dock, taskbar, and tray.",
+      "title": "App Icon"
+    },
+    "common": {
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving..."
+    },
+    "fonts": {
+      "empty": "No fonts found",
+      "family": {
+        "description": "Select a font for the application interface. Leave it as System Default to use your OS font.",
+        "label": "Font Family"
+      },
+      "search": "Search fonts...",
+      "size": {
+        "label": "Font Size",
+        "range": "{min} - {max} px"
+      },
+      "systemDefault": "System Default",
+      "title": "Font Settings"
+    },
+    "language": {
+      "description": "Choose the language used across the application interface.",
+      "label": "Application Language",
+      "option": {
+        "english": "English",
+        "japanese": "日本語",
+        "simplifiedChinese": "简体中文",
+        "system": "System"
+      },
+      "title": "Language"
+    },
+    "nav": {
+      "general": "General",
+      "userInterface": "User Interface"
+    },
+    "startup": {
+      "autoStart": "Auto Start",
+      "title": "Startup Settings"
+    },
+    "theme": {
+      "appearance": "Appearance",
+      "option": {
+        "dark": "Dark",
+        "light": "Light",
+        "system": "System"
+      },
+      "title": "Theme"
+    }
+  },
+  "window": {
+    "settings": {
+      "title": "Settings"
+    }
+  }
+}

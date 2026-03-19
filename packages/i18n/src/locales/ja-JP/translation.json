@@ -1,0 +1,135 @@
+{
+  "cli": {
+    "error": {
+      "invalidLocale": "サポートされていないロケールです: {locale}",
+      "missingLocaleValue": "--lang に値がありません。",
+      "unknownCommand": "不明なコマンドです: {command}"
+    },
+    "help": {
+      "commands": "コマンド:",
+      "help": "  help       このヘルプメッセージを表示します",
+      "usage": "使い方: etyon <command>",
+      "version": "  version    バージョン番号を表示します"
+    },
+    "status": {
+      "empty": "Etyon CLI - 使い方は 'etyon help' を実行してください"
+    },
+    "version": "etyon v{version}"
+  },
+  "home": {
+    "description": "Electron アプリケーションへようこそ。",
+    "directCall": {
+      "button": "rpcClient.ping() を呼び出す",
+      "label": "直接呼び出し"
+    },
+    "ping": {
+      "cardTitle": "oRPC IPC テスト",
+      "directMessage": "direct call からの hello",
+      "error": "エラー: {message}",
+      "loading": "読み込み中...",
+      "queryLabel": "TanStack Query (自動)",
+      "queryMessage": "TanStack Query からの hello"
+    }
+  },
+  "menu": {
+    "app": {
+      "about": "{appName} について",
+      "hide": "{appName} を隠す",
+      "hideOthers": "ほかを隠す",
+      "quit": "{appName} を終了",
+      "settings": "設定...",
+      "showAll": "すべてを表示"
+    },
+    "edit": {
+      "copy": "コピー",
+      "cut": "切り取り",
+      "label": "編集",
+      "paste": "貼り付け",
+      "redo": "やり直す",
+      "selectAll": "すべてを選択",
+      "undo": "元に戻す"
+    },
+    "file": {
+      "close": "閉じる",
+      "label": "ファイル",
+      "quit": "終了",
+      "settings": "設定"
+    },
+    "view": {
+      "actualSize": "実際のサイズ",
+      "label": "表示",
+      "reload": "再読み込み",
+      "toggleDevTools": "開発者ツールを切り替え",
+      "toggleFullScreen": "フルスクリーンを切り替え",
+      "zoomIn": "拡大",
+      "zoomOut": "縮小"
+    },
+    "window": {
+      "bringAllToFront": "すべてを手前に移動",
+      "close": "閉じる",
+      "label": "ウインドウ",
+      "minimize": "最小化",
+      "zoom": "ズーム"
+    }
+  },
+  "settings": {
+    "appIcon": {
+      "alt": "代替",
+      "default": "デフォルト",
+      "description": "Dock、タスクバー、トレイに表示するアプリアイコンを選択します。",
+      "title": "アプリアイコン"
+    },
+    "common": {
+      "cancel": "キャンセル",
+      "save": "保存",
+      "saving": "保存中..."
+    },
+    "fonts": {
+      "empty": "フォントが見つかりません",
+      "family": {
+        "description": "アプリケーション UI に使用するフォントを選択します。OS のフォントを使う場合は System Default のままにしてください。",
+        "label": "フォントファミリー"
+      },
+      "search": "フォントを検索...",
+      "size": {
+        "label": "フォントサイズ",
+        "range": "{min} - {max} px"
+      },
+      "systemDefault": "System Default",
+      "title": "フォント設定"
+    },
+    "language": {
+      "description": "アプリケーション全体で使用する表示言語を選択します。",
+      "label": "アプリケーションの言語",
+      "option": {
+        "english": "English",
+        "japanese": "日本語",
+        "simplifiedChinese": "简体中文",
+        "system": "システム"
+      },
+      "title": "言語"
+    },
+    "nav": {
+      "general": "一般",
+      "userInterface": "ユーザーインターフェース"
+    },
+    "startup": {
+      "autoStart": "自動起動",
+      "title": "起動設定"
+    },
+    "theme": {
+      "appearance": "外観",
+      "option": {
+        "dark": "ダーク",
+        "light": "ライト",
+        "system": "システム"
+      },
+      "title": "テーマ"
+    }
+  },
+  "window": {
+    "settings": {
+      "title": "設定"
+    }
+  }
+}
