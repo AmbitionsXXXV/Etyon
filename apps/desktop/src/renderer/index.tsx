@@ -4,14 +4,14 @@ import { initLogger } from "@etyon/logger/renderer"
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { AppSettings } from "@etyon/rpc"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { startTransition, useEffect, useMemo, useState } from "react"
+import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 
 import { App } from "./app"
 import { SettingsPage } from "./components/settings-page"
 import { orpc, rpcClient } from "./lib/rpc"
-import { applySettings } from "./lib/settings"
+import { applySettings, watchSystemTheme } from "./lib/settings"
 import { queryClient } from "./query-client"
 
 import "@etyon/ui/globals.css"
@@ -52,6 +52,9 @@ const RendererRoot = ({
     [settings.locale, systemLocale]
   )
 
+  const themeRef = useRef(settings.theme)
+  themeRef.current = settings.theme
+
   useEffect(() => {
     applySettings(settings)
     document.documentElement.lang = locale
@@ -62,7 +65,7 @@ const RendererRoot = ({
 
     const removeListener = window.electron.ipcRenderer.on(
       "settings-changed",
-      (_event: unknown, nextSettings: AppSettings) => {
+      (_, nextSettings: AppSettings) => {
         queryClient.setQueryData(queryKey, nextSettings)
         startTransition(() => {
           setSettings(nextSettings)
@@ -72,6 +75,17 @@ const RendererRoot = ({
 
     return removeListener
   }, [])
+
+  useEffect(
+    () =>
+      watchSystemTheme(
+        () => themeRef.current,
+        () => {
+          console.log("system theme changed")
+        }
+      ),
+    []
+  )
 
   const content: ReactNode = isSettingsWindowMode ? <SettingsPage /> : <App />
 

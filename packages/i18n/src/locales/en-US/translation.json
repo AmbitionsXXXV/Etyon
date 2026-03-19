@@ -84,6 +84,98 @@
       "save": "Save",
       "saving": "Saving..."
     },
+    "customThemes": {
+      "actions": {
+        "create": "Create Theme",
+        "delete": "Delete"
+      },
+      "delete": {
+        "confirm": "Delete Theme",
+        "description": "Delete \"{{name}}\" from custom themes? This change will be part of your unsaved settings until you save.",
+        "title": "Delete Custom Theme"
+      },
+      "description": "Create and manage your own custom color schemes.",
+      "dialog": {
+        "description": "Design your own color scheme with 4 core colors and a live UI preview.",
+        "title": "Create Custom Theme"
+      },
+      "editor": {
+        "advanced": "Advanced",
+        "advancedHint": "Switch to Advanced mode to fine-tune individual colors.",
+        "simple": "Simple",
+        "simpleDescription": "Pick 4 colors and we'll generate a complete preview for you."
+      },
+      "empty": {
+        "description": "No custom themes yet. Click \"Create Theme\" to get started.",
+        "title": "No custom themes"
+      },
+      "fields": {
+        "accent": {
+          "description": "Buttons, links, and highlights",
+          "label": "Accent"
+        },
+        "background": {
+          "description": "Main background color",
+          "label": "Background"
+        },
+        "name": {
+          "label": "Display Name",
+          "placeholder": "My Custom Theme"
+        },
+        "secondary": {
+          "description": "Secondary actions and supporting UI",
+          "label": "Secondary"
+        },
+        "text": {
+          "description": "Main text color",
+          "label": "Text"
+        },
+        "type": {
+          "label": "Type"
+        }
+      },
+      "presets": {
+        "option": {
+          "custom": "Custom",
+          "forest": "Forest",
+          "monokai": "Monokai",
+          "nord": "Nord",
+          "ocean": "Ocean",
+          "sunset": "Sunset"
+        },
+        "title": "Quick Start Presets"
+      },
+      "preview": {
+        "cardDescription": "This is muted text content.",
+        "cardTitle": "Card Title",
+        "menuItemOne": "Menu Item 1",
+        "menuItemTwo": "Menu Item 2",
+        "primary": "Primary",
+        "secondary": "Secondary",
+        "selected": "Selected",
+        "title": "Preview"
+      },
+      "title": "Custom Themes",
+      "type": {
+        "dark": "Dark",
+        "light": "Light"
+      }
+    },
+    "colorScheme": {
+      "dark": {
+        "label": "Dark Mode"
+      },
+      "description": "Pick separate color schemes for light and dark modes. Default keeps the current built-in theme.",
+      "light": {
+        "label": "Light Mode"
+      },
+      "option": {
+        "default": "Default (Built-in)",
+        "oneLight": "One Light",
+        "tokyoNight": "Tokyo Night"
+      },
+      "title": "Color Scheme"
+    },
     "fonts": {
       "empty": "No fonts found",
       "family": {
@@ -110,6 +202,7 @@
       "title": "Language"
     },
     "nav": {
+      "colorSchema": "Color Schema",
       "general": "General",
       "userInterface": "User Interface"
     },

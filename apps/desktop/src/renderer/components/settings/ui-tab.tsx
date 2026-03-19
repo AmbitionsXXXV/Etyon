@@ -1,5 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
-import type { Theme } from "@etyon/rpc"
+import type { DarkColorSchema, LightColorSchema, Theme } from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
 import {
   Combobox,
@@ -40,6 +40,16 @@ interface FontItem {
   value: string
 }
 
+type ColorSchemaValue = DarkColorSchema | LightColorSchema
+
+export interface ColorSchemaOption<
+  TValue extends ColorSchemaValue = ColorSchemaValue
+> {
+  label: string
+  swatches: readonly string[]
+  value: TValue
+}
+
 export interface ThemeOption {
   icon: React.ReactNode
   label: string
@@ -64,6 +74,69 @@ const renderFontItem = (item: FontItem) => (
 
 const renderFontValue = (selected: FontItem) => renderFontLabel(selected)
 
+const ColorSchemaButton = <TValue extends ColorSchemaValue>({
+  isActive,
+  onChange,
+  option
+}: {
+  isActive: boolean
+  onChange: (value: TValue) => void
+  option: ColorSchemaOption<TValue>
+}) => {
+  const handleClick = useCallback(
+    () => onChange(option.value),
+    [onChange, option.value]
+  )
+
+  return (
+    <button
+      aria-pressed={isActive}
+      className={cn(
+        "flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition-all",
+        isActive
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
+      )}
+      onClick={handleClick}
+      type="button"
+    >
+      <div className="flex items-center gap-1.5">
+        {option.swatches.map((swatch) => (
+          <span
+            className="size-3 rounded-full border border-black/10"
+            key={swatch}
+            style={{ backgroundColor: swatch }}
+          />
+        ))}
+      </div>
+      <span className="text-sm font-medium text-foreground">
+        {option.label}
+      </span>
+    </button>
+  )
+}
+
+export const ColorSchemaSelector = <TValue extends ColorSchemaValue>({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (value: TValue) => void
+  options: ColorSchemaOption<TValue>[]
+  value: TValue
+}) => (
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    {options.map((option) => (
+      <ColorSchemaButton
+        isActive={value === option.value}
+        key={option.value}
+        onChange={onChange}
+        option={option}
+      />
+    ))}
+  </div>
+)
+
 const ThemeButton = ({
   isActive,
   onChange,
@@ -80,6 +153,7 @@ const ThemeButton = ({
 
   return (
     <button
+      aria-pressed={isActive}
       className={cn(
         "flex flex-col items-center gap-2 rounded-lg border p-4 transition-all",
         isActive

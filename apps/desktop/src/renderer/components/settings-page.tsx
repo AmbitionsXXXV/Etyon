@@ -1,6 +1,13 @@
 import type { LocalePreference } from "@etyon/i18n"
 import { useI18n } from "@etyon/i18n/react"
-import type { AppIcon, AppSettings, Theme } from "@etyon/rpc"
+import type {
+  AppIcon,
+  AppSettings,
+  CustomTheme,
+  DarkColorSchema,
+  LightColorSchema,
+  Theme
+} from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
 import { Skeleton } from "@etyon/ui/components/skeleton"
 import {
@@ -18,14 +25,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 
 import { applySettings, applyThemePreview } from "../lib/settings"
+import { CustomThemesTab } from "./settings/custom-themes"
 import {
   AppIconSelector,
   AutoStartCheckbox,
   LanguageSelect
 } from "./settings/general-tab"
 import { NavButton } from "./settings/nav-button"
-import type { ThemeOption } from "./settings/ui-tab"
+import type { ColorSchemaOption, ThemeOption } from "./settings/ui-tab"
 import {
+  ColorSchemaSelector,
   FontFamilyCombobox,
   FontSizeInput,
   ThemeSelector
@@ -39,23 +48,27 @@ const sectionAnimation = (delay: number) => ({
   transition: { delay, duration: 0.35, ease: EASE_CURVE }
 })
 
-const SETTINGS_KEYS: (keyof AppSettings)[] = [
-  "appIcon",
-  "autoStart",
-  "fontFamily",
-  "fontSize",
-  "locale",
-  "theme"
-]
-
-const shallowEqual = (a: AppSettings, b: AppSettings) =>
-  SETTINGS_KEYS.every((key) => a[key] === b[key])
+const settingsEqual = (a: AppSettings, b: AppSettings) =>
+  a.appIcon === b.appIcon &&
+  a.autoStart === b.autoStart &&
+  a.darkColorSchema === b.darkColorSchema &&
+  a.fontFamily === b.fontFamily &&
+  a.fontSize === b.fontSize &&
+  a.lightColorSchema === b.lightColorSchema &&
+  a.locale === b.locale &&
+  a.theme === b.theme &&
+  a.customThemes.length === b.customThemes.length &&
+  a.customThemes.every((t, i) => t.id === b.customThemes[i]?.id)
 
 export const SettingsPage = () => {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const [activeSection, setActiveSection] = useState("general")
 
+  const handleNavColorSchema = useCallback(
+    () => setActiveSection("color-schema"),
+    []
+  )
   const handleNavGeneral = useCallback(() => setActiveSection("general"), [])
   const handleNavUI = useCallback(() => setActiveSection("user-interface"), [])
 
@@ -68,13 +81,24 @@ export const SettingsPage = () => {
         label: t("settings.nav.general")
       },
       {
-        handleSelect: handleNavUI,
+        handleSelect: handleNavColorSchema,
         icon: PaintBrush01Icon,
+        id: "color-schema" as const,
+        label: t("settings.nav.colorSchema")
+      },
+      {
+        handleSelect: handleNavUI,
+        icon: ComputerIcon,
         id: "user-interface" as const,
         label: t("settings.nav.userInterface")
       }
     ],
-    [t, handleNavGeneral, handleNavUI]
+    [t, handleNavColorSchema, handleNavGeneral, handleNavUI]
+  )
+
+  const activeSectionLabel = useMemo(
+    () => navItems.find((item) => item.id === activeSection)?.label ?? "",
+    [activeSection, navItems]
   )
 
   const themeOptions = useMemo<ThemeOption[]>(
@@ -98,6 +122,64 @@ export const SettingsPage = () => {
     [t]
   )
 
+  const darkColorSchemaOptions = useMemo<ColorSchemaOption<DarkColorSchema>[]>(
+    () => [
+      {
+        label: t("settings.colorScheme.option.default"),
+        swatches: [
+          "oklch(0.145 0 0)",
+          "oklch(0.205 0 0)",
+          "oklch(0.269 0 0)",
+          "oklch(0.488 0.243 264.376)",
+          "oklch(0.704 0.191 22.216)"
+        ],
+        value: "default"
+      },
+      {
+        label: t("settings.colorScheme.option.tokyoNight"),
+        swatches: [
+          "oklch(0.226 0.021 280.487)",
+          "oklch(0.282 0.036 274.748)",
+          "oklch(0.846 0.061 274.763)",
+          "oklch(0.719 0.132 264.202)",
+          "oklch(0.723 0.159 10.276)"
+        ],
+        value: "tokyo-night"
+      }
+    ],
+    [t]
+  )
+
+  const lightColorSchemaOptions = useMemo<
+    ColorSchemaOption<LightColorSchema>[]
+  >(
+    () => [
+      {
+        label: t("settings.colorScheme.option.default"),
+        swatches: [
+          "oklch(1 0 0)",
+          "oklch(0.97 0 0)",
+          "oklch(0.922 0 0)",
+          "oklch(0.205 0 0)",
+          "oklch(0.577 0.245 27.325)"
+        ],
+        value: "default"
+      },
+      {
+        label: t("settings.colorScheme.option.oneLight"),
+        swatches: [
+          "oklch(0.985 0 89.876)",
+          "oklch(0.955 0.001 286.375)",
+          "oklch(0.35 0.014 274.503)",
+          "oklch(0.602 0.193 263.246)",
+          "oklch(0.639 0.179 28.344)"
+        ],
+        value: "one-light"
+      }
+    ],
+    [t]
+  )
+
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
   const settingsQueryKey = orpc.settings.get.queryOptions({}).queryKey
   const saved = settingsQuery.data
@@ -115,7 +197,7 @@ export const SettingsPage = () => {
       return false
     }
 
-    return !shallowEqual(saved, draft)
+    return !settingsEqual(saved, draft)
   }, [draft, saved])
 
   const updateMutation = useMutation<AppSettings, Error, AppSettings>({
@@ -123,11 +205,16 @@ export const SettingsPage = () => {
     onSuccess: (data) => {
       queryClient.setQueryData(settingsQueryKey, data)
       setDraft(data)
-      applySettings(data)
     }
   })
 
   const draftTheme = draft?.theme
+
+  useEffect(() => {
+    if (draft) {
+      applySettings(draft)
+    }
+  }, [draft])
 
   useEffect(() => {
     if (draftTheme) {
@@ -160,8 +247,38 @@ export const SettingsPage = () => {
     (v: AppIcon) => updateDraftRef.current("appIcon", v),
     []
   )
+  const handleCustomThemeCreate = useCallback((theme: CustomTheme) => {
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            customThemes: [theme, ...prev.customThemes]
+          }
+        : prev
+    )
+  }, [])
+  const handleCustomThemeDelete = useCallback((themeId: string) => {
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            customThemes: prev.customThemes.filter(
+              (theme) => theme.id !== themeId
+            )
+          }
+        : prev
+    )
+  }, [])
   const handleAutoStartChange = useCallback(
     (v: boolean) => updateDraftRef.current("autoStart", v),
+    []
+  )
+  const handleDarkColorSchemaChange = useCallback(
+    (v: DarkColorSchema) => updateDraftRef.current("darkColorSchema", v),
+    []
+  )
+  const handleLightColorSchemaChange = useCallback(
+    (v: LightColorSchema) => updateDraftRef.current("lightColorSchema", v),
     []
   )
   const handleThemeChange = useCallback(
@@ -178,7 +295,6 @@ export const SettingsPage = () => {
   const handleCancel = useCallback(() => {
     if (saved) {
       setDraft(saved)
-      applyThemePreview(saved.theme)
     }
   }, [saved])
 
@@ -259,9 +375,7 @@ export const SettingsPage = () => {
             key={activeSection}
             transition={{ delay: 0.1, duration: 0.3, ease: EASE_CURVE }}
           >
-            {activeSection === "general"
-              ? t("settings.nav.general")
-              : t("settings.nav.userInterface")}
+            {activeSectionLabel}
           </motion.h1>
 
           {activeSection === "general" && (
@@ -315,6 +429,53 @@ export const SettingsPage = () => {
                   onChange={handleAutoStartChange}
                   value={draft.autoStart}
                 />
+              </motion.section>
+            </div>
+          )}
+
+          {activeSection === "color-schema" && (
+            <div className="space-y-8">
+              <motion.section {...sectionAnimation(0.25)} className="space-y-4">
+                <CustomThemesTab
+                  onCreateTheme={handleCustomThemeCreate}
+                  onDeleteTheme={handleCustomThemeDelete}
+                  themes={draft.customThemes}
+                />
+              </motion.section>
+
+              <motion.section
+                {...sectionAnimation(0.15)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.colorScheme.title")}
+                </h2>
+
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.colorScheme.description")}
+                </p>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.colorScheme.dark.label")}
+                  </h3>
+                  <ColorSchemaSelector
+                    onChange={handleDarkColorSchemaChange}
+                    options={darkColorSchemaOptions}
+                    value={draft.darkColorSchema}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t("settings.colorScheme.light.label")}
+                  </h3>
+                  <ColorSchemaSelector
+                    onChange={handleLightColorSchemaChange}
+                    options={lightColorSchemaOptions}
+                    value={draft.lightColorSchema}
+                  />
+                </div>
               </motion.section>
             </div>
           )}

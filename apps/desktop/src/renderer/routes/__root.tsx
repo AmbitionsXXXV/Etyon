@@ -1,4 +1,5 @@
 import { TanStackDevtools } from "@tanstack/react-devtools"
+import { formDevtoolsPlugin } from "@tanstack/react-form-devtools"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { hotkeysDevtoolsPlugin } from "@tanstack/react-hotkeys-devtools"
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
@@ -30,7 +31,8 @@ const RootComponent = () => {
             name: "TanStack Router",
             render: <TanStackRouterDevtoolsPanel />
           },
-          hotkeysDevtoolsPlugin()
+          hotkeysDevtoolsPlugin(),
+          formDevtoolsPlugin()
         ]}
       />
     </>

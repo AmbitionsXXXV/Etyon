@@ -16,18 +16,8 @@ import {
 } from "./index.js"
 import type { Locale, TranslationKey, TranslationValues } from "./index.js"
 
-type StripTranslationKeyPrefix<
-  Key extends string,
-  Prefix extends string
-> = Key extends `${Prefix}.${infer Rest}` ? Rest : never
-
-type ScopedTranslationKey<Prefix extends string> = StripTranslationKeyPrefix<
-  TranslationKey,
-  Prefix
->
-
 type UseI18nKey<Prefix extends string | undefined> = Prefix extends string
-  ? ScopedTranslationKey<Prefix>
+  ? string
   : TranslationKey
 
 export interface UseI18nOptions<Prefix extends string | undefined = undefined> {
@@ -76,17 +66,22 @@ export const useI18n = <Prefix extends string | undefined = undefined>(
   const { i18n, ready } = useTranslation(DEFAULT_NAMESPACE, {
     useSuspense: false
   })
+  const getFixedTranslator = i18n.getFixedT as unknown as (
+    locale: Locale,
+    namespace: typeof DEFAULT_NAMESPACE,
+    keyPrefix?: KeyPrefix<typeof DEFAULT_NAMESPACE>
+  ) => (key: string, values?: TranslationValues) => string
   const resolvedLocale = getResolvedLocale(
     options?.locale ?? i18n.resolvedLanguage ?? i18n.language
   )
   const translator = useMemo(
     () =>
-      i18n.getFixedT(
+      getFixedTranslator(
         resolvedLocale,
         DEFAULT_NAMESPACE,
         options?.keyPrefix as KeyPrefix<typeof DEFAULT_NAMESPACE>
       ) as (key: string, values?: TranslationValues) => string,
-    [i18n, resolvedLocale, options?.keyPrefix]
+    [getFixedTranslator, resolvedLocale, options?.keyPrefix]
   )
 
   return {

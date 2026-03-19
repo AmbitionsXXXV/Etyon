@@ -1,24 +1,41 @@
 import type { AppSettings, Theme } from "@etyon/rpc"
 
+const THEME_TRANSITION_MS = 200
+
+const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+
+const resolvePrefersDark = (theme: Theme) =>
+  theme === "system" ? darkMediaQuery.matches : theme === "dark"
+
+const applyColorSchemas = ({
+  darkColorSchema,
+  lightColorSchema
+}: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">) => {
+  const root = document.documentElement
+  root.dataset.darkColorSchema = darkColorSchema
+  root.dataset.lightColorSchema = lightColorSchema
+}
+
+const applyTheme = (theme: Theme) => {
+  const prefersDark = resolvePrefersDark(theme)
+  const root = document.documentElement
+  root.classList.remove("dark", "light")
+  root.classList.toggle("dark", prefersDark)
+  root.classList.toggle("light", !prefersDark)
+}
+
 export const applyThemePreview = (theme: Theme) => {
   const root = document.documentElement
   root.classList.add("theme-transitioning")
-  root.classList.remove("dark", "light")
-  if (theme === "system") {
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    ).matches
-    root.classList.toggle("dark", prefersDark)
-  } else {
-    root.classList.add(theme)
-  }
+  applyTheme(theme)
   setTimeout(() => {
     root.classList.remove("theme-transitioning")
-  }, 200)
+  }, THEME_TRANSITION_MS)
 }
 
 export const applySettings = (settings: AppSettings) => {
-  applyThemePreview(settings.theme)
+  applyTheme(settings.theme)
+  applyColorSchemas(settings)
 
   const fontFamily =
     settings.fontFamily === "System Default"
@@ -28,4 +45,19 @@ export const applySettings = (settings: AppSettings) => {
   const root = document.documentElement
   root.style.setProperty("--user-font-family", fontFamily)
   root.style.setProperty("--user-font-size", `${settings.fontSize}px`)
+}
+
+export const watchSystemTheme = (
+  getCurrentTheme: () => Theme,
+  onSystemChange: () => void
+) => {
+  const handler = () => {
+    if (getCurrentTheme() === "system") {
+      applyThemePreview("system")
+      onSystemChange()
+    }
+  }
+
+  darkMediaQuery.addEventListener("change", handler)
+  return () => darkMediaQuery.removeEventListener("change", handler)
 }

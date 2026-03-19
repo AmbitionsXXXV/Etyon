@@ -4,7 +4,22 @@ export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
 export {
   AppIconSchema,
   AppSettingsSchema,
+  CustomThemeColorsSchema,
+  CustomThemePresetSchema,
+  CustomThemeSchema,
+  CustomThemeTypeSchema,
+  DarkColorSchemaSchema,
+  LightColorSchemaSchema,
   ThemeSchema,
   UpdateSettingsSchema
 } from "./schemas/settings"
-export type { AppIcon, AppSettings, Theme } from "./schemas/settings"
+export type {
+  AppIcon,
+  AppSettings,
+  CustomTheme,
+  CustomThemePreset,
+  CustomThemeType,
+  DarkColorSchema,
+  LightColorSchema,
+  Theme
+} from "./schemas/settings"

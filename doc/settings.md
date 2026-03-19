@@ -45,10 +45,27 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ```typescript
 interface AppSettings {
+  customThemes: CustomTheme[] // 默认 []
+  darkColorSchema: "default" | "tokyo-night" // 默认 "default"
   theme: "light" | "dark" | "system"
   fontFamily: string // 默认 "System Default"
   fontSize: number // 12-24，默认 16
+  lightColorSchema: "default" | "one-light" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
+}
+interface CustomTheme {
+  colors: {
+    accent: string // #RRGGBB
+    background: string // #RRGGBB
+    secondary: string // #RRGGBB
+    text: string // #RRGGBB
+  }
+  createdAt: string
+  id: string
+  name: string
+  preset: "custom" | "ocean" | "forest" | "sunset" | "nord" | "monokai"
+  type: "dark" | "light"
+  updatedAt: string
 }
 ```
 
@@ -65,9 +82,31 @@ interface AppSettings {
 设置变更后通过 `applySettings()` 实时应用：
 
 - **主题**：切换 `document.documentElement` 的 `dark` / `light` class
+- **颜色方案**：设置 `data-dark-color-schema` / `data-light-color-schema`，由 `packages/ui/src/styles/tokyo-night.css` 和 `packages/ui/src/styles/one-light.css` 覆盖 CSS 变量
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
 - **字号生效机制**：`--user-font-size` 应用在 `:root` 的 `font-size` 上（而非 `body`），确保所有使用 `rem` 单位的 Tailwind 类（`text-sm`、`text-xs`、`text-lg` 等）按比例缩放。早期版本放在 `body` 上导致 Tailwind 工具类覆盖失效
 - **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
+- **系统主题跟随**：当 `theme === "system"` 时，`watchSystemTheme()` 通过 `matchMedia("(prefers-color-scheme: dark)")` 的 `change` 事件监听操作系统外观切换，自动应用 `applyThemePreview("system")` 并带过渡动画；每个 `BrowserWindow` 的 renderer 各自注册独立监听器
+
+### Color Schema
+
+- `theme` 仍只负责 `light` / `dark` / `system` 外观模式切换
+- Settings 左侧导航使用单独的 `Color Schema` tab，顶部放置 built-in `Color Scheme` 选择器，下方放置 `Custom Themes` area
+- 新增 `darkColorSchema` 和 `lightColorSchema` 两个设置字段，分别控制深色和浅色模式下的色板
+- `default` 表示继续使用 `globals.css` 中现有的内建 token，不需要单独的 schema 文件
+- 自定义色板放在 `packages/ui/src/styles/`，目前提供：
+  - `tokyo-night.css`（dark）
+  - `one-light.css`（light）
+- 所有色板 token 使用 `oklch(...)` 定义，并通过独立 CSS 文件覆盖 `--background`、`--foreground`、`--primary`、`--sidebar-*`、`--chart-*`、scrollbar 等语义变量
+
+### Custom Themes Area
+
+- `customThemes` 暂存于同一个 `settings.json` 内，由现有 `AppSettingsSchema` 和 `updateSettings()` 流程统一持久化
+- 当前 area 用于管理用户自定义主题，位于 `Color Schema` tab 内
+- v1 仅支持 `创建 + 删除`，不支持编辑，也不会接入当前 built-in `Color Scheme` 应用逻辑
+- 创建对话框使用 `@tanstack/react-form` + `@etyon/ui/components/field.tsx`
+- 当前只实现 `Simple` 模式：`Display Name`、`Type`、4 个核心颜色、preset 和实时 preview；`Advanced` 仅作为占位提示
+- `Create Theme` 对话框在窄窗口中使用单列布局，在更宽的视口下切换为表单 + preview 双列布局
 
 ## 语言设置
 
@@ -151,12 +190,16 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/main/menu.ts` — 原生应用菜单
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
+- `apps/desktop/src/renderer/components/settings/custom-themes/custom-themes-tab.tsx` — `Color Schema` tab 内的 `Custom Themes` area 与创建对话框
+- `apps/desktop/src/renderer/components/settings/custom-themes/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `CustomThemesTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）
 - `apps/desktop/src/renderer/routes/__root.tsx` — 快捷键 IPC 触发
 - `apps/desktop/src/renderer/lib/settings.ts` — DOM 应用逻辑
 - `apps/desktop/src/renderer/index.tsx` — 启动分流 + 设置加载
 - `packages/i18n/` — 共享 i18n 基础设施
 - `packages/ui/src/styles/globals.css` — CSS 变量 + scrollbar 样式
+- `packages/ui/src/styles/tokyo-night.css` — Tokyo Night dark color schema
+- `packages/ui/src/styles/one-light.css` — One Light light color schema
 
 ## Partial Update Schema 设计
 

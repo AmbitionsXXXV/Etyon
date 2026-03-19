@@ -84,6 +84,98 @@
       "save": "保存",
       "saving": "保存中..."
     },
+    "customThemes": {
+      "actions": {
+        "create": "テーマを作成",
+        "delete": "削除"
+      },
+      "delete": {
+        "confirm": "テーマを削除",
+        "description": "「{{name}}」をカスタムテーマから削除しますか？この変更は保存するまで未保存の設定として保持されます。",
+        "title": "カスタムテーマを削除"
+      },
+      "description": "独自のカスタムカラースキームを作成して管理します。",
+      "dialog": {
+        "description": "4 つのコアカラーでカスタムテーマを作成し、UI プレビューをその場で確認できます。",
+        "title": "カスタムテーマを作成"
+      },
+      "editor": {
+        "advanced": "Advanced",
+        "advancedHint": "Advanced モードに切り替えると、個別の色をさらに細かく調整できます。",
+        "simple": "Simple",
+        "simpleDescription": "4 つの色を選ぶと、完全な UI プレビューを自動で生成します。"
+      },
+      "empty": {
+        "description": "カスタムテーマはまだありません。「テーマを作成」をクリックして始めてください。",
+        "title": "カスタムテーマはまだありません"
+      },
+      "fields": {
+        "accent": {
+          "description": "ボタン、リンク、ハイライト",
+          "label": "アクセント"
+        },
+        "background": {
+          "description": "メイン背景色",
+          "label": "背景"
+        },
+        "name": {
+          "label": "表示名",
+          "placeholder": "My Custom Theme"
+        },
+        "secondary": {
+          "description": "セカンダリアクションと補助 UI",
+          "label": "セカンダリ"
+        },
+        "text": {
+          "description": "メインテキスト色",
+          "label": "テキスト"
+        },
+        "type": {
+          "label": "タイプ"
+        }
+      },
+      "presets": {
+        "option": {
+          "custom": "Custom",
+          "forest": "Forest",
+          "monokai": "Monokai",
+          "nord": "Nord",
+          "ocean": "Ocean",
+          "sunset": "Sunset"
+        },
+        "title": "クイックプリセット"
+      },
+      "preview": {
+        "cardDescription": "これはミュートされたテキストです。",
+        "cardTitle": "カードタイトル",
+        "menuItemOne": "メニュー項目 1",
+        "menuItemTwo": "メニュー項目 2",
+        "primary": "Primary",
+        "secondary": "Secondary",
+        "selected": "選択中",
+        "title": "プレビュー"
+      },
+      "title": "カスタムテーマ",
+      "type": {
+        "dark": "ダーク",
+        "light": "ライト"
+      }
+    },
+    "colorScheme": {
+      "dark": {
+        "label": "ダークモード"
+      },
+      "description": "ライトモードとダークモードで別々の配色を選択できます。Default は現在の組み込みテーマを使用します。",
+      "light": {
+        "label": "ライトモード"
+      },
+      "option": {
+        "default": "Default（Built-in）",
+        "oneLight": "One Light",
+        "tokyoNight": "Tokyo Night"
+      },
+      "title": "カラースキーム"
+    },
     "fonts": {
       "empty": "フォントが見つかりません",
       "family": {
@@ -110,6 +202,7 @@
       "title": "言語"
     },
     "nav": {
+      "colorSchema": "カラースキーマ",
       "general": "一般",
       "userInterface": "ユーザーインターフェース"
     },

@@ -43,4 +43,3 @@
 
 - [https://www.electronforge.io/config/configuration](https://www.electronforge.io/config/configuration)
 - [https://electron.github.io/packager/main/interfaces/Options.html](https://electron.github.io/packager/main/interfaces/Options.html)
-
