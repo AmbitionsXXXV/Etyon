@@ -1,8 +1,10 @@
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { is, platform } from "@electron-toolkit/utils"
 import { BrowserWindow } from "electron"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const preloadPath = path.join(__dirname, "preload.js")
 

@@ -26,19 +26,19 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ### 包结构
 
-| 层级               | 路径                                                     | 职责                                                                                                       |
-| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Schema             | `packages/rpc/src/schemas/settings.ts`                   | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                              |
-| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                      | `FontListOutputSchema` — 系统字体列表返回值 schema                                                         |
-| Main Store         | `apps/desktop/src/main/settings.ts`                      | `electron-store` 封装，提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
-| Main Fonts         | `apps/desktop/src/main/fonts.ts`                         | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                |
-| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                    | `settings.get` / `settings.update` / `fonts.list` 路由                                                     |
-| Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                      |
-| Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                            |
-| IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                        |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                                                           |
-| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                         |
-| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                             |
+| 层级               | 路径                                                     | 职责                                                                                                                           |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Schema             | `packages/rpc/src/schemas/settings.ts`                   | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                  |
+| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                      | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                             |
+| Main Store         | `apps/desktop/src/main/settings.ts`                      | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
+| Main Fonts         | `apps/desktop/src/main/fonts.ts`                         | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                    |
+| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                    | `settings.get` / `settings.update` / `fonts.list` 路由                                                                         |
+| Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                                          |
+| Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
+| IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件                                                                                                               |
+| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
+| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                                                 |
 
 ## 数据模型
 
@@ -136,17 +136,16 @@ Font Family 选择器使用 `ComboboxTrigger` + 弹出式下拉菜单：
 ```tsx
 import { Sun02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-
-<HugeiconsIcon icon={Sun02Icon} size={24} />
+;<HugeiconsIcon icon={Sun02Icon} size={24} />
 ```
 
 主题选择器使用的图标：
 
-| 主题   | 图标名       | 导出               |
-| ------ | ------------ | ------------------- |
-| Light  | `sun-02`     | `Sun02Icon`         |
-| Dark   | `moon-02`    | `Moon02Icon`        |
-| System | `computer`   | `ComputerIcon`      |
+| 主题   | 图标名     | 导出           |
+| ------ | ---------- | -------------- |
+| Light  | `sun-02`   | `Sun02Icon`    |
+| Dark   | `moon-02`  | `Moon02Icon`   |
+| System | `computer` | `ComputerIcon` |
 
 版本由 `pnpm-workspace.yaml` 的 catalog 统一管控，`packages/ui` 和 `apps/desktop` 均以 `catalog:` 引用。
 

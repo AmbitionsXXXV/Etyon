@@ -8,6 +8,7 @@
     "name": "etcetera",
     "email": "yilonglei790@gmail.com"
   },
+  "type": "module",
   "main": ".vite/build/index.js",
   "scripts": {
     "start": "electron-forge start",

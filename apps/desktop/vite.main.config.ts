@@ -1,10 +1,19 @@
 import { defineConfig } from "vite"
 
-// https://vitejs.dev/config
+const REQUIRE_POLYFILL = `import { createRequire } from "node:module"; const require = createRequire(import.meta.url);`
+
 export default defineConfig({
   build: {
-    rollupOptions: {
-      external: ["font-list"]
+    lib: {
+      entry: "src/main/index.ts",
+      fileName: () => "[name].js",
+      formats: ["es"]
+    },
+    rolldownOptions: {
+      external: ["font-list"],
+      output: {
+        banner: REQUIRE_POLYFILL
+      }
     }
   }
 })

@@ -1,4 +1,3 @@
-/* eslint-disable unicorn/prefer-module -- Electron main process requires CommonJS */
 import { onError } from "@orpc/server"
 import { RPCHandler } from "@orpc/server/message-port"
 import { ipcMain } from "electron"

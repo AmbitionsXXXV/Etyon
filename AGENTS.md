@@ -136,8 +136,8 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Object keys must be sorted alphabetically — oxlint `sort-keys` enforces this
 - File names must be kebab-case — oxlint `filename-case` enforces this; on macOS use two-step rename (temp name first) to change letter case
 - Auto-generated files like `routeTree.gen.ts` must be added to oxlint `ignorePatterns`
-- ESM-only packages (e.g. `@tanstack/devtools-vite`) in Electron Forge vite configs must use dynamic `import()` inside a plugin hook, not top-level static imports
-- Electron main process uses CJS context — `__dirname` requires inline `/* eslint-disable unicorn/prefer-module */`
+- Main process builds as ESM (`build.lib.formats: ["es"]`); preload remains CJS (Electron sandbox limitation); `__dirname` replaced by `path.dirname(fileURLToPath(import.meta.url))`
+- `vite.main.config.ts` injects `createRequire` polyfill via `rollupOptions.output.banner` for CJS dependencies bundled into ESM output
 - Preload entry must output a distinct filename (e.g. `preload.js`) to avoid collision with main's `index.js` in `.vite/build/`
 - Default JS package manager is `bun`; this project specifically uses pnpm
 - Before implementing features, read the `doc/` directory if it exists; after implementation, write documentation there
@@ -149,7 +149,7 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Desktop process structure: `src/main/` (Electron main), `src/preload/` (preload bridge), `src/renderer/` (React SPA with file-based routing under `routes/`)
 - IPC: oRPC + Electron MessagePort adapter; shared Zod schemas in `packages/rpc/` (`@etyon/rpc`), router + handlers in `apps/desktop/src/main/rpc/`
 - Logger package (`packages/logger/`, `@etyon/logger`): types + renderer SDK; renderer SDK uses dependency injection `initLogger(emit)`, not window globals
-- Persistent settings via `electron-store` (ESM-only, needs dynamic `import()` in main CJS); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`
+- Persistent settings via `electron-store` (ESM-only, top-level static import in ESM main); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`
 - `@electron-toolkit/utils` provides `platform.isMacOS/isWindows/isLinux`, `is.dev`, `optimizer.watchWindowShortcuts` — use instead of raw `process.platform` in main process
 - `@tanstack/react-hotkeys` exports `useHotkey` (singular, not `useHotkeys`); use `"Mod+,"` for cross-platform Cmd/Ctrl
 - CLI app (`apps/cli/`, `@etyon/cli`): TypeScript, compiled to `dist/`

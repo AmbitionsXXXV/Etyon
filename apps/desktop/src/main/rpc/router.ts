@@ -36,8 +36,8 @@ const settingsGet = os.output(AppSettingsSchema).handler(() => getSettings())
 const settingsUpdate = os
   .input(UpdateSettingsSchema)
   .output(AppSettingsSchema)
-  .handler(async ({ input }) => {
-    const result = await updateSettings(input)
+  .handler(({ input }) => {
+    const result = updateSettings(input)
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send("settings-changed", result)
     }
