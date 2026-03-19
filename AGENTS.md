@@ -144,15 +144,15 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 
 ## Learned Workspace Facts
 
-- Monorepo: pnpm (hoisted node-linker) + Turborepo, workspaces `apps/*` and `packages/*`, scope `@etyon`
+- Monorepo: pnpm (hoisted node-linker) + Turborepo, workspaces `apps/*` and `packages/*`, scope `@etyon`; shared deps centralized in `pnpm-workspace.yaml` catalog, apps/packages reference with `catalog:`
 - Desktop app (`apps/desktop/`, `@etyon/desktop`): Electron 41, Electron Forge 7, Vite 8, React 19, Tailwind CSS 4, TanStack Router + Query + Hotkeys + DevTools
 - Desktop process structure: `src/main/` (Electron main), `src/preload/` (preload bridge), `src/renderer/` (React SPA with file-based routing under `routes/`)
 - IPC: oRPC + Electron MessagePort adapter; shared Zod schemas in `packages/rpc/` (`@etyon/rpc`), router + handlers in `apps/desktop/src/main/rpc/`
 - Logger package (`packages/logger/`, `@etyon/logger`): types + renderer SDK; renderer SDK uses dependency injection `initLogger(emit)`, not window globals
-- Persistent settings via `electron-store` (ESM-only, needs dynamic `import()` in main CJS); store wrapper in `src/main/settings.ts`
-- Electron native `Menu` configured in `src/main/menu.ts`; `Cmd+,` / `Ctrl+,` opens settings
+- Persistent settings via `electron-store` (ESM-only, needs dynamic `import()` in main CJS); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`
+- `@electron-toolkit/utils` provides `platform.isMacOS/isWindows/isLinux`, `is.dev`, `optimizer.watchWindowShortcuts` — use instead of raw `process.platform` in main process
 - `@tanstack/react-hotkeys` exports `useHotkey` (singular, not `useHotkeys`); use `"Mod+,"` for cross-platform Cmd/Ctrl
 - CLI app (`apps/cli/`, `@etyon/cli`): TypeScript, compiled to `dist/`
-- Shared UI package (`packages/ui/`, `@etyon/ui`): shadcn + base-mira style, @base-ui/react, @hugeicons/react, Inter Variable font, exports `globals.css`, `components/*`, `lib/*`, `hooks/*`
+- Shared UI package (`packages/ui/`, `@etyon/ui`): shadcn + base-mira style, @base-ui/react, @hugeicons/react + @hugeicons/core-free-icons, Inter Variable font, exports `globals.css`, `components/*`, `lib/*`, `hooks/*`
 - Linting/formatting: Ultracite (Oxlint + Oxfmt), config at workspace root (`.oxlintrc.json`, `.oxfmtrc.jsonc`)
-- Vite renderer config plugin order: TanStackRouterVite → react() → tailwindcss(); oRPC Electron MessagePort may have stale connections after Vite HMR (restart resolves)
+- Vite renderer: plugin order TanStackRouterVite → react() → tailwindcss(); `use-sync-external-store/shim` and `/shim/with-selector` must be in `optimizeDeps.include` for `@base-ui/react`; packages with ESM `import.meta.url` wrappers used by Electron main (e.g. `font-list`) must be `external` in `vite.main.config.ts`

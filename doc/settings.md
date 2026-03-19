@@ -124,6 +124,32 @@ Font Family 选择器使用 `ComboboxTrigger` + 弹出式下拉菜单：
 - 这会导致只修改单个字段（如 theme）时，其他字段（如 fontFamily、fontSize）被意外重置为默认值
 - 因此 `UpdateSettingsSchema` 必须独立定义，仅使用 `.optional()` 而不带 `.default()`，确保未传入的字段保持 `undefined`，不会覆盖已有存储值
 
+## 图标
+
+设置页面使用 [Hugeicons](https://hugeicons.com/) 图标库（stroke-rounded 风格），通过 pnpm catalog 统一管理版本：
+
+- `@hugeicons/react` — React 渲染组件 `HugeiconsIcon`
+- `@hugeicons/core-free-icons` — 免费图标集（icon 数据对象）
+
+使用方式：
+
+```tsx
+import { Sun02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
+
+<HugeiconsIcon icon={Sun02Icon} size={24} />
+```
+
+主题选择器使用的图标：
+
+| 主题   | 图标名       | 导出               |
+| ------ | ------------ | ------------------- |
+| Light  | `sun-02`     | `Sun02Icon`         |
+| Dark   | `moon-02`    | `Moon02Icon`        |
+| System | `computer`   | `ComputerIcon`      |
+
+版本由 `pnpm-workspace.yaml` 的 catalog 统一管控，`packages/ui` 和 `apps/desktop` 均以 `catalog:` 引用。
+
 ## 扩展
 
 1. 新增设置字段：在 `AppSettingsSchema` 中添加（带 `.default()`），在 `UpdateSettingsSchema` 中添加对应的 `.optional()` 字段（不带 `.default()`），在 `DEFAULTS` 中设默认值

@@ -22,6 +22,8 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@hugeicons/core-free-icons": "catalog:",
+    "@hugeicons/react": "catalog:",
     "@orpc/client": "^1.13.8",
     "@orpc/server": "^1.13.8",
     "@orpc/tanstack-query": "^1.13.8",

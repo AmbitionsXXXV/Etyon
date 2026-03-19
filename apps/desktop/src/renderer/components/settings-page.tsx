@@ -11,6 +11,8 @@ import {
   ComboboxValue
 } from "@etyon/ui/components/combobox"
 import { cn } from "@etyon/ui/lib/utils"
+import { ComputerIcon, Moon02Icon, Sun02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -38,65 +40,22 @@ interface ThemeOption {
   value: Theme
 }
 
-const SunIcon = () => (
-  <svg
-    className="size-6"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.5}
-    viewBox="0 0 24 24"
-  >
-    <path
-      d="M12 3v1.5M12 19.5V21M4.22 4.22l1.06 1.06M17.72 17.72l1.06 1.06M3 12h1.5M19.5 12H21M4.22 19.78l1.06-1.06M17.72 6.28l1.06-1.06"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle
-      cx={12}
-      cy={12}
-      r={4}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const MoonIcon = () => (
-  <svg
-    className="size-6"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.5}
-    viewBox="0 0 24 24"
-  >
-    <path
-      d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75 9.75 9.75 0 0 1 8.25 6c0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25 9.75 9.75 0 0 0 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
-const MonitorIcon = () => (
-  <svg
-    className="size-6"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.5}
-    viewBox="0 0 24 24"
-  >
-    <path
-      d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25A2.25 2.25 0 0 1 5.25 3h13.5A2.25 2.25 0 0 1 21 5.25Z"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
 const THEME_OPTIONS: ThemeOption[] = [
-  { icon: <SunIcon />, label: "Light", value: "light" },
-  { icon: <MoonIcon />, label: "Dark", value: "dark" },
-  { icon: <MonitorIcon />, label: "System", value: "system" }
+  {
+    icon: <HugeiconsIcon icon={Sun02Icon} size={24} />,
+    label: "Light",
+    value: "light"
+  },
+  {
+    icon: <HugeiconsIcon icon={Moon02Icon} size={24} />,
+    label: "Dark",
+    value: "dark"
+  },
+  {
+    icon: <HugeiconsIcon icon={ComputerIcon} size={24} />,
+    label: "System",
+    value: "system"
+  }
 ]
 
 const NAV_ITEMS = [{ id: "user-interface", label: "User Interface" }]
