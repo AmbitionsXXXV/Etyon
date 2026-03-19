@@ -8,7 +8,85 @@ import { VitePlugin } from "@electron-forge/plugin-vite"
 import type { ForgeConfig } from "@electron-forge/shared-types"
 import { FuseV1Options, FuseVersion } from "@electron/fuses"
 
+const DEVELOPMENT_BUILD_IDENTIFIER = "development" as const
+const RELEASE_BUILD_IDENTIFIER = "release" as const
+const RELEASE_COMMANDS = new Set([
+  "build",
+  "make",
+  "package",
+  "publish",
+  "release"
+])
+const RELEASE_ENV_VALUES = new Set(["1", "production", "release", "true"])
+const APP_CATEGORY_TYPE = "public.app-category.utilities"
+const APP_COPYRIGHT_OWNER = "etcetera"
+
+const normalizeEnvValue = (value: string | undefined): string | undefined =>
+  value?.trim().toLowerCase()
+
+const hasReleaseCommandArg = (): boolean => {
+  for (const arg of process.argv) {
+    if (RELEASE_COMMANDS.has(arg)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const resolveBuildIdentifier = ():
+  | typeof DEVELOPMENT_BUILD_IDENTIFIER
+  | typeof RELEASE_BUILD_IDENTIFIER => {
+  const explicitBuildIdentifier = normalizeEnvValue(
+    process.env.ELECTRON_FORGE_BUILD_IDENTIFIER ??
+      process.env.ETYON_BUILD_IDENTIFIER
+  )
+
+  if (explicitBuildIdentifier === DEVELOPMENT_BUILD_IDENTIFIER) {
+    return DEVELOPMENT_BUILD_IDENTIFIER
+  }
+
+  if (explicitBuildIdentifier === RELEASE_BUILD_IDENTIFIER) {
+    return RELEASE_BUILD_IDENTIFIER
+  }
+
+  const explicitReleaseFlag = normalizeEnvValue(
+    process.env.ETYON_RELEASE ?? process.env.RELEASE
+  )
+
+  if (explicitReleaseFlag && RELEASE_ENV_VALUES.has(explicitReleaseFlag)) {
+    return RELEASE_BUILD_IDENTIFIER
+  }
+
+  if (normalizeEnvValue(process.env.NODE_ENV) === "production") {
+    return RELEASE_BUILD_IDENTIFIER
+  }
+
+  const lifecycleEvent = normalizeEnvValue(process.env.npm_lifecycle_event)
+
+  if (lifecycleEvent && RELEASE_COMMANDS.has(lifecycleEvent)) {
+    return RELEASE_BUILD_IDENTIFIER
+  }
+
+  return hasReleaseCommandArg()
+    ? RELEASE_BUILD_IDENTIFIER
+    : DEVELOPMENT_BUILD_IDENTIFIER
+}
+
+const buildIdentifier = resolveBuildIdentifier()
+const isRelease = buildIdentifier === RELEASE_BUILD_IDENTIFIER
+const appBundleId = isRelease ? "com.etcetera.etyon" : "com.etcetera.etyon.dev"
+const appDescription = isRelease
+  ? "Etyon desktop application"
+  : "Etyon desktop application (development build)"
+const appName = isRelease ? "Etyon" : "Etyon Dev"
+const currentYear = new Date().getFullYear()
+const executableName = isRelease ? "etyon" : "etyon-dev"
+const helperBundleId = `${appBundleId}.helper`
+const originalFilename = `${executableName}.exe`
+
 const config: ForgeConfig = {
+  buildIdentifier,
   makers: [
     new MakerSquirrel({}),
     new MakerZIP({}, ["darwin"]),
@@ -17,9 +95,22 @@ const config: ForgeConfig = {
     new MakerDMG({})
   ],
   packagerConfig: {
-    name: "Etyon",
+    appBundleId,
+    appCategoryType: APP_CATEGORY_TYPE,
+    appCopyright: `Copyright © ${currentYear} ${APP_COPYRIGHT_OWNER}`,
     asar: true,
-    executableName: "etyon"
+    darwinDarkModeSupport: true,
+    executableName,
+    helperBundleId,
+    name: appName,
+    win32metadata: {
+      CompanyName: APP_COPYRIGHT_OWNER,
+      FileDescription: appDescription,
+      InternalName: executableName,
+      OriginalFilename: originalFilename,
+      ProductName: appName,
+      "requested-execution-level": "asInvoker"
+    }
   },
   plugins: [
     new VitePlugin({
