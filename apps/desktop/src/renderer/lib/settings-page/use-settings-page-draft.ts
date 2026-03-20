@@ -188,6 +188,10 @@ export const useSettingsPageDraft = () => {
     (v: boolean) => updateDraftRef.current("autoStart", v),
     []
   )
+  const handleCloseToTrayChange = useCallback(
+    (v: boolean) => updateDraftRef.current("closeToTray", v),
+    []
+  )
   const handleCustomThemeCreate = useCallback((theme: CustomTheme) => {
     setDraft((prev) =>
       prev
@@ -230,6 +234,14 @@ export const useSettingsPageDraft = () => {
     (v: LocalePreference) => updateDraftRef.current("locale", v),
     []
   )
+  const handleMinimizeToTrayChange = useCallback(
+    (v: boolean) => updateDraftRef.current("minimizeToTray", v),
+    []
+  )
+  const handleStartMinimizedToTrayChange = useCallback(
+    (v: boolean) => updateDraftRef.current("startMinimizedToTray", v),
+    []
+  )
   const handleThemeChange = useCallback(
     (v: Theme) => updateDraftRef.current("theme", v),
     []
@@ -252,6 +264,7 @@ export const useSettingsPageDraft = () => {
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
+    handleCloseToTrayChange,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,
@@ -259,7 +272,9 @@ export const useSettingsPageDraft = () => {
     handleFontSizeChange,
     handleLightColorSchemaChange,
     handleLocaleChange,
+    handleMinimizeToTrayChange,
     handleSave,
+    handleStartMinimizedToTrayChange,
     handleThemeChange,
     isDirty,
     updateMutation

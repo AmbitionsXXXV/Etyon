@@ -5,6 +5,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { motion } from "motion/react"
 import { useCallback, useState } from "react"
 
+import trayImage from "../../../resources/tray.png"
 import { orpc, rpcClient } from "../lib/rpc"
 
 const HomePage = () => {
@@ -28,12 +29,13 @@ const HomePage = () => {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-lg space-y-6 text-center"
+        className="mx-auto max-w-lg space-y-6 text-center flex flex-col items-center"
         initial={{ opacity: 0, y: 16 }}
         transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
       >
-        <h1 className="text-4xl font-bold text-red-500">Etyon</h1>
-        <p className="text-lg text-gray-600">{t("description")}</p>
+        <img src={trayImage} alt="Etyon" className="size-20" />
+        <h1 className="text-4xl font-bold text-foreground">Etyon</h1>
+        <p className="text-sm text-gray-600">{t("description")}</p>
 
         <motion.div
           animate={{ opacity: 1, y: 0 }}

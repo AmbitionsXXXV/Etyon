@@ -83,7 +83,7 @@ const appName = isRelease ? "Etyon" : "Etyon Dev"
 const currentYear = new Date().getFullYear()
 const executableName = isRelease ? "etyon" : "etyon-dev"
 const helperBundleId = `${appBundleId}.helper`
-const originalFilename = `${executableName}.exe`
+const originalFilename = `${appName}.exe`
 
 const config: ForgeConfig = {
   buildIdentifier,
@@ -92,7 +92,9 @@ const config: ForgeConfig = {
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({}),
-    new MakerDMG({})
+    new MakerDMG({
+      icon: "resources/icon.icns"
+    })
   ],
   packagerConfig: {
     appBundleId,
@@ -101,7 +103,14 @@ const config: ForgeConfig = {
     asar: true,
     darwinDarkModeSupport: true,
     executableName,
+    extraResource: [
+      "resources/icon.icns",
+      "resources/icon.ico",
+      "resources/tray.png",
+      "resources/tray@2x.png"
+    ],
     helperBundleId,
+    icon: "resources/icon",
     name: appName,
     win32metadata: {
       CompanyName: APP_COPYRIGHT_OWNER,

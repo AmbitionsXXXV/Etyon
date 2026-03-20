@@ -43,15 +43,33 @@ export type CliLocaleParseResult =
       type: "invalid-locale" | "missing-locale-value"
     }
 
+const SINGLE_BRACE_INTERPOLATION_PATTERN =
+  /(?<!\{)\{([A-Za-z][A-Za-z0-9_]*)\}(?!\})/g
+
+export const normalizeInterpolationSyntax = (value: string): string =>
+  value.replace(SINGLE_BRACE_INTERPOLATION_PATTERN, "{{$1}}")
+
+export const normalizeTranslationTree = <Tree extends TranslationTree>(
+  tree: Tree
+): Tree =>
+  Object.fromEntries(
+    Object.entries(tree).map(([key, value]) => [
+      key,
+      typeof value === "string"
+        ? normalizeInterpolationSyntax(value)
+        : normalizeTranslationTree(value)
+    ])
+  ) as Tree
+
 export const TRANSLATION_RESOURCES = {
   "en-US": {
-    [DEFAULT_NAMESPACE]: enUsTranslation
+    [DEFAULT_NAMESPACE]: normalizeTranslationTree(enUsTranslation)
   },
   "ja-JP": {
-    [DEFAULT_NAMESPACE]: jaJpTranslation
+    [DEFAULT_NAMESPACE]: normalizeTranslationTree(jaJpTranslation)
   },
   "zh-CN": {
-    [DEFAULT_NAMESPACE]: zhCnTranslation
+    [DEFAULT_NAMESPACE]: normalizeTranslationTree(zhCnTranslation)
   }
 } as const satisfies Record<
   Locale,

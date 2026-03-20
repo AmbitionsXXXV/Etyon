@@ -46,6 +46,9 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ```typescript
 interface AppSettings {
+  appIcon: "default" | "alt" // 默认 "default"
+  autoStart: boolean // 默认 false
+  closeToTray: boolean // 默认 false，关闭主窗口时隐藏到托盘而不是退出
   customThemes: CustomTheme[] // 默认 []
   darkColorSchema:
     | "aquarium"
@@ -53,11 +56,13 @@ interface AppSettings {
     | "default"
     | "poimandres"
     | "tokyo-night" // 默认 "default"
-  theme: "light" | "dark" | "system"
   fontFamily: string // 默认 "System Default"
   fontSize: number // 12-24，默认 16
   lightColorSchema: "default" | "one-light" | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
+  minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
+  startMinimizedToTray: boolean // 默认 false，仅在登录项自动启动时生效
+  theme: "light" | "dark" | "system"
 }
 interface CustomTheme {
   colors: {
@@ -166,6 +171,25 @@ Other Renderers (RendererRoot)
 
 语言切换后，`main` 会立即重建菜单并更新 `Settings` 窗口标题，所有窗口继续通过 `"settings-changed"` 广播同步新的 `AppSettings`
 
+## App Icon Preview
+
+- `General -> App Icon` 中的选项预览直接使用 `apps/desktop/resources/` 下的真实图标资源，而不是 `emoji` 占位
+- 当前设置页预览复用 `tray.png`，保证用户在切换图标选项时看到的是实际应用资源，而不是抽象占位符
+
+## 启动设置
+
+- `autoStart` 在 macOS / Windows 下会同步到 `app.setLoginItemSettings()`；Linux 目前只持久化，不主动注册登录项
+- 开发构建（`is.dev`）下会跳过登录项同步，避免未打包 Electron 在本机开发过程中触发系统权限 / 注册异常；此时设置仍会正常保存
+- `startMinimizedToTray` 仅影响“登录项自动启动”场景，手动启动应用时仍会照常打开主窗口
+- macOS 通过 `app.getLoginItemSettings().wasOpenedAtLogin` 判断是否为登录项拉起；若启用最小化到托盘，则启动时只初始化托盘，不创建主窗口
+- Windows 在注册登录项时附带 `--start-minimized-to-tray` 参数；应用启动后检测到该参数时，同样只保留托盘而不直接显示主窗口
+
+## Window Behavior
+
+- `minimizeToTray` 控制主窗口点击最小化按钮时的行为；开启后会拦截 `minimize` 事件并直接 `hide()` 到托盘
+- `closeToTray` 控制主窗口点击关闭按钮时的行为；开启后会拦截 `close` 事件并隐藏到托盘，关闭后会走显式 `app.quit()`
+- 两个设置都通过 `AppSettingsSchema` 持久化，并和设置页其他字段一样走 `settings.update` 广播同步
+
 ## Motion 动效
 
 页面使用 [`motion`](https://motion.dev/)（原 framer-motion 精简版）实现入场动效：
@@ -216,6 +240,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `packages/rpc/src/schemas/settings.ts` — Settings Zod schema
 - `packages/rpc/src/schemas/fonts.ts` — Font list Zod schema
 - `packages/rpc/src/index.ts` — 导出 settings + fonts schema
+- `apps/desktop/src/main/startup.ts` — 登录项同步与“启动后隐藏到托盘”判定
 - `apps/desktop/src/main/settings.ts` — electron-store 封装
 - `apps/desktop/src/main/localization.ts` — `main` 进程 locale 解析与翻译入口
 - `apps/desktop/src/main/native-ui.ts` — 菜单与窗口标题的本地化刷新

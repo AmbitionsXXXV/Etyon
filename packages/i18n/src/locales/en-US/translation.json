@@ -214,6 +214,8 @@
     },
     "startup": {
       "autoStart": "Auto Start",
+      "description": "Uses your system login items. Development builds may not support this until the app is packaged.",
+      "startMinimizedToTray": "Start minimized to system tray",
       "title": "Startup Settings"
     },
     "theme": {
@@ -224,7 +226,18 @@
         "system": "System"
       },
       "title": "Theme"
+    },
+    "windowBehavior": {
+      "closeToTray": "Close to system tray",
+      "description": "Choose whether minimize and close actions should hide the app to the system tray.",
+      "minimizeToTray": "Minimize to system tray",
+      "title": "Window Behavior"
     }
+  },
+  "tray": {
+    "quit": "Quit {appName}",
+    "settings": "Settings",
+    "show": "Show Main Window"
   },
   "window": {
     "settings": {

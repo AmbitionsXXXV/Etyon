@@ -46,24 +46,30 @@ export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
 export const AppSettingsSchema = z.object({
   appIcon: AppIconSchema.default("default"),
   autoStart: z.boolean().default(false),
+  closeToTray: z.boolean().default(false),
   customThemes: z.array(CustomThemeSchema).default([]),
   darkColorSchema: DarkColorSchemaSchema.default("default"),
   fontFamily: z.string().default("System Default"),
   fontSize: z.number().min(12).max(24).default(16),
   lightColorSchema: LightColorSchemaSchema.default("default"),
   locale: LocalePreferenceSchema.default("system"),
+  minimizeToTray: z.boolean().default(false),
+  startMinimizedToTray: z.boolean().default(false),
   theme: ThemeSchema.default("system")
 })
 
 export const UpdateSettingsSchema = z.object({
   appIcon: AppIconSchema.optional(),
   autoStart: z.boolean().optional(),
+  closeToTray: z.boolean().optional(),
   customThemes: z.array(CustomThemeSchema).optional(),
   darkColorSchema: DarkColorSchemaSchema.optional(),
   fontFamily: z.string().optional(),
   fontSize: z.number().min(12).max(24).optional(),
   lightColorSchema: LightColorSchemaSchema.optional(),
   locale: LocalePreferenceSchema.optional(),
+  minimizeToTray: z.boolean().optional(),
+  startMinimizedToTray: z.boolean().optional(),
   theme: ThemeSchema.optional()
 })
 

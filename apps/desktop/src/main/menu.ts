@@ -1,20 +1,18 @@
 import { platform } from "@electron-toolkit/utils"
-import { app, Menu } from "electron"
+import { Menu } from "electron"
 
-import { translate } from "./localization"
+import { t } from "./localization"
 import { createSettingsWindow } from "./window"
 
-export const setupMenu = () => {
-  const t = translate
-
+export const setupMenu = (appName: string) => {
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(platform.isMacOS
       ? [
           {
-            label: app.name,
+            label: appName,
             submenu: [
               {
-                label: t("menu.app.about", { appName: app.name }),
+                label: t("menu.app.about", { appName }),
                 role: "about" as const
               },
               { type: "separator" as const },
@@ -25,7 +23,7 @@ export const setupMenu = () => {
               },
               { type: "separator" as const },
               {
-                label: t("menu.app.hide", { appName: app.name }),
+                label: t("menu.app.hide", { appName }),
                 role: "hide" as const
               },
               {
@@ -35,7 +33,7 @@ export const setupMenu = () => {
               { label: t("menu.app.showAll"), role: "unhide" as const },
               { type: "separator" as const },
               {
-                label: t("menu.app.quit", { appName: app.name }),
+                label: t("menu.app.quit", { appName }),
                 role: "quit" as const
               }
             ]

@@ -214,6 +214,8 @@
     },
     "startup": {
       "autoStart": "开机自动启动",
+      "description": "依赖系统登录项。开发构建中，这项能力可能要等应用打包后才可用。",
+      "startMinimizedToTray": "启动时最小化到系统托盘",
       "title": "启动设置"
     },
     "theme": {
@@ -224,7 +226,18 @@
         "system": "跟随系统"
       },
       "title": "主题"
+    },
+    "windowBehavior": {
+      "closeToTray": "关闭时隐藏到系统托盘",
+      "description": "选择最小化和关闭操作是否应将应用隐藏到系统托盘。",
+      "minimizeToTray": "最小化时隐藏到系统托盘",
+      "title": "窗口行为"
     }
+  },
+  "tray": {
+    "quit": "退出 {appName}",
+    "settings": "设置",
+    "show": "显示主窗口"
   },
   "window": {
     "settings": {

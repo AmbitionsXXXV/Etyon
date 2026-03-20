@@ -15,6 +15,8 @@ import { Tick01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useMemo } from "react"
 
+import trayImage from "../../../../resources/tray.png"
+
 export const LanguageSelect = ({
   onChange,
   value
@@ -100,8 +102,12 @@ const AppIconButton = ({
           />
         </div>
       )}
-      <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-muted">
-        <span className="text-2xl">{icon === "default" ? "🎭" : "🎨"}</span>
+      <div className="flex size-14 items-center justify-center rounded-xl bg-muted">
+        <img
+          alt={label}
+          className="size-11 rounded-[0.95rem] object-cover"
+          src={APP_ICON_PREVIEW_BY_ICON[icon]}
+        />
       </div>
       <span className="text-xs font-medium">{label}</span>
     </button>
@@ -109,6 +115,10 @@ const AppIconButton = ({
 }
 
 const APP_ICONS: AppIcon[] = ["default", "alt"]
+const APP_ICON_PREVIEW_BY_ICON: Record<AppIcon, string> = {
+  alt: trayImage,
+  default: trayImage
+}
 
 export const AppIconSelector = ({
   onChange,
@@ -142,15 +152,15 @@ export const AppIconSelector = ({
   )
 }
 
-export const AutoStartCheckbox = ({
+const SettingsCheckbox = ({
+  label,
   onChange,
   value
 }: {
+  label: string
   onChange: (checked: boolean) => void
   value: boolean
 }) => {
-  const { t } = useI18n()
-
   const handleChange = useCallback(
     (checked: boolean) => onChange(checked),
     [onChange]
@@ -163,7 +173,79 @@ export const AutoStartCheckbox = ({
         className="size-4 cursor-pointer rounded border-border accent-primary"
         onCheckedChange={handleChange}
       />
-      <span className="text-sm">{t("settings.startup.autoStart")}</span>
+      <span className="text-sm">{label}</span>
     </label>
+  )
+}
+
+export const AutoStartCheckbox = ({
+  onChange,
+  value
+}: {
+  onChange: (checked: boolean) => void
+  value: boolean
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <SettingsCheckbox
+      label={t("settings.startup.autoStart")}
+      onChange={onChange}
+      value={value}
+    />
+  )
+}
+
+export const StartMinimizedToTrayCheckbox = ({
+  onChange,
+  value
+}: {
+  onChange: (checked: boolean) => void
+  value: boolean
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <SettingsCheckbox
+      label={t("settings.startup.startMinimizedToTray")}
+      onChange={onChange}
+      value={value}
+    />
+  )
+}
+
+export const CloseToTrayCheckbox = ({
+  onChange,
+  value
+}: {
+  onChange: (checked: boolean) => void
+  value: boolean
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <SettingsCheckbox
+      label={t("settings.windowBehavior.closeToTray")}
+      onChange={onChange}
+      value={value}
+    />
+  )
+}
+
+export const MinimizeToTrayCheckbox = ({
+  onChange,
+  value
+}: {
+  onChange: (checked: boolean) => void
+  value: boolean
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <SettingsCheckbox
+      label={t("settings.windowBehavior.minimizeToTray")}
+      onChange={onChange}
+      value={value}
+    />
   )
 }

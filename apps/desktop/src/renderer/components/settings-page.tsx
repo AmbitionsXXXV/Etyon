@@ -25,7 +25,10 @@ import { ColorSchemaTab } from "./settings/color-schema"
 import {
   AppIconSelector,
   AutoStartCheckbox,
-  LanguageSelect
+  CloseToTrayCheckbox,
+  LanguageSelect,
+  MinimizeToTrayCheckbox,
+  StartMinimizedToTrayCheckbox
 } from "./settings/general-tab"
 import { NavButton } from "./settings/nav-button"
 import {
@@ -44,6 +47,7 @@ export const SettingsPage = () => {
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
+    handleCloseToTrayChange,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,
@@ -51,7 +55,9 @@ export const SettingsPage = () => {
     handleFontSizeChange,
     handleLightColorSchemaChange,
     handleLocaleChange,
+    handleMinimizeToTrayChange,
     handleSave,
+    handleStartMinimizedToTrayChange,
     handleThemeChange,
     isDirty,
     updateMutation
@@ -128,6 +134,15 @@ export const SettingsPage = () => {
                   <Skeleton className="h-9 w-20" />
                   <Skeleton className="h-3 w-24" />
                 </div>
+              </div>
+
+              <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+                <Skeleton className="h-4 w-32" />
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-44" />
+                </div>
+                <Skeleton className="h-3 w-72" />
               </div>
             </div>
           </div>
@@ -220,10 +235,46 @@ export const SettingsPage = () => {
                   {t("settings.startup.title")}
                 </h2>
 
-                <AutoStartCheckbox
-                  onChange={handleAutoStartChange}
-                  value={draft.autoStart}
-                />
+                <div className="space-y-3">
+                  <AutoStartCheckbox
+                    onChange={handleAutoStartChange}
+                    value={draft.autoStart}
+                  />
+
+                  <StartMinimizedToTrayCheckbox
+                    onChange={handleStartMinimizedToTrayChange}
+                    value={draft.startMinimizedToTray}
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.startup.description")}
+                </p>
+              </motion.section>
+
+              <motion.section
+                {...settingsPageSectionMotion(0.45)}
+                className="space-y-4 rounded-lg border border-border bg-card p-5"
+              >
+                <h2 className="text-sm font-semibold">
+                  {t("settings.windowBehavior.title")}
+                </h2>
+
+                <div className="space-y-3">
+                  <MinimizeToTrayCheckbox
+                    onChange={handleMinimizeToTrayChange}
+                    value={draft.minimizeToTray}
+                  />
+
+                  <CloseToTrayCheckbox
+                    onChange={handleCloseToTrayChange}
+                    value={draft.closeToTray}
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.windowBehavior.description")}
+                </p>
               </motion.section>
             </div>
           )}

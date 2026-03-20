@@ -214,6 +214,8 @@
     },
     "startup": {
       "autoStart": "自動起動",
+      "description": "システムのログイン項目を利用します。開発ビルドでは、アプリをパッケージ化するまで利用できない場合があります。",
+      "startMinimizedToTray": "システムトレイに最小化して起動",
       "title": "起動設定"
     },
     "theme": {
@@ -224,7 +226,18 @@
         "system": "システム"
       },
       "title": "テーマ"
+    },
+    "windowBehavior": {
+      "closeToTray": "閉じるとシステムトレイへ",
+      "description": "最小化と閉じる操作で、アプリをシステムトレイへ隠すかどうかを選択します。",
+      "minimizeToTray": "最小化時にシステムトレイへ",
+      "title": "ウインドウの挙動"
     }
+  },
+  "tray": {
+    "quit": "{appName} を終了",
+    "settings": "設定",
+    "show": "メインウインドウを表示"
   },
   "window": {
     "settings": {

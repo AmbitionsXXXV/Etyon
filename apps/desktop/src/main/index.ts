@@ -3,17 +3,42 @@ import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
+import { createRuntimeIcon, getAppDisplayName } from "./app-metadata"
 import { setupMenu } from "./menu"
 import { registerRpcHandler } from "./rpc"
-import { createSettingsWindow, createWindow } from "./window"
+import { getSettings } from "./settings"
+import { shouldStartMainWindowHidden, syncStartupSettings } from "./startup"
+import { destroyTray, setupTray } from "./tray"
+import {
+  createSettingsWindow,
+  createWindow,
+  focusOrCreateMainWindow,
+  isAppQuitting,
+  setAppQuitting
+} from "./window"
 
 if (started) {
   app.quit()
 }
 
 app.on("ready", () => {
+  const appDisplayName = getAppDisplayName()
+  const appIcon = createRuntimeIcon()
+
+  app.setName(appDisplayName)
+
+  if (platform.isMacOS && appIcon) {
+    app.dock?.setIcon(appIcon)
+  }
+
+  const settings = getSettings()
+
+  if (settings.autoStart) {
+    syncStartupSettings(settings)
+  }
   registerRpcHandler()
-  setupMenu()
+  setupMenu(appDisplayName)
+  setupTray()
 
   ipcMain.on("open-settings", () => {
     createSettingsWindow()
@@ -37,17 +62,24 @@ app.on("ready", () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  createWindow()
-})
-
-app.on("window-all-closed", () => {
-  if (!platform.isMacOS) {
-    app.quit()
+  if (!shouldStartMainWindowHidden(settings)) {
+    createWindow()
   }
 })
 
+app.on("window-all-closed", () => {
+  if (isAppQuitting()) {
+    destroyTray()
+  }
+})
+
+app.on("before-quit", () => {
+  setAppQuitting(true)
+  destroyTray()
+})
+
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+  if (BrowserWindow.getAllWindows().length === 0 || platform.isMacOS) {
+    focusOrCreateMainWindow()
   }
 })
