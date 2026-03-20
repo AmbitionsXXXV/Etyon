@@ -22,25 +22,110 @@ export const useSettingsPageDraft = () => {
   const saved = settingsQuery.data
 
   const [draft, setDraft] = useState<AppSettings | null>(null)
+  const [savedSnapshot, setSavedSnapshot] = useState<AppSettings | null>(null)
+  const draftRef = useRef<AppSettings | null>(null)
+  const pendingSaveRef = useRef<AppSettings | null>(null)
+  const savedSnapshotRef = useRef<AppSettings | null>(null)
+
+  draftRef.current = draft
+
+  const syncSavedSnapshot = useCallback((nextSettings: AppSettings) => {
+    savedSnapshotRef.current = nextSettings
+    setSavedSnapshot(nextSettings)
+  }, [])
+
+  const clearSavedSnapshot = useCallback(() => {
+    savedSnapshotRef.current = null
+    setSavedSnapshot(null)
+  }, [])
 
   useEffect(() => {
-    if (saved && !draft) {
+    if (!saved) {
+      return
+    }
+
+    const previousSavedSnapshot = savedSnapshotRef.current
+
+    if (!previousSavedSnapshot) {
+      syncSavedSnapshot(saved)
+      setDraft(saved)
+      return
+    }
+
+    const currentDraft = draftRef.current
+    const hasLocalChanges = currentDraft
+      ? !settingsEqual(previousSavedSnapshot, currentDraft)
+      : false
+
+    syncSavedSnapshot(saved)
+
+    if (!hasLocalChanges) {
       setDraft(saved)
     }
-  }, [saved, draft])
+  }, [saved, syncSavedSnapshot])
 
   const isDirty = useMemo(() => {
-    if (!saved || !draft) {
+    if (!savedSnapshot || !draft) {
       return false
     }
-    return !settingsEqual(saved, draft)
-  }, [draft, saved])
+    return !settingsEqual(savedSnapshot, draft)
+  }, [draft, savedSnapshot])
 
-  const updateMutation = useMutation<AppSettings, Error, AppSettings>({
+  const updateMutation = useMutation<
+    AppSettings,
+    Error,
+    AppSettings,
+    {
+      previousDraft: AppSettings | null
+      previousSavedSnapshot: AppSettings | null
+    }
+  >({
     mutationFn: (nextSettings) => rpcClient.settings.update(nextSettings),
+    onError: (_error, _nextSettings, context) => {
+      const currentDraft = draftRef.current
+      const pendingSave = pendingSaveRef.current
+      const hasNewerLocalChanges =
+        currentDraft && pendingSave
+          ? !settingsEqual(currentDraft, pendingSave)
+          : false
+
+      pendingSaveRef.current = null
+
+      if (context?.previousSavedSnapshot) {
+        syncSavedSnapshot(context.previousSavedSnapshot)
+      } else {
+        clearSavedSnapshot()
+      }
+
+      if (!hasNewerLocalChanges) {
+        setDraft(context?.previousDraft ?? null)
+      }
+    },
+    onMutate: (nextSettings) => {
+      pendingSaveRef.current = nextSettings
+      syncSavedSnapshot(nextSettings)
+      setDraft(nextSettings)
+
+      return {
+        previousDraft: draftRef.current,
+        previousSavedSnapshot: savedSnapshotRef.current
+      }
+    },
     onSuccess: (data) => {
+      const currentDraft = draftRef.current
+      const pendingSave = pendingSaveRef.current
+      const hasNewerLocalChanges =
+        currentDraft && pendingSave
+          ? !settingsEqual(currentDraft, pendingSave)
+          : false
+
+      pendingSaveRef.current = null
       queryClient.setQueryData(settingsQueryKey, data)
-      setDraft(data)
+      syncSavedSnapshot(data)
+
+      if (!hasNewerLocalChanges) {
+        setDraft(data)
+      }
     }
   })
 
@@ -52,11 +137,39 @@ export const useSettingsPageDraft = () => {
     }
   }, [draft])
 
+  const draftDarkColorSchema = draft?.darkColorSchema
+  const draftLightColorSchema = draft?.lightColorSchema
+
+  useEffect(() => {
+    if (!draftDarkColorSchema || !draftLightColorSchema) {
+      return
+    }
+
+    window.electron.ipcRenderer.send("settings-preview-color-schemas", {
+      darkColorSchema: draftDarkColorSchema,
+      lightColorSchema: draftLightColorSchema
+    })
+  }, [draftDarkColorSchema, draftLightColorSchema])
+
   useEffect(() => {
     if (draftTheme) {
       applyThemePreview(draftTheme)
     }
   }, [draftTheme])
+
+  useEffect(
+    () => () => {
+      const nextSavedSnapshot = savedSnapshotRef.current
+
+      if (nextSavedSnapshot) {
+        window.electron.ipcRenderer.send("settings-preview-color-schemas", {
+          darkColorSchema: nextSavedSnapshot.darkColorSchema,
+          lightColorSchema: nextSavedSnapshot.lightColorSchema
+        })
+      }
+    },
+    []
+  )
 
   const updateDraft = useCallback(
     <K extends keyof AppSettings>(field: K, value: AppSettings[K]) =>
@@ -129,10 +242,10 @@ export const useSettingsPageDraft = () => {
   }, [draft, updateMutation])
 
   const handleCancel = useCallback(() => {
-    if (saved) {
-      setDraft(saved)
+    if (savedSnapshot) {
+      setDraft(savedSnapshot)
     }
-  }, [saved])
+  }, [savedSnapshot])
 
   return {
     draft,

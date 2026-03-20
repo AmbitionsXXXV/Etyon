@@ -3,6 +3,9 @@
     "afterFileEdit": [
       {
         "command": "pnpm fix"
+      },
+      {
+        "command": "pnpm typecheck"
       }
     ]
   },

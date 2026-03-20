@@ -19,6 +19,21 @@ export const buildDarkColorSchemaOptions = (
     value: "default"
   },
   {
+    label: t("settings.colorScheme.option.aquarium"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES.aquarium,
+    value: "aquarium"
+  },
+  {
+    label: t("settings.colorScheme.option.chadraculaEvondev"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES["chadracula-evondev"],
+    value: "chadracula-evondev"
+  },
+  {
+    label: t("settings.colorScheme.option.poimandres"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES.poimandres,
+    value: "poimandres"
+  },
+  {
     label: t("settings.colorScheme.option.tokyoNight"),
     swatches: DARK_COLOR_SCHEMA_SWATCHES["tokyo-night"],
     value: "tokyo-night"
@@ -37,5 +52,10 @@ export const buildLightColorSchemaOptions = (
     label: t("settings.colorScheme.option.oneLight"),
     swatches: LIGHT_COLOR_SCHEMA_SWATCHES["one-light"],
     value: "one-light"
+  },
+  {
+    label: t("settings.colorScheme.option.paper"),
+    swatches: LIGHT_COLOR_SCHEMA_SWATCHES.paper,
+    value: "paper"
   }
 ]

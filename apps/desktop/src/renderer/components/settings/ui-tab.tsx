@@ -87,6 +87,16 @@ const ColorSchemaButton = <TValue extends ColorSchemaValue>({
     () => onChange(option.value),
     [onChange, option.value]
   )
+  const swatchOccurrences = new Map<string, number>()
+  const swatchItems = option.swatches.map((swatch) => {
+    const occurrenceCount = swatchOccurrences.get(swatch) ?? 0
+    swatchOccurrences.set(swatch, occurrenceCount + 1)
+
+    return {
+      key: `${option.value}-${swatch}-${occurrenceCount}`,
+      value: swatch
+    }
+  })
 
   return (
     <button
@@ -101,11 +111,11 @@ const ColorSchemaButton = <TValue extends ColorSchemaValue>({
       type="button"
     >
       <div className="flex items-center gap-1.5">
-        {option.swatches.map((swatch) => (
+        {swatchItems.map((swatchItem) => (
           <span
             className="size-3 rounded-full border border-black/10"
-            key={swatch}
-            style={{ backgroundColor: swatch }}
+            key={swatchItem.key}
+            style={{ backgroundColor: swatchItem.value }}
           />
         ))}
       </div>

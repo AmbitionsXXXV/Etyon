@@ -5,6 +5,7 @@ import { is, platform } from "@electron-toolkit/utils"
 import { BrowserWindow } from "electron"
 
 import { translate } from "./localization"
+import { getSettings } from "./settings"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -72,6 +73,18 @@ export const createSettingsWindow = () => {
   loadRenderer(settingsWindow, "settings")
 
   settingsWindow.on("closed", () => {
+    const currentSettings = getSettings()
+    const preview = {
+      darkColorSchema: currentSettings.darkColorSchema,
+      lightColorSchema: currentSettings.lightColorSchema
+    }
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send("settings-preview-color-schemas", preview)
+      }
+    }
+
     settingsWindow = null
   })
 

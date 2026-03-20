@@ -1,10 +1,10 @@
-:root[data-light-color-schema="one-light"]:not(.dark) {
-  --theme-accent: oklch(68.6% 0.095 299deg);
-  --theme-background: oklch(98.5% 0.000000000000000508 0deg);
-  --theme-destructive: oklch(60.4% 0.18 28.7deg);
-  --theme-foreground: oklch(45.1% 0.00979 278deg);
-  --theme-primary: oklch(60.2% 0.193 263deg);
-  --theme-success: oklch(63.8% 0.141 144deg);
+:root[data-light-color-schema="paper"]:not(.dark) {
+  --theme-accent: oklch(56.6% 0.0723 321deg);
+  --theme-background: oklch(96.5% 0.00454 78.3deg);
+  --theme-destructive: oklch(57.7% 0.145 22.7deg);
+  --theme-foreground: oklch(35.2% 0.0017 106deg);
+  --theme-primary: oklch(66.2% 0.0419 160deg);
+  --theme-success: oklch(66.2% 0.0419 160deg);
 
   --accent: color-mix(
     in srgb,

@@ -1,4 +1,5 @@
 import { optimizer, platform } from "@electron-toolkit/utils"
+import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
@@ -17,6 +18,20 @@ app.on("ready", () => {
   ipcMain.on("open-settings", () => {
     createSettingsWindow()
   })
+
+  ipcMain.on(
+    "settings-preview-color-schemas",
+    (
+      event,
+      preview: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
+    ) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed() && win.webContents.id !== event.sender.id) {
+          win.webContents.send("settings-preview-color-schemas", preview)
+        }
+      }
+    }
+  )
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window)

@@ -1,24 +1,24 @@
-:root[data-light-color-schema="one-light"]:not(.dark) {
-  --theme-accent: oklch(68.6% 0.095 299deg);
-  --theme-background: oklch(98.5% 0.000000000000000508 0deg);
-  --theme-destructive: oklch(60.4% 0.18 28.7deg);
-  --theme-foreground: oklch(45.1% 0.00979 278deg);
-  --theme-primary: oklch(60.2% 0.193 263deg);
-  --theme-success: oklch(63.8% 0.141 144deg);
+:root.dark[data-dark-color-schema="poimandres"] {
+  --theme-accent: oklch(75% 0.0464 277deg);
+  --theme-background: oklch(31.1% 0.0297 271deg);
+  --theme-destructive: oklch(65.4% 0.146 350deg);
+  --theme-foreground: oklch(94.9% 0.0203 243deg);
+  --theme-primary: oklch(85.6% 0.0929 225deg);
+  --theme-success: oklch(70.9% 0.0868 178deg);
 
   --accent: color-mix(
     in srgb,
-    var(--theme-accent) 12%,
+    var(--theme-accent) 16%,
     var(--theme-background)
   );
   --accent-foreground: var(--theme-foreground);
   --background: var(--theme-background);
   --border: color-mix(
     in srgb,
-    var(--theme-foreground) 12%,
+    var(--theme-foreground) 14%,
     var(--theme-background)
   );
-  --card: color-mix(in srgb, white 72%, var(--theme-background));
+  --card: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-background));
   --card-foreground: var(--theme-foreground);
   --chart-1: var(--theme-primary);
   --chart-2: var(--theme-success);
@@ -29,54 +29,54 @@
   --foreground: var(--theme-foreground);
   --input: color-mix(
     in srgb,
-    var(--theme-foreground) 12%,
+    var(--theme-primary) 18%,
     var(--theme-background)
   );
   --muted: color-mix(
     in srgb,
-    var(--theme-foreground) 5%,
+    var(--theme-primary) 10%,
     var(--theme-background)
   );
   --muted-foreground: color-mix(
     in srgb,
-    var(--theme-foreground) 70%,
+    var(--theme-foreground) 74%,
     var(--theme-background)
   );
-  --popover: color-mix(in srgb, white 80%, var(--theme-background));
+  --popover: color-mix(
+    in srgb,
+    var(--theme-accent) 8%,
+    var(--theme-background)
+  );
   --popover-foreground: var(--theme-foreground);
   --primary: var(--theme-primary);
   --primary-foreground: var(--theme-background);
   --ring: var(--theme-primary);
-  --scrollbar-thumb: color-mix(
-    in srgb,
-    var(--theme-foreground) 22%,
-    transparent
-  );
+  --scrollbar-thumb: color-mix(in srgb, var(--theme-primary) 32%, transparent);
   --scrollbar-thumb-hover: color-mix(
     in srgb,
-    var(--theme-foreground) 36%,
+    var(--theme-primary) 48%,
     transparent
   );
   --secondary: color-mix(
     in srgb,
-    var(--theme-accent) 14%,
+    var(--theme-accent) 18%,
     var(--theme-background)
   );
   --secondary-foreground: var(--theme-foreground);
   --sidebar: color-mix(
     in srgb,
-    var(--theme-foreground) 3%,
+    var(--theme-accent) 8%,
     var(--theme-background)
   );
   --sidebar-accent: color-mix(
     in srgb,
-    var(--theme-primary) 10%,
+    var(--theme-primary) 18%,
     var(--theme-background)
   );
   --sidebar-accent-foreground: var(--theme-foreground);
   --sidebar-border: color-mix(
     in srgb,
-    var(--theme-foreground) 12%,
+    var(--theme-foreground) 14%,
     var(--theme-background)
   );
   --sidebar-foreground: var(--theme-foreground);

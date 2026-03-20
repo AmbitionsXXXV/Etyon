@@ -21,7 +21,7 @@ import {
 import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
-import { CustomThemesTab } from "./settings/custom-themes"
+import { ColorSchemaTab } from "./settings/color-schema"
 import {
   AppIconSelector,
   AutoStartCheckbox,
@@ -29,7 +29,6 @@ import {
 } from "./settings/general-tab"
 import { NavButton } from "./settings/nav-button"
 import {
-  ColorSchemaSelector,
   FontFamilyCombobox,
   FontSizeInput,
   ThemeSelector
@@ -230,53 +229,17 @@ export const SettingsPage = () => {
           )}
 
           {activeSection === "color-schema" && (
-            <div className="space-y-8">
-              <motion.section
-                {...settingsPageSectionMotion(0.25)}
-                className="space-y-4"
-              >
-                <CustomThemesTab
-                  onCreateTheme={handleCustomThemeCreate}
-                  onDeleteTheme={handleCustomThemeDelete}
-                  themes={draft.customThemes}
-                />
-              </motion.section>
-
-              <motion.section
-                {...settingsPageSectionMotion(0.15)}
-                className="space-y-4 rounded-lg border border-border bg-card p-5"
-              >
-                <h2 className="text-sm font-semibold">
-                  {t("settings.colorScheme.title")}
-                </h2>
-
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.colorScheme.description")}
-                </p>
-
-                <div className="space-y-2">
-                  <h3 className="text-xs font-medium text-muted-foreground">
-                    {t("settings.colorScheme.dark.label")}
-                  </h3>
-                  <ColorSchemaSelector
-                    onChange={handleDarkColorSchemaChange}
-                    options={darkColorSchemaOptions}
-                    value={draft.darkColorSchema}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <h3 className="text-xs font-medium text-muted-foreground">
-                    {t("settings.colorScheme.light.label")}
-                  </h3>
-                  <ColorSchemaSelector
-                    onChange={handleLightColorSchemaChange}
-                    options={lightColorSchemaOptions}
-                    value={draft.lightColorSchema}
-                  />
-                </div>
-              </motion.section>
-            </div>
+            <ColorSchemaTab
+              darkColorSchema={draft.darkColorSchema}
+              darkColorSchemaOptions={darkColorSchemaOptions}
+              lightColorSchema={draft.lightColorSchema}
+              lightColorSchemaOptions={lightColorSchemaOptions}
+              onCreateTheme={handleCustomThemeCreate}
+              onDarkColorSchemaChange={handleDarkColorSchemaChange}
+              onDeleteTheme={handleCustomThemeDelete}
+              onLightColorSchemaChange={handleLightColorSchemaChange}
+              themes={draft.customThemes}
+            />
           )}
 
           {activeSection === "user-interface" && (

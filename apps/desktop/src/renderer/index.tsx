@@ -11,7 +11,11 @@ import { createRoot } from "react-dom/client"
 import { App } from "./app"
 import { SettingsPage } from "./components/settings-page"
 import { orpc, rpcClient } from "./lib/rpc"
-import { applySettings, watchSystemTheme } from "./lib/settings"
+import {
+  applyColorSchemaPreview,
+  applySettings,
+  watchSystemTheme
+} from "./lib/settings"
 import { queryClient } from "./query-client"
 
 import "@etyon/ui/globals.css"
@@ -75,6 +79,22 @@ const RendererRoot = ({
 
     return removeListener
   }, [])
+
+  useEffect(() => {
+    const removeListener = window.electron.ipcRenderer.on(
+      "settings-preview-color-schemas",
+      (
+        _,
+        nextSettings: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
+      ) => {
+        if (!isSettingsWindowMode) {
+          applyColorSchemaPreview(nextSettings)
+        }
+      }
+    )
+
+    return removeListener
+  }, [isSettingsWindowMode])
 
   useEffect(
     () =>

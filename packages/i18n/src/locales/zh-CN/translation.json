@@ -163,15 +163,21 @@
     },
     "colorScheme": {
       "dark": {
+        "description": "选择在深色模式下使用的颜色方案。",
         "label": "深色模式"
       },
       "description": "为浅色和深色模式分别选择颜色方案；Default 会继续使用当前内建主题。",
       "light": {
+        "description": "选择在浅色模式下使用的颜色方案。",
         "label": "浅色模式"
       },
       "option": {
+        "aquarium": "Aquarium",
+        "chadraculaEvondev": "Chadracula Evondev",
         "default": "默认（内建）",
         "oneLight": "One Light",
+        "paper": "Paper",
+        "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
       },
       "title": "颜色方案"

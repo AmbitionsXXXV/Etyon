@@ -155,3 +155,5 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Shared UI package (`packages/ui/`, `@etyon/ui`): shadcn + base-mira style, @base-ui/react, @hugeicons/react + @hugeicons/core-free-icons, Inter Variable font, exports `globals.css`, `components/*`, `lib/*`, `hooks/*`; point shadcn CLI / `components.json` at this package so new components are not generated under `apps/desktop/@etyon/ui/`
 - Linting/formatting: Ultracite (Oxlint + Oxfmt), config at workspace root (`.oxlintrc.json`, `.oxfmtrc.jsonc`)
 - Vite renderer: plugin order TanStackRouterVite → react() → tailwindcss(); `use-sync-external-store/shim` and `/shim/with-selector` must be in `optimizeDeps.include` for `@base-ui/react`; packages with ESM `import.meta.url` wrappers used by Electron main (e.g. `font-list`) must be `external` in `vite.main.config.ts`
+
+@RTK.md

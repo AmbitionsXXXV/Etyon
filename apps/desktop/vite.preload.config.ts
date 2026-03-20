@@ -1,5 +1,4 @@
 import { defineConfig } from "vite"
-import tsconfigPaths from "vite-tsconfig-paths"
 
 export default defineConfig({
   build: {
@@ -7,5 +6,7 @@ export default defineConfig({
       input: { preload: "src/preload/index.ts" }
     }
   },
-  plugins: [tsconfigPaths()]
+  resolve: {
+    tsconfigPaths: true
+  }
 })

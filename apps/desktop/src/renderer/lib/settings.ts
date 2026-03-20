@@ -16,6 +16,17 @@ const applyColorSchemas = ({
   root.dataset.lightColorSchema = lightColorSchema
 }
 
+export const applyColorSchemaPreview = (
+  settings: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
+) => {
+  const root = document.documentElement
+  root.classList.add("theme-transitioning")
+  applyColorSchemas(settings)
+  setTimeout(() => {
+    root.classList.remove("theme-transitioning")
+  }, THEME_TRANSITION_MS)
+}
+
 const applyTheme = (theme: Theme) => {
   const prefersDark = resolvePrefersDark(theme)
   const root = document.documentElement

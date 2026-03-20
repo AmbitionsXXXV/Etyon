@@ -4,7 +4,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "./aquarium.css" layer(color-schemas);
+@import "./chadracula-evondev.css" layer(color-schemas);
 @import "./one-light.css" layer(color-schemas);
+@import "./paper.css" layer(color-schemas);
+@import "./poimandres.css" layer(color-schemas);
 @import "./tokyo-night.css" layer(color-schemas);
 
 @custom-variant dark (&:is(.dark *));

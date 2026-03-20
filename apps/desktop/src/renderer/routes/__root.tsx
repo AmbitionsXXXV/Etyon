@@ -1,7 +1,7 @@
 import { TanStackDevtools } from "@tanstack/react-devtools"
-import { formDevtoolsPlugin } from "@tanstack/react-form-devtools"
+import { FormDevtoolsPanel } from "@tanstack/react-form-devtools"
 import { useHotkey } from "@tanstack/react-hotkeys"
-import { hotkeysDevtoolsPlugin } from "@tanstack/react-hotkeys-devtools"
+import { HotkeysDevtoolsPanel } from "@tanstack/react-hotkeys-devtools"
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
@@ -31,8 +31,14 @@ const RootComponent = () => {
             name: "TanStack Router",
             render: <TanStackRouterDevtoolsPanel />
           },
-          hotkeysDevtoolsPlugin(),
-          formDevtoolsPlugin()
+          {
+            name: "TanStack Hotkeys",
+            render: <HotkeysDevtoolsPanel />
+          },
+          {
+            name: "TanStack Form",
+            render: <FormDevtoolsPanel />
+          }
         ]}
       />
     </>

@@ -3,7 +3,6 @@ import { devtools } from "@tanstack/devtools-vite"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
-import tsconfigPaths from "vite-tsconfig-paths"
 
 export default defineConfig({
   optimizeDeps: {
@@ -13,7 +12,6 @@ export default defineConfig({
     ]
   },
   plugins: [
-    tsconfigPaths(),
     devtools(),
     tanstackRouter({
       generatedRouteTree: "./src/renderer/routeTree.gen.ts",
@@ -21,5 +19,8 @@ export default defineConfig({
     }),
     react(),
     tailwindcss()
-  ]
+  ],
+  resolve: {
+    tsconfigPaths: true
+  }
 })

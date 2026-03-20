@@ -29,13 +29,19 @@ export const CustomThemeSchema = z.object({
   updatedAt: z.string()
 })
 
-export const DarkColorSchemaSchema = z.enum(["default", "tokyo-night"])
+export const DarkColorSchemaSchema = z.enum([
+  "aquarium",
+  "chadracula-evondev",
+  "default",
+  "poimandres",
+  "tokyo-night"
+])
 
 export const ThemeSchema = z.enum(["dark", "light", "system"])
 
 export const AppIconSchema = z.enum(["default", "alt"])
 
-export const LightColorSchemaSchema = z.enum(["default", "one-light"])
+export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
 
 export const AppSettingsSchema = z.object({
   appIcon: AppIconSchema.default("default"),

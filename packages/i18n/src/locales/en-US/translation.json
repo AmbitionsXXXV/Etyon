@@ -163,15 +163,21 @@
     },
     "colorScheme": {
       "dark": {
+        "description": "Choose the color schema used when dark mode is active.",
         "label": "Dark Mode"
       },
       "description": "Pick separate color schemes for light and dark modes. Default keeps the current built-in theme.",
       "light": {
+        "description": "Choose the color schema used when light mode is active.",
         "label": "Light Mode"
       },
       "option": {
+        "aquarium": "Aquarium",
+        "chadraculaEvondev": "Chadracula Evondev",
         "default": "Default (Built-in)",
         "oneLight": "One Light",
+        "paper": "Paper",
+        "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
       },
       "title": "Color Scheme"

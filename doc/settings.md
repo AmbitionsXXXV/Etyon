@@ -36,8 +36,8 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                                          |
 | Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
 | IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                    |
-| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`           | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                             |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
+| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`           | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
 | Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
 | Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                                                 |
 | i18n Package       | `packages/i18n/`                                         | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
@@ -47,11 +47,16 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 ```typescript
 interface AppSettings {
   customThemes: CustomTheme[] // 默认 []
-  darkColorSchema: "default" | "tokyo-night" // 默认 "default"
+  darkColorSchema:
+    | "aquarium"
+    | "chadracula-evondev"
+    | "default"
+    | "poimandres"
+    | "tokyo-night" // 默认 "default"
   theme: "light" | "dark" | "system"
   fontFamily: string // 默认 "System Default"
   fontSize: number // 12-24，默认 16
-  lightColorSchema: "default" | "one-light" // 默认 "default"
+  lightColorSchema: "default" | "one-light" | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
 }
 interface CustomTheme {
@@ -83,7 +88,7 @@ interface CustomTheme {
 设置变更后通过 `applySettings()` 实时应用：
 
 - **主题**：切换 `document.documentElement` 的 `dark` / `light` class
-- **颜色方案**：设置 `data-dark-color-schema` / `data-light-color-schema`，由 `packages/ui/src/styles/tokyo-night.css` 和 `packages/ui/src/styles/one-light.css` 覆盖 CSS 变量
+- **颜色方案**：设置 `data-dark-color-schema` / `data-light-color-schema`，由 `packages/ui/src/styles/*.css` 下的 schema 文件覆盖 CSS 变量
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
 - **字号生效机制**：`--user-font-size` 应用在 `:root` 的 `font-size` 上（而非 `body`），确保所有使用 `rem` 单位的 Tailwind 类（`text-sm`、`text-xs`、`text-lg` 等）按比例缩放。早期版本放在 `body` 上导致 Tailwind 工具类覆盖失效
 - **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
@@ -92,17 +97,45 @@ interface CustomTheme {
 ### Color Schema
 
 - `theme` 仍只负责 `light` / `dark` / `system` 外观模式切换
-- Settings 左侧导航使用单独的 `Color Schema` tab，顶部放置 built-in `Color Scheme` 选择器，下方放置 `Custom Themes` area
+- Settings 左侧导航使用单独的 `Color Schema` tab，当前布局为 `Custom Themes` area + `Dark Mode Theme` block + `Light Mode Theme` block
 - 新增 `darkColorSchema` 和 `lightColorSchema` 两个设置字段，分别控制深色和浅色模式下的色板
 - `default` 表示继续使用 `globals.css` 中现有的内建 token，不需要单独的 schema 文件
 - 自定义色板放在 `packages/ui/src/styles/`，目前提供：
+  - `aquarium.css`（dark）
+  - `chadracula-evondev.css`（dark）
+  - `poimandres.css`（dark）
   - `tokyo-night.css`（dark）
   - `one-light.css`（light）
+  - `paper.css`（light）
 - 所有色板 token 使用 `oklch(...)` 定义，并通过独立 CSS 文件覆盖 `--background`、`--foreground`、`--primary`、`--sidebar-*`、`--chart-*`、scrollbar 等语义变量
+- 设置页 swatch 预览的 React key 使用 `schema value + swatch index`，以支持同一 palette 内重复色值
+
+#### 跨窗口实时预览
+
+用户在 Settings 窗口修改 color schema 后，所有其他窗口实时 preview 变更（无需保存）。
+
+```text
+Settings Renderer
+  → useEffect 监听 draft.darkColorSchema / draft.lightColorSchema
+  → ipcRenderer.send("settings-preview-color-schemas", { darkColorSchema, lightColorSchema })
+Main Process (ipcMain.on)
+  → 遍历所有 BrowserWindow（排除 sender + isDestroyed 检查）
+  → webContents.send("settings-preview-color-schemas", preview)
+Other Renderers (RendererRoot)
+  → ipcRenderer.on("settings-preview-color-schemas")
+  → applyColorSchemaPreview() 设置 data-dark-color-schema / data-light-color-schema + 200ms 过渡动画
+```
+
+- 预览仅修改 CSS data 属性，不改变 theme 模式（dark/light class）
+- effect 依赖精确为 `[draftDarkColorSchema, draftLightColorSchema]`，避免非 color schema 字段变更触发冗余 IPC
+- 设置窗口关闭时（`closed` 事件 + 组件卸载 cleanup），会将 preview 重置回已保存的 snapshot 值
+- `applyColorSchemaPreview` 带 `theme-transitioning` 过渡动画，与 `applyThemePreview` 一致
 
 ### Custom Themes Area
 
 - `customThemes` 暂存于同一个 `settings.json` 内，由现有 `AppSettingsSchema` 和 `updateSettings()` 流程统一持久化
+- 设置页草稿 hook 会维护独立的已保存 snapshot；保存成功或收到 `"settings-changed"` 广播后，只会在没有本地未保存修改时回写 draft，避免底部保存条闪烁
+- 点击 `Save` 时会先做 optimistic save：立即把当前 draft 视为新的 saved snapshot，让底部操作浮条先消失；如果 RPC 保存失败，再回滚到之前的 snapshot / draft
 - 当前 area 用于管理用户自定义主题，位于 `Color Schema` tab 内
 - v1 仅支持 `创建 + 删除`，不支持编辑，也不会接入当前 built-in `Color Scheme` 应用逻辑
 - 创建对话框使用 `@tanstack/react-form` + `@etyon/ui/components/field.tsx`
@@ -193,16 +226,20 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
 - `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动、侧栏宽度）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
-- `apps/desktop/src/renderer/components/settings/custom-themes/custom-themes-tab.tsx` — `Color Schema` tab 内的 `Custom Themes` area 与创建对话框
-- `apps/desktop/src/renderer/components/settings/custom-themes/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `CustomThemesTab`
+- `apps/desktop/src/renderer/components/settings/color-schema/color-schema-tab.tsx` — `Color Schema` tab 主组件，包含 `Custom Themes` 区块，以及拆分后的 `Dark Mode` / `Light Mode` 独立 blocks
+- `apps/desktop/src/renderer/components/settings/color-schema/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `ColorSchemaTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）
 - `apps/desktop/src/renderer/routes/__root.tsx` — 快捷键 IPC 触发
 - `apps/desktop/src/renderer/lib/settings.ts` — DOM 应用逻辑
 - `apps/desktop/src/renderer/index.tsx` — 启动分流 + 设置加载
 - `packages/i18n/` — 共享 i18n 基础设施
+- `packages/ui/src/styles/aquarium.css` — Aquarium dark color schema
+- `packages/ui/src/styles/chadracula-evondev.css` — Chadracula Evondev dark color schema
 - `packages/ui/src/styles/globals.css` — CSS 变量 + scrollbar 样式
-- `packages/ui/src/styles/tokyo-night.css` — Tokyo Night dark color schema
-- `packages/ui/src/styles/one-light.css` — One Light light color schema
+- `packages/ui/src/styles/one-light.css` — One Light light color schema（base OKLCH tokens）
+- `packages/ui/src/styles/paper.css` — Paper light color schema
+- `packages/ui/src/styles/poimandres.css` — Poimandres dark color schema
+- `packages/ui/src/styles/tokyo-night.css` — Tokyo Night dark color schema（base OKLCH tokens）
 
 ## Partial Update Schema 设计
 

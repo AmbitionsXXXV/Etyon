@@ -12,7 +12,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:desktop": "turbo run dev --filter=@etyon/desktop...",
+    "dev:desktop": "turbo run dev --filter=@etyon/desktop",
     "lint": "turbo run lint",
     "check": "turbo run check",
     "fix": "turbo run fix",
@@ -26,7 +26,7 @@
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
     "tslib": "^2.8.1",
-    "turbo": "^2.8.18",
+    "turbo": "^2.8.20",
     "typescript": "~5.9.3",
     "ultracite": "7.3.1"
   },

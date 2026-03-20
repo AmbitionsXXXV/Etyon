@@ -2,7 +2,7 @@ const TITLEBAR_HEIGHT = 36
 
 export const TitleBar = () => (
   <div
-    className="title-bar-drag fixed inset-x-0 top-0 z-50 flex select-none items-center border-b border-border/40 bg-background/80 backdrop-blur-sm"
+    className="title-bar-drag fixed inset-x-0 top-0 z-50 flex select-none items-center bg-background/80 backdrop-blur-sm"
     style={{ height: TITLEBAR_HEIGHT }}
   />
 )

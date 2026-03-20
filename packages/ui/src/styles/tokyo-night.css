@@ -1,35 +1,86 @@
 :root.dark[data-dark-color-schema="tokyo-night"] {
-  --accent: oklch(0.329 0.046 276.826);
-  --accent-foreground: oklch(0.846 0.061 274.763);
-  --background: oklch(0.226 0.021 280.487);
-  --border: oklch(0.409 0.055 274.273);
-  --card: oklch(0.204 0.016 284.91);
-  --card-foreground: oklch(0.846 0.061 274.763);
-  --chart-1: oklch(0.719 0.132 264.202);
-  --chart-2: oklch(0.82 0.105 235.715);
-  --chart-3: oklch(0.751 0.134 299.499);
-  --chart-4: oklch(0.787 0.137 50.557);
-  --chart-5: oklch(0.795 0.139 130.136);
-  --destructive: oklch(0.723 0.159 10.276);
-  --foreground: oklch(0.846 0.061 274.763);
-  --input: oklch(0.329 0.046 276.826);
-  --muted: oklch(0.282 0.036 274.748);
-  --muted-foreground: oklch(0.767 0.054 275.492);
-  --popover: oklch(0.204 0.016 284.91);
-  --popover-foreground: oklch(0.846 0.061 274.763);
-  --primary: oklch(0.719 0.132 264.202);
-  --primary-foreground: oklch(0.204 0.016 284.91);
-  --ring: oklch(0.719 0.132 264.202);
-  --scrollbar-thumb: oklch(0.508 0.06 274.666 / 28%);
-  --scrollbar-thumb-hover: oklch(0.508 0.06 274.666 / 42%);
-  --secondary: oklch(0.282 0.036 274.748);
-  --secondary-foreground: oklch(0.846 0.061 274.763);
-  --sidebar: oklch(0.204 0.016 284.91);
-  --sidebar-accent: oklch(0.282 0.036 274.748);
-  --sidebar-accent-foreground: oklch(0.846 0.061 274.763);
-  --sidebar-border: oklch(0.409 0.055 274.273);
-  --sidebar-foreground: oklch(0.846 0.061 274.763);
-  --sidebar-primary: oklch(0.719 0.132 264.202);
-  --sidebar-primary-foreground: oklch(0.204 0.016 284.91);
-  --sidebar-ring: oklch(0.719 0.132 264.202);
+  --theme-accent: oklch(75.1% 0.134 299deg);
+  --theme-background: oklch(28.2% 0.0355 275deg);
+  --theme-destructive: oklch(72.1% 0.16 9.95deg);
+  --theme-foreground: oklch(84.6% 0.0611 275deg);
+  --theme-primary: oklch(72% 0.132 265deg);
+  --theme-success: oklch(79.5% 0.14 130deg);
+
+  --accent: color-mix(
+    in srgb,
+    var(--theme-accent) 16%,
+    var(--theme-background)
+  );
+  --accent-foreground: var(--theme-foreground);
+  --background: var(--theme-background);
+  --border: color-mix(
+    in srgb,
+    var(--theme-foreground) 14%,
+    var(--theme-background)
+  );
+  --card: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-background));
+  --card-foreground: var(--theme-foreground);
+  --chart-1: var(--theme-primary);
+  --chart-2: var(--theme-success);
+  --chart-3: var(--theme-accent);
+  --chart-4: var(--theme-destructive);
+  --chart-5: var(--theme-foreground);
+  --destructive: var(--theme-destructive);
+  --foreground: var(--theme-foreground);
+  --input: color-mix(
+    in srgb,
+    var(--theme-primary) 18%,
+    var(--theme-background)
+  );
+  --muted: color-mix(
+    in srgb,
+    var(--theme-primary) 10%,
+    var(--theme-background)
+  );
+  --muted-foreground: color-mix(
+    in srgb,
+    var(--theme-foreground) 74%,
+    var(--theme-background)
+  );
+  --popover: color-mix(
+    in srgb,
+    var(--theme-accent) 8%,
+    var(--theme-background)
+  );
+  --popover-foreground: var(--theme-foreground);
+  --primary: var(--theme-primary);
+  --primary-foreground: var(--theme-background);
+  --ring: var(--theme-primary);
+  --scrollbar-thumb: color-mix(in srgb, var(--theme-primary) 32%, transparent);
+  --scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--theme-primary) 48%,
+    transparent
+  );
+  --secondary: color-mix(
+    in srgb,
+    var(--theme-accent) 18%,
+    var(--theme-background)
+  );
+  --secondary-foreground: var(--theme-foreground);
+  --sidebar: color-mix(
+    in srgb,
+    var(--theme-accent) 8%,
+    var(--theme-background)
+  );
+  --sidebar-accent: color-mix(
+    in srgb,
+    var(--theme-primary) 18%,
+    var(--theme-background)
+  );
+  --sidebar-accent-foreground: var(--theme-foreground);
+  --sidebar-border: color-mix(
+    in srgb,
+    var(--theme-foreground) 14%,
+    var(--theme-background)
+  );
+  --sidebar-foreground: var(--theme-foreground);
+  --sidebar-primary: var(--theme-primary);
+  --sidebar-primary-foreground: var(--theme-background);
+  --sidebar-ring: var(--theme-primary);
 }

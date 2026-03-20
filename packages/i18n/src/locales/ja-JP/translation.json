@@ -163,15 +163,21 @@
     },
     "colorScheme": {
       "dark": {
+        "description": "ダークモードで使用するカラースキーマを選択します。",
         "label": "ダークモード"
       },
       "description": "ライトモードとダークモードで別々の配色を選択できます。Default は現在の組み込みテーマを使用します。",
       "light": {
+        "description": "ライトモードで使用するカラースキーマを選択します。",
         "label": "ライトモード"
       },
       "option": {
+        "aquarium": "Aquarium",
+        "chadraculaEvondev": "Chadracula Evondev",
         "default": "Default（Built-in）",
         "oneLight": "One Light",
+        "paper": "Paper",
+        "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
       },
       "title": "カラースキーム"
