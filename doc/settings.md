@@ -195,7 +195,7 @@ Other Renderers (RendererRoot)
 页面使用 [`motion`](https://motion.dev/)（原 framer-motion 精简版）实现入场动效：
 
 - **设置页**：侧边导航从左滑入（x: -12 → 0），标题和各 section 卡片依次向下淡入（staggered，delay 0.1s → 0.15s → 0.25s）
-- **首页**：主内容区整体向上淡入，oRPC 测试卡片延迟淡入，数据结果加载后淡入显示
+- **首页**：品牌区与按钮组整体轻量向上淡入，`New Chat` mock 状态提示在默认说明与 mock 提示之间做小幅切换
 - **缓动函数**：统一使用 `[0.25, 0.1, 0.25, 1]`（ease-out-quart 变体），避免 bounce/elastic 等过时缓动；数值定义在 `lib/settings-page/constants.ts` 的 `SETTINGS_PAGE_EASE_CURVE`
 - **侧栏宽度**：`SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS`（`min-w-[17rem] w-[17rem]`）固定设置页左侧导航列宽，避免切换语言后导航文案长度变化导致主内容区水平偏移
 - **时长**：0.2s-0.4s 范围内，遵循"轻量 → 快速"原则

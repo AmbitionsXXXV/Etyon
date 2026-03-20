@@ -17,19 +17,14 @@
     "version": "etyon v{version}"
   },
   "home": {
-    "description": "Electron アプリケーションへようこそ。",
-    "directCall": {
-      "button": "rpcClient.ping() を呼び出す",
-      "label": "直接呼び出し"
+    "actions": {
+      "newChat": "新しいチャット",
+      "settings": "設定"
     },
-    "ping": {
-      "cardTitle": "oRPC IPC テスト",
-      "directMessage": "direct call からの hello",
-      "error": "エラー: {message}",
-      "loading": "読み込み中...",
-      "queryLabel": "TanStack Query (自動)",
-      "queryMessage": "TanStack Query からの hello"
-    }
+    "description": "AI プロバイダーのオーケストレーションのための、洗練されたデスクトップワークスペースです。",
+    "hint": "チャット導線はまだ未接続なので、その間に Settings でワークスペースを整えられます。",
+    "logoAlt": "Etyon アプリケーションアイコン",
+    "mockedNotice": "New Chat は現在ローカル mock を表示しています。実際の会話フローはまだ接続されていません。"
   },
   "menu": {
     "app": {

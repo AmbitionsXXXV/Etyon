@@ -107,7 +107,7 @@ export const createWindow = () => {
     height: 800,
     title: getAppDisplayName(),
     titleBarStyle: "hidden",
-    trafficLightPosition: { x: 12, y: 10 },
+    trafficLightPosition: { x: 12, y: 18 },
     webPreferences: { preload: preloadPath },
     width: 1000
   })
@@ -176,7 +176,7 @@ export const createSettingsWindow = () => {
   settingsWindow = new BrowserWindow({
     ...(windowIcon ? { icon: windowIcon } : {}),
     ...(platform.isMacOS
-      ? { trafficLightPosition: { x: 12, y: 10 } }
+      ? { trafficLightPosition: { x: 12, y: 18 } }
       : { titleBarOverlay: { height: 36 } }),
     height: 720,
     maximizable: false,

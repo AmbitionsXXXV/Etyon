@@ -17,19 +17,14 @@
     "version": "etyon v{version}"
   },
   "home": {
-    "description": "欢迎使用你的 Electron 应用。",
-    "directCall": {
-      "button": "调用 rpcClient.ping()",
-      "label": "直接调用"
+    "actions": {
+      "newChat": "新建对话",
+      "settings": "设置"
     },
-    "ping": {
-      "cardTitle": "oRPC IPC 测试",
-      "directMessage": "来自 direct call 的 hello",
-      "error": "错误：{message}",
-      "loading": "加载中...",
-      "queryLabel": "TanStack Query（自动）",
-      "queryMessage": "来自 TanStack Query 的 hello"
-    }
+    "description": "一个用于 AI Provider 编排的优雅桌面工作台。",
+    "hint": "聊天流程还没接好，现在可以先在 Settings 里完成工作台设置。",
+    "logoAlt": "Etyon 应用图标",
+    "mockedNotice": "New Chat 目前走的是本地 mock，真实会话流还没有接入。"
   },
   "menu": {
     "app": {

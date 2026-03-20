@@ -94,7 +94,7 @@ const AppIconButton = ({
       type="button"
     >
       {isActive && (
-        <div className="absolute -top-1.5 -right-1.5 text-primary bg-primary rounded-full">
+        <div className="absolute -top-1.5 -right-1.5 rounded-full bg-primary text-primary">
           <HugeiconsIcon
             icon={Tick01Icon}
             size={14}

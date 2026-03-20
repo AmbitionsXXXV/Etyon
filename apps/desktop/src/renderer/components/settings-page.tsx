@@ -355,7 +355,7 @@ export const SettingsPage = () => {
         {isDirty && (
           <motion.div
             animate={{ opacity: 1, y: 0 }}
-            className="fixed bottom-4 right-4 flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-lg"
+            className="fixed right-4 bottom-4 flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-lg"
             exit={{ opacity: 0, y: 8 }}
             initial={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2, ease: SETTINGS_PAGE_EASE_CURVE }}

@@ -349,7 +349,7 @@ export const FontSizeInput = ({
         </Button>
         <div className="relative w-16">
           <Input
-            className="text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            className="[appearance:textfield] text-center [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             max={FONT_SIZE_MAX}
             min={FONT_SIZE_MIN}
             onBlur={commit}

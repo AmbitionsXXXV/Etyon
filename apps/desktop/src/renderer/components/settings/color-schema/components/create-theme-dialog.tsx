@@ -288,7 +288,7 @@ export const CreateCustomThemeDialog = ({
             </form.Subscribe>
           </div>
 
-          <DialogFooter className="col-span-full px-0 pb-0 pt-2">
+          <DialogFooter className="col-span-full px-0 pt-2 pb-0">
             <Button onClick={handleCancel} type="button" variant="outline">
               {t("settings.common.cancel")}
             </Button>

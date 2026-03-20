@@ -1,97 +1,112 @@
 import { useI18n } from "@etyon/i18n/react"
 import { Button } from "@etyon/ui/components/button"
-import { useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { motion } from "motion/react"
-import { useCallback, useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import trayImage from "../../../resources/tray.png"
-import { orpc, rpcClient } from "../lib/rpc"
+import { SETTINGS_PAGE_EASE_CURVE } from "../lib/settings-page/constants"
+
+const HOME_NOTICE_RESET_DELAY = 2400
+
+type HomeNoticeState = "hint" | "mocked"
+
+const handleOpenSettingsWindow = () => {
+  window.electron.ipcRenderer.send("open-settings")
+}
 
 const HomePage = () => {
-  const { t } = useI18n({ keyPrefix: "home" })
-  const [directResult, setDirectResult] = useState<string>("")
+  const { t } = useI18n()
+  const [noticeState, setNoticeState] = useState<HomeNoticeState>("hint")
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const pingQuery = useQuery(
-    orpc.ping.queryOptions({
-      input: { message: t("ping.queryMessage") }
-    })
-  )
+  const clearNoticeTimeout = useCallback(() => {
+    if (noticeTimeoutRef.current === null) {
+      return
+    }
 
-  const handleDirectCall = useCallback(async () => {
-    const result = await rpcClient.ping({
-      message: t("ping.directMessage")
-    })
-    setDirectResult(JSON.stringify(result, null, 2))
-  }, [t])
+    clearTimeout(noticeTimeoutRef.current)
+    noticeTimeoutRef.current = null
+  }, [])
+
+  const handleNewChatClick = useCallback(() => {
+    clearNoticeTimeout()
+    setNoticeState("mocked")
+
+    noticeTimeoutRef.current = setTimeout(() => {
+      noticeTimeoutRef.current = null
+      setNoticeState("hint")
+    }, HOME_NOTICE_RESET_DELAY)
+  }, [clearNoticeTimeout])
+
+  useEffect(() => clearNoticeTimeout, [clearNoticeTimeout])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <section className="flex h-full min-h-0 items-center justify-center px-6 py-10 sm:px-8">
       <motion.div
         animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-lg space-y-6 text-center flex flex-col items-center"
-        initial={{ opacity: 0, y: 16 }}
-        transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+        className="flex w-full max-w-96 flex-col items-center text-center"
+        initial={{ opacity: 0, y: 14 }}
+        transition={{
+          duration: 0.32,
+          ease: SETTINGS_PAGE_EASE_CURVE
+        }}
       >
-        <img src={trayImage} alt="Etyon" className="size-20" />
-        <h1 className="text-4xl font-bold text-foreground">Etyon</h1>
-        <p className="text-sm text-gray-600">{t("description")}</p>
+        <img
+          alt={t("home.logoAlt")}
+          className="size-20 object-contain"
+          src={trayImage}
+        />
 
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4 rounded-lg border border-border bg-background p-6 text-left"
-          initial={{ opacity: 0, y: 10 }}
-          transition={{
-            delay: 0.15,
-            duration: 0.35,
-            ease: [0.25, 0.1, 0.25, 1]
+        <h1
+          className="mt-6 text-5xl font-semibold tracking-[-0.05em] text-foreground sm:text-6xl"
+          style={{
+            fontFamily:
+              '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif'
           }}
         >
-          <h2 className="text-lg font-semibold">{t("ping.cardTitle")}</h2>
+          Etyon
+        </h1>
 
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-500">
-              {t("ping.queryLabel")}
-            </h3>
-            {pingQuery.isLoading && (
-              <p className="text-sm text-gray-400">{t("ping.loading")}</p>
-            )}
-            {pingQuery.isError && (
-              <p className="text-sm text-red-500">
-                {t("ping.error", { message: pingQuery.error.message })}
-              </p>
-            )}
-            {pingQuery.data && (
-              <motion.pre
-                animate={{ opacity: 1 }}
-                className="overflow-auto rounded bg-muted p-2 text-xs text-foreground"
-                initial={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                {JSON.stringify(pingQuery.data, null, 2)}
-              </motion.pre>
-            )}
-          </div>
+        <p className="mt-5 max-w-96 text-base/7 text-muted-foreground">
+          {t("home.description")}
+        </p>
 
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-500">
-              {t("directCall.label")}
-            </h3>
-            <Button onClick={handleDirectCall}>{t("directCall.button")}</Button>
-            {directResult && (
-              <motion.pre
-                animate={{ opacity: 1 }}
-                className="overflow-auto rounded bg-muted p-2 text-xs text-foreground"
-                initial={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-              >
-                {directResult}
-              </motion.pre>
-            )}
-          </div>
-        </motion.div>
+        <div className="mt-10 w-full max-w-136 space-y-3">
+          <Button
+            className="h-13 w-full rounded-2xl text-sm font-semibold"
+            onClick={handleNewChatClick}
+            size="lg"
+          >
+            {t("home.actions.newChat")}
+          </Button>
+
+          <Button
+            className="h-12 w-full rounded-2xl text-sm font-semibold"
+            onClick={handleOpenSettingsWindow}
+            size="lg"
+            variant="outline"
+          >
+            {t("home.actions.settings")}
+          </Button>
+        </div>
+
+        <AnimatePresence initial={false} mode="wait">
+          <motion.p
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 max-w-lg text-sm/6 text-muted-foreground"
+            initial={{ opacity: 0, y: 6 }}
+            key={noticeState}
+            transition={{
+              duration: 0.2,
+              ease: SETTINGS_PAGE_EASE_CURVE
+            }}
+          >
+            {noticeState === "hint" ? t("home.hint") : t("home.mockedNotice")}
+          </motion.p>
+        </AnimatePresence>
       </motion.div>
-    </div>
+    </section>
   )
 }
 

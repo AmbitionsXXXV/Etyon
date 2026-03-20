@@ -28,5 +28,9 @@
     "**/dist/**",
     "**/out/**",
     "**/routeTree.gen.ts"
-  ]
+  ],
+  "sortTailwindcss": {
+    "attributes": ["className"],
+    "stylesheet": "packages/ui/src/styles/globals.css"
+  }
 }

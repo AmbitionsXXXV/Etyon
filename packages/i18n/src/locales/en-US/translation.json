@@ -17,19 +17,14 @@
     "version": "etyon v{version}"
   },
   "home": {
-    "description": "Welcome to your Electron application.",
-    "directCall": {
-      "button": "Call rpcClient.ping()",
-      "label": "Direct Call"
+    "actions": {
+      "newChat": "New Chat",
+      "settings": "Settings"
     },
-    "ping": {
-      "cardTitle": "oRPC IPC Test",
-      "directMessage": "hello from direct call",
-      "error": "Error: {message}",
-      "loading": "Loading...",
-      "queryLabel": "TanStack Query (auto)",
-      "queryMessage": "hello from TanStack Query"
-    }
+    "description": "An elegant desktop for AI provider orchestration.",
+    "hint": "Open Settings to finish the workspace setup while chat is still being wired.",
+    "logoAlt": "Etyon application icon",
+    "mockedNotice": "New Chat is using a local mock for now. The real conversation flow is not connected yet."
   },
   "menu": {
     "app": {
