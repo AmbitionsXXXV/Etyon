@@ -18,6 +18,7 @@
   },
   "home": {
     "actions": {
+      "configureProvider": "配置 Provider",
       "newChat": "新建对话",
       "settings": "设置"
     },

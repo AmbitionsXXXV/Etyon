@@ -42,7 +42,7 @@ const HomePage = () => {
   useEffect(() => clearNoticeTimeout, [clearNoticeTimeout])
 
   return (
-    <section className="flex h-full min-h-0 items-center justify-center px-6 py-10 sm:px-8">
+    <section className="flex flex-1 items-center justify-center px-6 py-10 sm:px-8">
       <motion.div
         animate={{ opacity: 1, y: 0 }}
         className="flex w-full max-w-96 flex-col items-center text-center"
@@ -81,14 +81,25 @@ const HomePage = () => {
             {t("home.actions.newChat")}
           </Button>
 
-          <Button
-            className="h-12 w-full rounded-2xl text-sm font-semibold"
-            onClick={handleOpenSettingsWindow}
-            size="lg"
-            variant="outline"
-          >
-            {t("home.actions.settings")}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="h-12 flex-1 rounded-2xl text-sm font-semibold"
+              onClick={handleOpenSettingsWindow}
+              size="lg"
+              variant="outline"
+            >
+              {t("home.actions.configureProvider")}
+            </Button>
+
+            <Button
+              className="h-12 flex-1 rounded-2xl text-sm font-semibold"
+              onClick={handleOpenSettingsWindow}
+              size="lg"
+              variant="outline"
+            >
+              {t("home.actions.settings")}
+            </Button>
+          </div>
         </div>
 
         <AnimatePresence initial={false} mode="wait">

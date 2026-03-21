@@ -190,14 +190,25 @@ Other Renderers (RendererRoot)
 - `closeToTray` 控制主窗口点击关闭按钮时的行为；开启后会拦截 `close` 事件并隐藏到托盘，关闭后会走显式 `app.quit()`
 - 两个设置都通过 `AppSettingsSchema` 持久化，并和设置页其他字段一样走 `settings.update` 广播同步
 
+## Sidebar 组件
+
+设置页侧边栏已从自定义 `motion.aside` 迁移到 `@etyon/ui/components/sidebar`，与主窗口共享同一套 Sidebar 组件和 CSS token：
+
+- 使用 `SidebarProvider` 包裹整个设置页，通过 `style={{ "--sidebar-width": "17rem" }}` 控制宽度
+- `Sidebar collapsible="none"`：设置页导航栏固定不可折叠
+- 导航项使用 `SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`，替代原自定义 `NavButton`
+- `SidebarHeader` 预留 macOS traffic light 拖拽区（`title-bar-drag` + `pt-8`）
+- 主内容区使用 `SidebarInset`
+- 颜色 token 统一为 `bg-sidebar`、`text-sidebar-foreground`、`bg-sidebar-accent` 等
+- 原 `SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS` Tailwind class 已删除，宽度改由 CSS 变量 `--sidebar-width` 控制
+
 ## Motion 动效
 
 页面使用 [`motion`](https://motion.dev/)（原 framer-motion 精简版）实现入场动效：
 
-- **设置页**：侧边导航从左滑入（x: -12 → 0），标题和各 section 卡片依次向下淡入（staggered，delay 0.1s → 0.15s → 0.25s）
+- **设置页**：标题和各 section 卡片依次向下淡入（staggered，delay 0.1s → 0.15s → 0.25s）
 - **首页**：品牌区与按钮组整体轻量向上淡入，`New Chat` mock 状态提示在默认说明与 mock 提示之间做小幅切换
 - **缓动函数**：统一使用 `[0.25, 0.1, 0.25, 1]`（ease-out-quart 变体），避免 bounce/elastic 等过时缓动；数值定义在 `lib/settings-page/constants.ts` 的 `SETTINGS_PAGE_EASE_CURVE`
-- **侧栏宽度**：`SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS`（`min-w-[17rem] w-[17rem]`）固定设置页左侧导航列宽，避免切换语言后导航文案长度变化导致主内容区水平偏移
 - **时长**：0.2s-0.4s 范围内，遵循"轻量 → 快速"原则
 
 依赖安装在 `apps/desktop`，通过 `import { motion } from "motion/react"` 引入。
@@ -250,7 +261,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/main/menu.ts` — 原生应用菜单
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
-- `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动、侧栏宽度）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
+- `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动曲线）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
 - `apps/desktop/src/renderer/components/settings/color-schema/color-schema-tab.tsx` — `Color Schema` tab 主组件，包含 `Custom Themes` 区块，以及拆分后的 `Dark Mode` / `Light Mode` 独立 blocks
 - `apps/desktop/src/renderer/components/settings/color-schema/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `ColorSchemaTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）

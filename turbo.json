@@ -11,6 +11,7 @@
     },
     "lint": {},
     "check": {},
-    "fix": {}
+    "fix": {},
+    "typecheck": {}
   }
 }

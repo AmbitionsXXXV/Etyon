@@ -37,12 +37,16 @@ const persistSidebarState = (openState: boolean) => {
   }
 
   window.cookieStore.set({
-    expires: new Date(Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000),
+    expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
     name: SIDEBAR_COOKIE_NAME,
     path: "/",
     value: String(openState)
   })
 }
+
+type SidebarTriggerClickHandler = NonNullable<
+  React.ComponentProps<typeof Button>["onClick"]
+>
 
 interface SidebarContextProps {
   state: "expanded" | "collapsed"
@@ -281,8 +285,8 @@ function SidebarTrigger({
   ...props
 }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
-  const handleClick = React.useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = React.useCallback<SidebarTriggerClickHandler>(
+    (event) => {
       onClick?.(event)
       toggleSidebar()
     },
@@ -294,7 +298,7 @@ function SidebarTrigger({
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
-      size="icon-sm"
+      size="icon-lg"
       className={cn(className)}
       onClick={handleClick}
       {...props}
@@ -318,7 +322,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       onClick={toggleSidebar}
       title="Toggle Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
+        "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:inset-s-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",

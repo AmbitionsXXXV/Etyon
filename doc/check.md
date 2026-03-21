@@ -1,6 +1,7 @@
 # Check
 
 `pnpm check` 当前已在工作区根目录通过。
+`pnpm typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
 
 ## 本次修复
 

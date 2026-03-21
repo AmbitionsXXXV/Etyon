@@ -11,12 +11,13 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "check": "turbo run check",
     "dev": "turbo run dev",
     "dev:desktop": "turbo run dev --filter=@etyon/desktop",
-    "lint": "turbo run lint",
-    "check": "turbo run check",
     "fix": "turbo run fix",
-    "prepare": "lefthook install"
+    "lint": "turbo run lint",
+    "prepare": "lefthook install",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",

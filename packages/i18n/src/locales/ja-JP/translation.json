@@ -18,6 +18,7 @@
   },
   "home": {
     "actions": {
+      "configureProvider": "プロバイダー設定",
       "newChat": "新しいチャット",
       "settings": "設定"
     },
