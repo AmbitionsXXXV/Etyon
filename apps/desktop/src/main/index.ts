@@ -3,25 +3,29 @@ import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
-import { createRuntimeIcon, getAppDisplayName } from "./app-metadata"
-import { setupMenu } from "./menu"
-import { registerRpcHandler } from "./rpc"
-import { getSettings } from "./settings"
-import { shouldStartMainWindowHidden, syncStartupSettings } from "./startup"
-import { destroyTray, setupTray } from "./tray"
+import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { setupMenu } from "@/main/menu"
+import { registerRpcHandler } from "@/main/rpc"
+import { startServer, stopServer } from "@/main/server"
+import { getSettings } from "@/main/settings"
+import {
+  shouldStartMainWindowHidden,
+  syncStartupSettings
+} from "@/main/startup"
+import { destroyTray, setupTray } from "@/main/tray"
 import {
   createSettingsWindow,
   createWindow,
   focusOrCreateMainWindow,
   isAppQuitting,
   setAppQuitting
-} from "./window"
+} from "@/main/window"
 
 if (started) {
   app.quit()
 }
 
-app.on("ready", () => {
+app.on("ready", async () => {
   const appDisplayName = getAppDisplayName()
   const appIcon = createRuntimeIcon()
 
@@ -37,6 +41,7 @@ app.on("ready", () => {
     syncStartupSettings(settings)
   }
   registerRpcHandler()
+  await startServer()
   setupMenu(appDisplayName)
   setupTray()
 
@@ -75,6 +80,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   setAppQuitting(true)
+  stopServer()
   destroyTray()
 })
 

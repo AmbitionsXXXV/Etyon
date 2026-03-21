@@ -195,10 +195,11 @@ Other Renderers (RendererRoot)
 设置页侧边栏已从自定义 `motion.aside` 迁移到 `@etyon/ui/components/sidebar`，与主窗口共享同一套 Sidebar 组件和 CSS token：
 
 - 使用 `SidebarProvider` 包裹整个设置页，通过 `style={{ "--sidebar-width": "17rem" }}` 控制宽度
+- 独立 Settings 窗口会显式把 `SidebarProvider` 高度设为 `100svh`；嵌入主窗口的 `/settings` 路由则使用 `calc(100svh - TITLE_BAR_HEIGHT)`，避免出现双重滚动
 - `Sidebar collapsible="none"`：设置页导航栏固定不可折叠
 - 导航项使用 `SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`，替代原自定义 `NavButton`
 - `SidebarHeader` 预留 macOS traffic light 拖拽区（`title-bar-drag` + `pt-8`）
-- 主内容区使用 `SidebarInset`
+- 主内容区使用 `SidebarInset`，并在 inset 内建立独立的 `overflow-y-auto` scroll area；浏览器根滚动不再带动 sidebar 一起移动
 - 颜色 token 统一为 `bg-sidebar`、`text-sidebar-foreground`、`bg-sidebar-accent` 等
 - 原 `SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS` Tailwind class 已删除，宽度改由 CSS 变量 `--sidebar-width` 控制
 

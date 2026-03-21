@@ -21,19 +21,28 @@
     "fix": "ultracite fix"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.63",
+    "@ai-sdk/openai": "^3.0.47",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@hono/node-server": "^1.19.11",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@orpc/client": "^1.13.8",
     "@orpc/server": "^1.13.8",
     "@orpc/tanstack-query": "^1.13.8",
+    "ai": "^6.0.134",
+    "chat": "^4.20.2",
+    "date-fns": "^4.1.0",
+    "diff": "^8.0.3",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^11.0.2",
     "font-list": "^2.0.2",
+    "hono": "^4.12.8",
     "motion": "^12.38.0"
   },
   "devDependencies": {
+    "@ai-sdk/react": "^3.0.136",
     "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",
     "@electron-forge/maker-dmg": "^7.11.1",

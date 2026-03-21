@@ -4,6 +4,7 @@ import {
   LogEventSchema,
   PingInputSchema,
   PingOutputSchema,
+  ServerUrlOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
 import { os } from "@orpc/server"
@@ -12,6 +13,7 @@ import { BrowserWindow } from "electron"
 import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
+import { getServerUrl } from "@/main/server"
 import { getSettings, updateSettings } from "@/main/settings"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 
@@ -53,6 +55,10 @@ const settingsUpdate = os
     return result
   })
 
+const serverGetUrl = os
+  .output(ServerUrlOutputSchema)
+  .handler(() => ({ url: getServerUrl() }))
+
 export const router = {
   fonts: {
     list: fontsList
@@ -61,6 +67,9 @@ export const router = {
     emit: loggerEmit
   },
   ping,
+  server: {
+    getUrl: serverGetUrl
+  },
   settings: {
     get: settingsGet,
     update: settingsUpdate

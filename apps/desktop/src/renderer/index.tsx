@@ -107,7 +107,11 @@ const RendererRoot = ({
     []
   )
 
-  const content: ReactNode = isSettingsWindowMode ? <SettingsPage /> : <App />
+  const content: ReactNode = isSettingsWindowMode ? (
+    <SettingsPage isStandaloneWindow />
+  ) : (
+    <App />
+  )
 
   return (
     <I18nProvider locale={locale}>

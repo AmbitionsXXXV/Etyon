@@ -140,6 +140,7 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Preload entry must output a distinct filename (e.g. `preload.js`) to avoid collision with main's `index.js` in `.vite/build/`
 - This project uses pnpm (not `bun` as a default elsewhere); before implementing features, read the `doc/` directory if it exists; after implementation, write documentation there
 - Prefer feature-level constants and non-presentational logic under `apps/desktop/src/renderer/lib/<feature>/` (kebab-case) instead of growing `components/`-only trees
+- Use `@/main/...`, `@/renderer/...`, `@main/...`, `@renderer/...` path aliases for imports instead of relative `./` or `../` paths within the desktop app
 
 ## Learned Workspace Facts
 
@@ -148,12 +149,16 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Desktop process structure: `src/main/` (Electron main), `src/preload/` (preload bridge), `src/renderer/` (React SPA with file-based routing under `routes/`)
 - IPC: oRPC + Electron MessagePort adapter; shared Zod schemas in `packages/rpc/` (`@etyon/rpc`), router + handlers in `apps/desktop/src/main/rpc/`
 - Logger package (`packages/logger/`, `@etyon/logger`): types + renderer SDK; renderer SDK uses dependency injection `initLogger(emit)`, not window globals
-- Persistent settings via `electron-store` (ESM-only, top-level static import in ESM main); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`
+- Persistent settings via `electron-store` (ESM-only, top-level static import in ESM main); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`; cross-window preview uses `settings-preview-color-schemas` IPC with granular effect dependencies (not whole draft)
 - `@electron-toolkit/utils` provides `platform.isMacOS/isWindows/isLinux`, `is.dev`, `optimizer.watchWindowShortcuts` — use instead of raw `process.platform` in main process
 - `@tanstack/react-hotkeys` exports `useHotkey` (singular, not `useHotkeys`); use `"Mod+,"` for cross-platform Cmd/Ctrl
 - CLI app (`apps/cli/`, `@etyon/cli`): TypeScript, compiled to `dist/`
 - Shared UI package (`packages/ui/`, `@etyon/ui`): shadcn + base-mira style, @base-ui/react, @hugeicons/react + @hugeicons/core-free-icons, Inter Variable font, exports `globals.css`, `components/*`, `lib/*`, `hooks/*`; point shadcn CLI / `components.json` at this package so new components are not generated under `apps/desktop/@etyon/ui/`
 - Linting/formatting: Ultracite (Oxlint + Oxfmt), config at workspace root (`.oxlintrc.json`, `.oxfmtrc.jsonc`)
 - Vite renderer: plugin order TanStackRouterVite → react() → tailwindcss(); `use-sync-external-store/shim` and `/shim/with-selector` must be in `optimizeDeps.include` for `@base-ui/react`; packages with ESM `import.meta.url` wrappers used by Electron main (e.g. `font-list`) must be `external` in `vite.main.config.ts`
+- Local HTTP server: Hono + `@hono/node-server` in `src/main/server/`; `port: 0` for OS-assigned port, must `await once(server, "listening")` before reading `server.address()`; URL exposed to renderer via oRPC `server.getUrl` procedure
+- AI SDK v6: `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/gateway`; type is `LanguageModel` (not `LanguageModelV1`); use `convertToModelMessages()` for UIMessage→ModelMessage; `DefaultChatTransport<UIMessage>` requires explicit generic; `streamText` + `toUIMessageStreamResponse()`; AI settings stored in `electron-store` under `settings.ai`
+- Zod v4: nested `.default({})` on objects with inner defaults requires complete default values — use `as const` constants; simple schemas in `packages/rpc/` may import from `zod/mini`
+- Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change
 
 @RTK.md

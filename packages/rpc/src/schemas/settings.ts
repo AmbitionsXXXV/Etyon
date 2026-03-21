@@ -43,7 +43,40 @@ export const AppIconSchema = z.enum(["default", "alt"])
 
 export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
 
+export const AiProviderNameSchema = z.enum(["anthropic", "gateway", "openai"])
+
+export const AiProviderConfigSchema = z.object({
+  apiKey: z.string().default("")
+})
+
+const AI_PROVIDER_CONFIG_DEFAULT = { apiKey: "" } as const
+
+export const AiSettingsSchema = z.object({
+  defaultModel: z.string().default(""),
+  defaultProvider: AiProviderNameSchema.default("openai"),
+  providers: z
+    .object({
+      anthropic: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT),
+      gateway: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT),
+      openai: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT)
+    })
+    .default({
+      anthropic: AI_PROVIDER_CONFIG_DEFAULT,
+      gateway: AI_PROVIDER_CONFIG_DEFAULT,
+      openai: AI_PROVIDER_CONFIG_DEFAULT
+    })
+})
+
 export const AppSettingsSchema = z.object({
+  ai: AiSettingsSchema.default({
+    defaultModel: "",
+    defaultProvider: "openai",
+    providers: {
+      anthropic: AI_PROVIDER_CONFIG_DEFAULT,
+      gateway: AI_PROVIDER_CONFIG_DEFAULT,
+      openai: AI_PROVIDER_CONFIG_DEFAULT
+    }
+  }),
   appIcon: AppIconSchema.default("default"),
   autoStart: z.boolean().default(false),
   closeToTray: z.boolean().default(false),
@@ -59,6 +92,7 @@ export const AppSettingsSchema = z.object({
 })
 
 export const UpdateSettingsSchema = z.object({
+  ai: AiSettingsSchema.optional(),
   appIcon: AppIconSchema.optional(),
   autoStart: z.boolean().optional(),
   closeToTray: z.boolean().optional(),
@@ -73,11 +107,14 @@ export const UpdateSettingsSchema = z.object({
   theme: ThemeSchema.optional()
 })
 
+export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>
+export type AiProviderName = z.infer<typeof AiProviderNameSchema>
+export type AiSettings = z.infer<typeof AiSettingsSchema>
 export type AppIcon = z.infer<typeof AppIconSchema>
-export type Theme = z.infer<typeof ThemeSchema>
 export type AppSettings = z.infer<typeof AppSettingsSchema>
 export type CustomTheme = z.infer<typeof CustomThemeSchema>
 export type CustomThemePreset = z.infer<typeof CustomThemePresetSchema>
 export type CustomThemeType = z.infer<typeof CustomThemeTypeSchema>
 export type DarkColorSchema = z.infer<typeof DarkColorSchemaSchema>
 export type LightColorSchema = z.infer<typeof LightColorSchemaSchema>
+export type Theme = z.infer<typeof ThemeSchema>
