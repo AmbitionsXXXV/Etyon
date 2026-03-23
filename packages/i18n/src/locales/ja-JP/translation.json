@@ -23,6 +23,10 @@
       "settings": "設定"
     },
     "description": "AI プロバイダーのオーケストレーションのための、洗練されたデスクトップワークスペースです。",
+    "sidebar": {
+      "search": "検索",
+      "toggleSidebar": "サイドバーを切り替え"
+    },
     "hint": "チャット導線はまだ未接続なので、その間に Settings でワークスペースを整えられます。",
     "logoAlt": "Etyon アプリケーションアイコン",
     "mockedNotice": "New Chat は現在ローカル mock を表示しています。実際の会話フローはまだ接続されていません。"

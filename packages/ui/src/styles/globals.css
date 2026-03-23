@@ -89,6 +89,20 @@
     --muted: oklch(0.269 0 0);
     --muted-foreground: oklch(0.708 0 0);
   }
+
+  :root[data-liquid-glass] {
+    --background: oklch(1 0 0 / 80%);
+    --sidebar: oklch(0.985 0 0 / 65%);
+    --card: oklch(1 0 0 / 85%);
+    --popover: oklch(1 0 0 / 90%);
+  }
+
+  :root[data-liquid-glass].dark {
+    --background: oklch(0.145 0 0 / 80%);
+    --sidebar: oklch(0.205 0 0 / 60%);
+    --card: oklch(0.205 0 0 / 85%);
+    --popover: oklch(0.205 0 0 / 90%);
+  }
 }
 
 @theme inline {
@@ -148,6 +162,10 @@
       system-ui,
       sans-serif
     );
+  }
+
+  :root[data-liquid-glass] body {
+    background-color: transparent;
   }
 
   .theme-transitioning,

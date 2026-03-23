@@ -10,7 +10,7 @@ export default defineConfig({
       formats: ["es"]
     },
     rolldownOptions: {
-      external: ["font-list"],
+      external: ["electron-liquid-glass", "font-list"],
       output: {
         banner: REQUIRE_POLYFILL
       }

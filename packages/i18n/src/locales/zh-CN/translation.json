@@ -23,6 +23,10 @@
       "settings": "设置"
     },
     "description": "一个用于 AI Provider 编排的优雅桌面工作台。",
+    "sidebar": {
+      "search": "搜索",
+      "toggleSidebar": "切换侧边栏"
+    },
     "hint": "聊天流程还没接好，现在可以先在 Settings 里完成工作台设置。",
     "logoAlt": "Etyon 应用图标",
     "mockedNotice": "New Chat 目前走的是本地 mock，真实会话流还没有接入。"

@@ -23,6 +23,10 @@
       "settings": "Settings"
     },
     "description": "An elegant desktop for AI provider orchestration.",
+    "sidebar": {
+      "search": "Search",
+      "toggleSidebar": "Toggle Sidebar"
+    },
     "hint": "Open Settings to finish the workspace setup while chat is still being wired.",
     "logoAlt": "Etyon application icon",
     "mockedNotice": "New Chat is using a local mock for now. The real conversation flow is not connected yet."

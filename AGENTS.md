@@ -1,3 +1,5 @@
+model: Composer 2
+
 # Ultracite Code Standards
 
 This project uses **Ultracite**, a zero-config preset that enforces strict code quality standards through automated formatting and linting.
@@ -159,6 +161,8 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Local HTTP server: Hono + `@hono/node-server` in `src/main/server/`; `port: 0` for OS-assigned port, must `await once(server, "listening")` before reading `server.address()`; URL exposed to renderer via oRPC `server.getUrl` procedure
 - AI SDK v6: `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/gateway`; type is `LanguageModel` (not `LanguageModelV1`); use `convertToModelMessages()` for UIMessage→ModelMessage; `DefaultChatTransport<UIMessage>` requires explicit generic; `streamText` + `toUIMessageStreamResponse()`; AI settings stored in `electron-store` under `settings.ai`
 - Zod v4: nested `.default({})` on objects with inner defaults requires complete default values — use `as const` constants; simple schemas in `packages/rpc/` may import from `zod/mini`
-- Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change
+- Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change; offcanvas collapse uses pure opacity fade-out (no left slide), action buttons use left-slide animation; settings sidebar is a floating card (`bg-card` + shadow) without liquid-glass, visually integrated with content background
+- Desktop-only sidebar: no mobile responsive breakpoints (`md:` / `useIsMobile`); sidebar is always visible; window min dimensions `minWidth: 732`, `minHeight: 392` for both main and settings windows
+- Liquid glass: `electron-liquid-glass` in main process, `data-liquid-glass` on `<html>` in renderer; `globals.css` sets semi-transparent `--sidebar`, `--background`, `--card`, `--popover` when active; custom color schemas may override these — ensure liquid-glass layer does not conflict with user-defined theme colors
 
 @RTK.md

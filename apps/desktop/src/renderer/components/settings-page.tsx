@@ -130,10 +130,11 @@ export const SettingsPage = ({
   if (!draft) {
     return (
       <SidebarProvider className="overflow-hidden" style={layoutStyle}>
-        <Sidebar className="shrink-0" collapsible="none">
-          <SidebarHeader className="title-bar-drag p-3 pt-10">
+        <Sidebar className="shrink-0 p-2 pt-0 pr-0" collapsible="none">
+          <SidebarHeader className="title-bar-drag pt-9" />
+          <div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-card p-3 shadow-[0_1px_3px_0_oklch(0_0_0/0.08),0_0_0_1px_oklch(0_0_0/0.04)]">
             <Skeleton className="h-7 w-full rounded-md" />
-          </SidebarHeader>
+          </div>
         </Sidebar>
 
         <SidebarInset className="min-h-0 overflow-hidden">
@@ -191,26 +192,28 @@ export const SettingsPage = ({
 
   return (
     <SidebarProvider className="overflow-hidden" style={layoutStyle}>
-      <Sidebar className="shrink-0" collapsible="none">
-        <SidebarHeader className="title-bar-drag pt-8" />
+      <Sidebar className="shrink-0 p-2 pt-0 pr-0" collapsible="none">
+        <SidebarHeader className="title-bar-drag pt-7" />
 
-        <SidebarContent className="p-3">
-          <SidebarGroup>
-            <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    isActive={activeSection === item.id}
-                    onClick={item.handleSelect}
-                  >
-                    <HugeiconsIcon icon={item.icon} size={16} />
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
-        </SidebarContent>
+        <div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-card shadow-[0_1px_3px_0_oklch(0_0_0/0.08),0_0_0_1px_oklch(0_0_0/0.04)]">
+          <SidebarContent className="p-3">
+            <SidebarGroup>
+              <SidebarMenu>
+                {navItems.map((item) => (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      isActive={activeSection === item.id}
+                      onClick={item.handleSelect}
+                    >
+                      <HugeiconsIcon icon={item.icon} size={16} />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          </SidebarContent>
+        </div>
       </Sidebar>
 
       <SidebarInset className="min-h-0 overflow-hidden">

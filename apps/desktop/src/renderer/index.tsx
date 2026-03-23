@@ -24,6 +24,10 @@ initLogger((event) => {
   rpcClient.logger.emit(event)
 })
 
+window.electron.ipcRenderer.on("liquid-glass-active", () => {
+  document.documentElement.dataset.liquidGlass = ""
+})
+
 const getSystemLocale = () =>
   navigator.languages.find((locale) => locale.length > 0) ?? navigator.language
 

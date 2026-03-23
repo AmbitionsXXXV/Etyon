@@ -7,6 +7,7 @@ import { app, BrowserWindow } from "electron"
 import type { Event } from "electron"
 
 import { createRuntimeIcon, getAppDisplayName } from "./app-metadata"
+import { applyLiquidGlass } from "./liquid-glass"
 import { t } from "./localization"
 import { getSettings } from "./settings"
 
@@ -103,7 +104,9 @@ export const createWindow = () => {
   const windowIcon = getWindowIcon()
   const window = new BrowserWindow({
     ...(windowIcon ? { icon: windowIcon } : {}),
-    ...(platform.isMacOS ? {} : { titleBarOverlay: { height: 36 } }),
+    ...(platform.isMacOS
+      ? { transparent: true }
+      : { titleBarOverlay: { height: 36 } }),
     height: 800,
     minHeight: 392,
     minWidth: 732,
@@ -115,6 +118,7 @@ export const createWindow = () => {
   })
 
   syncMainWindowReference(window)
+  applyLiquidGlass(window)
   loadRenderer(window)
 
   if (is.dev) {
@@ -178,7 +182,7 @@ export const createSettingsWindow = () => {
   settingsWindow = new BrowserWindow({
     ...(windowIcon ? { icon: windowIcon } : {}),
     ...(platform.isMacOS
-      ? { trafficLightPosition: { x: 12, y: 18 } }
+      ? { trafficLightPosition: { x: 12, y: 18 }, transparent: true }
       : { titleBarOverlay: { height: 36 } }),
     height: 720,
     maximizable: false,
@@ -191,6 +195,7 @@ export const createSettingsWindow = () => {
   })
 
   settingsWindow.center()
+  applyLiquidGlass(settingsWindow)
   loadRenderer(settingsWindow, "settings")
 
   settingsWindow.on("closed", () => {
