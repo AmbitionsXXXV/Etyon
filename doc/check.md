@@ -2,6 +2,25 @@
 
 `pnpm check` 当前已在工作区根目录通过。
 `pnpm typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
+`pnpm test` 现在会使用根目录的 [`vitest.workspace.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vitest.workspace.ts) 统一运行 monorepo 里的 `Vitest` 项目。
+
+## Tests
+
+- 根目录统一跑测试：`pnpm test`
+- 根目录 watch 模式：`pnpm test:watch`
+- 只跑桌面端测试：`pnpm --filter @etyon/desktop test`
+- 只跑 `RPC` 测试：`pnpm --filter @etyon/rpc test`
+
+当前 `Vitest` workspace 已接入以下项目：
+
+- [`apps/desktop/vitest.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vitest.config.ts)
+- [`packages/rpc/vitest.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/vitest.config.ts)
+
+首批行为测试覆盖：
+
+- [`packages/rpc/src/schemas/settings.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/src/schemas/settings.test.ts)：`Moonshot` / `Z.AI` provider 默认值与旧配置补齐
+- [`apps/desktop/src/shared/providers/provider-catalog.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/shared/providers/provider-catalog.test.ts)：providers tab 可见项与 seed models 补水
+- [`apps/desktop/src/main/providers/fetch-provider-models.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/providers/fetch-provider-models.test.ts)：上游 `/models` 抓取归一化与 seed capabilities 回填
 
 ## 本次修复
 

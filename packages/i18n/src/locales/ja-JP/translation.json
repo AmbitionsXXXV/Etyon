@@ -210,7 +210,58 @@
     "nav": {
       "colorSchema": "カラースキーマ",
       "general": "一般",
+      "providers": "Providers",
       "userInterface": "ユーザーインターフェース"
+    },
+    "providers": {
+      "actions": {
+        "fetch": "Fetch",
+        "fetching": "取得中...",
+        "hideApiKey": "隠す",
+        "showApiKey": "表示"
+      },
+      "description": "組み込み provider の認証情報、エンドポイント、利用可能なモデルを管理します。",
+      "empty": "一致する provider はありません。",
+      "fields": {
+        "apiKey": {
+          "label": "API Key",
+          "placeholder": "API Key を入力"
+        },
+        "baseUrl": {
+          "description": "既定値：{{defaultBaseURL}} · 上流 Models API：{{upstreamModelsApi}}",
+          "label": "Base URL"
+        }
+      },
+      "list": {
+        "enabledModels": "{{count}} 件のモデルを有効化",
+        "noEnabledModels": "有効なモデルはありません"
+      },
+      "models": {
+        "description": "ランタイム解決に参加させるモデルを選択します。",
+        "empty": "表示できるモデルがありません。",
+        "search": "モデルを検索...",
+        "title": "Models"
+      },
+      "provider": {
+        "moonshot": {
+          "description": "Moonshot は OpenAI 互換 API で Kimi モデルを提供します。"
+        },
+        "zaiCodingPlan": {
+          "description": "Z.AI Coding Plan は Coding Plan 向けの GLM モデル API を提供します。"
+        }
+      },
+      "search": "providers を検索...",
+      "status": {
+        "disabled": "無効",
+        "enabled": "有効",
+        "fetchFailed": "モデルの取得に失敗しました。",
+        "fetching": "上流 Models API からモデルを取得しています...",
+        "fetchSuccess": "{{count}} 件のモデルを取得しました。",
+        "fetchSuccessEmpty": "取得は完了しましたが、モデルは返されませんでした。",
+        "needsApiKey": "API Key を入力すると、モデル取得とランタイム利用が可能になります。",
+        "ready": "この provider はモデル取得の準備ができています。"
+      },
+      "title": "Providers"
     },
     "startup": {
       "autoStart": "自動起動",

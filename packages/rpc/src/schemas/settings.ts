@@ -1,6 +1,8 @@
 import { LocalePreferenceSchema } from "@etyon/i18n"
 import * as z from "zod"
 
+import { BuiltInProviderIdSchema, StoredProviderModelSchema } from "./providers"
+
 export const CustomThemeTypeSchema = z.enum(["dark", "light"])
 
 export const CustomThemePresetSchema = z.enum([
@@ -43,27 +45,83 @@ export const AppIconSchema = z.enum(["default", "alt"])
 
 export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
 
-export const AiProviderNameSchema = z.enum(["anthropic", "gateway", "openai"])
+export const AiProviderNameSchema = BuiltInProviderIdSchema
+
+const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
 
 export const AiProviderConfigSchema = z.object({
-  apiKey: z.string().default("")
+  apiKey: z.string().default(""),
+  availableModels: z
+    .array(StoredProviderModelSchema)
+    .default(EMPTY_PROVIDER_MODELS),
+  baseURL: z.string().default(""),
+  enabled: z.boolean().default(true),
+  models: z.array(StoredProviderModelSchema).default(EMPTY_PROVIDER_MODELS)
 })
 
-const AI_PROVIDER_CONFIG_DEFAULT = { apiKey: "" } as const
+const ANTHROPIC_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "",
+  enabled: true,
+  models: EMPTY_PROVIDER_MODELS
+}
+
+const GATEWAY_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "",
+  enabled: true,
+  models: EMPTY_PROVIDER_MODELS
+}
+
+const MOONSHOT_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "https://api.moonshot.cn/v1",
+  enabled: false,
+  models: EMPTY_PROVIDER_MODELS
+}
+
+const OPENAI_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "",
+  enabled: true,
+  models: EMPTY_PROVIDER_MODELS
+}
+
+const ZAI_CODING_PLAN_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "https://api.z.ai/api/coding/paas/v4",
+  enabled: false,
+  models: EMPTY_PROVIDER_MODELS
+}
 
 export const AiSettingsSchema = z.object({
   defaultModel: z.string().default(""),
   defaultProvider: AiProviderNameSchema.default("openai"),
   providers: z
     .object({
-      anthropic: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT),
-      gateway: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT),
-      openai: AiProviderConfigSchema.default(AI_PROVIDER_CONFIG_DEFAULT)
+      anthropic: AiProviderConfigSchema.default(
+        ANTHROPIC_PROVIDER_CONFIG_DEFAULT
+      ),
+      gateway: AiProviderConfigSchema.default(GATEWAY_PROVIDER_CONFIG_DEFAULT),
+      moonshot: AiProviderConfigSchema.default(
+        MOONSHOT_PROVIDER_CONFIG_DEFAULT
+      ),
+      openai: AiProviderConfigSchema.default(OPENAI_PROVIDER_CONFIG_DEFAULT),
+      "zai-coding-plan": AiProviderConfigSchema.default(
+        ZAI_CODING_PLAN_PROVIDER_CONFIG_DEFAULT
+      )
     })
     .default({
-      anthropic: AI_PROVIDER_CONFIG_DEFAULT,
-      gateway: AI_PROVIDER_CONFIG_DEFAULT,
-      openai: AI_PROVIDER_CONFIG_DEFAULT
+      anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
+      gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,
+      moonshot: MOONSHOT_PROVIDER_CONFIG_DEFAULT,
+      openai: OPENAI_PROVIDER_CONFIG_DEFAULT,
+      "zai-coding-plan": ZAI_CODING_PLAN_PROVIDER_CONFIG_DEFAULT
     })
 })
 
@@ -72,9 +130,11 @@ export const AppSettingsSchema = z.object({
     defaultModel: "",
     defaultProvider: "openai",
     providers: {
-      anthropic: AI_PROVIDER_CONFIG_DEFAULT,
-      gateway: AI_PROVIDER_CONFIG_DEFAULT,
-      openai: AI_PROVIDER_CONFIG_DEFAULT
+      anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
+      gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,
+      moonshot: MOONSHOT_PROVIDER_CONFIG_DEFAULT,
+      openai: OPENAI_PROVIDER_CONFIG_DEFAULT,
+      "zai-coding-plan": ZAI_CODING_PLAN_PROVIDER_CONFIG_DEFAULT
     }
   }),
   appIcon: AppIconSchema.default("default"),

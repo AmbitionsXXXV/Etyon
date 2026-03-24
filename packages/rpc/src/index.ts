@@ -1,6 +1,20 @@
 export { FontListOutputSchema } from "./schemas/fonts"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
+export {
+  BuiltInProviderIdSchema,
+  ProviderFetchModelsInputSchema,
+  ProviderFetchModelsOutputSchema,
+  StoredProviderModelCapabilitiesSchema,
+  StoredProviderModelSchema
+} from "./schemas/providers"
+export type {
+  BuiltInProviderId,
+  ProviderFetchModelsInput,
+  ProviderFetchModelsOutput,
+  StoredProviderModel,
+  StoredProviderModelCapabilities
+} from "./schemas/providers"
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {

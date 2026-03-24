@@ -1,5 +1,7 @@
 import type { LocalePreference } from "@etyon/i18n"
 import type {
+  AiProviderConfig,
+  AiProviderName,
   AppIcon,
   AppSettings,
   CustomTheme,
@@ -230,6 +232,35 @@ export const useSettingsPageDraft = () => {
     (v: LightColorSchema) => updateDraftRef.current("lightColorSchema", v),
     []
   )
+  const handleAiProviderConfigChange = useCallback(
+    (
+      providerId: AiProviderName,
+      updater:
+        | AiProviderConfig
+        | ((previousProvider: AiProviderConfig) => AiProviderConfig)
+    ) =>
+      setDraft((prev) => {
+        if (!prev) {
+          return prev
+        }
+
+        const previousProvider = prev.ai.providers[providerId]
+        const nextProvider =
+          typeof updater === "function" ? updater(previousProvider) : updater
+
+        return {
+          ...prev,
+          ai: {
+            ...prev.ai,
+            providers: {
+              ...prev.ai.providers,
+              [providerId]: nextProvider
+            }
+          }
+        }
+      }),
+    []
+  )
   const handleLocaleChange = useCallback(
     (v: LocalePreference) => updateDraftRef.current("locale", v),
     []
@@ -261,6 +292,7 @@ export const useSettingsPageDraft = () => {
 
   return {
     draft,
+    handleAiProviderConfigChange,
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,

@@ -112,7 +112,7 @@ export const createWindow = () => {
     minWidth: 732,
     title: getAppDisplayName(),
     titleBarStyle: "hidden",
-    trafficLightPosition: { x: 12, y: 18 },
+    trafficLightPosition: { x: 16, y: 18 },
     webPreferences: { preload: preloadPath },
     width: 1000
   })
@@ -122,7 +122,7 @@ export const createWindow = () => {
   loadRenderer(window)
 
   if (is.dev) {
-    window.webContents.openDevTools()
+    window.webContents.openDevTools({ mode: "undocked" })
   }
 
   return window
@@ -193,6 +193,10 @@ export const createSettingsWindow = () => {
     webPreferences: { preload: preloadPath },
     width: 900
   })
+
+  if (is.dev) {
+    settingsWindow.webContents.openDevTools({ mode: "undocked" })
+  }
 
   settingsWindow.center()
   applyLiquidGlass(settingsWindow)

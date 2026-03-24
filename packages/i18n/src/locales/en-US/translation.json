@@ -210,7 +210,58 @@
     "nav": {
       "colorSchema": "Color Schema",
       "general": "General",
+      "providers": "Providers",
       "userInterface": "User Interface"
+    },
+    "providers": {
+      "actions": {
+        "fetch": "Fetch",
+        "fetching": "Fetching...",
+        "hideApiKey": "Hide",
+        "showApiKey": "Show"
+      },
+      "description": "Manage credentials, endpoints, and available models for built-in providers.",
+      "empty": "No providers match your search.",
+      "fields": {
+        "apiKey": {
+          "label": "API Key",
+          "placeholder": "Enter API Key"
+        },
+        "baseUrl": {
+          "description": "Default: {{defaultBaseURL}} · Upstream Models API: {{upstreamModelsApi}}",
+          "label": "Base URL"
+        }
+      },
+      "list": {
+        "enabledModels": "{{count}} models enabled",
+        "noEnabledModels": "No models enabled"
+      },
+      "models": {
+        "description": "Select the models that should participate in runtime resolution.",
+        "empty": "No models to display.",
+        "search": "Search models...",
+        "title": "Models"
+      },
+      "provider": {
+        "moonshot": {
+          "description": "Moonshot exposes Kimi models through an OpenAI-compatible API."
+        },
+        "zaiCodingPlan": {
+          "description": "Z.AI Coding Plan exposes GLM models for the Coding Plan subscription."
+        }
+      },
+      "search": "Search providers...",
+      "status": {
+        "disabled": "Disabled",
+        "enabled": "Enabled",
+        "fetchFailed": "Failed to fetch models.",
+        "fetching": "Fetching models from the upstream Models API...",
+        "fetchSuccess": "Fetched {{count}} models.",
+        "fetchSuccessEmpty": "Fetch completed, but no models were returned.",
+        "needsApiKey": "Add an API Key to fetch models and use this provider at runtime.",
+        "ready": "This provider is ready to fetch models."
+      },
+      "title": "Providers"
     },
     "startup": {
       "autoStart": "Auto Start",

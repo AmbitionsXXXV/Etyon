@@ -73,6 +73,7 @@
     ".vscode-insiders",
     ".gitignore",
     "AGENTS.md",
-    "CLAUDE.md"
+    "CLAUDE.md",
+    "*.test.ts"
   ]
 }

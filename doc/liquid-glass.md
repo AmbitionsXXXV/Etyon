@@ -58,29 +58,29 @@ external: ["electron-liquid-glass", "font-list"],
 
 使用 `data-liquid-glass` HTML 属性作为 CSS 条件开关，避免影响非 macOS 或低版本系统：
 
-| 选择器 | 作用 |
-| --- | --- |
-| `:root[data-liquid-glass] body` | `background-color: transparent`，让 glass 贯穿整个窗口 |
-| `:root[data-liquid-glass]` | Light 模式下 `--background`、`--sidebar`、`--card`、`--popover` 使用半透明值 |
-| `:root[data-liquid-glass].dark` | Dark 模式下同上变量使用半透明值 |
+| 选择器                          | 作用                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `:root[data-liquid-glass] body` | `background-color: transparent`，让 glass 贯穿整个窗口                       |
+| `:root[data-liquid-glass]`      | Light 模式下 `--background`、`--sidebar`、`--card`、`--popover` 使用半透明值 |
+| `:root[data-liquid-glass].dark` | Dark 模式下同上变量使用半透明值                                              |
 
 半透明值确保原生 glass 效果透过 UI 元素可见，同时保持文字可读性。
 
 ## IPC 通信
 
-| Channel | 方向 | 载荷 | 说明 |
-| --- | --- | --- | --- |
+| Channel               | 方向            | 载荷   | 说明                                    |
+| --------------------- | --------------- | ------ | --------------------------------------- |
 | `liquid-glass-active` | Main → Renderer | `true` | Glass 已成功应用，Renderer 激活透明 CSS |
 
 Renderer 在 `index.tsx` 启动阶段注册一次性监听器，收到后设置 `document.documentElement.dataset.liquidGlass`。
 
 ## 跨平台回退
 
-| 平台 | 行为 |
-| --- | --- |
-| macOS 26+ | `transparent: true` + `NSGlassEffectView` + 半透明 CSS |
-| macOS < 26 | `transparent: true` 但 `addView()` 静默失败，窗口保持透明背景（无 glass） |
-| Windows / Linux | `transparent` 不设置，`applyLiquidGlass` 直接返回，正常不透明窗口 |
+| 平台            | 行为                                                                      |
+| --------------- | ------------------------------------------------------------------------- |
+| macOS 26+       | `transparent: true` + `NSGlassEffectView` + 半透明 CSS                    |
+| macOS < 26      | `transparent: true` 但 `addView()` 静默失败，窗口保持透明背景（无 glass） |
+| Windows / Linux | `transparent` 不设置，`applyLiquidGlass` 直接返回，正常不透明窗口         |
 
 ## 涉及文件
 

@@ -8,9 +8,10 @@
     "./schemas/*": "./src/schemas/*.ts"
   },
   "scripts": {
-    "lint": "oxlint",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "lint": "oxlint",
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@etyon/i18n": "workspace:*",

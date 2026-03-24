@@ -257,7 +257,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) p-1.5 transition-[opacity,width] duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] data-[side=left]:left-0 data-[side=right]:right-0 group-data-[collapsible=offcanvas]:pointer-events-none group-data-[collapsible=offcanvas]:opacity-0",
+          "fixed inset-y-0 z-10 flex h-svh w-(--sidebar-width) p-2 transition-[opacity,width] duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] data-[side=left]:left-0 data-[side=right]:right-0 group-data-[collapsible=offcanvas]:pointer-events-none group-data-[collapsible=offcanvas]:opacity-0",
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",

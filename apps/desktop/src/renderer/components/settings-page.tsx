@@ -1,10 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import { Button } from "@etyon/ui/components/button"
 import {
-  Sidebar,
-  SidebarContent,
   SidebarGroup,
-  SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
@@ -17,6 +14,7 @@ import { AnimatePresence, motion } from "motion/react"
 import type { CSSProperties } from "react"
 import { useCallback, useMemo, useState } from "react"
 
+import { AppSidebarShell } from "@/renderer/components/app-sidebar"
 import {
   buildDarkColorSchemaOptions,
   buildLightColorSchemaOptions
@@ -40,6 +38,7 @@ import {
   MinimizeToTrayCheckbox,
   StartMinimizedToTrayCheckbox
 } from "./settings/general-tab"
+import { ProvidersTab } from "./settings/providers-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
@@ -51,6 +50,15 @@ interface SettingsPageProps {
   isStandaloneWindow?: boolean
 }
 
+interface SettingsNavItem {
+  handleSelect: () => void
+  icon: (typeof SETTINGS_NAV_ENTRIES)[number]["icon"]
+  id: SettingsSectionId
+  label: string
+}
+
+const TRAFFIC_LIGHT_CLEARANCE = "pl-[72px]"
+
 const getSettingsPageLayoutStyle = (
   isStandaloneWindow: boolean
 ): CSSProperties => {
@@ -59,11 +67,57 @@ const getSettingsPageLayoutStyle = (
     : `calc(100svh - ${TITLE_BAR_HEIGHT}px)`
 
   return {
-    "--sidebar-width": "17rem",
     height: pageHeight,
     minHeight: pageHeight
   } as CSSProperties
 }
+
+const SettingsSidebar = ({
+  activeSection,
+  navItems
+}: {
+  activeSection: SettingsSectionId
+  navItems: SettingsNavItem[]
+}) => (
+  <AppSidebarShell
+    contentClassName="pb-3"
+    headerClassName="pt-6"
+    headerContent={<div aria-hidden className={TRAFFIC_LIGHT_CLEARANCE} />}
+  >
+    <SidebarGroup className="px-3 pb-0">
+      <SidebarMenu className="title-bar-no-drag">
+        {navItems.map((item) => (
+          <SidebarMenuItem key={item.id}>
+            <SidebarMenuButton
+              isActive={activeSection === item.id}
+              onClick={item.handleSelect}
+            >
+              <HugeiconsIcon icon={item.icon} size={16} />
+              <span>{item.label}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </SidebarGroup>
+  </AppSidebarShell>
+)
+
+const SettingsSidebarSkeleton = () => (
+  <AppSidebarShell
+    contentClassName="pb-3"
+    headerClassName="pt-1.5"
+    headerContent={<div aria-hidden className={TRAFFIC_LIGHT_CLEARANCE} />}
+  >
+    <SidebarGroup className="px-3 pb-0">
+      <div className="space-y-1.5">
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+      </div>
+    </SidebarGroup>
+  </AppSidebarShell>
+)
 
 export const SettingsPage = ({
   isStandaloneWindow = false
@@ -74,6 +128,7 @@ export const SettingsPage = ({
 
   const {
     draft,
+    handleAiProviderConfigChange,
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
@@ -130,12 +185,7 @@ export const SettingsPage = ({
   if (!draft) {
     return (
       <SidebarProvider className="overflow-hidden" style={layoutStyle}>
-        <Sidebar className="shrink-0 p-2 pt-0 pr-0" collapsible="none">
-          <SidebarHeader className="title-bar-drag pt-9" />
-          <div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-card p-3 shadow-[0_1px_3px_0_oklch(0_0_0/0.08),0_0_0_1px_oklch(0_0_0/0.04)]">
-            <Skeleton className="h-7 w-full rounded-md" />
-          </div>
-        </Sidebar>
+        <SettingsSidebarSkeleton />
 
         <SidebarInset className="min-h-0 overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col">
@@ -192,33 +242,11 @@ export const SettingsPage = ({
 
   return (
     <SidebarProvider className="overflow-hidden" style={layoutStyle}>
-      <Sidebar className="shrink-0 p-2 pt-0 pr-0" collapsible="none">
-        <SidebarHeader className="title-bar-drag pt-7" />
-
-        <div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-card shadow-[0_1px_3px_0_oklch(0_0_0/0.08),0_0_0_1px_oklch(0_0_0/0.04)]">
-          <SidebarContent className="p-3">
-            <SidebarGroup>
-              <SidebarMenu>
-                {navItems.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      isActive={activeSection === item.id}
-                      onClick={item.handleSelect}
-                    >
-                      <HugeiconsIcon icon={item.icon} size={16} />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroup>
-          </SidebarContent>
-        </div>
-      </Sidebar>
+      <SettingsSidebar activeSection={activeSection} navItems={navItems} />
 
       <SidebarInset className="min-h-0 overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto pt-8">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto p-6">
               <motion.h1
                 animate={{ opacity: 1, y: 0 }}
@@ -336,6 +364,13 @@ export const SettingsPage = ({
                   onDeleteTheme={handleCustomThemeDelete}
                   onLightColorSchemaChange={handleLightColorSchemaChange}
                   themes={draft.customThemes}
+                />
+              )}
+
+              {activeSection === "providers" && (
+                <ProvidersTab
+                  aiSettings={draft.ai}
+                  onProviderConfigChange={handleAiProviderConfigChange}
                 />
               )}
 

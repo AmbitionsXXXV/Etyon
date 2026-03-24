@@ -6,6 +6,7 @@ import {
   SidebarTrigger,
   useSidebar
 } from "@etyon/ui/components/sidebar"
+import { Toaster } from "@etyon/ui/components/sonner"
 import {
   Tooltip,
   TooltipContent,
@@ -24,8 +25,8 @@ import { createRootRoute, Outlet, useRouterState } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import { AnimatePresence, motion } from "motion/react"
 
-import { AppSidebar } from "../components/app-sidebar"
-import { TITLE_BAR_HEIGHT, TitleBar } from "../components/title-bar"
+import { AppSidebar } from "@/renderer/components/app-sidebar"
+import { TITLE_BAR_HEIGHT, TitleBar } from "@/renderer/components/title-bar"
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[76px]"
 
@@ -125,6 +126,8 @@ const RootComponent = () => {
           <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
             <Outlet />
           </div>
+
+          <Toaster />
         </>
       )}
 

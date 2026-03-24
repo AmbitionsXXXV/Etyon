@@ -11,14 +11,15 @@
   "type": "module",
   "main": ".vite/build/index.js",
   "scripts": {
-    "start": "electron-forge start",
     "build": "electron-forge package",
-    "dev": "electron-forge start",
-    "make": "electron-forge make",
     "publish": "electron-forge publish",
     "check": "ultracite check",
-    "typecheck": "tsc --noEmit",
-    "fix": "ultracite fix"
+    "dev": "electron-forge start",
+    "fix": "ultracite fix",
+    "make": "electron-forge make",
+    "start": "electron-forge start",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.63",

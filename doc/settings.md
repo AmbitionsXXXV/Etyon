@@ -23,29 +23,48 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 - 固定尺寸 680x520，不可缩放/最大化
 - macOS: `titleBarStyle: "hidden"` + 红绿灯
 - Windows/Linux: `titleBarOverlay`
+- Settings sidebar 与主窗口 sidebar 一样，让卡片背景从窗口顶部连续铺开；红绿灯的拖拽/避让区域放在卡片内部 header，而不是在卡片外额外预留一段空白高度
 
 ### 包结构
 
-| 层级               | 路径                                                     | 职责                                                                                                                           |
-| ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Schema             | `packages/rpc/src/schemas/settings.ts`                   | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                  |
-| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                      | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                             |
-| Main Store         | `apps/desktop/src/main/settings.ts`                      | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
-| Main Fonts         | `apps/desktop/src/main/fonts.ts`                         | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                    |
-| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                    | `settings.get` / `settings.update` / `fonts.list` 路由                                                                         |
-| Window             | `apps/desktop/src/main/window.ts`                        | `createSettingsWindow()` 单例窗口创建                                                                                          |
-| Menu               | `apps/desktop/src/main/menu.ts`                          | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
-| IPC                | `apps/desktop/src/main/index.ts`                         | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
-| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`           | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
-| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                    | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
-| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`              | `applySettings()` DOM 应用函数                                                                                                 |
-| i18n Package       | `packages/i18n/`                                         | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
+| 层级               | 路径                                                       | 职责                                                                                                                           |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Schema             | `packages/rpc/src/schemas/settings.ts`                     | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                  |
+| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                        | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                             |
+| Main Store         | `apps/desktop/src/main/settings.ts`                        | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
+| Main Fonts         | `apps/desktop/src/main/fonts.ts`                           | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                    |
+| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                      | `settings.get` / `settings.update` / `fonts.list` 路由                                                                         |
+| Window             | `apps/desktop/src/main/window.ts`                          | `createSettingsWindow()` 单例窗口创建                                                                                          |
+| Menu               | `apps/desktop/src/main/menu.ts`                            | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
+| IPC                | `apps/desktop/src/main/index.ts`                           | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
+| Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                         |
+| Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                          |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
+| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
+| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                      | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
+| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`                | `applySettings()` DOM 应用函数                                                                                                 |
+| i18n Package       | `packages/i18n/`                                           | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
 
 ## 数据模型
 
 ```typescript
 interface AppSettings {
+  ai: {
+    defaultModel: string
+    defaultProvider:
+      | "anthropic"
+      | "gateway"
+      | "moonshot"
+      | "openai"
+      | "zai-coding-plan"
+    providers: {
+      anthropic: AiProviderConfig
+      gateway: AiProviderConfig
+      moonshot: AiProviderConfig
+      openai: AiProviderConfig
+      "zai-coding-plan": AiProviderConfig
+    }
+  }
   appIcon: "default" | "alt" // 默认 "default"
   autoStart: boolean // 默认 false
   closeToTray: boolean // 默认 false，关闭主窗口时隐藏到托盘而不是退出
@@ -78,7 +97,51 @@ interface CustomTheme {
   type: "dark" | "light"
   updatedAt: string
 }
+interface AiProviderConfig {
+  apiKey: string
+  availableModels: StoredProviderModel[]
+  baseURL: string
+  enabled: boolean
+  models: StoredProviderModel[]
+}
+interface StoredProviderModel {
+  capabilities?: {
+    contextWindow?: number
+    functionCalling?: boolean
+    imageOutput?: boolean
+    jsonMode?: boolean
+    maxOutputTokens?: number
+    reasoning?: boolean
+    streaming?: boolean
+    vision?: boolean
+  }
+  id: string
+  isManual?: boolean
+  name: string
+}
 ```
+
+## Providers Tab
+
+- Settings 左侧导航新增 `Providers` tab，当前只显示 `Moonshot` 与 `Z.AI Coding Plan`
+- 布局固定为双栏：
+  - 左栏：搜索框 + provider 列表 `ScrollArea`
+  - 右栏：启用开关、`API Key`、`Base URL`、`Fetch`、models 搜索与勾选列表
+- `Fetch` 通过主进程新增的 `oRPC providers.fetchModels` 发起真实请求，请求地址统一为 `GET {baseURL}/models`
+- `Fetch` 只更新当前 settings draft：
+  - `availableModels` 保存当前可见模型全集
+  - `models` 保存当前启用模型子集
+- 若本地已经勾选一部分模型，抓取后仅保留仍存在的勾选项；若此前没有勾选模型，则默认启用全部抓到的模型
+- `settings-equal()` 现在按整个 `AppSettings` 深比较，保证 provider 配置、抓取结果与模型勾选都能正确触发底部 `Save / Cancel` 浮条
+
+## Provider Seed / Defaults
+
+- provider seed 模型由桌面端静态常量维护，不直接依赖根目录 `models.json` 这类示例响应文件
+- 旧 settings 或空 settings 在解析时会自动补齐新的 provider 配置：
+  - `moonshot.baseURL = https://api.moonshot.cn/v1`
+  - `zai-coding-plan.baseURL = https://api.z.ai/api/coding/paas/v4`
+  - 两者的 `availableModels / models` 在字段缺失时会回填内建 seed 模型
+- 主进程抓取返回的模型会优先使用上游值；若 `capabilities` 缺失，则回退到对应 seed 模型能力数据
 
 ## 入口方式
 
@@ -194,14 +257,17 @@ Other Renderers (RendererRoot)
 
 设置页侧边栏已从自定义 `motion.aside` 迁移到 `@etyon/ui/components/sidebar`，与主窗口共享同一套 Sidebar 组件和 CSS token：
 
-- 使用 `SidebarProvider` 包裹整个设置页，通过 `style={{ "--sidebar-width": "17rem" }}` 控制宽度
+- 使用 `SidebarProvider` 包裹整个设置页，沿用 `Sidebar` 组件默认宽度与 offcanvas 行为
 - 独立 Settings 窗口会显式把 `SidebarProvider` 高度设为 `100svh`；嵌入主窗口的 `/settings` 路由则使用 `calc(100svh - TITLE_BAR_HEIGHT)`，避免出现双重滚动
-- `Sidebar collapsible="none"`：设置页导航栏固定不可折叠
+- 设置页现在直接复用 [`apps/desktop/src/renderer/components/app-sidebar.tsx`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/renderer/components/app-sidebar.tsx) 中提炼出的 `AppSidebarShell`
+- `Sidebar collapsible="offcanvas"`：settings 侧边栏与主窗口共享同一层 shell 结构；settings 自身不放 `SidebarTrigger`
 - 导航项使用 `SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`，替代原自定义 `NavButton`
-- `SidebarHeader` 预留 macOS traffic light 拖拽区（`title-bar-drag` + `pt-8`）
+- sidebar 外层容器沿用主窗口的 `bg-sidebar` 连续背景、圆角和阴影，不再保留 settings 页自己的固定浮卡配置
+- settings 的 `SidebarHeader` 只保留 traffic light 避让占位；主窗口的 header actions 和 settings 的导航内容都挂在同一份 shell 上
+- 空的 `SidebarFooter` 已移除，底部背景直接和 `SidebarContent` 连成一体
+- sidebar 顶部的拖拽区域延伸到 `SidebarContent`，而 `SidebarMenu` 显式标记为 `title-bar-no-drag`，保证空白区可拖窗、导航项仍可点击
 - 主内容区使用 `SidebarInset`，并在 inset 内建立独立的 `overflow-y-auto` scroll area；浏览器根滚动不再带动 sidebar 一起移动
 - 颜色 token 统一为 `bg-sidebar`、`text-sidebar-foreground`、`bg-sidebar-accent` 等
-- 原 `SETTINGS_PAGE_SIDEBAR_WIDTH_CLASS` Tailwind class 已删除，宽度改由 CSS 变量 `--sidebar-width` 控制
 
 ## Motion 动效
 
@@ -253,11 +319,14 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `packages/rpc/src/schemas/fonts.ts` — Font list Zod schema
 - `packages/rpc/src/index.ts` — 导出 settings + fonts schema
 - `apps/desktop/src/main/startup.ts` — 登录项同步与“启动后隐藏到托盘”判定
+- `apps/desktop/src/main/providers/fetch-provider-models.ts` — provider models 抓取与归一化
 - `apps/desktop/src/main/settings.ts` — electron-store 封装
 - `apps/desktop/src/main/localization.ts` — `main` 进程 locale 解析与翻译入口
 - `apps/desktop/src/main/native-ui.ts` — 菜单与窗口标题的本地化刷新
 - `apps/desktop/src/main/fonts.ts` — 系统字体枚举（跨平台，带缓存）
 - `apps/desktop/src/main/rpc/router.ts` — settings + fonts RPC 路由
+- `apps/desktop/src/shared/providers/provider-catalog.ts` — 内建 provider catalog 与 seed 模型补水
+- `apps/desktop/src/shared/providers/provider-seed-models.ts` — 内建 provider seed 模型静态定义
 - `apps/desktop/src/main/window.ts` — 主窗口 + settings 窗口创建
 - `apps/desktop/src/main/menu.ts` — 原生应用菜单
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化

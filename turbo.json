@@ -12,6 +12,7 @@
     "lint": {},
     "check": {},
     "fix": {},
+    "test": {},
     "typecheck": {}
   }
 }

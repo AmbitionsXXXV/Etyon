@@ -210,7 +210,58 @@
     "nav": {
       "colorSchema": "颜色方案",
       "general": "通用",
+      "providers": "Providers",
       "userInterface": "用户界面"
+    },
+    "providers": {
+      "actions": {
+        "fetch": "Fetch",
+        "fetching": "抓取中...",
+        "hideApiKey": "隐藏",
+        "showApiKey": "显示"
+      },
+      "description": "管理内建模型 provider 的凭据、地址和可用模型。",
+      "empty": "没有匹配的 provider。",
+      "fields": {
+        "apiKey": {
+          "label": "API Key",
+          "placeholder": "输入 API Key"
+        },
+        "baseUrl": {
+          "description": "默认地址：{{defaultBaseURL}} · 上游 Models API：{{upstreamModelsApi}}",
+          "label": "Base URL"
+        }
+      },
+      "list": {
+        "enabledModels": "已启用 {{count}} 个模型",
+        "noEnabledModels": "未启用模型"
+      },
+      "models": {
+        "description": "勾选需要参与运行时解析的模型。",
+        "empty": "没有可显示的模型。",
+        "search": "搜索模型...",
+        "title": "Models"
+      },
+      "provider": {
+        "moonshot": {
+          "description": "Moonshot 提供兼容 OpenAI 的 Kimi 模型接口。"
+        },
+        "zaiCodingPlan": {
+          "description": "Z.AI Coding Plan 提供面向 Coding Plan 的 GLM 模型接口。"
+        }
+      },
+      "search": "搜索 providers...",
+      "status": {
+        "disabled": "已停用",
+        "enabled": "已启用",
+        "fetchFailed": "抓取模型失败。",
+        "fetching": "正在从上游 Models API 抓取模型...",
+        "fetchSuccess": "已抓取 {{count}} 个模型。",
+        "fetchSuccessEmpty": "抓取完成，但未返回模型。",
+        "needsApiKey": "填写 API Key 后即可抓取模型并参与运行时解析。",
+        "ready": "当前配置已准备好抓取模型。"
+      },
+      "title": "Providers"
     },
     "startup": {
       "autoStart": "开机自动启动",

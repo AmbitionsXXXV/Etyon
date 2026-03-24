@@ -4,6 +4,8 @@ import {
   LogEventSchema,
   PingInputSchema,
   PingOutputSchema,
+  ProviderFetchModelsInputSchema,
+  ProviderFetchModelsOutputSchema,
   ServerUrlOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
@@ -13,6 +15,7 @@ import { BrowserWindow } from "electron"
 import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
+import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { getServerUrl } from "@/main/server"
 import { getSettings, updateSettings } from "@/main/settings"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
@@ -34,6 +37,11 @@ const ping = os
     pid: process.pid,
     timestamp: new Date().toISOString()
   }))
+
+const providersFetchModels = os
+  .input(ProviderFetchModelsInputSchema)
+  .output(ProviderFetchModelsOutputSchema)
+  .handler(({ input }) => fetchProviderModels(input))
 
 const settingsGet = os.output(AppSettingsSchema).handler(() => getSettings())
 
@@ -67,6 +75,9 @@ export const router = {
     emit: loggerEmit
   },
   ping,
+  providers: {
+    fetchModels: providersFetchModels
+  },
   server: {
     getUrl: serverGetUrl
   },
