@@ -14,15 +14,15 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "check": "vp check",
     "dev": "tsc --watch",
-    "lint": "oxlint",
-    "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "vp check --fix",
+    "lint": "vp lint"
   },
   "dependencies": {
     "@etyon/i18n": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0"
+    "@types/node": "^25.5.0"
   }
 }

@@ -106,8 +106,7 @@ const config: ForgeConfig = {
     extraResource: [
       "resources/icon.icns",
       "resources/icon.ico",
-      "resources/tray.png",
-      "resources/tray@2x.png"
+      "resources/tray.png"
     ],
     helperBundleId,
     icon: "resources/icon",

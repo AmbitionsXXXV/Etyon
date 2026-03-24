@@ -8,8 +8,8 @@
     "./renderer": "./src/renderer.ts"
   },
   "scripts": {
-    "lint": "oxlint",
-    "check": "ultracite check",
-    "fix": "ultracite fix"
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "lint": "vp lint"
   }
 }

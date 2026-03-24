@@ -1,16 +1,16 @@
 model: Composer 2
 
-# Ultracite Code Standards
+# Vite+ Code Standards
 
-This project uses **Ultracite**, a zero-config preset that enforces strict code quality standards through automated formatting and linting.
+This project uses **Vite+** as the unified toolchain, while still extending **Ultracite** for linting and formatting rules.
 
 ## Quick Reference
 
-- **Format code**: `pnpm dlx ultracite fix`
-- **Check for issues**: `pnpm dlx ultracite check`
-- **Diagnose setup**: `pnpm dlx ultracite doctor`
+- **Format code**: `pnpm exec vp fmt . --write`
+- **Check for issues**: `pnpm exec vp check`
+- **Run tests**: `pnpm exec vp test run`
 
-Oxlint + Oxfmt (the underlying engine) provides robust linting and formatting. Most issues are automatically fixable.
+Oxlint + Oxfmt (through `Vite+`) provides robust linting and formatting. Most issues are automatically fixable.
 
 ---
 
@@ -125,7 +125,7 @@ Oxlint + Oxfmt's linter will catch most issues automatically. Focus your attenti
 
 ---
 
-Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run `pnpm dlx ultracite fix` before committing to ensure compliance.
+Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run `pnpm exec vp check --fix` before committing to ensure compliance.
 
 ---
 
@@ -156,7 +156,7 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - `@tanstack/react-hotkeys` exports `useHotkey` (singular, not `useHotkeys`); use `"Mod+,"` for cross-platform Cmd/Ctrl
 - CLI app (`apps/cli/`, `@etyon/cli`): TypeScript, compiled to `dist/`
 - Shared UI package (`packages/ui/`, `@etyon/ui`): shadcn + base-mira style, @base-ui/react, @hugeicons/react + @hugeicons/core-free-icons, Inter Variable font, exports `globals.css`, `components/*`, `lib/*`, `hooks/*`; point shadcn CLI / `components.json` at this package so new components are not generated under `apps/desktop/@etyon/ui/`
-- Linting/formatting: Ultracite (Oxlint + Oxfmt), config at workspace root (`.oxlintrc.json`, `.oxfmtrc.jsonc`)
+- Linting/formatting: Vite+ with Ultracite-derived rules, config at workspace root [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts)
 - Vite renderer: plugin order TanStackRouterVite → react() → tailwindcss(); `use-sync-external-store/shim` and `/shim/with-selector` must be in `optimizeDeps.include` for `@base-ui/react`; packages with ESM `import.meta.url` wrappers used by Electron main (e.g. `font-list`) must be `external` in `vite.main.config.ts`
 - Local HTTP server: Hono + `@hono/node-server` in `src/main/server/`; `port: 0` for OS-assigned port, must `await once(server, "listening")` before reading `server.address()`; URL exposed to renderer via oRPC `server.getUrl` procedure
 - AI SDK v6: `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/gateway`; type is `LanguageModel` (not `LanguageModelV1`); use `convertToModelMessages()` for UIMessage→ModelMessage; `DefaultChatTransport<UIMessage>` requires explicit generic; `streamText` + `toUIMessageStreamResponse()`; AI settings stored in `electron-store` under `settings.ai`

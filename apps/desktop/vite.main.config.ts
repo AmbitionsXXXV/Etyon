@@ -1,4 +1,4 @@
-import { defineConfig } from "vite"
+import { defineConfig } from "vite-plus"
 
 const REQUIRE_POLYFILL = `import { createRequire } from "node:module"; const require = createRequire(import.meta.url);`
 

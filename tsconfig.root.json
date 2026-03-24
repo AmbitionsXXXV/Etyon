@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "noEmit": true
+  },
+  "files": ["vite.config.ts"]
+}

@@ -61,6 +61,7 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.oxc": "explicit"
   },
+  "oxc.fmt.configPath": "./vite.config.ts",
   "cSpell.words": ["jscoverage", "pids", "vuepress", "wscript"],
   "cSpell.ignorePaths": [
     "*-lock.*",
