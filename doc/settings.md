@@ -103,6 +103,7 @@ interface AiProviderConfig {
   baseURL: string
   enabled: boolean
   models: StoredProviderModel[]
+  region?: "china" | "international"
 }
 interface StoredProviderModel {
   capabilities?: {
@@ -126,8 +127,13 @@ interface StoredProviderModel {
 - Settings 左侧导航新增 `Providers` tab，当前只显示 `Moonshot` 与 `Z.AI Coding Plan`
 - 布局固定为双栏：
   - 左栏：搜索框 + provider 列表 `ScrollArea`
-  - 右栏：启用开关、`API Key`、`Base URL`、`Fetch`、models 搜索与勾选列表
+  - 右栏：启用开关、`API Key`、`Moonshot Region`（仅 Moonshot）、`Base URL`、`Fetch`、models 搜索与勾选列表
+- `Moonshot Region` 当前提供：
+  - `China (api.moonshot.cn)`
+  - `International (api.moonshot.ai)`
 - `Fetch` 通过主进程新增的 `oRPC providers.fetchModels` 发起真实请求，请求地址统一为 `GET {baseURL}/models`
+- `Moonshot` 会先根据 `region` 解析官方域名，再发起请求；如果用户填的是自定义代理域名，则保持用户输入不变
+- `Providers` section 优先保持外层内容区域不滚动，改由 provider 列表和 models 列表各自承担局部滚动
 - `Fetch` 只更新当前 settings draft：
   - `availableModels` 保存当前可见模型全集
   - `models` 保存当前启用模型子集
@@ -139,8 +145,12 @@ interface StoredProviderModel {
 - provider seed 模型由桌面端静态常量维护，不直接依赖根目录 `models.json` 这类示例响应文件
 - 旧 settings 或空 settings 在解析时会自动补齐新的 provider 配置：
   - `moonshot.baseURL = https://api.moonshot.cn/v1`
+  - `moonshot.region = china`
   - `zai-coding-plan.baseURL = https://api.z.ai/api/coding/paas/v4`
   - 两者的 `availableModels / models` 在字段缺失时会回填内建 seed 模型
+- 兼容旧版 Moonshot 配置时，会优先从已保存的 `baseURL` 推断 `region`：
+  - `https://api.moonshot.cn/...` → `china`
+  - `https://api.moonshot.ai/...` → `international`
 - 主进程抓取返回的模型会优先使用上游值；若 `capabilities` 缺失，则回退到对应 seed 模型能力数据
 
 ## 入口方式

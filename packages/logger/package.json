@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./core": "./src/core.ts",
     "./types": "./src/types.ts",
     "./renderer": "./src/renderer.ts"
   },

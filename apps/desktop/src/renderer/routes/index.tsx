@@ -11,8 +11,16 @@ const HOME_NOTICE_RESET_DELAY = 2400
 
 type HomeNoticeState = "hint" | "mocked"
 
-const handleOpenSettingsWindow = () => {
-  window.electron.ipcRenderer.send("open-settings")
+const openSettingsWindow = (tab?: string): void => {
+  window.electron.ipcRenderer.send("open-settings", tab)
+}
+
+const handleConfigureProviderClick = (): void => {
+  openSettingsWindow("providers")
+}
+
+const handleOpenSettingsClick = (): void => {
+  openSettingsWindow()
 }
 
 const HomePage = () => {
@@ -84,7 +92,7 @@ const HomePage = () => {
           <div className="flex gap-2">
             <Button
               className="h-12 flex-1 rounded-2xl text-sm font-semibold"
-              onClick={handleOpenSettingsWindow}
+              onClick={handleConfigureProviderClick}
               size="lg"
               variant="outline"
             >
@@ -93,7 +101,7 @@ const HomePage = () => {
 
             <Button
               className="h-12 flex-1 rounded-2xl text-sm font-semibold"
-              onClick={handleOpenSettingsWindow}
+              onClick={handleOpenSettingsClick}
               size="lg"
               variant="outline"
             >

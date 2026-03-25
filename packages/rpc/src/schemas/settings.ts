@@ -1,7 +1,11 @@
 import { LocalePreferenceSchema } from "@etyon/i18n"
 import * as z from "zod"
 
-import { BuiltInProviderIdSchema, StoredProviderModelSchema } from "./providers"
+import {
+  BuiltInProviderIdSchema,
+  MoonshotRegionSchema,
+  StoredProviderModelSchema
+} from "./providers"
 
 export const CustomThemeTypeSchema = z.enum(["dark", "light"])
 
@@ -56,7 +60,8 @@ export const AiProviderConfigSchema = z.object({
     .default(EMPTY_PROVIDER_MODELS),
   baseURL: z.string().default(""),
   enabled: z.boolean().default(true),
-  models: z.array(StoredProviderModelSchema).default(EMPTY_PROVIDER_MODELS)
+  models: z.array(StoredProviderModelSchema).default(EMPTY_PROVIDER_MODELS),
+  region: MoonshotRegionSchema.optional()
 })
 
 const ANTHROPIC_PROVIDER_CONFIG_DEFAULT = {
@@ -80,7 +85,8 @@ const MOONSHOT_PROVIDER_CONFIG_DEFAULT = {
   availableModels: EMPTY_PROVIDER_MODELS,
   baseURL: "https://api.moonshot.cn/v1",
   enabled: false,
-  models: EMPTY_PROVIDER_MODELS
+  models: EMPTY_PROVIDER_MODELS,
+  region: "china" as const
 }
 
 const OPENAI_PROVIDER_CONFIG_DEFAULT = {

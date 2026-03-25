@@ -34,11 +34,16 @@ const getWindowBehaviorSettings = (): WindowBehaviorSettings => {
   }
 }
 
-const loadRenderer = (win: BrowserWindow, query = "") => {
+const loadRenderer = (
+  win: BrowserWindow,
+  queryParams?: Record<string, string>
+) => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
-    if (query) {
-      url.searchParams.set("window", query)
+    if (queryParams) {
+      for (const [key, value] of Object.entries(queryParams)) {
+        url.searchParams.set(key, value)
+      }
     }
     win.loadURL(url.toString())
   } else {
@@ -46,7 +51,7 @@ const loadRenderer = (win: BrowserWindow, query = "") => {
       __dirname,
       `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`
     )
-    win.loadFile(filePath, query ? { query: { window: query } } : undefined)
+    win.loadFile(filePath, queryParams ? { query: queryParams } : undefined)
   }
 }
 
@@ -170,8 +175,11 @@ export const showMainWindow = () => {
   return window
 }
 
-export const createSettingsWindow = () => {
+export const createSettingsWindow = (tab?: string) => {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (tab) {
+      settingsWindow.webContents.send("settings-navigate-tab", tab)
+    }
     syncSettingsWindowTitle()
     settingsWindow.focus()
     return settingsWindow
@@ -182,11 +190,11 @@ export const createSettingsWindow = () => {
   settingsWindow = new BrowserWindow({
     ...(windowIcon ? { icon: windowIcon } : {}),
     ...(platform.isMacOS
-      ? { trafficLightPosition: { x: 12, y: 18 }, transparent: true }
+      ? { trafficLightPosition: { x: 16, y: 18 }, transparent: true }
       : { titleBarOverlay: { height: 36 } }),
     height: 720,
     maximizable: false,
-    minHeight: 392,
+    minHeight: 480,
     minWidth: 732,
     title: t("window.settings.title"),
     titleBarStyle: "hidden",
@@ -200,7 +208,14 @@ export const createSettingsWindow = () => {
 
   settingsWindow.center()
   applyLiquidGlass(settingsWindow)
-  loadRenderer(settingsWindow, "settings")
+
+  const queryParams: Record<string, string> = { window: "settings" }
+
+  if (tab) {
+    queryParams.tab = tab
+  }
+
+  loadRenderer(settingsWindow, queryParams)
 
   settingsWindow.on("closed", () => {
     const currentSettings = getSettings()

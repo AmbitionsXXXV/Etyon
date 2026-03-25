@@ -45,8 +45,8 @@ app.on("ready", async () => {
   setupMenu(appDisplayName)
   setupTray()
 
-  ipcMain.on("open-settings", () => {
-    createSettingsWindow()
+  ipcMain.on("open-settings", (_event, tab?: string) => {
+    createSettingsWindow(tab)
   })
 
   ipcMain.on(

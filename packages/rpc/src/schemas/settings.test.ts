@@ -9,7 +9,8 @@ describe("AppSettingsSchema", () => {
     expect(settings.ai.providers.moonshot).toMatchObject({
       apiKey: "",
       baseURL: "https://api.moonshot.cn/v1",
-      enabled: false
+      enabled: false,
+      region: "china"
     })
     expect(settings.ai.providers.moonshot.availableModels).toEqual([])
     expect(settings.ai.providers.moonshot.models).toEqual([])
@@ -38,6 +39,7 @@ describe("AppSettingsSchema", () => {
     expect(settings.ai.providers.moonshot.baseURL).toBe(
       "https://api.moonshot.cn/v1"
     )
+    expect(settings.ai.providers.moonshot.region).toBe("china")
     expect(settings.ai.providers["zai-coding-plan"].baseURL).toBe(
       "https://api.z.ai/api/coding/paas/v4"
     )

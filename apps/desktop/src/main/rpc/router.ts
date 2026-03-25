@@ -9,27 +9,31 @@ import {
   ServerUrlOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
-import { os } from "@orpc/server"
 import { BrowserWindow } from "electron"
 
 import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
-import { getServerUrl } from "@/main/server"
+import { rpc } from "@/main/rpc/context"
+import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 
-const loggerEmit = os.input(LogEventSchema).handler(({ input }) => {
-  const enriched = enrichLogEvent(input)
+const loggerEmit = rpc.input(LogEventSchema).handler(({ context, input }) => {
+  const enriched = enrichLogEvent({
+    ...input,
+    request_id: context.requestId ?? input.request_id,
+    transport: context.transport
+  })
   dispatch(enriched)
 })
 
-const fontsList = os
+const fontsList = rpc
   .output(FontListOutputSchema)
   .handler(() => listSystemFonts())
 
-const ping = os
+const ping = rpc
   .input(PingInputSchema)
   .output(PingOutputSchema)
   .handler(({ input }) => ({
@@ -38,14 +42,14 @@ const ping = os
     timestamp: new Date().toISOString()
   }))
 
-const providersFetchModels = os
+const providersFetchModels = rpc
   .input(ProviderFetchModelsInputSchema)
   .output(ProviderFetchModelsOutputSchema)
   .handler(({ input }) => fetchProviderModels(input))
 
-const settingsGet = os.output(AppSettingsSchema).handler(() => getSettings())
+const settingsGet = rpc.output(AppSettingsSchema).handler(() => getSettings())
 
-const settingsUpdate = os
+const settingsUpdate = rpc
   .input(UpdateSettingsSchema)
   .output(AppSettingsSchema)
   .handler(({ input }) => {
@@ -63,7 +67,7 @@ const settingsUpdate = os
     return result
   })
 
-const serverGetUrl = os
+const serverGetUrl = rpc
   .output(ServerUrlOutputSchema)
   .handler(() => ({ url: getServerUrl() }))
 

@@ -230,6 +230,14 @@
         "baseUrl": {
           "description": "Default: {{defaultBaseURL}} · Upstream Models API: {{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "region": {
+          "description": "Switch the official Moonshot domain used by the default Base URL.",
+          "label": "Region",
+          "option": {
+            "china": "China (api.moonshot.cn)",
+            "international": "International (api.moonshot.ai)"
+          }
         }
       },
       "list": {

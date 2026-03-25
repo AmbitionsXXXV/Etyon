@@ -1,13 +1,11 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
     "allowJs": true,
-    "skipLibCheck": true,
     "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "noImplicitAny": true,
-    "sourceMap": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@etyon/i18n": ["../../packages/i18n/src/index.ts"],
@@ -26,10 +24,12 @@
       "@renderer/*": ["./src/renderer/*"]
     },
     "outDir": "dist",
-    "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
     "strictNullChecks": true,
-    "jsx": "react-jsx"
+    "target": "ESNext",
+    "types": ["node", "vite-plus/client"]
   },
   "include": ["src/**/*", "forge.env.d.ts"]
 }

@@ -2,6 +2,8 @@ import { is, platform } from "@electron-toolkit/utils"
 import type { AppSettings } from "@etyon/rpc"
 import { app } from "electron"
 
+import { logger } from "@/main/logger"
+
 const START_MINIMIZED_TO_TRAY_ARG = "--start-minimized-to-tray" as const
 
 export type StartupSettings = Pick<
@@ -63,6 +65,10 @@ export const syncStartupSettings = (settings: StartupSettings) => {
       openAtLogin: settings.autoStart
     })
   } catch (error) {
-    console.warn("[startup] Failed to sync login item settings.", error)
+    logger.error("startup_sync_failed", {
+      auto_start: settings.autoStart,
+      error,
+      start_minimized_to_tray: settings.startMinimizedToTray
+    })
   }
 }

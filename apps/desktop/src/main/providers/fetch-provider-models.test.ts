@@ -14,7 +14,8 @@ describe("fetchProviderModels", () => {
         provider: {
           apiKey: "  ",
           baseURL: "https://api.moonshot.cn/v1",
-          providerId: "moonshot"
+          providerId: "moonshot",
+          region: "china"
         }
       })
     ).rejects.toThrow("API Key is required before fetching models.")
@@ -65,5 +66,30 @@ describe("fetchProviderModels", () => {
         name: "GLM 5"
       })
     ])
+  })
+
+  it("switches the moonshot models endpoint according to region", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: [] }))
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    await fetchProviderModels({
+      provider: {
+        apiKey: "msk-test",
+        baseURL: "https://api.moonshot.cn/v1",
+        providerId: "moonshot",
+        region: "international"
+      }
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.moonshot.ai/v1/models",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer msk-test"
+        }),
+        method: "GET"
+      })
+    )
   })
 })

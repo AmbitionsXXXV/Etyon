@@ -261,6 +261,34 @@ export const useSettingsPageDraft = () => {
       }),
     []
   )
+
+  const handleAiProviderEnabledChange = useCallback(
+    (providerId: AiProviderName, enabled: boolean) => {
+      const { current } = draftRef
+
+      if (!current) {
+        return
+      }
+
+      const nextSettings: AppSettings = {
+        ...current,
+        ai: {
+          ...current.ai,
+          providers: {
+            ...current.ai.providers,
+            [providerId]: {
+              ...current.ai.providers[providerId],
+              enabled
+            }
+          }
+        }
+      }
+
+      setDraft(nextSettings)
+      updateMutation.mutate(nextSettings)
+    },
+    [updateMutation]
+  )
   const handleLocaleChange = useCallback(
     (v: LocalePreference) => updateDraftRef.current("locale", v),
     []
@@ -293,6 +321,7 @@ export const useSettingsPageDraft = () => {
   return {
     draft,
     handleAiProviderConfigChange,
+    handleAiProviderEnabledChange,
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,

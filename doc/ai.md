@@ -6,13 +6,13 @@
 
 ## Provider 支持
 
-| Provider   | 包                  | Model ID 格式                         | 认证方式           |
-| ---------- | ------------------- | ------------------------------------- | ------------------ |
-| OpenAI     | `@ai-sdk/openai`    | `openai/gpt-5.4`                      | API Key            |
-| Anthropic  | `@ai-sdk/anthropic` | `anthropic/claude-sonnet-4-5`         | API Key            |
-| AI Gateway | `ai`（内置）        | `gateway/anthropic/claude-sonnet-4-5` | AI Gateway API Key |
-| Moonshot   | `@ai-sdk/openai`    | `moonshot/kimi-k2.5`                  | API Key            |
-| Z.AI Coding Plan | `@ai-sdk/openai` | `zai-coding-plan/glm-5`           | API Key            |
+| Provider         | 包                  | Model ID 格式                         | 认证方式           |
+| ---------------- | ------------------- | ------------------------------------- | ------------------ |
+| OpenAI           | `@ai-sdk/openai`    | `openai/gpt-5.4`                      | API Key            |
+| Anthropic        | `@ai-sdk/anthropic` | `anthropic/claude-sonnet-4-5`         | API Key            |
+| AI Gateway       | `ai`（内置）        | `gateway/anthropic/claude-sonnet-4-5` | AI Gateway API Key |
+| Moonshot         | `@ai-sdk/openai`    | `moonshot/kimi-k2.5`                  | API Key            |
+| Z.AI Coding Plan | `@ai-sdk/openai`    | `zai-coding-plan/glm-5`               | API Key            |
 
 ## 配置
 
@@ -49,6 +49,7 @@ AI 配置存储在 `electron-store` 的 `settings.ai` 字段中：
         apiKey: "",
         baseURL: "https://api.moonshot.cn/v1",
         enabled: false,
+        region: "china",
         availableModels: [...seededFromProviderCatalog],
         models: [...seededFromProviderCatalog]
       },
@@ -150,7 +151,8 @@ const ChatComponent = () => {
 - 建模前会检查：
   - `enabled === true`
   - `apiKey` 已填写
-- `baseURL` 默认值来自 settings schema + provider catalog，可在 Settings 的 `Providers` tab 中覆盖
+- `moonshot.region` 支持 `china` / `international`，会驱动官方默认域名在 `api.moonshot.cn` 与 `api.moonshot.ai` 之间切换
+- `baseURL` 默认值来自 settings schema + provider catalog，可在 Settings 的 `Providers` tab 中覆盖；若仍使用 Moonshot 官方域名，切换 `region` 会同步替换域名
 
 ## Provider Models Fetch
 
@@ -158,8 +160,9 @@ Settings 页的 `Providers` tab 通过新增的 `oRPC providers.fetchModels` 在
 
 ```text
 Renderer (ProvidersTab draft)
-  ↓ providers.fetchModels({ providerId, apiKey, baseURL })
+  ↓ providers.fetchModels({ providerId, apiKey, baseURL, region? })
 Main Process
+  ↓ resolve region-aware baseURL
   ↓ GET {baseURL}/models
 normalizeModelsPayload()
   ↓ merge seed capabilities from provider seed catalog
@@ -179,13 +182,13 @@ Renderer draft.availableModels / draft.models
 
 ## 涉及文件
 
-| 文件                                            | 说明                                     |
-| ----------------------------------------------- | ---------------------------------------- |
-| `apps/desktop/src/main/server/routes/chat.ts`   | Chat 流式对话端点                        |
-| `apps/desktop/src/main/server/lib/providers.ts` | AI Provider 工厂                         |
-| `apps/desktop/src/main/providers/fetch-provider-models.ts` | provider models 抓取与归一化 |
-| `apps/desktop/src/shared/providers/provider-catalog.ts` | 内建 provider catalog 与 seed 挂载 |
-| `apps/desktop/src/shared/providers/provider-seed-models.ts` | 内建 provider seed 模型静态定义 |
-| `apps/desktop/src/renderer/lib/ai/transport.ts` | Renderer 端 Chat Transport               |
-| `packages/rpc/src/schemas/settings.ts`          | AI Settings Schema（`AiSettingsSchema`） |
-| `packages/rpc/src/schemas/providers.ts`         | Provider / Model 共享 schema             |
+| 文件                                                        | 说明                                     |
+| ----------------------------------------------------------- | ---------------------------------------- |
+| `apps/desktop/src/main/server/routes/chat.ts`               | Chat 流式对话端点                        |
+| `apps/desktop/src/main/server/lib/providers.ts`             | AI Provider 工厂                         |
+| `apps/desktop/src/main/providers/fetch-provider-models.ts`  | provider models 抓取与归一化             |
+| `apps/desktop/src/shared/providers/provider-catalog.ts`     | 内建 provider catalog 与 seed 挂载       |
+| `apps/desktop/src/shared/providers/provider-seed-models.ts` | 内建 provider seed 模型静态定义          |
+| `apps/desktop/src/renderer/lib/ai/transport.ts`             | Renderer 端 Chat Transport               |
+| `packages/rpc/src/schemas/settings.ts`                      | AI Settings Schema（`AiSettingsSchema`） |
+| `packages/rpc/src/schemas/providers.ts`                     | Provider / Model 共享 schema             |

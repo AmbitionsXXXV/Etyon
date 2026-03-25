@@ -1,13 +1,12 @@
-import path from "node:path"
-
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { AppSettings } from "@etyon/rpc"
 import { app } from "electron"
 import ElectronStore from "electron-store"
 
+import { getAppConfigDir } from "@/main/db/libsql-paths"
 import { hydrateAiSettingsProviders } from "@/shared/providers/provider-catalog"
 
-const SETTINGS_DIR = path.join(app.getPath("home"), ".config", "etyon")
+const SETTINGS_DIR = getAppConfigDir(app.getPath("home"))
 
 const parseStoredSettings = (value: unknown): AppSettings => {
   const parsedSettings = AppSettingsSchema.parse(value ?? {})

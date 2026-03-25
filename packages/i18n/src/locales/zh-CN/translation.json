@@ -230,6 +230,14 @@
         "baseUrl": {
           "description": "默认地址：{{defaultBaseURL}} · 上游 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "region": {
+          "description": "切换 Moonshot 官方域名时，会同步更新默认 Base URL。",
+          "label": "Region",
+          "option": {
+            "china": "中国站 (api.moonshot.cn)",
+            "international": "国际站 (api.moonshot.ai)"
+          }
         }
       },
       "list": {

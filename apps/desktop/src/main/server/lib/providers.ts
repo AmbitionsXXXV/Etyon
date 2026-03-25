@@ -5,7 +5,7 @@ import type { BuiltInProviderId } from "@etyon/rpc"
 import type { LanguageModel } from "ai"
 
 import { getSettings } from "@/main/settings"
-import { getProviderCatalogEntry } from "@/shared/providers/provider-catalog"
+import { resolveProviderBaseURL } from "@/shared/providers/provider-catalog"
 
 type ProviderName = BuiltInProviderId
 
@@ -78,7 +78,7 @@ const createProviderModel = (
     }
     case "moonshot": {
       return createOpenAICompatibleModel(
-        providerConfig.baseURL || getProviderCatalogEntry(provider).baseURL
+        resolveProviderBaseURL(provider, providerConfig)
       )
     }
     case "openai": {
@@ -86,7 +86,7 @@ const createProviderModel = (
     }
     case "zai-coding-plan": {
       return createOpenAICompatibleModel(
-        providerConfig.baseURL || getProviderCatalogEntry(provider).baseURL
+        resolveProviderBaseURL(provider, providerConfig)
       )
     }
     default: {

@@ -6,19 +6,15 @@ catalog:
   "@hugeicons/core-free-icons": ^4.0.0
   "@hugeicons/react": ^1.1.6
   "@tailwindcss/vite": ^4.2.2
+  "@types/node": ^25.5.0
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   react: ^19.2.4
   react-dom: ^19.2.4
   tailwindcss: ^4.2.2
-  typescript: ^5.9.3
+  typescript: ^6.0.2
   zod: ^4.3.6
-  vite: npm:@voidzero-dev/vite-plus-core@latest
-  vitest: npm:@voidzero-dev/vite-plus-test@latest
   vite-plus: latest
-overrides:
-  vite: "catalog:"
-  vitest: "catalog:"
 peerDependencyRules:
   allowAny:
     - vite

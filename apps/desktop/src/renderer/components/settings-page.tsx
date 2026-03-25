@@ -9,10 +9,11 @@ import {
   SidebarProvider
 } from "@etyon/ui/components/sidebar"
 import { Skeleton } from "@etyon/ui/components/skeleton"
+import { cn } from "@etyon/ui/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AnimatePresence, motion } from "motion/react"
 import type { CSSProperties } from "react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { AppSidebarShell } from "@/renderer/components/app-sidebar"
 import {
@@ -55,6 +56,23 @@ interface SettingsNavItem {
   icon: (typeof SETTINGS_NAV_ENTRIES)[number]["icon"]
   id: SettingsSectionId
   label: string
+}
+
+const SETTINGS_SECTION_IDS = new Set<string>([
+  "color-schema",
+  "general",
+  "providers",
+  "user-interface"
+])
+
+const resolveInitialSection = (): SettingsSectionId => {
+  const tabParam = new URLSearchParams(window.location.search).get("tab")
+
+  if (tabParam && SETTINGS_SECTION_IDS.has(tabParam)) {
+    return tabParam as SettingsSectionId
+  }
+
+  return "general"
 }
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[72px]"
@@ -123,12 +141,27 @@ export const SettingsPage = ({
   isStandaloneWindow = false
 }: SettingsPageProps) => {
   const { t } = useI18n()
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("general")
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
+    resolveInitialSection
+  )
+
+  useEffect(() => {
+    const removeListener = window.electron.ipcRenderer.on(
+      "settings-navigate-tab",
+      (_: unknown, tab: string) => {
+        if (SETTINGS_SECTION_IDS.has(tab)) {
+          setActiveSection(tab as SettingsSectionId)
+        }
+      }
+    )
+
+    return removeListener
+  }, [])
 
   const {
     draft,
     handleAiProviderConfigChange,
+    handleAiProviderEnabledChange,
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
@@ -177,6 +210,7 @@ export const SettingsPage = ({
     () => buildLightColorSchemaOptions(t),
     [t]
   )
+  const isProvidersSection = activeSection === "providers"
   const layoutStyle = useMemo(
     () => getSettingsPageLayoutStyle(isStandaloneWindow),
     [isStandaloneWindow]
@@ -246,11 +280,21 @@ export const SettingsPage = ({
 
       <SidebarInset className="min-h-0 overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto p-6">
+          <div
+            className={cn(
+              "min-h-0 flex-1",
+              isProvidersSection ? "overflow-hidden" : "overflow-y-auto"
+            )}
+          >
+            <div
+              className={cn(
+                "mx-auto p-6",
+                isProvidersSection && "flex h-full min-h-0 flex-col"
+              )}
+            >
               <motion.h1
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-6 text-lg font-semibold"
+                className="mb-6 shrink-0 text-lg font-semibold"
                 initial={{ opacity: 0, y: -8 }}
                 key={activeSection}
                 transition={{
@@ -368,10 +412,13 @@ export const SettingsPage = ({
               )}
 
               {activeSection === "providers" && (
-                <ProvidersTab
-                  aiSettings={draft.ai}
-                  onProviderConfigChange={handleAiProviderConfigChange}
-                />
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <ProvidersTab
+                    aiSettings={draft.ai}
+                    onProviderConfigChange={handleAiProviderConfigChange}
+                    onProviderEnabledChange={handleAiProviderEnabledChange}
+                  />
+                </div>
               )}
 
               {activeSection === "user-interface" && (

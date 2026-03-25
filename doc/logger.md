@@ -13,6 +13,9 @@
 
 Main 进程的日志收集器（`apps/desktop/src/main/logger.ts`）因依赖 Electron API（`app`、`ipcMain`、`fs`），保留在 desktop 应用内部。
 
+Main 进程业务代码应优先调用 `@/main/logger` 暴露的 `logger.info()`、`logger.debug()`、`logger.critical()`，避免直接使用 `console.log()`。
+需要表达错误语义时，优先使用 `logger.error()`；它当前会映射到内部 `critical` 级别，兼顾现有事件 schema 与更直观的调用方式。
+
 ## 架构
 
 ```text
@@ -20,12 +23,13 @@ Renderer (Logger SDK — @etyon/logger/renderer)
   ↓ IPC: log:emit
 Preload (contextBridge)
   ↓
-Main (Log Collector → FileTransport / RemoteTransport)
+Main (Log Collector → StreamTransport / FileTransport / RemoteTransport)
 ```
 
 - **Renderer 层**：`logger` 单例，业务代码调用 `startEvent()` 构建 wide event
 - **Preload 层**：通过 `contextBridge.exposeInMainWorld("etyonLogger", ...)` 暴露安全的 IPC 通道
 - **Main 层**：监听 `log:emit`，注入环境上下文，写入本地文件
+- **Main 层输出流**：主进程统一将结构化日志同时写入本地 `.jsonl` 文件与 `stdout` / `stderr`，便于在开发终端直接观察日志
 
 ## 日志级别
 
@@ -72,6 +76,35 @@ import { logger } from "@etyon/logger/renderer"
 logger.info("page_view", { path: "/home", referrer: "/login" })
 logger.debug("component_render", { component: "UserList", count: 42 })
 logger.critical("unhandled_error", { message: error.message })
+logger.error("unhandled_error", { message: error.message })
+```
+
+### 宽事件 Builder
+
+主进程与 Renderer 端都支持 `startEvent()`，适合把一次请求或一次流程收敛成一条完整日志：
+
+```typescript
+const requestLog = logger.startEvent("http_request", {
+  method: "POST",
+  path: "/api/chat",
+  request_id: requestId
+})
+
+try {
+  await next()
+  requestLog.merge({
+    outcome: "success",
+    status_code: 200
+  })
+  requestLog.info()
+} catch (error) {
+  requestLog.merge({
+    error,
+    outcome: "error",
+    status_code: 500
+  })
+  requestLog.error()
+}
 ```
 
 ### 类型引用
@@ -82,12 +115,13 @@ import type { LogEvent, LogLevel, LogTransport } from "@etyon/logger/types"
 
 ## 涉及文件
 
-| 包/应用          | 文件                   | 说明                   |
-| ---------------- | ---------------------- | ---------------------- |
-| `@etyon/logger`  | `src/types.ts`         | 日志事件类型定义       |
-| `@etyon/logger`  | `src/renderer.ts`      | Renderer 端 Logger SDK |
-| `@etyon/desktop` | `src/main/logger.ts`   | Main 进程日志收集器    |
-| `@etyon/desktop` | `src/preload/index.ts` | Preload IPC bridge     |
+| 包/应用          | 文件                   | 说明                                  |
+| ---------------- | ---------------------- | ------------------------------------- |
+| `@etyon/logger`  | `src/core.ts`          | 通用 Logger 工厂与 wide event builder |
+| `@etyon/logger`  | `src/types.ts`         | 日志事件类型定义                      |
+| `@etyon/logger`  | `src/renderer.ts`      | Renderer 端 Logger SDK                |
+| `@etyon/desktop` | `src/main/logger.ts`   | Main 进程日志收集器                   |
+| `@etyon/desktop` | `src/preload/index.ts` | Preload IPC bridge                    |
 
 ## 扩展点
 

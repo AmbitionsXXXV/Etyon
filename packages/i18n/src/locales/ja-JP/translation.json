@@ -230,6 +230,14 @@
         "baseUrl": {
           "description": "既定値：{{defaultBaseURL}} · 上流 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "region": {
+          "description": "既定の Base URL で使う Moonshot 公式ドメインを切り替えます。",
+          "label": "Region",
+          "option": {
+            "china": "China (api.moonshot.cn)",
+            "international": "International (api.moonshot.ai)"
+          }
         }
       },
       "list": {

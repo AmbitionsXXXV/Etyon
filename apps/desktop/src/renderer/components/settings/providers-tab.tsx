@@ -3,6 +3,7 @@ import { useI18n } from "@etyon/i18n/react"
 import type {
   AiProviderConfig,
   AiSettings,
+  MoonshotRegion,
   ProviderFetchModelsOutput,
   StoredProviderModel
 } from "@etyon/rpc"
@@ -10,6 +11,14 @@ import { Button } from "@etyon/ui/components/button"
 import { Checkbox } from "@etyon/ui/components/checkbox"
 import { Input } from "@etyon/ui/components/input"
 import { ScrollArea } from "@etyon/ui/components/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@etyon/ui/components/select"
 import { Switch } from "@etyon/ui/components/switch"
 import { cn } from "@etyon/ui/lib/utils"
 import { Search01Icon } from "@hugeicons/core-free-icons"
@@ -21,6 +30,10 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { rpcClient } from "@/renderer/lib/rpc"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
+import {
+  getDefaultMoonshotBaseURL,
+  resolveMoonshotBaseURL
+} from "@/shared/providers/moonshot-region"
 import { getSettingsTabProviders } from "@/shared/providers/provider-catalog"
 import type { SettingsTabProviderId } from "@/shared/providers/provider-catalog"
 
@@ -36,6 +49,11 @@ const PROVIDER_DESCRIPTION_KEY_BY_ID: Record<
   moonshot: "settings.providers.provider.moonshot.description",
   "zai-coding-plan": "settings.providers.provider.zaiCodingPlan.description"
 }
+
+const MOONSHOT_REGION_OPTIONS: readonly MoonshotRegion[] = [
+  "china",
+  "international"
+]
 
 const createFetchStateMap = (): Record<
   SettingsTabProviderId,
@@ -193,7 +211,8 @@ const ProviderModelItem = ({
 
 export const ProvidersTab = ({
   aiSettings,
-  onProviderConfigChange
+  onProviderConfigChange,
+  onProviderEnabledChange
 }: {
   aiSettings: AiSettings
   onProviderConfigChange: (
@@ -201,6 +220,10 @@ export const ProvidersTab = ({
     updater:
       | AiProviderConfig
       | ((previousProvider: AiProviderConfig) => AiProviderConfig)
+  ) => void
+  onProviderEnabledChange: (
+    providerId: SettingsTabProviderId,
+    enabled: boolean
   ) => void
 }) => {
   const { t } = useI18n()
@@ -267,7 +290,8 @@ export const ProvidersTab = ({
         provider: {
           apiKey: aiSettings.providers[providerId].apiKey,
           baseURL: aiSettings.providers[providerId].baseURL,
-          providerId
+          providerId,
+          region: aiSettings.providers[providerId].region
         }
       }),
     onError: (error, providerId) => {
@@ -357,12 +381,10 @@ export const ProvidersTab = ({
   )
 
   const handleEnabledChange = useCallback(
-    (checked: boolean) =>
-      handleProviderFieldChange(activeProvider.id, (previousProvider) => ({
-        ...previousProvider,
-        enabled: checked
-      })),
-    [activeProvider.id, handleProviderFieldChange]
+    (checked: boolean) => {
+      onProviderEnabledChange(activeProvider.id, checked)
+    },
+    [activeProvider.id, onProviderEnabledChange]
   )
 
   const handleToggleApiKeyVisibility = useCallback(() => {
@@ -388,6 +410,23 @@ export const ProvidersTab = ({
         ...previousProvider,
         baseURL: event.target.value
       })),
+    [activeProvider.id, handleProviderFieldChange]
+  )
+
+  const handleMoonshotRegionChange = useCallback(
+    (value: string) => {
+      if (activeProvider.id !== "moonshot") {
+        return
+      }
+
+      const region = value as MoonshotRegion
+
+      handleProviderFieldChange("moonshot", (previousProvider) => ({
+        ...previousProvider,
+        baseURL: resolveMoonshotBaseURL(previousProvider.baseURL, region),
+        region
+      }))
+    },
     [activeProvider.id, handleProviderFieldChange]
   )
 
@@ -436,25 +475,20 @@ export const ProvidersTab = ({
       ? "settings.providers.actions.hideApiKey"
       : "settings.providers.actions.showApiKey"
   )
+  const defaultBaseURL =
+    activeProvider.id === "moonshot"
+      ? getDefaultMoonshotBaseURL(activeProviderConfig.region)
+      : activeProvider.baseURL
 
   return (
     <motion.section
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-5"
+      className="flex h-full min-h-0 flex-1 flex-col"
       initial={{ opacity: 0, y: 6 }}
       transition={{ duration: 0.28, ease: SETTINGS_PAGE_EASE_CURVE }}
     >
-      <div className="space-y-1">
-        <h2 className="text-sm font-semibold">
-          {t("settings.providers.title")}
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          {t("settings.providers.description")}
-        </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-[14.5rem_minmax(0,1fr)]">
-        <div className="flex min-h-120 flex-col rounded-2xl border border-border bg-card/80 p-3">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden md:grid-cols-[14.5rem_minmax(0,1fr)]">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/80 p-3">
           <SearchInput
             onChange={handleProviderSearchChange}
             placeholder={t("settings.providers.search")}
@@ -472,10 +506,14 @@ export const ProvidersTab = ({
               {filteredProviders.map((provider) => {
                 const providerConfig = aiSettings.providers[provider.id]
                 const isActive = provider.id === activeProvider.id
-                const statusClassName =
-                  providerConfig.enabled && providerConfig.apiKey.trim()
-                    ? "bg-primary"
-                    : "bg-muted-foreground/40"
+                let statusClassName = "bg-muted-foreground/40"
+
+                if (providerConfig.enabled && providerConfig.apiKey.trim()) {
+                  statusClassName = "bg-primary"
+                } else if (providerConfig.enabled) {
+                  statusClassName = "bg-amber-400"
+                }
+
                 let summary = t("settings.providers.list.noEnabledModels")
 
                 if (providerConfig.models.length > 0) {
@@ -502,135 +540,180 @@ export const ProvidersTab = ({
 
         <motion.div
           animate={{ opacity: 1, y: 0 }}
-          className="flex min-h-120 flex-col rounded-2xl border border-border bg-card/80 p-4"
+          className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/80 p-4"
           initial={{ opacity: 0, y: 8 }}
           key={activeProvider.id}
           transition={{ duration: 0.22, ease: SETTINGS_PAGE_EASE_CURVE }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold">
-                  {activeProvider.name}
-                </h3>
-                <StatusPill
-                  isEnabled={activeProviderConfig.enabled}
-                  label={t(
-                    activeProviderConfig.enabled
-                      ? "settings.providers.status.enabled"
-                      : "settings.providers.status.disabled"
-                  )}
-                />
-              </div>
-              <p className="max-w-xl text-xs text-muted-foreground">
-                {t(PROVIDER_DESCRIPTION_KEY_BY_ID[activeProvider.id])}
-              </p>
-            </div>
-
-            <Switch
-              checked={activeProviderConfig.enabled}
-              onCheckedChange={handleEnabledChange}
-            />
-          </div>
-
-          <div
-            className={cn(
-              "mt-4 rounded-xl border px-3 py-2 text-xs",
-              statusPanelClassName
-            )}
-          >
-            {providerStatusMessage}
-          </div>
-
-          <div className="mt-5 space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium">
-                  {t("settings.providers.fields.apiKey.label")}
-                </label>
-                <Button
-                  onClick={handleToggleApiKeyVisibility}
-                  size="xs"
-                  type="button"
-                  variant="ghost"
-                >
-                  {apiKeyVisibilityLabel}
-                </Button>
-              </div>
-              <Input
-                onChange={handleApiKeyInputChange}
-                placeholder={t("settings.providers.fields.apiKey.placeholder")}
-                type={isApiKeyVisible ? "text" : "password"}
-                value={activeProviderConfig.apiKey}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-medium">
-                {t("settings.providers.fields.baseUrl.label")}
-              </label>
-              <Input
-                onChange={handleBaseURLInputChange}
-                value={activeProviderConfig.baseURL}
-              />
-              <p className="text-[0.6875rem] leading-5 text-muted-foreground">
-                {t("settings.providers.fields.baseUrl.description", {
-                  defaultBaseURL: activeProvider.baseURL,
-                  upstreamModelsApi: activeProvider.upstreamModelsApi
-                })}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-background/50 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-sm font-semibold">
-                  {t("settings.providers.models.title")}
-                </h4>
-                <p className="pt-1 text-[0.6875rem] text-muted-foreground">
-                  {t("settings.providers.models.description")}
+          <div className="shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-semibold">
+                    {activeProvider.name}
+                  </h3>
+                  <StatusPill
+                    isEnabled={activeProviderConfig.enabled}
+                    label={t(
+                      activeProviderConfig.enabled
+                        ? "settings.providers.status.enabled"
+                        : "settings.providers.status.disabled"
+                    )}
+                  />
+                </div>
+                <p className="max-w-xl text-xs text-muted-foreground">
+                  {t(PROVIDER_DESCRIPTION_KEY_BY_ID[activeProvider.id])}
                 </p>
               </div>
-              <Button
-                disabled={
-                  fetchModelsMutation.isPending || !activeProviderConfig.apiKey
-                }
-                onClick={handleFetchClick}
-                type="button"
-                variant="outline"
-              >
-                {fetchButtonLabel}
-              </Button>
-            </div>
 
-            <div className="pt-3">
-              <SearchInput
-                onChange={handleModelSearchChange}
-                placeholder={t("settings.providers.models.search")}
-                value={modelSearchValue}
+              <Switch
+                checked={activeProviderConfig.enabled}
+                onCheckedChange={handleEnabledChange}
               />
             </div>
-
-            <ScrollArea className="mt-3 min-h-0 flex-1">
-              <div className="space-y-2 pr-2">
-                {filteredModels.length === 0 && (
-                  <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                    {t("settings.providers.models.empty")}
-                  </div>
-                )}
-
-                {filteredModels.map((model) => (
-                  <ProviderModelItem
-                    isChecked={selectedModelIds.has(model.id)}
-                    key={model.id}
-                    model={model}
-                    onCheckedChange={handleModelCheckedChange}
-                  />
-                ))}
-              </div>
-            </ScrollArea>
           </div>
+
+          <ScrollArea className="mt-5 min-h-0 flex-1 px-2">
+            <div className="space-y-5 pr-2">
+              <div
+                className={cn(
+                  "rounded-xl border px-3 py-2 text-xs",
+                  statusPanelClassName
+                )}
+              >
+                {providerStatusMessage}
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-xs font-medium">
+                      {t("settings.providers.fields.apiKey.label")}
+                    </label>
+                    <Button
+                      onClick={handleToggleApiKeyVisibility}
+                      size="xs"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {apiKeyVisibilityLabel}
+                    </Button>
+                  </div>
+                  <Input
+                    onChange={handleApiKeyInputChange}
+                    placeholder={t(
+                      "settings.providers.fields.apiKey.placeholder"
+                    )}
+                    type={isApiKeyVisible ? "text" : "password"}
+                    value={activeProviderConfig.apiKey}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  {activeProvider.id === "moonshot" && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium">
+                        {t("settings.providers.fields.region.label")}
+                      </label>
+                      <Select
+                        onValueChange={handleMoonshotRegionChange}
+                        value={activeProviderConfig.region ?? "china"}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue>
+                            {t(
+                              `settings.providers.fields.region.option.${activeProviderConfig.region ?? "china"}` as TranslationKey
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {MOONSHOT_REGION_OPTIONS.map((region) => (
+                              <SelectItem key={region} value={region}>
+                                {t(
+                                  `settings.providers.fields.region.option.${region}` as TranslationKey
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[0.6875rem] leading-5 text-muted-foreground">
+                        {t("settings.providers.fields.region.description")}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium">
+                      {t("settings.providers.fields.baseUrl.label")}
+                    </label>
+                    <Input
+                      onChange={handleBaseURLInputChange}
+                      value={activeProviderConfig.baseURL}
+                    />
+                    <p className="text-[0.6875rem] leading-5 text-muted-foreground">
+                      {t("settings.providers.fields.baseUrl.description", {
+                        defaultBaseURL,
+                        upstreamModelsApi: activeProvider.upstreamModelsApi
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex min-h-48 flex-col rounded-2xl border border-border bg-background/50 p-3">
+                <div className="shrink-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold">
+                        {t("settings.providers.models.title")}
+                      </h4>
+                      <p className="pt-1 text-[0.6875rem] text-muted-foreground">
+                        {t("settings.providers.models.description")}
+                      </p>
+                    </div>
+                    <Button
+                      disabled={
+                        fetchModelsMutation.isPending ||
+                        !activeProviderConfig.apiKey
+                      }
+                      onClick={handleFetchClick}
+                      type="button"
+                      variant="outline"
+                    >
+                      {fetchButtonLabel}
+                    </Button>
+                  </div>
+
+                  <div className="pt-3">
+                    <SearchInput
+                      onChange={handleModelSearchChange}
+                      placeholder={t("settings.providers.models.search")}
+                      value={modelSearchValue}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {filteredModels.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                      {t("settings.providers.models.empty")}
+                    </div>
+                  )}
+
+                  {filteredModels.map((model) => (
+                    <ProviderModelItem
+                      isChecked={selectedModelIds.has(model.id)}
+                      key={model.id}
+                      model={model}
+                      onCheckedChange={handleModelCheckedChange}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
         </motion.div>
       </div>
     </motion.section>

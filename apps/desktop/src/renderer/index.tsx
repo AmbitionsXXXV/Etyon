@@ -24,8 +24,13 @@ initLogger((event) => {
   rpcClient.logger.emit(event)
 })
 
+const params = new URLSearchParams(window.location.search)
+const isSettingsWindow = params.get("window") === "settings"
+
 window.electron.ipcRenderer.on("liquid-glass-active", () => {
-  document.documentElement.dataset.liquidGlass = ""
+  if (!isSettingsWindow) {
+    document.documentElement.dataset.liquidGlass = ""
+  }
 })
 
 const getSystemLocale = () =>
@@ -38,9 +43,6 @@ const loadInitialSettings = async (): Promise<AppSettings> => {
     return AppSettingsSchema.parse({})
   }
 }
-
-const params = new URLSearchParams(window.location.search)
-const isSettingsWindow = params.get("window") === "settings"
 
 const root = document.querySelector("#root")
 

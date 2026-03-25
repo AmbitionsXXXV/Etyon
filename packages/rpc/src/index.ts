@@ -3,6 +3,7 @@ export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
 export {
   BuiltInProviderIdSchema,
+  MoonshotRegionSchema,
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
   StoredProviderModelCapabilitiesSchema,
@@ -10,6 +11,7 @@ export {
 } from "./schemas/providers"
 export type {
   BuiltInProviderId,
+  MoonshotRegion,
   ProviderFetchModelsInput,
   ProviderFetchModelsOutput,
   StoredProviderModel,

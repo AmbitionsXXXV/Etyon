@@ -42,6 +42,7 @@ describe("provider-catalog", () => {
     expect(hydratedAiSettings.providers.moonshot.baseURL).toBe(
       "https://api.moonshot.cn/v1"
     )
+    expect(hydratedAiSettings.providers.moonshot.region).toBe("china")
     expect(
       hydratedAiSettings.providers.moonshot.availableModels.map(({ id }) => id)
     ).toEqual(["kimi-k2.5"])
@@ -53,5 +54,30 @@ describe("provider-catalog", () => {
     expect(
       hydratedAiSettings.providers["zai-coding-plan"].models.map(({ id }) => id)
     ).toEqual(["glm-5", "glm-5-turbo", "glm-4.7"])
+  })
+
+  it("infers the legacy moonshot region from the stored base url", () => {
+    const rawAiSettings = {
+      defaultProvider: "moonshot",
+      providers: {
+        moonshot: {
+          apiKey: "msk-test",
+          baseURL: "https://api.moonshot.ai/v1"
+        }
+      }
+    }
+
+    const aiSettings = AiSettingsSchema.parse(
+      rawAiSettings
+    ) satisfies AiSettings
+    const hydratedAiSettings = hydrateAiSettingsProviders(
+      aiSettings,
+      rawAiSettings
+    )
+
+    expect(hydratedAiSettings.providers.moonshot.baseURL).toBe(
+      "https://api.moonshot.ai/v1"
+    )
+    expect(hydratedAiSettings.providers.moonshot.region).toBe("international")
   })
 })

@@ -1,6 +1,7 @@
 # Check
 
 `pnpm check` 当前已在工作区根目录通过。
+`pnpm lint` 当前也可以在工作区根目录通过；`packages/ui` 需要使用 `vp lint`，不能直接调用 IDE 专用的 `oxlint` 包装命令。
 `pnpm typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
 `pnpm test` 现在会使用根目录的 [`vitest.workspace.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vitest.workspace.ts) 统一运行 monorepo 里的 `Vitest` 项目。
 

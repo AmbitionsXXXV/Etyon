@@ -8,6 +8,8 @@ export const BuiltInProviderIdSchema = z.enum([
   "zai-coding-plan"
 ])
 
+export const MoonshotRegionSchema = z.enum(["china", "international"])
+
 export const StoredProviderModelCapabilitiesSchema = z.object({
   contextWindow: z.number().optional(),
   functionCalling: z.boolean().optional(),
@@ -30,7 +32,8 @@ export const ProviderFetchModelsInputSchema = z.object({
   provider: z.object({
     apiKey: z.string(),
     baseURL: z.string(),
-    providerId: BuiltInProviderIdSchema
+    providerId: BuiltInProviderIdSchema,
+    region: MoonshotRegionSchema.optional()
   })
 })
 
@@ -39,6 +42,7 @@ export const ProviderFetchModelsOutputSchema = z.object({
 })
 
 export type BuiltInProviderId = z.infer<typeof BuiltInProviderIdSchema>
+export type MoonshotRegion = z.infer<typeof MoonshotRegionSchema>
 export type ProviderFetchModelsInput = z.infer<
   typeof ProviderFetchModelsInputSchema
 >

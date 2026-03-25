@@ -23,6 +23,6 @@
     "@etyon/i18n": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0"
+    "@types/node": "catalog:"
   }
 }

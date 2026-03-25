@@ -5,6 +5,11 @@ import type {
   StoredProviderModel
 } from "@etyon/rpc"
 
+import {
+  getDefaultMoonshotBaseURL,
+  resolveMoonshotBaseURL,
+  resolveMoonshotRegion
+} from "./moonshot-region"
 import { BUILT_IN_PROVIDER_SEED_MODELS } from "./provider-seed-models"
 
 interface ProviderCatalogEntry {
@@ -130,13 +135,49 @@ const hydrateProviderConfig = (
   }
 }
 
+const hydrateMoonshotProviderConfig = (
+  config: AiProviderConfig,
+  rawProvider: unknown
+): AiProviderConfig => {
+  const hydratedConfig = hydrateProviderConfig(config, "moonshot", rawProvider)
+  const region = resolveMoonshotRegion(
+    hydratedConfig.region,
+    hydratedConfig.baseURL
+  )
+
+  return {
+    ...hydratedConfig,
+    baseURL: resolveMoonshotBaseURL(hydratedConfig.baseURL, region),
+    region
+  }
+}
+
 export const getProviderCatalogEntry = (providerId: BuiltInProviderId) =>
   BUILT_IN_PROVIDER_CATALOG_BY_ID[providerId]
+
+export const getProviderDefaultBaseURL = (
+  providerId: BuiltInProviderId,
+  providerConfig?: Pick<AiProviderConfig, "region">
+): string =>
+  providerId === "moonshot"
+    ? getDefaultMoonshotBaseURL(providerConfig?.region)
+    : BUILT_IN_PROVIDER_CATALOG_BY_ID[providerId].baseURL
 
 export const getProviderSeedModels = (providerId: BuiltInProviderId) =>
   cloneStoredProviderModels(
     BUILT_IN_PROVIDER_CATALOG_BY_ID[providerId].seedModels
   )
+
+export const resolveProviderBaseURL = (
+  providerId: BuiltInProviderId,
+  providerConfig: Pick<AiProviderConfig, "baseURL" | "region">
+): string => {
+  if (providerId === "moonshot") {
+    return resolveMoonshotBaseURL(providerConfig.baseURL, providerConfig.region)
+  }
+
+  return providerConfig.baseURL || getProviderDefaultBaseURL(providerId)
+}
 
 export const getSettingsTabProviders = (): SettingsTabProviderCatalogEntry[] =>
   SETTINGS_PROVIDER_IDS.map(
@@ -167,9 +208,8 @@ export const hydrateAiSettingsProviders = (
         "gateway",
         hasOwn("gateway", rawProviders) ? rawProviders.gateway : undefined
       ),
-      moonshot: hydrateProviderConfig(
+      moonshot: hydrateMoonshotProviderConfig(
         aiSettings.providers.moonshot,
-        "moonshot",
         hasOwn("moonshot", rawProviders) ? rawProviders.moonshot : undefined
       ),
       openai: hydrateProviderConfig(

@@ -62,7 +62,7 @@
     "source.fixAll.oxc": "explicit"
   },
   "oxc.fmt.configPath": "./vite.config.ts",
-  "cSpell.words": ["jscoverage", "pids", "vuepress", "wscript"],
+  "cSpell.words": ["jscoverage", "libsql", "pids", "vuepress", "wscript"],
   "cSpell.ignorePaths": [
     "*-lock.*",
     "package.json",
@@ -75,6 +75,7 @@
     ".gitignore",
     "AGENTS.md",
     "CLAUDE.md",
-    "*.test.ts"
+    "*.test.ts",
+    "*.md"
   ]
 }

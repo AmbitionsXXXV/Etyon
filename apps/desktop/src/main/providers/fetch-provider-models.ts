@@ -7,7 +7,8 @@ import type {
 
 import {
   getProviderCatalogEntry,
-  getProviderSeedModels
+  getProviderSeedModels,
+  resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -230,7 +231,10 @@ export const fetchProviderModels = async ({
   const catalogEntry = getProviderCatalogEntry(provider.providerId)
   const controller = new AbortController()
   const endpoint = buildModelsEndpoint(
-    provider.baseURL || catalogEntry.baseURL,
+    resolveProviderBaseURL(provider.providerId, {
+      baseURL: provider.baseURL,
+      region: provider.region
+    }),
     catalogEntry.modelsApiPath
   )
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
