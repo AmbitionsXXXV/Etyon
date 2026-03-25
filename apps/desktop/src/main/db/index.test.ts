@@ -38,6 +38,28 @@ vi.mock("electron", () => ({
   }
 }))
 
+const hasSqliteDatabaseUrl = (
+  config: typeof drizzleConfig
+): config is typeof drizzleConfig & {
+  dbCredentials: {
+    url: string
+  }
+  dialect: "sqlite"
+} => {
+  if (config.dialect !== "sqlite" || !("dbCredentials" in config)) {
+    return false
+  }
+
+  const { dbCredentials } = config
+
+  return (
+    typeof dbCredentials === "object" &&
+    dbCredentials !== null &&
+    "url" in dbCredentials &&
+    typeof dbCredentials.url === "string"
+  )
+}
+
 describe("database infrastructure", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
@@ -55,6 +77,10 @@ describe("database infrastructure", () => {
   })
 
   it("uses drizzle-kit config for a local sqlite file", () => {
+    if (!hasSqliteDatabaseUrl(drizzleConfig)) {
+      throw new Error("drizzle config is missing sqlite dbCredentials.url")
+    }
+
     expect(drizzleConfig.dbCredentials.url).toContain("file:")
     expect(drizzleConfig.dbCredentials.url).toContain(
       ".config/etyon/etyon.sqlite"

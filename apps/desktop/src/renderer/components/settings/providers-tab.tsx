@@ -414,17 +414,15 @@ export const ProvidersTab = ({
   )
 
   const handleMoonshotRegionChange = useCallback(
-    (value: string) => {
-      if (activeProvider.id !== "moonshot") {
+    (value: MoonshotRegion | null) => {
+      if (activeProvider.id !== "moonshot" || !value) {
         return
       }
 
-      const region = value as MoonshotRegion
-
       handleProviderFieldChange("moonshot", (previousProvider) => ({
         ...previousProvider,
-        baseURL: resolveMoonshotBaseURL(previousProvider.baseURL, region),
-        region
+        baseURL: resolveMoonshotBaseURL(previousProvider.baseURL, value),
+        region: value
       }))
     },
     [activeProvider.id, handleProviderFieldChange]

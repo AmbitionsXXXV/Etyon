@@ -1,6 +1,7 @@
+import type { TranslationKey, TranslationValues } from "@etyon/i18n"
 import type { CustomThemePreset, CustomThemeType } from "@etyon/rpc"
 
-type TranslateFn = (key: string, values?: Record<string, unknown>) => string
+type TranslateFn = (key: TranslationKey, values?: TranslationValues) => string
 
 export const buildPresetLabelMap = (
   t: TranslateFn

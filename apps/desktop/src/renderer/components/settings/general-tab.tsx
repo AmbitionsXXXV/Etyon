@@ -40,8 +40,10 @@ export const LanguageSelect = ({
   )
 
   const handleValueChange = useCallback(
-    (nextValue: string) => {
-      onChange(nextValue as LocalePreference)
+    (nextValue: LocalePreference | null) => {
+      if (nextValue) {
+        onChange(nextValue)
+      }
     },
     [onChange]
   )

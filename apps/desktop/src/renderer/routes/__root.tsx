@@ -143,7 +143,7 @@ const RootComponent = () => {
           },
           {
             name: "TanStack Hotkeys",
-            render: <HotkeysDevtoolsPanel />
+            render: (_element, props) => <HotkeysDevtoolsPanel {...props} />
           },
           {
             name: "TanStack Form",

@@ -24,6 +24,7 @@
       "@renderer/*": ["./src/renderer/*"]
     },
     "outDir": "dist",
+    "rootDir": "../..",
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "sourceMap": true,

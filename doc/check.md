@@ -25,6 +25,12 @@
 
 ## 本次修复
 
+- 给 [`apps/desktop/tsconfig.json`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/tsconfig.json) 补上 `rootDir: "../.."`，让桌面端 `typecheck` 在直接引用 workspace 源码包时不再触发 `TS6059`
+- 修复桌面端设置页的几处类型错误：
+  - `drizzle.config` 测试先做 `dbCredentials` 保护性收窄，再断言 SQLite URL
+  - 自定义主题文案工具函数改用 `@etyon/i18n` 的 `TranslationKey` / `TranslationValues`
+  - `Select` 的 `onValueChange` 回调显式处理 `null`
+  - `TanStack Hotkeys Devtools` 面板通过插件回调透传 `theme` 和 `devtoolsOpen`
 - 删除了 `apps/desktop/src/renderer/components/sidebar/` 和 `apps/desktop/src/renderer/lib/sidebar/` 下未被引用的空占位文件，避免 `no-empty-file` 失败
 - 调整了 [`packages/ui/src/components/sidebar.tsx`](/Users/jiantianjianghui/Web_Project/Etyon/packages/ui/src/components/sidebar.tsx)，消除以下 `Ultracite` / `Oxlint` 问题：
   - 去掉参数重赋值

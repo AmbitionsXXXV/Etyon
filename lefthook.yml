@@ -6,6 +6,9 @@ pre-commit:
     - run: pnpm exec vp check --fix
       stage_fixed: true
 
+    - run: pnpm typecheck
+      stage_fixed: true
+
 commit-msg:
   commands:
     "lint commit message":
