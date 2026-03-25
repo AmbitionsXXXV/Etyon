@@ -62,7 +62,17 @@
     "source.fixAll.oxc": "explicit"
   },
   "oxc.fmt.configPath": "./vite.config.ts",
-  "cSpell.words": ["jscoverage", "libsql", "pids", "vuepress", "wscript"],
+  "cSpell.words": [
+    "chadracula",
+    "evondev",
+    "jscoverage",
+    "libsql",
+    "pids",
+    "poimandres",
+    "togglefullscreen",
+    "vuepress",
+    "wscript"
+  ],
   "cSpell.ignorePaths": [
     "*-lock.*",
     "package.json",
@@ -76,6 +86,6 @@
     "AGENTS.md",
     "CLAUDE.md",
     "*.test.ts",
-    "*.md"
+    "*/**/*.md"
   ]
 }

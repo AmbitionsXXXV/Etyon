@@ -210,8 +210,27 @@
     "nav": {
       "colorSchema": "Color Schema",
       "general": "General",
+      "network": "Network",
       "providers": "Providers",
       "userInterface": "User Interface"
+    },
+    "network": {
+      "proxy": {
+        "enable": "Enable Proxy",
+        "password": "Password (Optional)",
+        "passwordPlaceholder": "Password (Optional)",
+        "port": "Port",
+        "server": "Proxy Server",
+        "serverPlaceholder": "e.g. 127.0.0.1",
+        "test": "Test Proxy",
+        "testFailed": "Connection Failed",
+        "testSuccess": "Connected",
+        "testing": "Testing...",
+        "title": "Proxy Settings",
+        "type": "Proxy Type",
+        "username": "Username (Optional)",
+        "usernamePlaceholder": "Username (Optional)"
+      }
     },
     "providers": {
       "actions": {

@@ -7,6 +7,7 @@ import type {
   CustomTheme,
   DarkColorSchema,
   LightColorSchema,
+  ProxySettings,
   Theme
 } from "@etyon/rpc"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -297,6 +298,10 @@ export const useSettingsPageDraft = () => {
     (v: boolean) => updateDraftRef.current("minimizeToTray", v),
     []
   )
+  const handleProxyChange = useCallback(
+    (v: ProxySettings) => updateDraftRef.current("proxy", v),
+    []
+  )
   const handleStartMinimizedToTrayChange = useCallback(
     (v: boolean) => updateDraftRef.current("startMinimizedToTray", v),
     []
@@ -334,6 +339,7 @@ export const useSettingsPageDraft = () => {
     handleLightColorSchemaChange,
     handleLocaleChange,
     handleMinimizeToTrayChange,
+    handleProxyChange,
     handleSave,
     handleStartMinimizedToTrayChange,
     handleThemeChange,

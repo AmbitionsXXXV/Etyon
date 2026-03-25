@@ -210,8 +210,27 @@
     "nav": {
       "colorSchema": "颜色方案",
       "general": "通用",
+      "network": "网络",
       "providers": "Providers",
       "userInterface": "用户界面"
+    },
+    "network": {
+      "proxy": {
+        "enable": "启用代理",
+        "password": "密码（可选）",
+        "passwordPlaceholder": "密码（可选）",
+        "port": "端口",
+        "server": "代理服务器",
+        "serverPlaceholder": "例如 127.0.0.1",
+        "test": "测试代理",
+        "testFailed": "连接失败",
+        "testSuccess": "连接成功",
+        "testing": "测试中...",
+        "title": "代理设置",
+        "type": "代理类型",
+        "username": "用户名（可选）",
+        "usernamePlaceholder": "用户名（可选）"
+      }
     },
     "providers": {
       "actions": {

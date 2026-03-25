@@ -17,6 +17,8 @@ export type {
   StoredProviderModel,
   StoredProviderModelCapabilities
 } from "./schemas/providers"
+export { TestProxyInputSchema, TestProxyOutputSchema } from "./schemas/proxy"
+export type { TestProxyInput, TestProxyOutput } from "./schemas/proxy"
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {
@@ -31,6 +33,8 @@ export {
   CustomThemeTypeSchema,
   DarkColorSchemaSchema,
   LightColorSchemaSchema,
+  ProxySettingsSchema,
+  ProxyTypeSchema,
   ThemeSchema,
   UpdateSettingsSchema
 } from "./schemas/settings"
@@ -45,5 +49,7 @@ export type {
   CustomThemeType,
   DarkColorSchema,
   LightColorSchema,
+  ProxySettings,
+  ProxyType,
   Theme
 } from "./schemas/settings"

@@ -7,6 +7,8 @@ import {
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
   ServerUrlOutputSchema,
+  TestProxyInputSchema,
+  TestProxyOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
@@ -15,6 +17,7 @@ import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
+import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
 import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
@@ -67,6 +70,11 @@ const settingsUpdate = rpc
     return result
   })
 
+const proxyTestRpc = rpc
+  .input(TestProxyInputSchema)
+  .output(TestProxyOutputSchema)
+  .handler(({ input }) => testProxy(input))
+
 const serverGetUrl = rpc
   .output(ServerUrlOutputSchema)
   .handler(() => ({ url: getServerUrl() }))
@@ -81,6 +89,9 @@ export const router = {
   ping,
   providers: {
     fetchModels: providersFetchModels
+  },
+  proxy: {
+    test: proxyTestRpc
   },
   server: {
     getUrl: serverGetUrl

@@ -131,6 +131,26 @@ export const AiSettingsSchema = z.object({
     })
 })
 
+export const ProxyTypeSchema = z.enum(["http", "https", "socks5"])
+
+const PROXY_SETTINGS_DEFAULT = {
+  enabled: false,
+  host: "",
+  password: "",
+  port: 8080,
+  type: "http" as const,
+  username: ""
+} as const
+
+export const ProxySettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  host: z.string().default(""),
+  password: z.string().default(""),
+  port: z.number().default(8080),
+  type: ProxyTypeSchema.default("http"),
+  username: z.string().default("")
+})
+
 export const AppSettingsSchema = z.object({
   ai: AiSettingsSchema.default({
     defaultModel: "",
@@ -153,6 +173,7 @@ export const AppSettingsSchema = z.object({
   lightColorSchema: LightColorSchemaSchema.default("default"),
   locale: LocalePreferenceSchema.default("system"),
   minimizeToTray: z.boolean().default(false),
+  proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
   theme: ThemeSchema.default("system")
 })
@@ -169,6 +190,7 @@ export const UpdateSettingsSchema = z.object({
   lightColorSchema: LightColorSchemaSchema.optional(),
   locale: LocalePreferenceSchema.optional(),
   minimizeToTray: z.boolean().optional(),
+  proxy: ProxySettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
   theme: ThemeSchema.optional()
 })
@@ -183,4 +205,6 @@ export type CustomThemePreset = z.infer<typeof CustomThemePresetSchema>
 export type CustomThemeType = z.infer<typeof CustomThemeTypeSchema>
 export type DarkColorSchema = z.infer<typeof DarkColorSchemaSchema>
 export type LightColorSchema = z.infer<typeof LightColorSchemaSchema>
+export type ProxySettings = z.infer<typeof ProxySettingsSchema>
+export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type Theme = z.infer<typeof ThemeSchema>

@@ -210,8 +210,27 @@
     "nav": {
       "colorSchema": "カラースキーマ",
       "general": "一般",
+      "network": "ネットワーク",
       "providers": "Providers",
       "userInterface": "ユーザーインターフェース"
+    },
+    "network": {
+      "proxy": {
+        "enable": "プロキシを有効にする",
+        "password": "パスワード（任意）",
+        "passwordPlaceholder": "パスワード（任意）",
+        "port": "ポート",
+        "server": "プロキシサーバー",
+        "serverPlaceholder": "例: 127.0.0.1",
+        "test": "プロキシをテスト",
+        "testFailed": "接続に失敗しました",
+        "testSuccess": "接続成功",
+        "testing": "テスト中...",
+        "title": "プロキシ設定",
+        "type": "プロキシタイプ",
+        "username": "ユーザー名（任意）",
+        "usernamePlaceholder": "ユーザー名（任意）"
+      }
     },
     "providers": {
       "actions": {

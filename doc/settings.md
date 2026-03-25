@@ -80,6 +80,7 @@ interface AppSettings {
   lightColorSchema: "default" | "one-light" | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
   minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
+  proxy: ProxySettings // 代理配置
   startMinimizedToTray: boolean // 默认 false，仅在登录项自动启动时生效
   theme: "light" | "dark" | "system"
 }
@@ -104,6 +105,14 @@ interface AiProviderConfig {
   enabled: boolean
   models: StoredProviderModel[]
   region?: "china" | "international"
+}
+interface ProxySettings {
+  enabled: boolean // 默认 false
+  host: string // 默认 ""
+  password: string // 默认 ""
+  port: number // 默认 8080
+  type: "http" | "https" | "socks5" // 默认 "http"
+  username: string // 默认 ""
 }
 interface StoredProviderModel {
   capabilities?: {
@@ -325,16 +334,18 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 
 ## 涉及文件
 
-- `packages/rpc/src/schemas/settings.ts` — Settings Zod schema
+- `packages/rpc/src/schemas/settings.ts` — Settings Zod schema（含 `ProxySettingsSchema`、`ProxyTypeSchema`）
+- `packages/rpc/src/schemas/proxy.ts` — Proxy test input/output Zod schema（`TestProxyInputSchema`、`TestProxyOutputSchema`）
 - `packages/rpc/src/schemas/fonts.ts` — Font list Zod schema
-- `packages/rpc/src/index.ts` — 导出 settings + fonts schema
+- `packages/rpc/src/index.ts` — 导出 settings + fonts + proxy schema
 - `apps/desktop/src/main/startup.ts` — 登录项同步与“启动后隐藏到托盘”判定
 - `apps/desktop/src/main/providers/fetch-provider-models.ts` — provider models 抓取与归一化
 - `apps/desktop/src/main/settings.ts` — electron-store 封装
 - `apps/desktop/src/main/localization.ts` — `main` 进程 locale 解析与翻译入口
 - `apps/desktop/src/main/native-ui.ts` — 菜单与窗口标题的本地化刷新
 - `apps/desktop/src/main/fonts.ts` — 系统字体枚举（跨平台，带缓存）
-- `apps/desktop/src/main/rpc/router.ts` — settings + fonts RPC 路由
+- `apps/desktop/src/main/proxy/test-proxy.ts` — 代理连通性测试（HTTP CONNECT 隧道）
+- `apps/desktop/src/main/rpc/router.ts` — settings + fonts + proxy RPC 路由
 - `apps/desktop/src/shared/providers/provider-catalog.ts` — 内建 provider catalog 与 seed 模型补水
 - `apps/desktop/src/shared/providers/provider-seed-models.ts` — 内建 provider seed 模型静态定义
 - `apps/desktop/src/main/window.ts` — 主窗口 + settings 窗口创建
@@ -342,6 +353,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/main/index.ts` — IPC handler + 菜单初始化
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
 - `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动曲线）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
+- `apps/desktop/src/renderer/components/settings/network-tab.tsx` — Network tab 主组件（Proxy Settings 表单与代理测试）
 - `apps/desktop/src/renderer/components/settings/color-schema/color-schema-tab.tsx` — `Color Schema` tab 主组件，包含 `Custom Themes` 区块，以及拆分后的 `Dark Mode` / `Light Mode` 独立 blocks
 - `apps/desktop/src/renderer/components/settings/color-schema/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `ColorSchemaTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）
@@ -390,6 +402,19 @@ import { HugeiconsIcon } from "@hugeicons/react"
 | System | `computer` | `ComputerIcon` |
 
 版本由 `pnpm-workspace.yaml` 的 catalog 统一管控，`packages/ui` 和 `apps/desktop` 均以 `catalog:` 引用。
+
+## Network 设置
+
+Settings 左侧导航新增 `Network` tab，当前包含 Proxy Settings。
+
+### Proxy Settings
+
+- `proxy` 字段持久化在 `AppSettingsSchema` 中，与其他设置字段走相同的 `settings.update` 流程
+- 启用代理后展开配置表单：类型（HTTP / HTTPS / SOCKS5）、服务器地址、端口、用户名/密码（均可选）
+- `Test Proxy` 按钮调用 `oRPC proxy.test` 端点，通过 HTTP CONNECT 隧道测试代理连通性
+- 测试使用当前表单 draft 值（不需要先保存），返回延迟和连接状态
+- 主进程 handler 位于 `apps/desktop/src/main/proxy/test-proxy.ts`，使用 Node.js 原生 `http` / `https` 模块实现
+- SOCKS5 代理测试当前不支持，会返回明确错误信息
 
 ## 扩展
 

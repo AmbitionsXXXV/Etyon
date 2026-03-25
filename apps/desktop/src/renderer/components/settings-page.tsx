@@ -39,6 +39,7 @@ import {
   MinimizeToTrayCheckbox,
   StartMinimizedToTrayCheckbox
 } from "./settings/general-tab"
+import { NetworkTab } from "./settings/network-tab"
 import { ProvidersTab } from "./settings/providers-tab"
 import {
   FontFamilyCombobox,
@@ -61,6 +62,7 @@ interface SettingsNavItem {
 const SETTINGS_SECTION_IDS = new Set<string>([
   "color-schema",
   "general",
+  "network",
   "providers",
   "user-interface"
 ])
@@ -174,6 +176,7 @@ export const SettingsPage = ({
     handleLightColorSchemaChange,
     handleLocaleChange,
     handleMinimizeToTrayChange,
+    handleProxyChange,
     handleSave,
     handleStartMinimizedToTrayChange,
     handleThemeChange,
@@ -475,6 +478,10 @@ export const SettingsPage = ({
                     </div>
                   </motion.section>
                 </div>
+              )}
+
+              {activeSection === "network" && (
+                <NetworkTab onChange={handleProxyChange} proxy={draft.proxy} />
               )}
             </div>
           </div>
