@@ -4,7 +4,8 @@ import { afterAll, describe, expect, it, vi } from "vitest"
 
 import {
   getSidebarUiState,
-  setCollapsedProjectPaths
+  setCollapsedProjectPaths,
+  setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
 
 const { mockedHomeDir } = vi.hoisted(() => ({
@@ -48,7 +49,8 @@ describe("sidebar ui state", () => {
 
   it("defaults to no collapsed project paths", () => {
     expect(getSidebarUiState()).toEqual({
-      collapsedProjectPaths: []
+      collapsedProjectPaths: [],
+      sidebarWidthPx: 272
     })
   })
 
@@ -60,8 +62,22 @@ describe("sidebar ui state", () => {
     ])
 
     expect(nextState).toEqual({
-      collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"]
+      collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      sidebarWidthPx: 272
     })
     expect(getSidebarUiState()).toEqual(nextState)
+  })
+
+  it("persists clamped sidebar width while preserving collapsed paths", () => {
+    setCollapsedProjectPaths(["/tmp/a-project"])
+
+    expect(setSidebarWidthPx(999)).toEqual({
+      collapsedProjectPaths: ["/tmp/a-project"],
+      sidebarWidthPx: 420
+    })
+    expect(setSidebarWidthPx(120)).toEqual({
+      collapsedProjectPaths: ["/tmp/a-project"],
+      sidebarWidthPx: 240
+    })
   })
 })

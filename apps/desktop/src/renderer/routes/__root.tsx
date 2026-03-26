@@ -28,6 +28,7 @@ import { AnimatePresence, motion } from "motion/react"
 import { AppSidebar } from "@/renderer/components/app-sidebar"
 import { TITLE_BAR_HEIGHT, TitleBar } from "@/renderer/components/title-bar"
 import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-actions"
+import { useProjectSidebarState } from "@/renderer/lib/sidebar/use-project-sidebar-state"
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[76px]"
 
@@ -108,6 +109,7 @@ const RootComponent = () => {
   const pathname = useRouterState({
     select: (state) => state.location.pathname
   })
+  const { sidebarWidthPx } = useProjectSidebarState()
   const isAppShellRoute = pathname === "/" || pathname.startsWith("/chat/")
 
   useHotkey("Mod+,", () => {
@@ -117,7 +119,13 @@ const RootComponent = () => {
   return (
     <TooltipProvider>
       {isAppShellRoute ? (
-        <SidebarProvider>
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": `${sidebarWidthPx}px`
+            } as React.CSSProperties
+          }
+        >
           <AppSidebar />
 
           <SidebarInset>

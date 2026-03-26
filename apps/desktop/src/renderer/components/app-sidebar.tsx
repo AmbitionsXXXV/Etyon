@@ -7,9 +7,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenuAction,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarTrigger,
@@ -22,9 +20,9 @@ import {
 } from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
 import {
-  ArrowDown01Icon,
-  ArrowRight01Icon,
+  Archive02Icon,
   Folder01Icon,
+  FolderOpenIcon,
   NoteEditIcon,
   PinIcon,
   PinOffIcon,
@@ -34,13 +32,16 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { MouseEvent, ReactNode } from "react"
+import type {
+  MouseEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode
+} from "react"
 
 import { orpc } from "@/renderer/lib/rpc"
 import {
   getChatSessionTitle,
   getChatSessionMetaItems,
-  getProjectNameFromPath,
   getVisibleProjectGroupSessions,
   groupChatSessionsByProject,
   hasHiddenProjectGroupSessions,
@@ -51,16 +52,29 @@ import {
   sortPinnedChatSessions
 } from "@/renderer/lib/sidebar/chat-sessions"
 import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-actions"
-import { useProjectSidebarState } from "@/renderer/lib/sidebar/use-project-sidebar-state"
+import {
+  SIDEBAR_WIDTH_PX_MAX,
+  SIDEBAR_WIDTH_PX_MIN,
+  useProjectSidebarState
+} from "@/renderer/lib/sidebar/use-project-sidebar-state"
 
 const EXPAND_EASE = [0.25, 1, 0.5, 1] as const
 const EXPAND_RESET_DELAY_MS = 520
+const PROJECT_GROUP_ROW_CLASS_NAME =
+  "title-bar-no-drag -mx-1 flex h-10 w-full items-center gap-3 rounded-xl px-2 text-left text-[15px] font-medium text-sidebar-foreground/82 transition-[background-color,color] hover:bg-white/4 hover:text-sidebar-accent-foreground"
+const SESSION_ROW_CLASS_NAME =
+  "h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-[14px] font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
+const SESSION_ROW_META_CLASS_NAME =
+  "shrink-0 text-[14px] leading-none font-medium tabular-nums text-sidebar-foreground/58"
 
 interface AppSidebarShellProps {
   children?: ReactNode
   contentClassName?: string
   headerClassName?: string
   headerContent: ReactNode
+  onSidebarResizeCommit?: (sidebarWidthPx: number) => void
+  onSidebarResizePreview?: (sidebarWidthPx: number) => void
+  sidebarWidthPx?: number
 }
 
 interface ChatSessionItemProps {
@@ -68,7 +82,6 @@ interface ChatSessionItemProps {
   fallbackSessionTitle: string
   onOpen: (sessionId: string) => void
   onTogglePinned?: (sessionId: string, pinned: boolean) => void
-  projectLabel?: string
   session: ChatSessionSummary
   showPinAction?: boolean
   togglingPinnedSessionId?: string
@@ -99,12 +112,20 @@ export const AppSidebarShell = ({
   children,
   contentClassName,
   headerClassName,
-  headerContent
+  headerContent,
+  onSidebarResizeCommit,
+  onSidebarResizePreview,
+  sidebarWidthPx = 272
 }: AppSidebarShellProps) => {
   const { state } = useSidebar()
   const expandResetTimeoutRef = useRef<number | null>(null)
   const prevStateRef = useRef(state)
   const [expanding, setExpanding] = useState(false)
+  const resizeStartRef = useRef<{
+    pointerId: number
+    startSidebarWidthPx: number
+    startX: number
+  } | null>(null)
 
   useEffect(() => {
     if (expandResetTimeoutRef.current !== null) {
@@ -145,6 +166,66 @@ export const AppSidebarShell = ({
       transition: { delay: 0.14, duration: 0.38, ease: EXPAND_EASE }
     }
   }
+  const handleSidebarResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (state === "collapsed") {
+        return
+      }
+
+      resizeStartRef.current = {
+        pointerId: event.pointerId,
+        startSidebarWidthPx: sidebarWidthPx,
+        startX: event.clientX
+      }
+
+      event.currentTarget.setPointerCapture(event.pointerId)
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        const activeResize = resizeStartRef.current
+
+        if (!activeResize || moveEvent.pointerId !== activeResize.pointerId) {
+          return
+        }
+
+        const nextSidebarWidthPx = Math.min(
+          SIDEBAR_WIDTH_PX_MAX,
+          Math.max(
+            SIDEBAR_WIDTH_PX_MIN,
+            activeResize.startSidebarWidthPx +
+              (moveEvent.clientX - activeResize.startX)
+          )
+        )
+
+        onSidebarResizePreview?.(nextSidebarWidthPx)
+      }
+
+      const handlePointerUp = (upEvent: PointerEvent) => {
+        const activeResize = resizeStartRef.current
+
+        if (!activeResize || upEvent.pointerId !== activeResize.pointerId) {
+          return
+        }
+
+        const nextSidebarWidthPx = Math.min(
+          SIDEBAR_WIDTH_PX_MAX,
+          Math.max(
+            SIDEBAR_WIDTH_PX_MIN,
+            activeResize.startSidebarWidthPx +
+              (upEvent.clientX - activeResize.startX)
+          )
+        )
+
+        resizeStartRef.current = null
+        onSidebarResizeCommit?.(nextSidebarWidthPx)
+        window.removeEventListener("pointermove", handlePointerMove)
+        window.removeEventListener("pointerup", handlePointerUp)
+      }
+
+      window.addEventListener("pointermove", handlePointerMove)
+      window.addEventListener("pointerup", handlePointerUp)
+    },
+    [onSidebarResizeCommit, onSidebarResizePreview, sidebarWidthPx, state]
+  )
 
   return (
     <Sidebar collapsible="offcanvas" side="left">
@@ -171,6 +252,15 @@ export const AppSidebarShell = ({
           {children}
         </motion.div>
       </SidebarContent>
+
+      {state === "expanded" ? (
+        <div
+          aria-label="Resize sidebar"
+          className="title-bar-no-drag absolute top-0 right-0 z-30 h-full w-3 cursor-col-resize after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-sidebar-border/50 after:transition-colors hover:after:bg-sidebar-accent-foreground/28"
+          onPointerDown={handleSidebarResizePointerDown}
+          role="separator"
+        />
+      ) : null}
     </Sidebar>
   )
 }
@@ -180,7 +270,6 @@ const ChatSessionItem = ({
   fallbackSessionTitle,
   onOpen,
   onTogglePinned,
-  projectLabel,
   session,
   showPinAction = false,
   togglingPinnedSessionId
@@ -203,50 +292,103 @@ const ChatSessionItem = ({
     },
     [isPinned, onTogglePinned, session.id]
   )
+  const handleArchiveClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    []
+  )
+
+  const isRowActive = currentSessionId === session.id
 
   return (
-    <SidebarMenuItem key={session.id}>
-      <SidebarMenuButton
-        className={cn("h-auto items-start py-2", showPinAction && "pr-8")}
-        isActive={currentSessionId === session.id}
-        onClick={handleClick}
-        title={session.projectPath}
+    <SidebarMenuItem>
+      <div
+        className={cn(
+          SESSION_ROW_CLASS_NAME,
+          "flex w-full items-center gap-0 overflow-hidden py-0",
+          showPinAction ? "px-0" : "px-3"
+        )}
+        data-active={isRowActive ? true : undefined}
       >
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-left font-medium">
-            {getChatSessionTitle({
-              fallbackTitle: fallbackSessionTitle,
-              session
-            })}
-          </div>
-          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-sidebar-foreground/60">
-            {projectLabel ? (
-              <span className="truncate">{projectLabel}</span>
-            ) : (
-              <span />
+        {showPinAction ? (
+          <button
+            aria-label={isPinned ? t("unpinSession") : t("pinSession")}
+            className={cn(
+              "flex min-h-10.5 w-9 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-sidebar-foreground/70 outline-none transition-[opacity,color] duration-150 hover:bg-white/5 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50",
+              "pointer-events-none opacity-0",
+              "group-hover/menu-item:pointer-events-auto group-hover/menu-item:opacity-100",
+              "group-focus-within/menu-item:pointer-events-auto group-focus-within/menu-item:opacity-100",
+              "focus-visible:pointer-events-auto focus-visible:opacity-100"
             )}
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="inline-flex min-w-[2.5rem] justify-end">
-                {diffMetaItem?.label ?? ""}
-              </span>
-              <span className="inline-flex min-w-[2rem] justify-end">
-                {timeMetaItem?.label ?? ""}
+            disabled={isTogglingPinned}
+            onClick={handleTogglePinned}
+            title={isPinned ? t("unpinSession") : t("pinSession")}
+            type="button"
+          >
+            <HugeiconsIcon
+              className="size-3.5 shrink-0"
+              icon={isPinned ? PinOffIcon : PinIcon}
+            />
+          </button>
+        ) : null}
+        <div className="relative flex min-h-10.5 min-w-0 flex-1 items-stretch pr-2">
+          <button
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-0 border-0 bg-transparent py-0 text-left text-inherit outline-none transition-colors hover:bg-transparent focus-visible:z-1 focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+              showPinAction ? "pl-1 pr-0" : "px-0"
+            )}
+            onClick={handleClick}
+            title={session.projectPath}
+            type="button"
+          >
+            <div className="flex min-w-0 flex-1 items-center text-left leading-none">
+              <span className="block truncate leading-none">
+                {getChatSessionTitle({
+                  fallbackTitle: fallbackSessionTitle,
+                  session
+                })}
               </span>
             </div>
-          </div>
+            <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-none">
+              {diffMetaItem?.label ? (
+                <span
+                  className={cn(
+                    SESSION_ROW_META_CLASS_NAME,
+                    "min-w-17 text-right"
+                  )}
+                >
+                  {diffMetaItem.label}
+                </span>
+              ) : null}
+              <span
+                className={cn(
+                  SESSION_ROW_META_CLASS_NAME,
+                  "min-w-8 text-right transition-opacity duration-150 group-hover/menu-item:opacity-0 group-focus-within/menu-item:opacity-0"
+                )}
+              >
+                {timeMetaItem?.label ?? "\u00A0"}
+              </span>
+            </div>
+          </button>
+          <button
+            aria-label={t("archiveSession")}
+            className={cn(
+              "absolute top-1/2 right-0 z-1 flex h-full w-8 -translate-y-1/2 items-center justify-center rounded-sm border-0 bg-transparent p-0 text-sidebar-foreground outline-none transition-opacity duration-150",
+              "pointer-events-none opacity-0",
+              "group-hover/menu-item:pointer-events-auto group-hover/menu-item:opacity-100",
+              "group-focus-within/menu-item:pointer-events-auto group-focus-within/menu-item:opacity-100",
+              "hover:text-sidebar-accent-foreground focus-visible:pointer-events-auto focus-visible:opacity-100"
+            )}
+            onClick={handleArchiveClick}
+            title={t("archiveSession")}
+            type="button"
+          >
+            <HugeiconsIcon className="size-3.5 shrink-0" icon={Archive02Icon} />
+          </button>
         </div>
-      </SidebarMenuButton>
-      {showPinAction ? (
-        <SidebarMenuAction
-          aria-label={isPinned ? t("unpinSession") : t("pinSession")}
-          disabled={isTogglingPinned}
-          onClick={handleTogglePinned}
-          showOnHover
-          title={isPinned ? t("unpinSession") : t("pinSession")}
-        >
-          <HugeiconsIcon icon={isPinned ? PinOffIcon : PinIcon} />
-        </SidebarMenuAction>
-      ) : null}
+      </div>
     </SidebarMenuItem>
   )
 }
@@ -301,17 +443,22 @@ const ProjectGroupSection = ({
           render={
             <button
               aria-label={`${toggleProjectGroupLabel}: ${group.projectName}`}
-              className="title-bar-no-drag flex w-full items-center gap-2 rounded-lg px-0 py-0 text-left text-sidebar-foreground/90 transition-colors hover:text-sidebar-accent-foreground"
+              className={PROJECT_GROUP_ROW_CLASS_NAME}
               onClick={handleToggleCollapsed}
               type="button"
             >
               <HugeiconsIcon
-                icon={expanded ? ArrowDown01Icon : ArrowRight01Icon}
-                size={16}
+                className={cn(
+                  "shrink-0 transition-colors",
+                  expanded
+                    ? "text-sidebar-foreground/92"
+                    : "text-sidebar-foreground/64"
+                )}
+                icon={expanded ? FolderOpenIcon : Folder01Icon}
+                size={18}
                 strokeWidth={2}
               />
-              <HugeiconsIcon icon={Folder01Icon} size={16} strokeWidth={2} />
-              <SidebarGroupLabel className="h-auto min-w-0 items-start px-0 py-0 text-sidebar-foreground/90">
+              <SidebarGroupLabel className="h-auto min-w-0 items-start px-0 py-0 text-inherit">
                 <span className="truncate font-medium">
                   {group.projectName}
                 </span>
@@ -324,7 +471,7 @@ const ProjectGroupSection = ({
 
       {expanded ? (
         <>
-          <SidebarMenu className="title-bar-no-drag mt-2">
+          <SidebarMenu className="title-bar-no-drag mt-1.5 space-y-1">
             {visibleSessions.map((session) => (
               <ChatSessionItem
                 currentSessionId={currentSessionId}
@@ -341,7 +488,7 @@ const ProjectGroupSection = ({
 
           {hasHiddenSessions || showLessAction ? (
             <button
-              className="title-bar-no-drag mt-1 ml-2 text-left text-xs text-sidebar-foreground/60 transition-colors hover:text-sidebar-accent-foreground"
+              className="title-bar-no-drag mt-1 ml-11 text-left text-[13px] font-medium text-sidebar-foreground/56 transition-colors hover:text-sidebar-accent-foreground"
               onClick={hasHiddenSessions ? handleShowMore : handleShowLess}
               type="button"
             >
@@ -367,7 +514,10 @@ export const AppSidebar = () => {
   const {
     collapsedProjectPaths,
     handleToggleProjectCollapsed,
-    isSidebarStateReady
+    isSidebarStateReady,
+    persistSidebarWidth,
+    setSidebarWidthLocally,
+    sidebarWidthPx
   } = useProjectSidebarState()
   const chatSessionsQuery = useQuery(orpc.chatSessions.list.queryOptions({}))
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
@@ -447,14 +597,13 @@ export const AppSidebar = () => {
     if (!isProjectsMode) {
       return (
         <SidebarGroup className="px-3 pb-3">
-          <SidebarMenu className="title-bar-no-drag">
+          <SidebarMenu className="title-bar-no-drag space-y-1">
             {chatSessions.map((session) => (
               <ChatSessionItem
                 currentSessionId={currentSessionId}
                 fallbackSessionTitle={fallbackSessionTitle}
                 key={session.id}
                 onOpen={handleOpenChatSession}
-                projectLabel={getProjectNameFromPath(session.projectPath)}
                 session={session}
               />
             ))}
@@ -467,13 +616,13 @@ export const AppSidebar = () => {
       <>
         {pinnedChatSessions.length > 0 ? (
           <SidebarGroup className="px-3 pb-3">
-            <SidebarGroupLabel className="h-auto items-start px-0 py-0 text-sidebar-foreground/90">
-              <div className="flex items-center gap-2 font-medium">
-                <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={2} />
+            <SidebarGroupLabel className="h-auto items-start px-1 py-0 text-[11px] font-semibold tracking-[0.16em] text-sidebar-foreground/42 uppercase">
+              <div className="flex items-center gap-2">
+                <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={2} />
                 <span>{t("sidebar.pinnedThreads")}</span>
               </div>
             </SidebarGroupLabel>
-            <SidebarMenu className="title-bar-no-drag mt-2">
+            <SidebarMenu className="title-bar-no-drag mt-2 space-y-1">
               {pinnedChatSessions.map((session) => (
                 <ChatSessionItem
                   currentSessionId={currentSessionId}
@@ -481,7 +630,6 @@ export const AppSidebar = () => {
                   key={session.id}
                   onOpen={handleOpenChatSession}
                   onTogglePinned={handleSetChatSessionPinned}
-                  projectLabel={getProjectNameFromPath(session.projectPath)}
                   session={session}
                   showPinAction
                   togglingPinnedSessionId={isSettingPinnedChatSessionId}
@@ -533,6 +681,9 @@ export const AppSidebar = () => {
           </Tooltip>
         </>
       }
+      onSidebarResizeCommit={persistSidebarWidth}
+      onSidebarResizePreview={setSidebarWidthLocally}
+      sidebarWidthPx={sidebarWidthPx}
     >
       {sidebarContent}
     </AppSidebarShell>

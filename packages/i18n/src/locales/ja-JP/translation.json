@@ -42,6 +42,7 @@
     },
     "description": "AI プロバイダーのオーケストレーションのための、洗練されたデスクトップワークスペースです。",
     "sidebar": {
+      "archiveSession": "セッションをアーカイブ",
       "empty": "chat session はまだありません。右上の New Chat から開始できます。",
       "pinSession": "セッションを固定",
       "pinnedThreads": "固定したスレッド",

@@ -42,6 +42,7 @@
     },
     "description": "An elegant desktop for AI provider orchestration.",
     "sidebar": {
+      "archiveSession": "Archive Session",
       "empty": "No chat sessions yet. Click New Chat in the top-right to start.",
       "pinSession": "Pin Session",
       "pinnedThreads": "Pinned Threads",

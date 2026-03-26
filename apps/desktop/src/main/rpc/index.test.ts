@@ -161,13 +161,23 @@ describe("message-port rpc", () => {
         "/tmp/a-project"
       ]
     })
+    const resizedState = await client.sidebarState.setWidth({
+      sidebarWidthPx: 320
+    })
 
-    expect(initialState.collapsedProjectPaths).toEqual([])
-    expect(updatedState.collapsedProjectPaths).toEqual([
-      "/tmp/a-project",
-      "/tmp/b-project"
-    ])
-    expect(await client.sidebarState.get()).toEqual(updatedState)
+    expect(initialState).toEqual({
+      collapsedProjectPaths: [],
+      sidebarWidthPx: 272
+    })
+    expect(updatedState).toEqual({
+      collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      sidebarWidthPx: 272
+    })
+    expect(resizedState).toEqual({
+      collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      sidebarWidthPx: 320
+    })
+    expect(await client.sidebarState.get()).toEqual(resizedState)
 
     port1.close()
     port2.close()

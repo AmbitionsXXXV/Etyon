@@ -36,10 +36,12 @@ export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {
   SetCollapsedProjectsInputSchema,
+  SetSidebarWidthInputSchema,
   SidebarUiStateSchema
 } from "./schemas/sidebar-state"
 export type {
   SetCollapsedProjectsInput,
+  SetSidebarWidthInput,
   SidebarUiState
 } from "./schemas/sidebar-state"
 export {

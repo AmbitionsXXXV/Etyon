@@ -11,6 +11,7 @@ import {
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
   SetCollapsedProjectsInputSchema,
+  SetSidebarWidthInputSchema,
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
   SidebarUiStateSchema,
@@ -36,7 +37,8 @@ import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import {
   getSidebarUiState,
-  setCollapsedProjectPaths
+  setCollapsedProjectPaths,
+  setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 
@@ -148,6 +150,19 @@ const sidebarStateSetCollapsedProjects = rpc
     return result
   })
 
+const sidebarStateSetWidth = rpc
+  .input(SetSidebarWidthInputSchema)
+  .output(SidebarUiStateSchema)
+  .handler(({ input }) => {
+    const result = setSidebarWidthPx(input.sidebarWidthPx)
+
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send("sidebar-state-changed", result)
+    }
+
+    return result
+  })
+
 export const router = {
   chatSessions: {
     create: chatSessionsCreate,
@@ -173,7 +188,8 @@ export const router = {
   },
   sidebarState: {
     get: sidebarStateGet,
-    setCollapsedProjects: sidebarStateSetCollapsedProjects
+    setCollapsedProjects: sidebarStateSetCollapsedProjects,
+    setWidth: sidebarStateSetWidth
   },
   settings: {
     get: settingsGet,
