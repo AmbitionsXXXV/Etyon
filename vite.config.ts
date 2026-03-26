@@ -37,7 +37,8 @@ const lintRules = {
   ...ultraciteReactConfig.rules,
   "eslint/func-style": "off",
   "eslint/no-use-before-define": "off",
-  "eslint/sort-keys": "off"
+  "eslint/sort-keys": "off",
+  "eslint-plugin-unicorn/number-literal-case": "off"
 } satisfies DummyRuleMap
 
 export default defineConfig({

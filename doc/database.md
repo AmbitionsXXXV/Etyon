@@ -3,7 +3,7 @@
 ## 概述
 
 桌面端主进程现已铺设本地数据库基础设施，采用 `drizzle-orm + @libsql/client` 连接本地 SQLite 文件。
-这一轮仅完成连接、配置、脚本与目录结构，不包含业务表、迁移文件或真实 CRUD 流程。
+当前已包含首张真实业务表 `chat_sessions`，用于持久化 sidebar 所需的最小 chat session 元数据。
 
 ## 选型
 
@@ -26,6 +26,30 @@
 - [`getDb()`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/index.ts)：返回懒加载的 Drizzle 数据库实例
 - [`getDbClient()`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/index.ts)：返回底层 libsql client
 - [`verifyDatabaseConnection()`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/index.ts)：执行 `select 1` 健康检查
+- [`ensureDatabaseReady()`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/migrate.ts)：启动期执行 pending migrations
+
+## chat_sessions
+
+首张业务表位于 [`schema.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/schema.ts)，字段如下：
+
+| 字段             | 类型 | 说明                           |
+| ---------------- | ---- | ------------------------------ |
+| `id`             | text | session 主键                   |
+| `title`          | text | 当前先允许为空字符串           |
+| `project_path`   | text | 真实本地绝对路径               |
+| `created_at`     | text | ISO 时间戳                     |
+| `updated_at`     | text | 预留给后续 metadata 更新使用   |
+| `last_opened_at` | text | sidebar 排序主依据             |
+| `pinned_at`      | text | pinned 时间；`null` 表示未置顶 |
+
+- 索引：
+  - `chat_sessions_last_opened_at_idx`
+  - `chat_sessions_project_path_idx`
+- 首个 migration：[`0000_careless_proudstar.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0000_careless_proudstar.sql)
+- 第二条 migration：[`0001_parallel_magik.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0001_parallel_magik.sql)
+- 首次创建 session 且没有可继承项目时，`project_path` 回退到 `~/.config/etyon`
+- `pinned_at` 仅用于 `Projects` 模式下的顶部 `Pinned Threads` 排序：先按 `pinned_at desc`，再按 `last_opened_at desc`
+- 主进程在 `app.on("ready")` 期间先调用 `ensureDatabaseReady()`，再注册 RPC 与本地 HTTP server，保证 `chatSessions.*` RPC 首次调用时表已经存在
 
 ## 命令
 
@@ -35,4 +59,4 @@
 - `pnpm --filter @etyon/desktop db:migrate`
 - `pnpm --filter @etyon/desktop db:studio`
 
-当前 schema 仍为空，第一份 migration 会在首张真实业务表加入后生成。
+后续若新增 message 持久化或项目别名表，继续沿用这套 Drizzle schema + migration 流程即可。

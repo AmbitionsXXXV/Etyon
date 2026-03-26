@@ -16,6 +16,24 @@
     },
     "version": "etyon v{version}"
   },
+  "chat": {
+    "details": {
+      "project": "项目目录",
+      "sessionId": "Session ID",
+      "title": "会话信息"
+    },
+    "loading": "正在加载 chat session...",
+    "missing": {
+      "action": "返回首页",
+      "description": "这个 chat session 不存在，或者还没有同步到本地列表。",
+      "title": "未找到会话"
+    },
+    "placeholder": {
+      "description": "session 元数据和 sidebar 模式已经接入，下一步会把完整 chat UI 和消息持久化接进来。",
+      "inputPlaceholder": "完整 chat 输入框会在这里接入",
+      "title": "Chat UI 占位"
+    }
+  },
   "home": {
     "actions": {
       "configureProvider": "配置 Provider",
@@ -24,8 +42,15 @@
     },
     "description": "一个用于 AI Provider 编排的优雅桌面工作台。",
     "sidebar": {
+      "empty": "还没有 chat session。点击右上角的 New Chat 开始。",
+      "pinSession": "置顶会话",
+      "pinnedThreads": "置顶会话",
       "search": "搜索",
-      "toggleSidebar": "切换侧边栏"
+      "showLess": "收起",
+      "showMore": "显示更多",
+      "toggleProjectGroup": "切换项目分组",
+      "toggleSidebar": "切换侧边栏",
+      "unpinSession": "取消置顶会话"
     },
     "hint": "聊天流程还没接好，现在可以先在 Settings 里完成工作台设置。",
     "logoAlt": "Etyon 应用图标",
@@ -289,6 +314,22 @@
         "ready": "当前配置已准备好抓取模型。"
       },
       "title": "Providers"
+    },
+    "sidebar": {
+      "mode": {
+        "label": "Sidebar Mode",
+        "option": {
+          "projects": {
+            "description": "按真实本地文件夹分组 chat session",
+            "label": "Projects"
+          },
+          "simple": {
+            "description": "按最近打开时间显示扁平列表",
+            "label": "Simple"
+          }
+        }
+      },
+      "title": "Sidebar Settings"
     },
     "startup": {
       "autoStart": "开机自动启动",

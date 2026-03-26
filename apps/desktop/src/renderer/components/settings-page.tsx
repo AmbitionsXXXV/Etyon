@@ -20,6 +20,7 @@ import {
   buildDarkColorSchemaOptions,
   buildLightColorSchemaOptions
 } from "@/renderer/lib/settings-page/build-color-schema-options"
+import { buildSidebarModeOptions } from "@/renderer/lib/settings-page/build-sidebar-mode-options"
 import { buildThemeOptions } from "@/renderer/lib/settings-page/build-theme-options"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
@@ -44,6 +45,7 @@ import { ProvidersTab } from "./settings/providers-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
+  SidebarModeSelector,
   ThemeSelector
 } from "./settings/ui-tab"
 import { TITLE_BAR_HEIGHT } from "./title-bar"
@@ -178,6 +180,7 @@ export const SettingsPage = ({
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,
+    handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleThemeChange,
     isDirty,
@@ -205,6 +208,7 @@ export const SettingsPage = ({
   )
 
   const themeOptions = useMemo(() => buildThemeOptions(t), [t])
+  const sidebarModeOptions = useMemo(() => buildSidebarModeOptions(t), [t])
   const darkColorSchemaOptions = useMemo(
     () => buildDarkColorSchemaOptions(t),
     [t]
@@ -431,6 +435,26 @@ export const SettingsPage = ({
                     className="space-y-4 rounded-lg border border-border bg-card p-5"
                   >
                     <h2 className="text-sm font-semibold">
+                      {t("settings.sidebar.title")}
+                    </h2>
+
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-medium text-muted-foreground">
+                        {t("settings.sidebar.mode.label")}
+                      </h3>
+                      <SidebarModeSelector
+                        onChange={handleSidebarModeChange}
+                        options={sidebarModeOptions}
+                        value={draft.sidebar.mode}
+                      />
+                    </div>
+                  </motion.section>
+
+                  <motion.section
+                    {...settingsPageSectionMotion(0.25)}
+                    className="space-y-4 rounded-lg border border-border bg-card p-5"
+                  >
+                    <h2 className="text-sm font-semibold">
                       {t("settings.theme.title")}
                     </h2>
 
@@ -447,7 +471,7 @@ export const SettingsPage = ({
                   </motion.section>
 
                   <motion.section
-                    {...settingsPageSectionMotion(0.25)}
+                    {...settingsPageSectionMotion(0.35)}
                     className="space-y-4 rounded-lg border border-border bg-card p-5"
                   >
                     <h2 className="text-sm font-semibold">

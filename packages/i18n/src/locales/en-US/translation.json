@@ -16,6 +16,24 @@
     },
     "version": "etyon v{version}"
   },
+  "chat": {
+    "details": {
+      "project": "Project Path",
+      "sessionId": "Session ID",
+      "title": "Session Details"
+    },
+    "loading": "Loading chat session...",
+    "missing": {
+      "action": "Back Home",
+      "description": "This chat session does not exist or has not synced into the local list yet.",
+      "title": "Session Not Found"
+    },
+    "placeholder": {
+      "description": "Session metadata and sidebar modes are now wired up. The full chat UI and message persistence will land next.",
+      "inputPlaceholder": "The full chat composer will be connected here",
+      "title": "Chat Placeholder"
+    }
+  },
   "home": {
     "actions": {
       "configureProvider": "Configure Provider",
@@ -24,8 +42,15 @@
     },
     "description": "An elegant desktop for AI provider orchestration.",
     "sidebar": {
+      "empty": "No chat sessions yet. Click New Chat in the top-right to start.",
+      "pinSession": "Pin Session",
+      "pinnedThreads": "Pinned Threads",
       "search": "Search",
-      "toggleSidebar": "Toggle Sidebar"
+      "showLess": "Show less",
+      "showMore": "Show more",
+      "toggleProjectGroup": "Toggle project group",
+      "toggleSidebar": "Toggle Sidebar",
+      "unpinSession": "Unpin Session"
     },
     "hint": "Open Settings to finish the workspace setup while chat is still being wired.",
     "logoAlt": "Etyon application icon",
@@ -289,6 +314,22 @@
         "ready": "This provider is ready to fetch models."
       },
       "title": "Providers"
+    },
+    "sidebar": {
+      "mode": {
+        "label": "Sidebar Mode",
+        "option": {
+          "projects": {
+            "description": "Group chat sessions by real local folders",
+            "label": "Projects"
+          },
+          "simple": {
+            "description": "Show a flat list sorted by recently opened",
+            "label": "Simple"
+          }
+        }
+      },
+      "title": "Sidebar Settings"
     },
     "startup": {
       "autoStart": "Auto Start",

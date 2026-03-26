@@ -81,6 +81,9 @@ interface AppSettings {
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
   minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
   proxy: ProxySettings // 代理配置
+  sidebar: {
+    mode: "projects" | "simple" // 默认 "simple"
+  }
   startMinimizedToTray: boolean // 默认 false，仅在登录项自动启动时生效
   theme: "light" | "dark" | "system"
 }
@@ -228,6 +231,31 @@ Other Renderers (RendererRoot)
 - 创建对话框使用 `@tanstack/react-form` + `@etyon/ui/components/field.tsx`
 - 当前只实现 `Simple` 模式：`Display Name`、`Type`、4 个核心颜色、preset 和实时 preview；`Advanced` 仅作为占位提示
 - `Create Theme` 对话框在窄窗口中使用单列布局，在更宽的视口下切换为表单 + preview 双列布局
+
+## Sidebar Settings
+
+- `User Interface` tab 顶部新增 `Sidebar Settings` 区块，当前只提供：
+  - `Projects`
+  - `Simple`
+- `settings.sidebar.mode` 通过现有 `settings.get / settings.update` 流程持久化到 `settings.json`
+- 主侧边栏的折叠 UI 状态单独持久化，不进入 `AppSettings`：
+  - 主进程存储：[sidebar-ui-state.ts](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/sidebar-ui-state.ts)
+  - 存储文件：`~/.config/etyon/sidebar-ui-state.json`
+- `Simple` 模式下，主侧边栏按 `lastOpenedAt desc` 展示扁平 session 列表
+- `Projects` 模式下，主侧边栏按 session 的 `projectPath` 精确分组：
+  - 顶部新增独立的 `Pinned Threads` 扁平区块，显示所有已 pinned 的 session
+  - 普通项目组只显示未 pinned 的 session
+  - 组标题显示文件夹名，完整绝对路径只放在 tooltip
+  - 每个项目组都支持折叠；`collapsedProjectPaths` 以精确 `projectPath` 作为 key，并跨窗口、重启保持
+  - 当前未 pinned 的 active session 所在项目组会强制展开；离开后恢复持久化折叠态
+  - 每个项目组默认显示 `10` 条 session；点击 `Show more` 每次增量展开 `10` 条；全部显示后切成 `Show less`，回到默认 `10` 条
+  - `session` 行右侧当前显示相对时间（如 `1h`、`2d`），并预留 `git diff` 元信息槽位供后续接入
+  - `Projects` 模式下，hover 或 focus `session` 行会显示 `pin / unpin` 动作；被 pinned 的 session 会从原项目组移到顶部 `Pinned Threads`
+- `New Chat` 创建项目归属规则：
+  - 优先继承当前选中 session 的 `projectPath`
+  - 否则继承最近打开的 session 的 `projectPath`
+  - 若本地还没有任何 session，则回退到 `~/.config/etyon`
+- `Sidebar Settings` 不做跨窗口草稿实时 preview；只有点击 `Save` 后，主窗口才通过既有 `"settings-changed"` 广播切换模式
 
 ## 语言设置
 

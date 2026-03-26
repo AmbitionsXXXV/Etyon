@@ -4,6 +4,8 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
 import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { ensureDatabaseReady } from "@/main/db/migrate"
+import { logger } from "@/main/logger"
 import { setupMenu } from "@/main/menu"
 import { registerRpcHandler } from "@/main/rpc"
 import { startServer, stopServer } from "@/main/server"
@@ -25,7 +27,7 @@ if (started) {
   app.quit()
 }
 
-app.on("ready", async () => {
+const handleAppReady = async (): Promise<void> => {
   const appDisplayName = getAppDisplayName()
   const appIcon = createRuntimeIcon()
 
@@ -40,6 +42,9 @@ app.on("ready", async () => {
   if (settings.autoStart) {
     syncStartupSettings(settings)
   }
+
+  await ensureDatabaseReady()
+
   registerRpcHandler()
   await startServer()
   setupMenu(appDisplayName)
@@ -69,6 +74,15 @@ app.on("ready", async () => {
 
   if (!shouldStartMainWindowHidden(settings)) {
     createWindow()
+  }
+}
+
+app.on("ready", async () => {
+  try {
+    await handleAppReady()
+  } catch (error: unknown) {
+    logger.error("app_ready_failed", { error })
+    app.quit()
   }
 })
 

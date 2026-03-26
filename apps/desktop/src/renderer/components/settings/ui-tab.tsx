@@ -1,5 +1,10 @@
 import { useI18n } from "@etyon/i18n/react"
-import type { DarkColorSchema, LightColorSchema, Theme } from "@etyon/rpc"
+import type {
+  DarkColorSchema,
+  LightColorSchema,
+  SidebarMode,
+  Theme
+} from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
 import {
   Combobox,
@@ -54,6 +59,13 @@ export interface ThemeOption {
   icon: React.ReactNode
   label: string
   value: Theme
+}
+
+export interface SidebarModeOption<TValue extends SidebarMode = SidebarMode> {
+  description: string
+  icon: React.ReactNode
+  label: string
+  value: TValue
 }
 
 const renderFontLabel = (item: FontItem) => (
@@ -191,6 +203,64 @@ export const ThemeSelector = ({
   <div className="grid grid-cols-3 gap-3">
     {options.map((option) => (
       <ThemeButton
+        isActive={value === option.value}
+        key={option.value}
+        onChange={onChange}
+        option={option}
+      />
+    ))}
+  </div>
+)
+
+const SidebarModeButton = ({
+  isActive,
+  onChange,
+  option
+}: {
+  isActive: boolean
+  onChange: (mode: SidebarMode) => void
+  option: SidebarModeOption
+}) => {
+  const handleClick = useCallback(
+    () => onChange(option.value),
+    [onChange, option.value]
+  )
+
+  return (
+    <button
+      aria-pressed={isActive}
+      className={cn(
+        "flex min-h-40 flex-col items-center justify-center gap-4 rounded-2xl border px-6 py-5 text-center transition-all",
+        isActive
+          ? "border-primary bg-primary/12 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]"
+          : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
+      )}
+      onClick={handleClick}
+      type="button"
+    >
+      <div className="text-foreground">{option.icon}</div>
+      <div className="space-y-1.5">
+        <div className="text-lg font-semibold tracking-[-0.02em]">
+          {option.label}
+        </div>
+        <p className="text-sm text-muted-foreground">{option.description}</p>
+      </div>
+    </button>
+  )
+}
+
+export const SidebarModeSelector = ({
+  onChange,
+  options,
+  value
+}: {
+  onChange: (mode: SidebarMode) => void
+  options: SidebarModeOption[]
+  value: SidebarMode
+}) => (
+  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+    {options.map((option) => (
+      <SidebarModeButton
         isActive={value === option.value}
         key={option.value}
         onChange={onChange}

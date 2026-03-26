@@ -1,3 +1,16 @@
+export {
+  ChatSessionSummarySchema,
+  ChatSessionsListOutputSchema,
+  CreateChatSessionInputSchema,
+  OpenChatSessionInputSchema,
+  SetPinnedChatSessionInputSchema
+} from "./schemas/chat-sessions"
+export type {
+  ChatSessionSummary,
+  CreateChatSessionInput,
+  OpenChatSessionInput,
+  SetPinnedChatSessionInput
+} from "./schemas/chat-sessions"
 export { FontListOutputSchema } from "./schemas/fonts"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
@@ -22,6 +35,14 @@ export type { TestProxyInput, TestProxyOutput } from "./schemas/proxy"
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {
+  SetCollapsedProjectsInputSchema,
+  SidebarUiStateSchema
+} from "./schemas/sidebar-state"
+export type {
+  SetCollapsedProjectsInput,
+  SidebarUiState
+} from "./schemas/sidebar-state"
+export {
   AiProviderConfigSchema,
   AiProviderNameSchema,
   AiSettingsSchema,
@@ -35,6 +56,8 @@ export {
   LightColorSchemaSchema,
   ProxySettingsSchema,
   ProxyTypeSchema,
+  SidebarModeSchema,
+  SidebarSettingsSchema,
   ThemeSchema,
   UpdateSettingsSchema
 } from "./schemas/settings"
@@ -51,5 +74,7 @@ export type {
   LightColorSchema,
   ProxySettings,
   ProxyType,
+  SidebarMode,
+  SidebarSettings,
   Theme
 } from "./schemas/settings"

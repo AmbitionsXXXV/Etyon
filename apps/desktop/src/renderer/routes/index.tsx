@@ -1,15 +1,11 @@
 import { useI18n } from "@etyon/i18n/react"
 import { Button } from "@etyon/ui/components/button"
 import { createFileRoute } from "@tanstack/react-router"
-import { AnimatePresence, motion } from "motion/react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { motion } from "motion/react"
 
 import trayImage from "../../../resources/tray.png"
 import { SETTINGS_PAGE_EASE_CURVE } from "../lib/settings-page/constants"
-
-const HOME_NOTICE_RESET_DELAY = 2400
-
-type HomeNoticeState = "hint" | "mocked"
+import { useChatSessionActions } from "../lib/sidebar/use-chat-session-actions"
 
 const openSettingsWindow = (tab?: string): void => {
   window.electron.ipcRenderer.send("open-settings", tab)
@@ -25,29 +21,8 @@ const handleOpenSettingsClick = (): void => {
 
 const HomePage = () => {
   const { t } = useI18n()
-  const [noticeState, setNoticeState] = useState<HomeNoticeState>("hint")
-  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearNoticeTimeout = useCallback(() => {
-    if (noticeTimeoutRef.current === null) {
-      return
-    }
-
-    clearTimeout(noticeTimeoutRef.current)
-    noticeTimeoutRef.current = null
-  }, [])
-
-  const handleNewChatClick = useCallback(() => {
-    clearNoticeTimeout()
-    setNoticeState("mocked")
-
-    noticeTimeoutRef.current = setTimeout(() => {
-      noticeTimeoutRef.current = null
-      setNoticeState("hint")
-    }, HOME_NOTICE_RESET_DELAY)
-  }, [clearNoticeTimeout])
-
-  useEffect(() => clearNoticeTimeout, [clearNoticeTimeout])
+  const { handleCreateChatSession, isCreatingChatSession } =
+    useChatSessionActions()
 
   return (
     <section className="flex flex-1 items-center justify-center px-6 py-10 sm:px-8">
@@ -83,7 +58,8 @@ const HomePage = () => {
         <div className="mt-10 w-full max-w-136 space-y-3">
           <Button
             className="h-13 w-full rounded-2xl text-sm font-semibold"
-            onClick={handleNewChatClick}
+            disabled={isCreatingChatSession}
+            onClick={handleCreateChatSession}
             size="lg"
           >
             {t("home.actions.newChat")}
@@ -110,20 +86,17 @@ const HomePage = () => {
           </div>
         </div>
 
-        <AnimatePresence initial={false} mode="wait">
-          <motion.p
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-8 max-w-lg text-sm/6 text-muted-foreground"
-            initial={{ opacity: 0, y: 6 }}
-            key={noticeState}
-            transition={{
-              duration: 0.2,
-              ease: SETTINGS_PAGE_EASE_CURVE
-            }}
-          >
-            {noticeState === "hint" ? t("home.hint") : t("home.mockedNotice")}
-          </motion.p>
-        </AnimatePresence>
+        <motion.p
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-8 max-w-lg text-sm/6 text-muted-foreground"
+          initial={{ opacity: 0, y: 6 }}
+          transition={{
+            duration: 0.2,
+            ease: SETTINGS_PAGE_EASE_CURVE
+          }}
+        >
+          {t("home.hint")}
+        </motion.p>
       </motion.div>
     </section>
   )

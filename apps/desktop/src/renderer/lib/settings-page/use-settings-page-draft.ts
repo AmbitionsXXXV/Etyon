@@ -8,6 +8,7 @@ import type {
   DarkColorSchema,
   LightColorSchema,
   ProxySettings,
+  SidebarMode,
   Theme
 } from "@etyon/rpc"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -302,6 +303,19 @@ export const useSettingsPageDraft = () => {
     (v: ProxySettings) => updateDraftRef.current("proxy", v),
     []
   )
+  const handleSidebarModeChange = useCallback((v: SidebarMode) => {
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            sidebar: {
+              ...prev.sidebar,
+              mode: v
+            }
+          }
+        : prev
+    )
+  }, [])
   const handleStartMinimizedToTrayChange = useCallback(
     (v: boolean) => updateDraftRef.current("startMinimizedToTray", v),
     []
@@ -341,6 +355,7 @@ export const useSettingsPageDraft = () => {
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,
+    handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleThemeChange,
     isDirty,

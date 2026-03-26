@@ -44,4 +44,14 @@ describe("AppSettingsSchema", () => {
       "https://api.z.ai/api/coding/paas/v4"
     )
   })
+
+  it("defaults sidebar mode to simple for empty and legacy settings", () => {
+    expect(AppSettingsSchema.parse({}).sidebar.mode).toBe("simple")
+
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.sidebar.mode).toBe("simple")
+  })
 })

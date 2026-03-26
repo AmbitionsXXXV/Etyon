@@ -49,6 +49,12 @@ export const AppIconSchema = z.enum(["default", "alt"])
 
 export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
 
+export const SidebarModeSchema = z.enum(["projects", "simple"])
+
+export const SidebarSettingsSchema = z.object({
+  mode: SidebarModeSchema.default("simple")
+})
+
 export const AiProviderNameSchema = BuiltInProviderIdSchema
 
 const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
@@ -142,6 +148,10 @@ const PROXY_SETTINGS_DEFAULT = {
   username: ""
 } as const
 
+const SIDEBAR_SETTINGS_DEFAULT = {
+  mode: "simple" as const
+} as const
+
 export const ProxySettingsSchema = z.object({
   enabled: z.boolean().default(false),
   host: z.string().default(""),
@@ -174,6 +184,7 @@ export const AppSettingsSchema = z.object({
   locale: LocalePreferenceSchema.default("system"),
   minimizeToTray: z.boolean().default(false),
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
+  sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
   theme: ThemeSchema.default("system")
 })
@@ -191,6 +202,7 @@ export const UpdateSettingsSchema = z.object({
   locale: LocalePreferenceSchema.optional(),
   minimizeToTray: z.boolean().optional(),
   proxy: ProxySettingsSchema.optional(),
+  sidebar: SidebarSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
   theme: ThemeSchema.optional()
 })
@@ -207,4 +219,6 @@ export type DarkColorSchema = z.infer<typeof DarkColorSchemaSchema>
 export type LightColorSchema = z.infer<typeof LightColorSchemaSchema>
 export type ProxySettings = z.infer<typeof ProxySettingsSchema>
 export type ProxyType = z.infer<typeof ProxyTypeSchema>
+export type SidebarMode = z.infer<typeof SidebarModeSchema>
+export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
 export type Theme = z.infer<typeof ThemeSchema>

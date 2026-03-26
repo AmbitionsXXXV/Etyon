@@ -27,12 +27,15 @@ import { AnimatePresence, motion } from "motion/react"
 
 import { AppSidebar } from "@/renderer/components/app-sidebar"
 import { TITLE_BAR_HEIGHT, TitleBar } from "@/renderer/components/title-bar"
+import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-actions"
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[76px]"
 
 const InsetHeader = () => {
   const { state } = useSidebar()
   const { t } = useI18n({ keyPrefix: "home" })
+  const { handleCreateChatSession, isCreatingChatSession } =
+    useChatSessionActions()
   const collapsed = state === "collapsed"
 
   const searchButton = (
@@ -42,7 +45,13 @@ const InsetHeader = () => {
   )
 
   const newChatButton = (
-    <Button aria-label={t("actions.newChat")} size="icon-lg" variant="ghost">
+    <Button
+      aria-label={t("actions.newChat")}
+      disabled={isCreatingChatSession}
+      onClick={handleCreateChatSession}
+      size="icon-lg"
+      variant="ghost"
+    >
       <HugeiconsIcon icon={NoteEditIcon} strokeWidth={2} />
     </Button>
   )
@@ -99,7 +108,7 @@ const RootComponent = () => {
   const pathname = useRouterState({
     select: (state) => state.location.pathname
   })
-  const isHomeRoute = pathname === "/"
+  const isAppShellRoute = pathname === "/" || pathname.startsWith("/chat/")
 
   useHotkey("Mod+,", () => {
     window.electron.ipcRenderer.send("open-settings")
@@ -107,7 +116,7 @@ const RootComponent = () => {
 
   return (
     <TooltipProvider>
-      {isHomeRoute ? (
+      {isAppShellRoute ? (
         <SidebarProvider>
           <AppSidebar />
 

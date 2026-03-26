@@ -2,7 +2,7 @@ import { resolveLocale } from "@etyon/i18n"
 import { I18nProvider } from "@etyon/i18n/react"
 import { initLogger } from "@etyon/logger/renderer"
 import { AppSettingsSchema } from "@etyon/rpc"
-import type { AppSettings } from "@etyon/rpc"
+import type { AppSettings, SidebarUiState } from "@etyon/rpc"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
@@ -101,6 +101,19 @@ const RendererRoot = ({
 
     return removeListener
   }, [isSettingsWindowMode])
+
+  useEffect(() => {
+    const { queryKey } = orpc.sidebarState.get.queryOptions({})
+
+    const removeListener = window.electron.ipcRenderer.on(
+      "sidebar-state-changed",
+      (_, nextSidebarState: SidebarUiState) => {
+        queryClient.setQueryData(queryKey, nextSidebarState)
+      }
+    )
+
+    return removeListener
+  }, [])
 
   useEffect(
     () =>
