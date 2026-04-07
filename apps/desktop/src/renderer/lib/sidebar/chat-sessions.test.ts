@@ -15,45 +15,60 @@ import {
   sortPinnedChatSessions
 } from "./chat-sessions"
 
+const buildSessionFixture = ({
+  id,
+  lastOpenedAt,
+  pinnedAt,
+  projectPath,
+  title
+}: {
+  id: string
+  lastOpenedAt: string
+  pinnedAt: string | null
+  projectPath: string
+  title: string
+}) => ({
+  createdAt: "2026-03-26T12:00:00.000Z",
+  id,
+  lastOpenedAt,
+  modelId: null,
+  pinnedAt,
+  projectPath,
+  title,
+  updatedAt: "2026-03-26T12:00:00.000Z"
+})
+
 describe("sidebar chat session helpers", () => {
   it("groups unpinned chat sessions by exact project path and sorts each group by last opened at", () => {
     const groups = groupChatSessionsByProject([
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+      buildSessionFixture({
         id: "older-project-a",
         lastOpenedAt: "2026-03-26T12:01:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      },
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+        title: ""
+      }),
+      buildSessionFixture({
         id: "project-b",
         lastOpenedAt: "2026-03-26T12:03:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-b",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      },
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+        title: ""
+      }),
+      buildSessionFixture({
         id: "newer-project-a",
         lastOpenedAt: "2026-03-26T12:02:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      },
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+        title: ""
+      }),
+      buildSessionFixture({
         id: "pinned-project-a",
         lastOpenedAt: "2026-03-26T12:04:00.000Z",
         pinnedAt: "2026-03-26T12:05:00.000Z",
         projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      }
+        title: ""
+      })
     ])
 
     expect(groups).toHaveLength(2)
@@ -76,48 +91,40 @@ describe("sidebar chat session helpers", () => {
     expect(
       getChatSessionTitle({
         fallbackTitle: "New Chat",
-        session: {
-          createdAt: "2026-03-26T12:00:00.000Z",
+        session: buildSessionFixture({
           id: "session-1",
           lastOpenedAt: "2026-03-26T12:00:00.000Z",
           pinnedAt: null,
           projectPath: "/tmp/project-a",
-          title: "   ",
-          updatedAt: "2026-03-26T12:00:00.000Z"
-        }
+          title: "   "
+        })
       })
     ).toBe("New Chat")
   })
 
   it("sorts pinned sessions by pinned time and then by last opened at", () => {
     const sessions = sortPinnedChatSessions([
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+      buildSessionFixture({
         id: "older-pin",
         lastOpenedAt: "2026-03-26T12:01:00.000Z",
         pinnedAt: "2026-03-26T12:05:00.000Z",
         projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      },
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+        title: ""
+      }),
+      buildSessionFixture({
         id: "newer-pin",
         lastOpenedAt: "2026-03-26T12:04:00.000Z",
         pinnedAt: "2026-03-26T12:06:00.000Z",
         projectPath: "/tmp/project-b",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      },
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+        title: ""
+      }),
+      buildSessionFixture({
         id: "not-pinned",
         lastOpenedAt: "2026-03-26T12:07:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-c",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      }
+        title: ""
+      })
     ])
 
     expect(sessions.map((session) => session.id)).toEqual([
@@ -129,15 +136,14 @@ describe("sidebar chat session helpers", () => {
   it("builds relative time labels and project group visibility helpers", () => {
     const sessions = Array.from(
       { length: PROJECT_GROUP_PAGE_SIZE + 2 },
-      (_, index) => ({
-        createdAt: "2026-03-26T12:00:00.000Z",
-        id: `session-${index}`,
-        lastOpenedAt: "2026-03-26T12:00:00.000Z",
-        pinnedAt: null,
-        projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      })
+      (_, index) =>
+        buildSessionFixture({
+          id: `session-${index}`,
+          lastOpenedAt: "2026-03-26T12:00:00.000Z",
+          pinnedAt: null,
+          projectPath: "/tmp/project-a",
+          title: ""
+        })
     )
     const [firstSession] = sessions
 
@@ -184,15 +190,13 @@ describe("sidebar chat session helpers", () => {
 
   it("forces the active project group open even when it is collapsed", () => {
     const group = groupChatSessionsByProject([
-      {
-        createdAt: "2026-03-26T12:00:00.000Z",
+      buildSessionFixture({
         id: "session-1",
         lastOpenedAt: "2026-03-26T12:00:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-a",
-        title: "",
-        updatedAt: "2026-03-26T12:00:00.000Z"
-      }
+        title: ""
+      })
     ]).at(0)
 
     if (!group) {

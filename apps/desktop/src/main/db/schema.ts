@@ -6,6 +6,7 @@ export const chatSessions = sqliteTable(
     createdAt: text("created_at").notNull(),
     id: text("id").primaryKey(),
     lastOpenedAt: text("last_opened_at").notNull(),
+    modelId: text("model_id"),
     pinnedAt: text("pinned_at"),
     projectPath: text("project_path").notNull(),
     title: text("title").notNull(),

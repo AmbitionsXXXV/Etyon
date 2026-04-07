@@ -1,14 +1,18 @@
 export {
+  ChatMentionSchema,
   ChatSessionSummarySchema,
   ChatSessionsListOutputSchema,
   CreateChatSessionInputSchema,
   OpenChatSessionInputSchema,
+  SetChatSessionModelInputSchema,
   SetPinnedChatSessionInputSchema
 } from "./schemas/chat-sessions"
 export type {
+  ChatMention,
   ChatSessionSummary,
   CreateChatSessionInput,
   OpenChatSessionInput,
+  SetChatSessionModelInput,
   SetPinnedChatSessionInput
 } from "./schemas/chat-sessions"
 export { FontListOutputSchema } from "./schemas/fonts"
@@ -32,6 +36,22 @@ export type {
 } from "./schemas/providers"
 export { TestProxyInputSchema, TestProxyOutputSchema } from "./schemas/proxy"
 export type { TestProxyInput, TestProxyOutput } from "./schemas/proxy"
+export {
+  EnsureProjectSnapshotInputSchema,
+  ListProjectSnapshotFilesInputSchema,
+  ListProjectSnapshotFilesOutputSchema,
+  ProjectSnapshotDocumentSchema,
+  ProjectSnapshotFileItemSchema,
+  ProjectSnapshotStateSchema
+} from "./schemas/project-snapshot"
+export type {
+  EnsureProjectSnapshotInput,
+  ListProjectSnapshotFilesInput,
+  ListProjectSnapshotFilesOutput,
+  ProjectSnapshotDocument,
+  ProjectSnapshotFileItem,
+  ProjectSnapshotState
+} from "./schemas/project-snapshot"
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {

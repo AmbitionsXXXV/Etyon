@@ -3,14 +3,19 @@ import {
   ChatSessionSummarySchema,
   ChatSessionsListOutputSchema,
   CreateChatSessionInputSchema,
+  EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
+  ListProjectSnapshotFilesInputSchema,
+  ListProjectSnapshotFilesOutputSchema,
   LogEventSchema,
   OpenChatSessionInputSchema,
   PingInputSchema,
   PingOutputSchema,
+  ProjectSnapshotStateSchema,
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
   SetCollapsedProjectsInputSchema,
+  SetChatSessionModelInputSchema,
   SetSidebarWidthInputSchema,
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
@@ -23,13 +28,19 @@ import { BrowserWindow } from "electron"
 
 import {
   createChatSession,
+  getChatSessionById,
   listChatSessions,
   openChatSession,
+  setChatSessionModel,
   setChatSessionPinned
 } from "@/main/chat-sessions"
 import { listSystemFonts } from "@/main/fonts"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
+import {
+  ensureProjectSnapshot,
+  listProjectSnapshotFiles
+} from "@/main/project-snapshot"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
@@ -61,7 +72,8 @@ const chatSessionsCreate = rpc
   .handler(({ context, input }) =>
     createChatSession({
       currentSessionId: input.currentSessionId,
-      db: context.db
+      db: context.db,
+      projectPath: input.projectPath
     })
   )
 
@@ -86,6 +98,17 @@ const chatSessionsSetPinned = rpc
     setChatSessionPinned({
       db: context.db,
       pinned: input.pinned,
+      sessionId: input.sessionId
+    })
+  )
+
+const chatSessionsSetModel = rpc
+  .input(SetChatSessionModelInputSchema)
+  .output(ChatSessionSummarySchema)
+  .handler(({ context, input }) =>
+    setChatSessionModel({
+      db: context.db,
+      modelId: input.modelId,
       sessionId: input.sessionId
     })
   )
@@ -133,6 +156,35 @@ const serverGetUrl = rpc
   .output(ServerUrlOutputSchema)
   .handler(() => ({ url: getServerUrl() }))
 
+const projectSnapshotsEnsure = rpc
+  .input(EnsureProjectSnapshotInputSchema)
+  .output(ProjectSnapshotStateSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return ensureProjectSnapshot(session.projectPath)
+  })
+
+const projectSnapshotsListFiles = rpc
+  .input(ListProjectSnapshotFilesInputSchema)
+  .output(ListProjectSnapshotFilesOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return listProjectSnapshotFiles({
+      projectPath: session.projectPath,
+      query: input.query
+    })
+  })
+
 const sidebarStateGet = rpc
   .output(SidebarUiStateSchema)
   .handler(() => getSidebarUiState())
@@ -168,6 +220,7 @@ export const router = {
     create: chatSessionsCreate,
     list: chatSessionsList,
     open: chatSessionsOpen,
+    setModel: chatSessionsSetModel,
     setPinned: chatSessionsSetPinned
   },
   fonts: {
@@ -177,6 +230,10 @@ export const router = {
     emit: loggerEmit
   },
   ping,
+  projectSnapshots: {
+    ensure: projectSnapshotsEnsure,
+    listFiles: projectSnapshotsListFiles
+  },
   providers: {
     fetchModels: providersFetchModels
   },

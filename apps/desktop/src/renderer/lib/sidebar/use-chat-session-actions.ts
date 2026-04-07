@@ -1,4 +1,5 @@
-import type { ChatSessionSummary } from "@etyon/rpc"
+import { logger } from "@etyon/logger/renderer"
+import type { ChatSessionSummary, CreateChatSessionInput } from "@etyon/rpc"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useCallback, useMemo } from "react"
@@ -47,10 +48,8 @@ export const useChatSessionActions = () => {
   )
 
   const createChatSessionMutation = useMutation({
-    mutationFn: (nextCurrentSessionId: string | undefined) =>
-      rpcClient.chatSessions.create({
-        currentSessionId: nextCurrentSessionId
-      }),
+    mutationFn: (input: CreateChatSessionInput) =>
+      rpcClient.chatSessions.create(input),
     onSuccess: async (nextSession) => {
       queryClient.setQueryData<ChatSessionSummary[] | undefined>(
         chatSessionsQueryKey,
@@ -119,8 +118,30 @@ export const useChatSessionActions = () => {
   })
 
   const handleCreateChatSession = useCallback(() => {
-    createChatSessionMutation.mutate(currentSessionId)
+    createChatSessionMutation.mutate({
+      currentSessionId
+    })
   }, [createChatSessionMutation, currentSessionId])
+  const handleCreateProjectChatSession = useCallback(async () => {
+    try {
+      const selectedProjectPath = await window.electron.ipcRenderer.invoke(
+        "pick-project-directory"
+      )
+
+      if (
+        typeof selectedProjectPath !== "string" ||
+        selectedProjectPath.length === 0
+      ) {
+        return
+      }
+
+      createChatSessionMutation.mutate({
+        projectPath: selectedProjectPath
+      })
+    } catch (error: unknown) {
+      logger.error("sidebar_pick_project_directory_failed", { error })
+    }
+  }, [createChatSessionMutation])
 
   const handleOpenChatSession = useCallback(
     (sessionId: string) => {
@@ -142,6 +163,7 @@ export const useChatSessionActions = () => {
   return {
     currentSessionId,
     handleCreateChatSession,
+    handleCreateProjectChatSession,
     handleOpenChatSession,
     handleSetChatSessionPinned,
     isCreatingChatSession: createChatSessionMutation.isPending,

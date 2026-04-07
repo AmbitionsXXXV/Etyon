@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import path from "node:path"
 
 import type { ChatSessionSummary } from "@etyon/rpc"
 import { desc, eq } from "drizzle-orm"
@@ -17,6 +18,9 @@ const ensureProjectDirectory = (projectPath: string): void => {
   }
 }
 
+const normalizeProjectPath = (projectPath: string): string =>
+  path.resolve(projectPath)
+
 const getRecentChatSession = async (
   db: AppDatabase
 ): Promise<ChatSessionSummary | undefined> => {
@@ -29,7 +33,7 @@ const getRecentChatSession = async (
   return session
 }
 
-const getSessionById = async (
+export const getChatSessionById = async (
   db: AppDatabase,
   sessionId: string
 ): Promise<ChatSessionSummary | undefined> => {
@@ -42,12 +46,21 @@ const getSessionById = async (
   return session
 }
 
-const resolveProjectPath = async (
-  currentSessionId: string | undefined,
+const resolveProjectPath = async ({
+  currentSessionId,
+  db,
+  projectPath
+}: {
+  currentSessionId: string | undefined
   db: AppDatabase
-): Promise<string> => {
+  projectPath: string | undefined
+}): Promise<string> => {
+  if (projectPath) {
+    return normalizeProjectPath(projectPath)
+  }
+
   if (currentSessionId) {
-    const currentSession = await getSessionById(db, currentSessionId)
+    const currentSession = await getChatSessionById(db, currentSessionId)
 
     if (currentSession) {
       return currentSession.projectPath
@@ -65,15 +78,21 @@ const resolveProjectPath = async (
 
 export const createChatSession = async ({
   currentSessionId,
-  db
+  db,
+  projectPath
 }: {
   currentSessionId?: string
   db: AppDatabase
+  projectPath?: string
 }): Promise<ChatSessionSummary> => {
   const now = new Date().toISOString()
-  const projectPath = await resolveProjectPath(currentSessionId, db)
+  const resolvedProjectPath = await resolveProjectPath({
+    currentSessionId,
+    db,
+    projectPath
+  })
 
-  ensureProjectDirectory(projectPath)
+  ensureProjectDirectory(resolvedProjectPath)
 
   const [createdSession] = await db
     .insert(chatSessions)
@@ -81,8 +100,9 @@ export const createChatSession = async ({
       createdAt: now,
       id: crypto.randomUUID(),
       lastOpenedAt: now,
+      modelId: null,
       pinnedAt: null,
-      projectPath,
+      projectPath: resolvedProjectPath,
       title: "",
       updatedAt: now
     })
@@ -138,6 +158,30 @@ export const setChatSessionPinned = async ({
     .update(chatSessions)
     .set({
       pinnedAt: pinned ? new Date().toISOString() : null
+    })
+    .where(eq(chatSessions.id, sessionId))
+    .returning()
+
+  if (!updatedSession) {
+    throw new Error(`Chat session not found: ${sessionId}`)
+  }
+
+  return updatedSession
+}
+
+export const setChatSessionModel = async ({
+  db,
+  modelId,
+  sessionId
+}: {
+  db: AppDatabase
+  modelId: string | null
+  sessionId: string
+}): Promise<ChatSessionSummary> => {
+  const [updatedSession] = await db
+    .update(chatSessions)
+    .set({
+      modelId
     })
     .where(eq(chatSessions.id, sessionId))
     .returning()

@@ -17,21 +17,42 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "composer": {
+      "placeholder": "输入消息，或使用 @ 引用当前项目文件",
+      "send": "发送"
+    },
     "details": {
+      "model": "当前模型",
       "project": "项目目录",
       "sessionId": "Session ID",
+      "snapshot": "Snapshot ID",
       "title": "会话信息"
     },
+    "error": {
+      "dismiss": "关闭"
+    },
     "loading": "正在加载 chat session...",
+    "mentions": {
+      "empty": "没有匹配的项目文件。",
+      "searchPlaceholder": "搜索当前项目文件..."
+    },
     "missing": {
       "action": "返回首页",
       "description": "这个 chat session 不存在，或者还没有同步到本地列表。",
       "title": "未找到会话"
     },
+    "model": {
+      "emptyAction": "前往 Settings",
+      "emptyDescription": "当前没有可用模型。"
+    },
     "placeholder": {
       "description": "session 元数据和 sidebar 模式已经接入，下一步会把完整 chat UI 和消息持久化接进来。",
       "inputPlaceholder": "完整 chat 输入框会在这里接入",
       "title": "Chat UI 占位"
+    },
+    "snapshot": {
+      "loading": "正在准备项目快照...",
+      "ready": "快照：{snapshotId}"
     }
   },
   "home": {
@@ -42,10 +63,14 @@
     },
     "description": "一个用于 AI Provider 编排的优雅桌面工作台。",
     "sidebar": {
+      "addProject": "添加项目",
       "archiveSession": "归档会话",
       "empty": "还没有 chat session。点击右上角的 New Chat 开始。",
+      "emptyProjects": "还没有项目入口。使用新增项目按钮创建第一个项目会话。",
       "pinSession": "置顶会话",
       "pinnedThreads": "置顶会话",
+      "projects": "Projects",
+      "projectsCount": "{{projectCount}} 个项目 / {{sessionCount}} 个会话",
       "search": "搜索",
       "showLess": "收起",
       "showMore": "显示更多",

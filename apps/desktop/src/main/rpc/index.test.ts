@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import path from "node:path"
 
 import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/message-port"
@@ -140,6 +141,32 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("creates a chat session for an explicit project path over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const createdSession = await client.chatSessions.create({
+      projectPath: "/tmp/etyon-rpc-explicit-project"
+    })
+
+    expect(createdSession.projectPath).toBe("/tmp/etyon-rpc-explicit-project")
+    expect(fs.existsSync(createdSession.projectPath)).toBe(true)
+
+    port1.close()
+    port2.close()
+  })
+
   it("persists collapsed project paths over the message-port adapter", async () => {
     const { port1, port2 } = new MessageChannel()
     const client: RouterClient<AppRouter> = createORPCClient(
@@ -178,6 +205,60 @@ describe("message-port rpc", () => {
       sidebarWidthPx: 320
     })
     expect(await client.sidebarState.get()).toEqual(resizedState)
+
+    port1.close()
+    port2.close()
+  })
+
+  it("updates the session model and exposes project snapshot procedures over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const createdSession = await client.chatSessions.create({})
+    const sourceFilePath = path.join(
+      createdSession.projectPath,
+      "src",
+      "rpc.ts"
+    )
+
+    fs.mkdirSync(path.dirname(sourceFilePath), { recursive: true })
+    fs.writeFileSync(sourceFilePath, "export const rpcValue = 1\n")
+
+    const updatedSession = await client.chatSessions.setModel({
+      modelId: "openai/gpt-4o-mini",
+      sessionId: createdSession.id
+    })
+    const snapshotState = await client.projectSnapshots.ensure({
+      sessionId: createdSession.id
+    })
+    const listFilesResult = await client.projectSnapshots.listFiles({
+      query: "rpc",
+      sessionId: createdSession.id
+    })
+
+    expect(updatedSession.modelId).toBe("openai/gpt-4o-mini")
+    expect(snapshotState.projectPath).toBe(createdSession.projectPath)
+    expect(snapshotState.snapshotId).toBeTruthy()
+    expect(listFilesResult.snapshotId).toBe(snapshotState.snapshotId)
+    expect(listFilesResult.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          relativePath: "src/rpc.ts",
+          snapshotId: snapshotState.snapshotId
+        })
+      ])
+    )
 
     port1.close()
     port2.close()

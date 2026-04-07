@@ -17,21 +17,42 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "composer": {
+      "placeholder": "メッセージを入力するか、@ でプロジェクトファイルを参照します",
+      "send": "送信"
+    },
     "details": {
+      "model": "モデル",
       "project": "プロジェクトパス",
       "sessionId": "Session ID",
+      "snapshot": "Snapshot ID",
       "title": "セッション情報"
     },
+    "error": {
+      "dismiss": "閉じる"
+    },
     "loading": "chat session を読み込み中...",
+    "mentions": {
+      "empty": "一致するプロジェクトファイルがありません。",
+      "searchPlaceholder": "現在のプロジェクトファイルを検索..."
+    },
     "missing": {
       "action": "ホームに戻る",
       "description": "この chat session は存在しないか、まだローカル一覧に同期されていません。",
       "title": "セッションが見つかりません"
     },
+    "model": {
+      "emptyAction": "Settings を開く",
+      "emptyDescription": "利用可能なモデルがありません。"
+    },
     "placeholder": {
       "description": "session メタデータと sidebar mode は接続済みです。次に完全な chat UI とメッセージ永続化を追加します。",
       "inputPlaceholder": "完全な chat composer はここに接続されます",
       "title": "Chat Placeholder"
+    },
+    "snapshot": {
+      "loading": "プロジェクト snapshot を準備中...",
+      "ready": "Snapshot: {snapshotId}"
     }
   },
   "home": {
@@ -42,10 +63,14 @@
     },
     "description": "AI プロバイダーのオーケストレーションのための、洗練されたデスクトップワークスペースです。",
     "sidebar": {
+      "addProject": "プロジェクトを追加",
       "archiveSession": "セッションをアーカイブ",
       "empty": "chat session はまだありません。右上の New Chat から開始できます。",
+      "emptyProjects": "まだ project entry がありません。追加ボタンから最初の project chat を作成できます。",
       "pinSession": "セッションを固定",
       "pinnedThreads": "固定したスレッド",
+      "projects": "Projects",
+      "projectsCount": "{{projectCount}} 件のプロジェクト / {{sessionCount}} 件のセッション",
       "search": "検索",
       "showLess": "折りたたむ",
       "showMore": "もっと表示",

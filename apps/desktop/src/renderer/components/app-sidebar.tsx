@@ -21,6 +21,7 @@ import {
 import { cn } from "@etyon/ui/lib/utils"
 import {
   Archive02Icon,
+  FileAddIcon,
   Folder01Icon,
   FolderOpenIcon,
   NoteEditIcon,
@@ -62,6 +63,10 @@ const EXPAND_EASE = [0.25, 1, 0.5, 1] as const
 const EXPAND_RESET_DELAY_MS = 520
 const PROJECT_GROUP_ROW_CLASS_NAME =
   "title-bar-no-drag -mx-1 flex h-10 w-full items-center gap-3 rounded-xl px-2 text-left text-[15px] font-medium text-sidebar-foreground/82 transition-[background-color,color] hover:bg-white/4 hover:text-sidebar-accent-foreground"
+const PROJECTS_SECTION_EMPTY_CLASS_NAME =
+  "title-bar-no-drag mt-2 rounded-[1.25rem] border border-dashed border-sidebar-border/70 bg-white/[0.03] px-4 py-4 text-[12px] leading-5 text-sidebar-foreground/68"
+const PROJECTS_SECTION_HEADER_CLASS_NAME =
+  "title-bar-no-drag group/projects-header flex items-center gap-1 rounded-[1.125rem] px-1 py-1.5 transition-[background-color,color] hover:bg-white/[0.03] focus-within:bg-white/[0.03]"
 const SESSION_ROW_CLASS_NAME =
   "h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-[14px] font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
 const SESSION_ROW_META_CLASS_NAME =
@@ -106,6 +111,35 @@ interface ProjectGroupSectionProps {
   toggleProjectGroupLabel: string
   togglingPinnedSessionId?: string
   visibleCount: number
+}
+
+interface ProjectGroupsSectionProps {
+  addProjectLabel: string
+  collapsedProjectPaths: string[]
+  currentSessionId?: string
+  emptyProjectsLabel: string
+  fallbackSessionTitle: string
+  groups: {
+    projectName: string
+    projectPath: string
+    sessions: ChatSessionSummary[]
+  }[]
+  isCreatingProjectChatSession: boolean
+  onCreateProjectChatSession: () => void
+  onOpen: (sessionId: string) => void
+  onShowLess: (projectPath: string) => void
+  onShowMore: (projectPath: string) => void
+  onToggleCollapsed: (projectPath: string) => void
+  onTogglePinned: (sessionId: string, pinned: boolean) => void
+  projectCount: number
+  projectsCountLabel: string
+  projectsLabel: string
+  sessionCount: number
+  showLessLabel: string
+  showMoreLabel: string
+  toggleProjectGroupLabel: string
+  togglingPinnedSessionId?: string
+  visibleCountForProject: (projectPath: string) => number
 }
 
 export const AppSidebarShell = ({
@@ -437,7 +471,7 @@ const ProjectGroupSection = ({
   }, [group.projectPath, onShowMore])
 
   return (
-    <SidebarGroup className="px-3 pb-3" key={group.projectPath}>
+    <SidebarGroup className="px-0 pb-3" key={group.projectPath}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -501,11 +535,114 @@ const ProjectGroupSection = ({
   )
 }
 
+const ProjectGroupsSection = ({
+  addProjectLabel,
+  collapsedProjectPaths,
+  currentSessionId,
+  emptyProjectsLabel,
+  fallbackSessionTitle,
+  groups,
+  isCreatingProjectChatSession,
+  onCreateProjectChatSession,
+  onOpen,
+  onShowLess,
+  onShowMore,
+  onToggleCollapsed,
+  onTogglePinned,
+  projectCount,
+  projectsCountLabel,
+  projectsLabel,
+  sessionCount,
+  showLessLabel,
+  showMoreLabel,
+  toggleProjectGroupLabel,
+  togglingPinnedSessionId,
+  visibleCountForProject
+}: ProjectGroupsSectionProps) => {
+  const sectionContent =
+    groups.length > 0 ? (
+      <div className="mt-1">
+        {groups.map((group) => (
+          <ProjectGroupSection
+            collapsedProjectPaths={collapsedProjectPaths}
+            currentSessionId={currentSessionId}
+            fallbackSessionTitle={fallbackSessionTitle}
+            group={group}
+            key={group.projectPath}
+            onOpen={onOpen}
+            onShowLess={onShowLess}
+            onShowMore={onShowMore}
+            onToggleCollapsed={onToggleCollapsed}
+            onTogglePinned={onTogglePinned}
+            showLessLabel={showLessLabel}
+            showMoreLabel={showMoreLabel}
+            toggleProjectGroupLabel={toggleProjectGroupLabel}
+            togglingPinnedSessionId={togglingPinnedSessionId}
+            visibleCount={visibleCountForProject(group.projectPath)}
+          />
+        ))}
+      </div>
+    ) : (
+      <div className={PROJECTS_SECTION_EMPTY_CLASS_NAME}>
+        {emptyProjectsLabel}
+      </div>
+    )
+
+  return (
+    <SidebarGroup className="px-3 pb-3">
+      <div className={PROJECTS_SECTION_HEADER_CLASS_NAME}>
+        <div className="flex min-w-0 flex-1 items-center px-1.5 py-1">
+          <span className="min-w-0 truncate text-[11px] font-semibold tracking-[0.22em] text-sidebar-foreground/54 uppercase">
+            {projectsLabel}
+          </span>
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                aria-label={addProjectLabel}
+                className={cn(
+                  "text-sidebar-foreground/56 transition-[opacity,transform,color] duration-200",
+                  "pointer-events-none translate-x-1 opacity-0",
+                  "group-hover/projects-header:pointer-events-auto group-hover/projects-header:translate-x-0 group-hover/projects-header:opacity-100",
+                  "group-focus-within/projects-header:pointer-events-auto group-focus-within/projects-header:translate-x-0 group-focus-within/projects-header:opacity-100",
+                  "focus-visible:pointer-events-auto focus-visible:translate-x-0 focus-visible:opacity-100",
+                  "hover:text-sidebar-accent-foreground"
+                )}
+                disabled={isCreatingProjectChatSession}
+                onClick={onCreateProjectChatSession}
+                size="icon-sm"
+                title={addProjectLabel}
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={2} />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">{addProjectLabel}</TooltipContent>
+        </Tooltip>
+
+        <div
+          aria-label={projectsCountLabel}
+          className="rounded-[0.875rem] border border-sidebar-border/50 bg-sidebar-foreground/5 px-2.5 py-1 text-[11px] font-medium text-sidebar-foreground/58 tabular-nums"
+          title={projectsCountLabel}
+        >
+          {projectCount} / {sessionCount}
+        </div>
+      </div>
+
+      {sectionContent}
+    </SidebarGroup>
+  )
+}
+
 export const AppSidebar = () => {
   const { t } = useI18n({ keyPrefix: "home" })
   const {
     currentSessionId,
     handleCreateChatSession,
+    handleCreateProjectChatSession,
     handleOpenChatSession,
     handleSetChatSessionPinned,
     isCreatingChatSession,
@@ -529,6 +666,10 @@ export const AppSidebar = () => {
     settingsQuery.data?.sidebar.mode ?? "simple"
   )
   const chatSessionGroups = groupChatSessionsByProject(chatSessions)
+  const projectSessionCount = chatSessionGroups.reduce(
+    (total, group) => total + group.sessions.length,
+    0
+  )
   const pinnedChatSessions = sortPinnedChatSessions(chatSessions)
   const fallbackSessionTitle = t("actions.newChat")
   const handleShowLessProjectSessions = useCallback((projectPath: string) => {
@@ -584,7 +725,7 @@ export const AppSidebar = () => {
       )
     }
 
-    if (chatSessions.length === 0) {
+    if (!isProjectsMode && chatSessions.length === 0) {
       return (
         <SidebarGroup className="px-3 pb-3">
           <div className="title-bar-no-drag rounded-xl border border-dashed border-sidebar-border/80 px-3 py-4 text-xs text-sidebar-foreground/70">
@@ -639,25 +780,33 @@ export const AppSidebar = () => {
           </SidebarGroup>
         ) : null}
 
-        {chatSessionGroups.map((group) => (
-          <ProjectGroupSection
-            collapsedProjectPaths={collapsedProjectPaths}
-            currentSessionId={currentSessionId}
-            fallbackSessionTitle={fallbackSessionTitle}
-            group={group}
-            key={group.projectPath}
-            onOpen={handleOpenChatSession}
-            onShowLess={handleShowLessProjectSessions}
-            onShowMore={handleShowMoreProjectSessions}
-            onToggleCollapsed={handleToggleProjectCollapsed}
-            onTogglePinned={handleSetChatSessionPinned}
-            showLessLabel={t("sidebar.showLess")}
-            showMoreLabel={t("sidebar.showMore")}
-            toggleProjectGroupLabel={t("sidebar.toggleProjectGroup")}
-            togglingPinnedSessionId={isSettingPinnedChatSessionId}
-            visibleCount={getVisibleCountForProject(group.projectPath)}
-          />
-        ))}
+        <ProjectGroupsSection
+          addProjectLabel={t("sidebar.addProject")}
+          collapsedProjectPaths={collapsedProjectPaths}
+          currentSessionId={currentSessionId}
+          emptyProjectsLabel={t("sidebar.emptyProjects")}
+          fallbackSessionTitle={fallbackSessionTitle}
+          groups={chatSessionGroups}
+          isCreatingProjectChatSession={isCreatingChatSession}
+          onCreateProjectChatSession={handleCreateProjectChatSession}
+          onOpen={handleOpenChatSession}
+          onShowLess={handleShowLessProjectSessions}
+          onShowMore={handleShowMoreProjectSessions}
+          onToggleCollapsed={handleToggleProjectCollapsed}
+          onTogglePinned={handleSetChatSessionPinned}
+          projectCount={chatSessionGroups.length}
+          projectsCountLabel={t("sidebar.projectsCount", {
+            projectCount: chatSessionGroups.length,
+            sessionCount: projectSessionCount
+          })}
+          projectsLabel={t("sidebar.projects")}
+          sessionCount={projectSessionCount}
+          showLessLabel={t("sidebar.showLess")}
+          showMoreLabel={t("sidebar.showMore")}
+          toggleProjectGroupLabel={t("sidebar.toggleProjectGroup")}
+          togglingPinnedSessionId={isSettingPinnedChatSessionId}
+          visibleCountForProject={getVisibleCountForProject}
+        />
       </>
     )
   })()

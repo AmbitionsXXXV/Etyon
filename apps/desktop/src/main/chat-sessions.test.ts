@@ -10,6 +10,7 @@ import {
   createChatSession,
   listChatSessions,
   openChatSession,
+  setChatSessionModel,
   setChatSessionPinned
 } from "./chat-sessions"
 
@@ -77,6 +78,18 @@ describe("chat sessions", () => {
     expect(secondSession.projectPath).toBe(firstSession.projectPath)
   })
 
+  it("creates a session for an explicitly selected project path", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: "/tmp/etyon-explicit-project"
+    })
+
+    expect(session.projectPath).toBe("/tmp/etyon-explicit-project")
+    expect(fs.existsSync(session.projectPath)).toBe(true)
+  })
+
   it("sorts by last opened at and updates the order when a session is reopened", async () => {
     await ensureDatabaseReady()
 
@@ -113,5 +126,22 @@ describe("chat sessions", () => {
 
     expect(pinnedSession.pinnedAt).toBeTruthy()
     expect(unpinnedSession.pinnedAt).toBeNull()
+  })
+
+  it("persists a selected model for a chat session", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const updatedSession = await setChatSessionModel({
+      db: getDb(),
+      modelId: "moonshot/kimi-k2.5",
+      sessionId: session.id
+    })
+    const listedSessions = await listChatSessions(getDb())
+    const listedSession = listedSessions.find((item) => item.id === session.id)
+
+    expect(session.modelId).toBeNull()
+    expect(updatedSession.modelId).toBe("moonshot/kimi-k2.5")
+    expect(listedSession?.modelId).toBe("moonshot/kimi-k2.5")
   })
 })

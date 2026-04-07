@@ -17,21 +17,42 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "composer": {
+      "placeholder": "Type a message or use @ to reference project files",
+      "send": "Send"
+    },
     "details": {
+      "model": "Model",
       "project": "Project Path",
       "sessionId": "Session ID",
+      "snapshot": "Snapshot ID",
       "title": "Session Details"
     },
+    "error": {
+      "dismiss": "Dismiss"
+    },
     "loading": "Loading chat session...",
+    "mentions": {
+      "empty": "No matching project files.",
+      "searchPlaceholder": "Search project files..."
+    },
     "missing": {
       "action": "Back Home",
       "description": "This chat session does not exist or has not synced into the local list yet.",
       "title": "Session Not Found"
     },
+    "model": {
+      "emptyAction": "Open Settings",
+      "emptyDescription": "No enabled models are available."
+    },
     "placeholder": {
       "description": "Session metadata and sidebar modes are now wired up. The full chat UI and message persistence will land next.",
       "inputPlaceholder": "The full chat composer will be connected here",
       "title": "Chat Placeholder"
+    },
+    "snapshot": {
+      "loading": "Preparing project snapshot...",
+      "ready": "Snapshot: {snapshotId}"
     }
   },
   "home": {
@@ -42,10 +63,14 @@
     },
     "description": "An elegant desktop for AI provider orchestration.",
     "sidebar": {
+      "addProject": "Add project",
       "archiveSession": "Archive Session",
       "empty": "No chat sessions yet. Click New Chat in the top-right to start.",
+      "emptyProjects": "No project entries yet. Use the add project button to create your first project chat.",
       "pinSession": "Pin Session",
       "pinnedThreads": "Pinned Threads",
+      "projects": "Projects",
+      "projectsCount": "{{projectCount}} projects / {{sessionCount}} sessions",
       "search": "Search",
       "showLess": "Show less",
       "showMore": "Show more",
