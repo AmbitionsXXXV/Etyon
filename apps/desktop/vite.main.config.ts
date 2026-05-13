@@ -1,5 +1,7 @@
 import { defineConfig } from "vite-plus"
 
+import { desktopAliases } from "./vite-aliases"
+
 const REQUIRE_POLYFILL = `import { createRequire } from "node:module"; const require = createRequire(import.meta.url);`
 
 export default defineConfig({
@@ -17,6 +19,7 @@ export default defineConfig({
     }
   },
   resolve: {
+    alias: [...desktopAliases],
     tsconfigPaths: true
   }
 })

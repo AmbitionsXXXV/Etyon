@@ -12,6 +12,7 @@
   "scripts": {
     "build": "turbo run build",
     "check": "turbo run check",
+    "clean:cache": "node script/clean-cache.mjs",
     "dev": "turbo run dev",
     "dev:desktop": "turbo run dev --filter=@etyon/desktop",
     "fix": "turbo run fix",

@@ -109,14 +109,14 @@ export const createWindow = () => {
     ...(platform.isMacOS
       ? { transparent: true }
       : { titleBarOverlay: { height: 36 } }),
-    height: 800,
+    height: 953,
+    width: 1740,
     minHeight: 392,
     minWidth: 732,
     title: getAppDisplayName(),
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 16, y: 18 },
-    webPreferences: { preload: preloadPath },
-    width: 1000
+    webPreferences: { preload: preloadPath }
   })
 
   syncMainWindowReference(window)

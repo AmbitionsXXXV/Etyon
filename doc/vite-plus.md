@@ -14,6 +14,7 @@
 - 安装依赖：`vp install`
 - 全仓检查：`vp check`
 - 自动修复：`vp run fix`
+- 清理依赖与缓存：`vp run clean:cache`
 - 全仓测试：`vp test`
 - 桌面端单测：在 `apps/desktop` 下执行 `vp test`
 - `RPC` 单测：在 `packages/rpc` 下执行 `vp test`

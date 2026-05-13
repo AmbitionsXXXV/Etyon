@@ -1,20 +1,11 @@
-import path from "node:path"
-
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite-plus"
 
-const rootDirectory = import.meta.dirname
-const resolveFromRoot = (targetPath: string) =>
-  path.resolve(rootDirectory, targetPath)
-const appAliases = [
-  { find: /^@\//u, replacement: `${resolveFromRoot("src")}/` },
-  { find: /^@main\//u, replacement: `${resolveFromRoot("src/main")}/` },
-  { find: /^@preload\//u, replacement: `${resolveFromRoot("src/preload")}/` },
-  { find: /^@renderer\//u, replacement: `${resolveFromRoot("src/renderer")}/` }
-] as const
+import { desktopAliases } from "./vite-aliases"
+
 const optimizedDependencies = [
   "@ai-sdk/react",
   "@base-ui/react",
@@ -75,7 +66,7 @@ export default defineConfig({
     tailwindcss()
   ],
   resolve: {
-    alias: [...appAliases],
+    alias: [...desktopAliases],
     dedupe: [...reactDedupeDependencies],
     tsconfigPaths: true
   }

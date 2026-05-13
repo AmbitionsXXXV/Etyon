@@ -1,5 +1,7 @@
 import { defineConfig } from "vite-plus"
 
+import { desktopAliases } from "./vite-aliases"
+
 export default defineConfig({
   build: {
     rolldownOptions: {
@@ -7,6 +9,7 @@ export default defineConfig({
     }
   },
   resolve: {
+    alias: [...desktopAliases],
     tsconfigPaths: true
   }
 })
