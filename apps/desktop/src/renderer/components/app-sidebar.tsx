@@ -445,7 +445,6 @@ const ProjectGroupSection = ({
 }: ProjectGroupSectionProps) => {
   const expanded = isProjectGroupExpanded({
     collapsedProjectPaths,
-    currentSessionId,
     group
   })
   const visibleSessions = getVisibleProjectGroupSessions({

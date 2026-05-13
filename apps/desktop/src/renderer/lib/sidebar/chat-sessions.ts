@@ -134,22 +134,11 @@ export const shouldShowProjectGroupLessAction = ({
 
 export const isProjectGroupExpanded = ({
   collapsedProjectPaths,
-  currentSessionId,
   group
 }: {
   collapsedProjectPaths: string[]
-  currentSessionId?: string
   group: ChatSessionGroup
-}): boolean => {
-  if (
-    currentSessionId &&
-    group.sessions.some((session) => session.id === currentSessionId)
-  ) {
-    return true
-  }
-
-  return !collapsedProjectPaths.includes(group.projectPath)
-}
+}): boolean => !collapsedProjectPaths.includes(group.projectPath)
 
 export const isProjectsSidebarMode = (mode: SidebarMode): boolean =>
   mode === "projects"

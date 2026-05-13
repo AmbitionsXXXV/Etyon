@@ -247,7 +247,7 @@ Other Renderers (RendererRoot)
   - 普通项目组只显示未 pinned 的 session
   - 组标题显示文件夹名，完整绝对路径只放在 tooltip
   - 每个项目组都支持折叠；`collapsedProjectPaths` 以精确 `projectPath` 作为 key，并跨窗口、重启保持
-  - 当前未 pinned 的 active session 所在项目组会强制展开；离开后恢复持久化折叠态
+  - 当前 active session 所在项目组也遵循用户手动折叠态；点击项目组标题可直接收起当前项目
   - 每个项目组默认显示 `10` 条 session；点击 `Show more` 每次增量展开 `10` 条；全部显示后切成 `Show less`，回到默认 `10` 条
   - `session` 行右侧当前显示相对时间（如 `1h`、`2d`），并预留 `git diff` 元信息槽位供后续接入
   - `Projects` 模式下，hover 或 focus `session` 行会显示 `pin / unpin` 动作；被 pinned 的 session 会从原项目组移到顶部 `Pinned Threads`

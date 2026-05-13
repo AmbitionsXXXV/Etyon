@@ -1,3 +1,4 @@
+import "./lib/react-performance-measure-guard"
 import { resolveLocale } from "@etyon/i18n"
 import { I18nProvider } from "@etyon/i18n/react"
 import { initLogger } from "@etyon/logger/renderer"

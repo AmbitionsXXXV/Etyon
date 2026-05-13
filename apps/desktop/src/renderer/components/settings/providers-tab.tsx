@@ -604,6 +604,7 @@ export const ProvidersTab = ({
                     )}
                     type={isApiKeyVisible ? "text" : "password"}
                     value={activeProviderConfig.apiKey}
+                    className="mx-0.5"
                   />
                 </div>
 
@@ -649,6 +650,7 @@ export const ProvidersTab = ({
                     <Input
                       onChange={handleBaseURLInputChange}
                       value={activeProviderConfig.baseURL}
+                      className="mx-0.5"
                     />
                     <p className="text-[0.6875rem] leading-5 text-muted-foreground">
                       {t("settings.providers.fields.baseUrl.description", {

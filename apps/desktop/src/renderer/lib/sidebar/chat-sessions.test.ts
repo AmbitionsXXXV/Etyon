@@ -188,7 +188,7 @@ describe("sidebar chat session helpers", () => {
     ).toBe(true)
   })
 
-  it("forces the active project group open even when it is collapsed", () => {
+  it("keeps the active project group manually collapsible", () => {
     const group = groupChatSessionsByProject([
       buildSessionFixture({
         id: "session-1",
@@ -206,17 +206,15 @@ describe("sidebar chat session helpers", () => {
     expect(
       isProjectGroupExpanded({
         collapsedProjectPaths: ["/tmp/project-a"],
-        currentSessionId: "session-1",
-        group
-      })
-    ).toBe(true)
-    expect(
-      isProjectGroupExpanded({
-        collapsedProjectPaths: ["/tmp/project-a"],
-        currentSessionId: "session-2",
         group
       })
     ).toBe(false)
+    expect(
+      isProjectGroupExpanded({
+        collapsedProjectPaths: [],
+        group
+      })
+    ).toBe(true)
   })
 
   it("exposes the mode predicate", () => {
