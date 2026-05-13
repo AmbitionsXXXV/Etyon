@@ -1,6 +1,6 @@
 import path from "node:path"
 
-import { defineProject } from "vitest/config"
+import { defineProject } from "vite-plus/test/config"
 
 const rootDirectory = import.meta.dirname
 

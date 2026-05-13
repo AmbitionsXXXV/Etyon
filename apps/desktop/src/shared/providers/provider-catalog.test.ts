@@ -1,6 +1,6 @@
 import type { AiSettings } from "@etyon/rpc"
 import { AiSettingsSchema } from "@etyon/rpc"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "vite-plus/test"
 
 import {
   getSettingsTabProviders,

@@ -11,7 +11,7 @@
     "check": "vp check",
     "fix": "vp check --fix",
     "lint": "vp lint",
-    "test": "vp test --config vitest.config.ts"
+    "test": "vp test"
   },
   "dependencies": {
     "@etyon/i18n": "workspace:*",

@@ -4,7 +4,7 @@ import path from "node:path"
 import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/fetch"
 import type { RouterClient } from "@orpc/server"
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { AppRouter } from "@/main/rpc"
 

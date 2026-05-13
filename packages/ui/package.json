@@ -23,7 +23,7 @@
     "@heroui/styles": "^3.0.4",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
-    "@number-flow/react": "^0.5.14",
+    "@number-flow/react": "^0.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "embla-carousel": "^8.6.0",

@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import { setTimeout as delay } from "node:timers/promises"
 
-import { afterAll, describe, expect, it, vi } from "vitest"
+import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"

@@ -17,8 +17,8 @@
     "fix": "turbo run fix",
     "lint": "turbo run lint",
     "prepare": "vp config",
-    "test": "vp test --config vitest.workspace.ts",
-    "test:watch": "vp test watch --config vitest.workspace.ts",
+    "test": "vp test",
+    "test:watch": "vp test watch",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.root.json"
   },
   "devDependencies": {

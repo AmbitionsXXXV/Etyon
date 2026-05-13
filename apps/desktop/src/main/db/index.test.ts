@@ -1,6 +1,6 @@
 import fs from "node:fs"
 
-import { afterAll, describe, expect, it, vi } from "vitest"
+import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import drizzleConfig from "../../../drizzle.config"
 import { getDbClient, verifyDatabaseConnection } from "./index"

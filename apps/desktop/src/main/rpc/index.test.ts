@@ -5,7 +5,7 @@ import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/message-port"
 import type { RouterClient } from "@orpc/server"
 import { RPCHandler } from "@orpc/server/message-port"
-import { afterAll, describe, expect, it, vi } from "vitest"
+import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { ensureDatabaseReady } from "@/main/db/migrate"
 

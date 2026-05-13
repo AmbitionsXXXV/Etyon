@@ -1,21 +1,21 @@
 # Check
 
-`pnpm check` 当前已在工作区根目录通过。
-`pnpm lint` 当前也可以在工作区根目录通过；`packages/ui` 需要使用 `vp lint`，不能直接调用 IDE 专用的 `oxlint` 包装命令。
-`pnpm typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
-`pnpm test` 现在会使用根目录的 [`vitest.workspace.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vitest.workspace.ts) 统一运行 monorepo 里的 `Vitest` 项目。
+`vp check` 当前已在工作区根目录通过。
+`vp lint` 当前也可以在工作区根目录通过；`packages/ui` 需要使用 `vp lint`，不能直接调用 IDE 专用的 `oxlint` 包装命令。
+`vp run typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
+`vp test` 现在会读取根目录 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `test.projects`，统一运行 monorepo 里的测试项目。
 
 ## Tests
 
-- 根目录统一跑测试：`pnpm test`
-- 根目录 watch 模式：`pnpm test:watch`
-- 只跑桌面端测试：`pnpm --filter @etyon/desktop test`
-- 只跑 `RPC` 测试：`pnpm --filter @etyon/rpc test`
+- 根目录统一跑测试：`vp test`
+- 根目录 watch 模式：`vp test watch`
+- 只跑桌面端测试：在 `apps/desktop` 下执行 `vp test`
+- 只跑 `RPC` 测试：在 `packages/rpc` 下执行 `vp test`
 
-当前 `Vitest` workspace 已接入以下项目：
+当前根目录 `test.projects` 已接入以下项目：
 
-- [`apps/desktop/vitest.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vitest.config.ts)
-- [`packages/rpc/vitest.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/vitest.config.ts)
+- [`apps/desktop/vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vite.config.ts)
+- [`packages/rpc/vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/vite.config.ts)
 
 首批行为测试覆盖：
 
@@ -43,5 +43,5 @@
 ## 约束
 
 - 不要提交空文件占位符；如果暂时不实现，宁可不创建文件
-- 从 `shadcn` 或第三方模板拷贝组件后，先跑一次 `pnpm check`
+- 从 `shadcn` 或第三方模板拷贝组件后，先跑一次 `vp check`
 - 需要持久化浏览器侧状态时，优先使用平台 API 或封装，不要直接写 `document.cookie`

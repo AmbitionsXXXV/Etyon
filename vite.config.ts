@@ -90,9 +90,6 @@ export default defineConfig({
     "*.{css,js,json,jsonc,jsx,ts,tsx}": "vp check --fix"
   },
   test: {
-    projects: [
-      "./apps/desktop/vitest.config.ts",
-      "./packages/rpc/vitest.config.ts"
-    ]
+    projects: ["./apps/desktop/vite.config.ts", "./packages/rpc/vite.config.ts"]
   }
 })
