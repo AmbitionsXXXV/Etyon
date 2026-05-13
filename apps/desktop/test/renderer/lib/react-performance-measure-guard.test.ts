@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { createReactPerformanceMeasureGuard } from "./react-performance-measure-guard"
+import { createReactPerformanceMeasureGuard } from "@/renderer/lib/react-performance-measure-guard"
 
 interface MeasureCall {
   endMark?: string

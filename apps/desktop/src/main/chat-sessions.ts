@@ -2,7 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 
 import type { ChatSessionSummary } from "@etyon/rpc"
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 import { app } from "electron"
 
 import type { AppDatabase } from "@/main/db"
@@ -27,6 +27,7 @@ const getRecentChatSession = async (
   const [session] = await db
     .select()
     .from(chatSessions)
+    .where(isNull(chatSessions.archivedAt))
     .orderBy(desc(chatSessions.lastOpenedAt), desc(chatSessions.createdAt))
     .limit(1)
 
@@ -40,7 +41,7 @@ export const getChatSessionById = async (
   const [session] = await db
     .select()
     .from(chatSessions)
-    .where(eq(chatSessions.id, sessionId))
+    .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.archivedAt)))
     .limit(1)
 
   return session
@@ -97,6 +98,7 @@ export const createChatSession = async ({
   const [createdSession] = await db
     .insert(chatSessions)
     .values({
+      archivedAt: null,
       createdAt: now,
       id: crypto.randomUUID(),
       lastOpenedAt: now,
@@ -121,6 +123,7 @@ export const listChatSessions = (
   db
     .select()
     .from(chatSessions)
+    .where(isNull(chatSessions.archivedAt))
     .orderBy(desc(chatSessions.lastOpenedAt), desc(chatSessions.createdAt))
 
 export const openChatSession = async ({
@@ -135,7 +138,7 @@ export const openChatSession = async ({
     .set({
       lastOpenedAt: new Date().toISOString()
     })
-    .where(eq(chatSessions.id, sessionId))
+    .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.archivedAt)))
     .returning()
 
   if (!openedSession) {
@@ -159,7 +162,7 @@ export const setChatSessionPinned = async ({
     .set({
       pinnedAt: pinned ? new Date().toISOString() : null
     })
-    .where(eq(chatSessions.id, sessionId))
+    .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.archivedAt)))
     .returning()
 
   if (!updatedSession) {
@@ -183,7 +186,7 @@ export const setChatSessionModel = async ({
     .set({
       modelId
     })
-    .where(eq(chatSessions.id, sessionId))
+    .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.archivedAt)))
     .returning()
 
   if (!updatedSession) {
@@ -191,4 +194,29 @@ export const setChatSessionModel = async ({
   }
 
   return updatedSession
+}
+
+export const archiveChatSession = async ({
+  db,
+  sessionId
+}: {
+  db: AppDatabase
+  sessionId: string
+}): Promise<ChatSessionSummary> => {
+  const now = new Date().toISOString()
+  const [archivedSession] = await db
+    .update(chatSessions)
+    .set({
+      archivedAt: now,
+      pinnedAt: null,
+      updatedAt: now
+    })
+    .where(and(eq(chatSessions.id, sessionId), isNull(chatSessions.archivedAt)))
+    .returning()
+
+  if (!archivedSession) {
+    throw new Error(`Chat session not found: ${sessionId}`)
+  }
+
+  return archivedSession
 }

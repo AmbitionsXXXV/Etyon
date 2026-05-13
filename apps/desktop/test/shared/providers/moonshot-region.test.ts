@@ -4,7 +4,7 @@ import {
   getDefaultMoonshotBaseURL,
   resolveMoonshotBaseURL,
   resolveMoonshotRegion
-} from "./moonshot-region"
+} from "@/shared/providers/moonshot-region"
 
 describe("moonshot-region", () => {
   it("returns the region-specific default base url", () => {

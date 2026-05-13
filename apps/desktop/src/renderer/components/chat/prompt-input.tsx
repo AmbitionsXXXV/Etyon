@@ -1,4 +1,4 @@
-import type { ChatMention, ProjectSnapshotFileItem } from "@etyon/rpc"
+import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
 import { Badge } from "@etyon/ui/components/badge"
 import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
@@ -7,6 +7,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import {
   Cancel01Icon,
   File01Icon,
+  Folder01Icon,
   Search01Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -21,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   applyMentionSelection,
+  createMentionFromProjectSnapshotItem,
   getActiveMentionMatch,
   replaceMentionQuery
 } from "@/renderer/lib/chat/prompt-input"
@@ -36,6 +38,17 @@ const formatFileSize = (size: number): string => {
 
   return `${size} B`
 }
+
+const formatMentionItemMetadata = (item: ProjectSnapshotItem): string => {
+  if (item.kind === "folder") {
+    return `${item.fileCount} files`
+  }
+
+  return [item.language ?? "text", formatFileSize(item.size)].join(" · ")
+}
+
+const getMentionItemName = (item: ProjectSnapshotItem): string =>
+  item.relativePath.split("/").at(-1) ?? item.relativePath
 
 const focusTextareaAt = (
   nextCaretIndex: number,
@@ -53,9 +66,11 @@ const focusTextareaAt = (
 
 export const PromptInput = ({
   disabled = false,
-  fileItems,
   footer,
   isLoadingFileItems = false,
+  mentionFileGroupLabel,
+  mentionFolderGroupLabel,
+  mentionItems,
   mentionEmptyLabel,
   mentionSearchPlaceholder,
   onMentionQueryChange,
@@ -64,9 +79,11 @@ export const PromptInput = ({
   submitLabel
 }: {
   disabled?: boolean
-  fileItems: ProjectSnapshotFileItem[]
   footer?: ReactNode
   isLoadingFileItems?: boolean
+  mentionFileGroupLabel: string
+  mentionFolderGroupLabel: string
+  mentionItems: ProjectSnapshotItem[]
   mentionEmptyLabel: string
   mentionSearchPlaceholder: string
   onMentionQueryChange: (query: string | null) => void
@@ -77,7 +94,7 @@ export const PromptInput = ({
   placeholder: string
   submitLabel: string
 }) => {
-  const [activeFileIndex, setActiveFileIndex] = useState(0)
+  const [activeItemIndex, setActiveItemIndex] = useState(0)
   const [caretIndex, setCaretIndex] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mentions, setMentions] = useState<ChatMention[]>([])
@@ -87,9 +104,25 @@ export const PromptInput = ({
     () => getActiveMentionMatch(text, caretIndex),
     [caretIndex, text]
   )
-  const fileItemsByPath = useMemo(
-    () => new Map(fileItems.map((file) => [file.path, file])),
-    [fileItems]
+  const mentionItemsByPath = useMemo(
+    () => new Map(mentionItems.map((item) => [item.path, item])),
+    [mentionItems]
+  )
+  const mentionItemGroups = useMemo(
+    () =>
+      [
+        {
+          id: "folders",
+          items: mentionItems.filter((item) => item.kind === "folder"),
+          label: mentionFolderGroupLabel
+        },
+        {
+          id: "files",
+          items: mentionItems.filter((item) => item.kind === "file"),
+          label: mentionFileGroupLabel
+        }
+      ].filter((group) => group.items.length > 0),
+    [mentionFileGroupLabel, mentionFolderGroupLabel, mentionItems]
   )
 
   useEffect(() => {
@@ -97,8 +130,8 @@ export const PromptInput = ({
   }, [activeMentionMatch, onMentionQueryChange])
 
   useEffect(() => {
-    setActiveFileIndex(0)
-  }, [fileItems])
+    setActiveItemIndex(0)
+  }, [mentionItems])
 
   const handleRemoveMention = useCallback((relativePath: string) => {
     setMentions((previousMentions) =>
@@ -108,18 +141,13 @@ export const PromptInput = ({
     )
   }, [])
 
-  const handleSelectFile = useCallback(
-    (file: ProjectSnapshotFileItem) => {
+  const handleSelectMentionItem = useCallback(
+    (item: ProjectSnapshotItem) => {
       if (!activeMentionMatch) {
         return
       }
 
-      const nextMention: ChatMention = {
-        kind: "file",
-        path: file.path,
-        relativePath: file.relativePath,
-        snapshotId: file.snapshotId
-      }
+      const nextMention = createMentionFromProjectSnapshotItem(item)
       const { nextCaretIndex, nextText } = applyMentionSelection({
         selectionEnd: caretIndex,
         startIndex: activeMentionMatch.startIndex,
@@ -204,21 +232,21 @@ export const PromptInput = ({
     [handleRemoveMention]
   )
 
-  const handleSelectFileClick = useCallback(
+  const handleSelectMentionItemClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
-      const { filePath } = event.currentTarget.dataset
+      const { itemPath } = event.currentTarget.dataset
 
-      if (!filePath) {
+      if (!itemPath) {
         return
       }
 
-      const file = fileItemsByPath.get(filePath)
+      const item = mentionItemsByPath.get(itemPath)
 
-      if (file) {
-        handleSelectFile(file)
+      if (item) {
+        handleSelectMentionItem(item)
       }
     },
-    [fileItemsByPath, handleSelectFile]
+    [handleSelectMentionItem, mentionItemsByPath]
   )
 
   const handleTextareaChange = useCallback(
@@ -238,27 +266,27 @@ export const PromptInput = ({
 
   const handleTextareaKeyDown = useCallback(
     async (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (activeMentionMatch && fileItems.length > 0) {
+      if (activeMentionMatch && mentionItems.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault()
-          setActiveFileIndex((previousIndex) =>
-            Math.min(previousIndex + 1, fileItems.length - 1)
+          setActiveItemIndex((previousIndex) =>
+            Math.min(previousIndex + 1, mentionItems.length - 1)
           )
           return
         }
 
         if (event.key === "ArrowUp") {
           event.preventDefault()
-          setActiveFileIndex((previousIndex) => Math.max(previousIndex - 1, 0))
+          setActiveItemIndex((previousIndex) => Math.max(previousIndex - 1, 0))
           return
         }
 
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault()
-          const selectedFile = fileItems[activeFileIndex]
+          const selectedItem = mentionItems[activeItemIndex]
 
-          if (selectedFile) {
-            handleSelectFile(selectedFile)
+          if (selectedItem) {
+            handleSelectMentionItem(selectedItem)
           }
 
           return
@@ -271,11 +299,11 @@ export const PromptInput = ({
       }
     },
     [
-      activeFileIndex,
+      activeItemIndex,
       activeMentionMatch,
-      fileItems,
-      handleSelectFile,
-      handleSubmit
+      handleSelectMentionItem,
+      handleSubmit,
+      mentionItems
     ]
   )
 
@@ -310,53 +338,71 @@ export const PromptInput = ({
             </div>
           </div>
 
-          <div className="max-h-72 overflow-y-auto p-1">
+          <div
+            aria-label={mentionSearchPlaceholder}
+            className="max-h-72 overflow-y-auto p-1"
+            role="listbox"
+          >
             {isLoadingFileItems && (
               <div className="p-3 text-xs text-muted-foreground">
                 {mentionSearchPlaceholder}
               </div>
             )}
 
-            {!isLoadingFileItems && fileItems.length === 0 && (
+            {!isLoadingFileItems && mentionItems.length === 0 && (
               <div className="p-3 text-xs text-muted-foreground">
                 {mentionEmptyLabel}
               </div>
             )}
 
             {!isLoadingFileItems &&
-              fileItems.map((file, index) => (
-                <button
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left text-xs/relaxed transition-colors",
-                    index === activeFileIndex
-                      ? "bg-accent text-accent-foreground"
-                      : "hover:bg-accent/50"
-                  )}
-                  data-file-path={file.path}
-                  key={file.path}
-                  onClick={handleSelectFileClick}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                    icon={File01Icon}
-                    strokeWidth={2}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {file.relativePath.split("/").at(-1)}
-                    </span>
-                    <span className="block truncate text-muted-foreground">
-                      {file.relativePath}
-                    </span>
-                    <span className="block truncate text-muted-foreground">
-                      {[
-                        file.language ?? "text",
-                        formatFileSize(file.size)
-                      ].join(" · ")}
-                    </span>
-                  </span>
-                </button>
+              mentionItemGroups.map((group) => (
+                <div className="py-1" key={group.id}>
+                  <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
+                    {group.label}
+                  </div>
+                  {group.items.map((item) => {
+                    const itemIndex = mentionItems.findIndex(
+                      (mentionItem) => mentionItem.path === item.path
+                    )
+
+                    return (
+                      <button
+                        aria-selected={itemIndex === activeItemIndex}
+                        className={cn(
+                          "flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left text-xs/relaxed transition-colors",
+                          itemIndex === activeItemIndex
+                            ? "bg-accent text-accent-foreground"
+                            : "hover:bg-accent/50"
+                        )}
+                        data-item-path={item.path}
+                        key={item.path}
+                        onClick={handleSelectMentionItemClick}
+                        role="option"
+                        type="button"
+                      >
+                        <HugeiconsIcon
+                          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                          icon={
+                            item.kind === "folder" ? Folder01Icon : File01Icon
+                          }
+                          strokeWidth={2}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">
+                            {getMentionItemName(item)}
+                          </span>
+                          <span className="block truncate text-muted-foreground">
+                            {item.relativePath}
+                          </span>
+                          <span className="block truncate text-muted-foreground">
+                            {formatMentionItemMetadata(item)}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               ))}
           </div>
         </div>

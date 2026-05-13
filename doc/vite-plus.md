@@ -18,12 +18,14 @@
 - 全仓测试：`vp test`
 - 桌面端单测：在 `apps/desktop` 下执行 `vp test`
 - `RPC` 单测：在 `packages/rpc` 下执行 `vp test`
+- 包内测试文件统一放在 `test/` 目录，例如 `apps/desktop/test/`、`packages/rpc/test/`
 
 ## 迁移细节
 
 - 代码与配置中的 `vite` 导入改为 `vite-plus`
 - 测试文件中的 `vitest` 导入改为 `vite-plus/test`
 - 根目录测试入口不再使用单独的 `vitest.workspace.ts`，而是改由根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `test.projects` 承载；子项目测试配置位于各自的 `vite.config.ts`
+- 子项目测试配置只扫描包内 `test/**/*.test.ts`，避免测试与 `src/` 业务模块混放
 - 已完全移除 `lefthook`，改用 Vite+ 内置的 `.vite-hooks/` 体系（通过 `vp config` 安装）
 - `pre-commit`：先运行 `vp staged`（按 `vite.config.ts` 的 `staged` 块对暂存文件执行 `vp check --fix`），再运行 `vp run typecheck` 做全量类型检查
 - `commit-msg`：运行 `commitlint` 校验提交信息格式

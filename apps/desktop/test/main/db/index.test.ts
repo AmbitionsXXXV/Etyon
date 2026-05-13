@@ -2,9 +2,10 @@ import fs from "node:fs"
 
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
+import { getDbClient, verifyDatabaseConnection } from "@/main/db"
+import { getDatabaseFilePath } from "@/main/db/libsql-paths"
+
 import drizzleConfig from "../../../drizzle.config"
-import { getDbClient, verifyDatabaseConnection } from "./index"
-import { getDatabaseFilePath } from "./libsql-paths"
 
 const { mockedHomeDir } = vi.hoisted(() => ({
   mockedHomeDir: `/tmp/etyon-db-test-${Date.now()}-${Math.random().toString(36).slice(2)}`

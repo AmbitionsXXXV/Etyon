@@ -1,13 +1,26 @@
 import * as z from "zod"
 
-export const ChatMentionSchema = z.object({
+const ChatFileMentionSchema = z.object({
   kind: z.literal("file"),
   path: z.string(),
   relativePath: z.string(),
   snapshotId: z.string()
 })
 
+const ChatFolderMentionSchema = z.object({
+  kind: z.literal("folder"),
+  path: z.string(),
+  relativePath: z.string(),
+  snapshotId: z.string()
+})
+
+export const ChatMentionSchema = z.discriminatedUnion("kind", [
+  ChatFileMentionSchema,
+  ChatFolderMentionSchema
+])
+
 export const ChatSessionSummarySchema = z.object({
+  archivedAt: z.string().nullable(),
   createdAt: z.string(),
   id: z.string(),
   lastOpenedAt: z.string(),
@@ -19,6 +32,10 @@ export const ChatSessionSummarySchema = z.object({
 })
 
 export const ChatSessionsListOutputSchema = z.array(ChatSessionSummarySchema)
+
+export const ArchiveChatSessionInputSchema = z.object({
+  sessionId: z.string()
+})
 
 export const CreateChatSessionInputSchema = z.object({
   currentSessionId: z.string().optional(),
@@ -39,8 +56,11 @@ export const SetChatSessionModelInputSchema = z.object({
   sessionId: z.string()
 })
 
-export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>
+export type ArchiveChatSessionInput = z.infer<
+  typeof ArchiveChatSessionInputSchema
+>
 export type ChatMention = z.infer<typeof ChatMentionSchema>
+export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>
 export type CreateChatSessionInput = z.infer<
   typeof CreateChatSessionInputSchema
 >

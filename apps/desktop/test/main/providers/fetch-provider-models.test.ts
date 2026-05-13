@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 
-import { fetchProviderModels } from "./fetch-provider-models"
+import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 
 describe("fetchProviderModels", () => {
   afterEach(() => {

@@ -14,6 +14,7 @@ export const ProjectSnapshotDocumentSchema = z.object({
 })
 
 export const ProjectSnapshotFileItemSchema = z.object({
+  kind: z.literal("file"),
   language: z.string().nullable(),
   mtimeMs: z.number().nonnegative(),
   path: z.string(),
@@ -21,6 +22,19 @@ export const ProjectSnapshotFileItemSchema = z.object({
   size: z.number().int().nonnegative(),
   snapshotId: z.string()
 })
+
+export const ProjectSnapshotFolderItemSchema = z.object({
+  fileCount: z.number().int().nonnegative(),
+  kind: z.literal("folder"),
+  path: z.string(),
+  relativePath: z.string(),
+  snapshotId: z.string()
+})
+
+export const ProjectSnapshotItemSchema = z.discriminatedUnion("kind", [
+  ProjectSnapshotFileItemSchema,
+  ProjectSnapshotFolderItemSchema
+])
 
 export const ProjectSnapshotStateSchema = z.object({
   projectPath: z.string(),
@@ -33,12 +47,13 @@ export const EnsureProjectSnapshotInputSchema = z.object({
 })
 
 export const ListProjectSnapshotFilesInputSchema = z.object({
+  limit: z.number().int().positive().max(100).default(50),
   query: z.string().default(""),
   sessionId: z.string()
 })
 
 export const ListProjectSnapshotFilesOutputSchema = z.object({
-  files: z.array(ProjectSnapshotFileItemSchema),
+  files: z.array(ProjectSnapshotItemSchema),
   snapshotId: z.string()
 })
 
@@ -57,4 +72,8 @@ export type ProjectSnapshotDocument = z.infer<
 export type ProjectSnapshotFileItem = z.infer<
   typeof ProjectSnapshotFileItemSchema
 >
+export type ProjectSnapshotFolderItem = z.infer<
+  typeof ProjectSnapshotFolderItemSchema
+>
+export type ProjectSnapshotItem = z.infer<typeof ProjectSnapshotItemSchema>
 export type ProjectSnapshotState = z.infer<typeof ProjectSnapshotStateSchema>

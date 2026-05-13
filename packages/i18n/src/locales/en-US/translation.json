@@ -34,6 +34,8 @@
     "loading": "Loading chat session...",
     "mentions": {
       "empty": "No matching project files.",
+      "filesGroup": "Files",
+      "foldersGroup": "Folders",
       "searchPlaceholder": "Search project files..."
     },
     "missing": {

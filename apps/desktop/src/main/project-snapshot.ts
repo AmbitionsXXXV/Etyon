@@ -7,11 +7,14 @@ import type {
   ListProjectSnapshotFilesOutput,
   ProjectSnapshotDocument,
   ProjectSnapshotFileItem,
+  ProjectSnapshotFolderItem,
+  ProjectSnapshotItem,
   ProjectSnapshotState
 } from "@etyon/rpc"
 
 const AGENT_DOCUMENTS_DIR_NAME = "documents"
 const CHUNK_CHAR_COUNT = 2000
+const DEFAULT_PROJECT_SNAPSHOT_LIST_LIMIT = 50
 const DEFAULT_IGNORE_PATTERNS = [
   "node_modules/**",
   ".git/**",
@@ -98,6 +101,8 @@ const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   ".yaml": "yaml",
   ".yml": "yaml"
 }
+const MAX_FOLDER_CONTEXT_DOCUMENTS = 20
+const MAX_MENTION_CONTEXT_CHARS = 24_000
 const TEXT_EXTENSIONS = new Set(Object.keys(EXTENSION_LANGUAGE_MAP))
 
 const normalizeRelativePath = (filePath: string, projectPath: string): string =>
@@ -250,6 +255,60 @@ const buildSha256 = (buffer: Buffer): string =>
 const normalizePreviewText = (text: string): string =>
   text.replaceAll("\r\n", "\n").replaceAll(NULL_BYTE, "").trim()
 
+const normalizeProjectFileQuery = (query: string): string =>
+  query
+    .trim()
+    .toLowerCase()
+    .replace(/^@/u, "")
+    .replace(/^(?:\.\/|\/)+/u, "")
+
+const clampProjectSnapshotListLimit = (limit: number | undefined): number => {
+  if (!limit) {
+    return DEFAULT_PROJECT_SNAPSHOT_LIST_LIMIT
+  }
+
+  return Math.min(Math.max(limit, 1), 100)
+}
+
+const compareProjectSnapshotItems = <
+  TItem extends {
+    relativePath: string
+  }
+>(
+  left: TItem,
+  right: TItem
+): number => left.relativePath.localeCompare(right.relativePath)
+
+const getAncestorDirectoryPaths = (relativePath: string): string[] => {
+  const pathParts = relativePath.split("/")
+
+  if (pathParts.length <= 1) {
+    return []
+  }
+
+  const directoryPaths: string[] = []
+
+  for (let index = 1; index < pathParts.length; index += 1) {
+    directoryPaths.push(pathParts.slice(0, index).join("/"))
+  }
+
+  return directoryPaths
+}
+
+const matchesProjectSnapshotQuery = (
+  relativePath: string,
+  normalizedQuery: string
+): boolean => {
+  if (!normalizedQuery) {
+    return true
+  }
+
+  return (
+    path.posix.basename(relativePath).toLowerCase().includes(normalizedQuery) ||
+    relativePath.toLowerCase().includes(normalizedQuery)
+  )
+}
+
 const isTextFile = (filePath: string, buffer: Buffer): boolean => {
   const extension = path.extname(filePath).toLowerCase()
 
@@ -324,6 +383,46 @@ const calculateSnapshotStats = ({
 }
 
 const createSnapshotId = (): string => crypto.randomBytes(8).toString("hex")
+
+const buildProjectSnapshotFolderItems = ({
+  documents,
+  projectPath,
+  snapshotId
+}: {
+  documents: ProjectSnapshotDocument[]
+  projectPath: string
+  snapshotId: string
+}): ProjectSnapshotFolderItem[] => {
+  const foldersByRelativePath = new Map<string, ProjectSnapshotFolderItem>()
+
+  for (const document of documents) {
+    for (const relativePath of getAncestorDirectoryPaths(
+      document.relativePath
+    )) {
+      const existingFolder = foldersByRelativePath.get(relativePath)
+
+      if (existingFolder) {
+        foldersByRelativePath.set(relativePath, {
+          ...existingFolder,
+          fileCount: existingFolder.fileCount + 1
+        })
+        continue
+      }
+
+      foldersByRelativePath.set(relativePath, {
+        fileCount: 1,
+        kind: "folder",
+        path: path.join(projectPath, relativePath),
+        relativePath,
+        snapshotId
+      })
+    }
+  }
+
+  return [...foldersByRelativePath.values()].toSorted(
+    compareProjectSnapshotItems
+  )
+}
 
 const rebuildProjectSnapshot = (projectPath: string): ProjectSnapshotState => {
   ensureSnapshotDirectoryLayout(projectPath)
@@ -448,29 +547,35 @@ export const ensureProjectSnapshot = (
 }
 
 export const listProjectSnapshotFiles = ({
+  limit,
   projectPath,
   query
 }: {
+  limit?: number
   projectPath: string
   query: string
 }): ListProjectSnapshotFilesOutput => {
   const snapshotState = ensureProjectSnapshot(projectPath)
-  const normalizedQuery = query.trim().toLowerCase()
-  const files = readSnapshotDocuments(projectPath, snapshotState.snapshotId)
-    .filter((document) => {
-      if (!normalizedQuery) {
-        return true
-      }
-
-      return (
-        path
-          .basename(document.relativePath)
-          .toLowerCase()
-          .includes(normalizedQuery) ||
-        document.relativePath.toLowerCase().includes(normalizedQuery)
-      )
-    })
+  const itemLimit = clampProjectSnapshotListLimit(limit)
+  const normalizedQuery = normalizeProjectFileQuery(query)
+  const documents = readSnapshotDocuments(
+    snapshotState.projectPath,
+    snapshotState.snapshotId
+  )
+  const folders = buildProjectSnapshotFolderItems({
+    documents,
+    projectPath: snapshotState.projectPath,
+    snapshotId: snapshotState.snapshotId
+  }).filter((folder) =>
+    matchesProjectSnapshotQuery(folder.relativePath, normalizedQuery)
+  )
+  const files = documents
+    .filter((document) =>
+      matchesProjectSnapshotQuery(document.relativePath, normalizedQuery)
+    )
+    .toSorted(compareProjectSnapshotItems)
     .map<ProjectSnapshotFileItem>((document) => ({
+      kind: "file",
       language: document.language,
       mtimeMs: document.mtimeMs,
       path: document.path,
@@ -478,12 +583,32 @@ export const listProjectSnapshotFiles = ({
       size: document.size,
       snapshotId: snapshotState.snapshotId
     }))
+  const items: ProjectSnapshotItem[] = [...folders, ...files].slice(
+    0,
+    itemLimit
+  )
 
   return {
-    files,
+    files: items,
     snapshotId: snapshotState.snapshotId
   }
 }
+
+const buildDocumentMentionSection = (
+  document: ProjectSnapshotDocument
+): string =>
+  `<file path="${document.relativePath}" language="${document.language ?? "unknown"}">\n${document.preview}\n</file>`
+
+const getFolderMentionDocuments = (
+  documents: ProjectSnapshotDocument[],
+  relativePath: string
+): ProjectSnapshotDocument[] =>
+  documents
+    .filter((document) =>
+      document.relativePath.startsWith(`${relativePath.replace(/\/+$/u, "")}/`)
+    )
+    .toSorted(compareProjectSnapshotItems)
+    .slice(0, MAX_FOLDER_CONTEXT_DOCUMENTS)
 
 export const buildMentionContext = ({
   mentions,
@@ -498,20 +623,75 @@ export const buildMentionContext = ({
     return { snapshotId: snapshotState.snapshotId, system: undefined }
   }
 
-  const documentsByRelativePath = new Map(
-    readSnapshotDocuments(projectPath, snapshotState.snapshotId).map(
-      (document) => [document.relativePath, document]
-    )
+  const documents = readSnapshotDocuments(
+    snapshotState.projectPath,
+    snapshotState.snapshotId
   )
-  const referencedSections = mentions
-    .map((mention) => documentsByRelativePath.get(mention.relativePath))
-    .filter(
-      (document): document is ProjectSnapshotDocument => document !== undefined
-    )
-    .map(
-      (document) =>
-        `<file path="${document.relativePath}" language="${document.language ?? "unknown"}">\n${document.preview}\n</file>`
-    )
+  const documentsByRelativePath = new Map(
+    documents.map((document) => [document.relativePath, document])
+  )
+  const referencedRelativePaths = new Set<string>()
+  const referencedSections: string[] = []
+  let remainingContextChars = MAX_MENTION_CONTEXT_CHARS
+
+  const appendDocumentSection = (
+    document: ProjectSnapshotDocument
+  ): boolean => {
+    if (referencedRelativePaths.has(document.relativePath)) {
+      return false
+    }
+
+    const section = buildDocumentMentionSection(document)
+
+    if (section.length > remainingContextChars) {
+      return false
+    }
+
+    referencedRelativePaths.add(document.relativePath)
+    referencedSections.push(section)
+    remainingContextChars -= section.length
+
+    return true
+  }
+
+  for (const mention of mentions) {
+    if (mention.kind === "file") {
+      const document = documentsByRelativePath.get(mention.relativePath)
+
+      if (document) {
+        appendDocumentSection(document)
+      }
+
+      continue
+    }
+
+    const folderSections: string[] = []
+
+    for (const document of getFolderMentionDocuments(
+      documents,
+      mention.relativePath
+    )) {
+      if (referencedRelativePaths.has(document.relativePath)) {
+        continue
+      }
+
+      const section = buildDocumentMentionSection(document)
+
+      if (section.length > remainingContextChars) {
+        break
+      }
+
+      referencedRelativePaths.add(document.relativePath)
+      folderSections.push(section)
+      remainingContextChars -= section.length
+    }
+
+    if (folderSections.length > 0) {
+      referencedSections.push(
+        `<folder path="${mention.relativePath}">\n${folderSections.join("\n\n")}\n</folder>`
+      )
+    }
+  }
 
   if (referencedSections.length === 0) {
     return { snapshotId: snapshotState.snapshotId, system: undefined }
@@ -521,9 +701,9 @@ export const buildMentionContext = ({
     snapshotId: snapshotState.snapshotId,
     system: [
       "You are working inside a local desktop project context.",
-      `Project path: ${projectPath}`,
+      `Project path: ${snapshotState.projectPath}`,
       `Snapshot id: ${snapshotState.snapshotId}`,
-      "Referenced project files:",
+      "Referenced project files and folders:",
       referencedSections.join("\n\n")
     ].join("\n")
   }

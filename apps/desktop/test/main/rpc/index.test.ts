@@ -8,10 +8,9 @@ import { RPCHandler } from "@orpc/server/message-port"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { ensureDatabaseReady } from "@/main/db/migrate"
-
-import { createMessagePortRpcContext } from "./context"
-import type { AppRouter } from "./router"
-import { router } from "./router"
+import { createMessagePortRpcContext } from "@/main/rpc/context"
+import type { AppRouter } from "@/main/rpc/router"
+import { router } from "@/main/rpc/router"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -162,6 +161,44 @@ describe("message-port rpc", () => {
 
     expect(createdSession.projectPath).toBe("/tmp/etyon-rpc-explicit-project")
     expect(fs.existsSync(createdSession.projectPath)).toBe(true)
+
+    port1.close()
+    port2.close()
+  })
+
+  it("archives chat sessions over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const createdSession = await client.chatSessions.create({})
+    const archivedSession = await (
+      client.chatSessions as typeof client.chatSessions & {
+        archive: (input: { sessionId: string }) => Promise<{
+          archivedAt: string | null
+          id: string
+        }>
+      }
+    ).archive({
+      sessionId: createdSession.id
+    })
+    const sessionsAfterArchive = await client.chatSessions.list()
+
+    expect(archivedSession.id).toBe(createdSession.id)
+    expect(archivedSession.archivedAt).toBeTruthy()
+    expect(
+      sessionsAfterArchive.some((session) => session.id === createdSession.id)
+    ).toBe(false)
 
     port1.close()
     port2.close()

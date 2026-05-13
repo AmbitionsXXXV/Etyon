@@ -83,8 +83,10 @@ interface AppSidebarShellProps {
 }
 
 interface ChatSessionItemProps {
+  archivingSessionId?: string
   currentSessionId?: string
   fallbackSessionTitle: string
+  onArchive: (sessionId: string) => void
   onOpen: (sessionId: string) => void
   onTogglePinned?: (sessionId: string, pinned: boolean) => void
   session: ChatSessionSummary
@@ -93,6 +95,7 @@ interface ChatSessionItemProps {
 }
 
 interface ProjectGroupSectionProps {
+  archivingSessionId?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
   fallbackSessionTitle: string
@@ -101,6 +104,7 @@ interface ProjectGroupSectionProps {
     projectPath: string
     sessions: ChatSessionSummary[]
   }
+  onArchive: (sessionId: string) => void
   onOpen: (sessionId: string) => void
   onShowLess: (projectPath: string) => void
   onShowMore: (projectPath: string) => void
@@ -115,6 +119,7 @@ interface ProjectGroupSectionProps {
 
 interface ProjectGroupsSectionProps {
   addProjectLabel: string
+  archivingSessionId?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
   emptyProjectsLabel: string
@@ -125,6 +130,7 @@ interface ProjectGroupsSectionProps {
     sessions: ChatSessionSummary[]
   }[]
   isCreatingProjectChatSession: boolean
+  onArchive: (sessionId: string) => void
   onCreateProjectChatSession: () => void
   onOpen: (sessionId: string) => void
   onShowLess: (projectPath: string) => void
@@ -300,8 +306,10 @@ export const AppSidebarShell = ({
 }
 
 const ChatSessionItem = ({
+  archivingSessionId,
   currentSessionId,
   fallbackSessionTitle,
+  onArchive,
   onOpen,
   onTogglePinned,
   session,
@@ -315,6 +323,7 @@ const ChatSessionItem = ({
   const metaItems = getChatSessionMetaItems({ session })
   const diffMetaItem = metaItems.find((item) => item.kind === "git-diff")
   const timeMetaItem = metaItems.find((item) => item.kind === "time")
+  const isArchiving = archivingSessionId === session.id
   const isPinned = Boolean(session.pinnedAt)
   const isTogglingPinned = togglingPinnedSessionId === session.id
   const handleTogglePinned = useCallback(
@@ -330,8 +339,10 @@ const ChatSessionItem = ({
     (event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
+
+      onArchive(session.id)
     },
-    []
+    [onArchive, session.id]
   )
 
   const isRowActive = currentSessionId === session.id
@@ -413,8 +424,9 @@ const ChatSessionItem = ({
               "pointer-events-none opacity-0",
               "group-hover/menu-item:pointer-events-auto group-hover/menu-item:opacity-100",
               "group-focus-within/menu-item:pointer-events-auto group-focus-within/menu-item:opacity-100",
-              "hover:text-sidebar-accent-foreground focus-visible:pointer-events-auto focus-visible:opacity-100"
+              "hover:text-sidebar-accent-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-50"
             )}
+            disabled={isArchiving}
             onClick={handleArchiveClick}
             title={t("archiveSession")}
             type="button"
@@ -428,6 +440,7 @@ const ChatSessionItem = ({
 }
 
 const ProjectGroupSection = ({
+  archivingSessionId,
   collapsedProjectPaths,
   currentSessionId,
   fallbackSessionTitle,
@@ -435,6 +448,7 @@ const ProjectGroupSection = ({
   onOpen,
   onShowLess,
   onShowMore,
+  onArchive,
   onToggleCollapsed,
   onTogglePinned,
   showLessLabel,
@@ -508,8 +522,10 @@ const ProjectGroupSection = ({
             {visibleSessions.map((session) => (
               <ChatSessionItem
                 currentSessionId={currentSessionId}
+                archivingSessionId={archivingSessionId}
                 fallbackSessionTitle={fallbackSessionTitle}
                 key={session.id}
+                onArchive={onArchive}
                 onOpen={onOpen}
                 onTogglePinned={onTogglePinned}
                 session={session}
@@ -536,12 +552,14 @@ const ProjectGroupSection = ({
 
 const ProjectGroupsSection = ({
   addProjectLabel,
+  archivingSessionId,
   collapsedProjectPaths,
   currentSessionId,
   emptyProjectsLabel,
   fallbackSessionTitle,
   groups,
   isCreatingProjectChatSession,
+  onArchive,
   onCreateProjectChatSession,
   onOpen,
   onShowLess,
@@ -563,11 +581,13 @@ const ProjectGroupsSection = ({
       <div className="mt-1">
         {groups.map((group) => (
           <ProjectGroupSection
+            archivingSessionId={archivingSessionId}
             collapsedProjectPaths={collapsedProjectPaths}
             currentSessionId={currentSessionId}
             fallbackSessionTitle={fallbackSessionTitle}
             group={group}
             key={group.projectPath}
+            onArchive={onArchive}
             onOpen={onOpen}
             onShowLess={onShowLess}
             onShowMore={onShowMore}
@@ -640,10 +660,12 @@ export const AppSidebar = () => {
   const { t } = useI18n({ keyPrefix: "home" })
   const {
     currentSessionId,
+    handleArchiveChatSession,
     handleCreateChatSession,
     handleCreateProjectChatSession,
     handleOpenChatSession,
     handleSetChatSessionPinned,
+    isArchivingChatSessionId,
     isCreatingChatSession,
     isSettingPinnedChatSessionId
   } = useChatSessionActions()
@@ -740,9 +762,11 @@ export const AppSidebar = () => {
           <SidebarMenu className="title-bar-no-drag space-y-1">
             {chatSessions.map((session) => (
               <ChatSessionItem
+                archivingSessionId={isArchivingChatSessionId}
                 currentSessionId={currentSessionId}
                 fallbackSessionTitle={fallbackSessionTitle}
                 key={session.id}
+                onArchive={handleArchiveChatSession}
                 onOpen={handleOpenChatSession}
                 session={session}
               />
@@ -765,9 +789,11 @@ export const AppSidebar = () => {
             <SidebarMenu className="title-bar-no-drag mt-2 space-y-1">
               {pinnedChatSessions.map((session) => (
                 <ChatSessionItem
+                  archivingSessionId={isArchivingChatSessionId}
                   currentSessionId={currentSessionId}
                   fallbackSessionTitle={fallbackSessionTitle}
                   key={session.id}
+                  onArchive={handleArchiveChatSession}
                   onOpen={handleOpenChatSession}
                   onTogglePinned={handleSetChatSessionPinned}
                   session={session}
@@ -781,12 +807,14 @@ export const AppSidebar = () => {
 
         <ProjectGroupsSection
           addProjectLabel={t("sidebar.addProject")}
+          archivingSessionId={isArchivingChatSessionId}
           collapsedProjectPaths={collapsedProjectPaths}
           currentSessionId={currentSessionId}
           emptyProjectsLabel={t("sidebar.emptyProjects")}
           fallbackSessionTitle={fallbackSessionTitle}
           groups={chatSessionGroups}
           isCreatingProjectChatSession={isCreatingChatSession}
+          onArchive={handleArchiveChatSession}
           onCreateProjectChatSession={handleCreateProjectChatSession}
           onOpen={handleOpenChatSession}
           onShowLess={handleShowLessProjectSessions}

@@ -34,6 +34,8 @@
     "loading": "正在加载 chat session...",
     "mentions": {
       "empty": "没有匹配的项目文件。",
+      "filesGroup": "文件",
+      "foldersGroup": "文件夹",
       "searchPlaceholder": "搜索当前项目文件..."
     },
     "missing": {

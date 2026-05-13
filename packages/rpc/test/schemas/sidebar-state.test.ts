@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { SidebarUiStateSchema } from "./sidebar-state"
+import { SidebarUiStateSchema } from "../../src/schemas/sidebar-state"
 
 describe("SidebarUiStateSchema", () => {
   it("defaults collapsed project paths to an empty array", () => {

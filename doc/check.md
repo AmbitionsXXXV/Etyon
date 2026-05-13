@@ -11,6 +11,7 @@
 - 根目录 watch 模式：`vp test watch`
 - 只跑桌面端测试：在 `apps/desktop` 下执行 `vp test`
 - 只跑 `RPC` 测试：在 `packages/rpc` 下执行 `vp test`
+- 每个 package 的测试集中放在包内 `test/` 目录，不和 `src/` 业务代码混放；子项目 `vite.config.ts` 的 `test.include` 只扫描 `test/**/*.test.ts`
 
 当前根目录 `test.projects` 已接入以下项目：
 
@@ -19,9 +20,9 @@
 
 首批行为测试覆盖：
 
-- [`packages/rpc/src/schemas/settings.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/src/schemas/settings.test.ts)：`Moonshot` / `Z.AI` provider 默认值与旧配置补齐
-- [`apps/desktop/src/shared/providers/provider-catalog.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/shared/providers/provider-catalog.test.ts)：providers tab 可见项与 seed models 补水
-- [`apps/desktop/src/main/providers/fetch-provider-models.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/providers/fetch-provider-models.test.ts)：上游 `/models` 抓取归一化与 seed capabilities 回填
+- [`packages/rpc/test/schemas/settings.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/packages/rpc/test/schemas/settings.test.ts)：`Moonshot` / `Z.AI` provider 默认值与旧配置补齐
+- [`apps/desktop/test/shared/providers/provider-catalog.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/test/shared/providers/provider-catalog.test.ts)：providers tab 可见项与 seed models 补水
+- [`apps/desktop/test/main/providers/fetch-provider-models.test.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/test/main/providers/fetch-provider-models.test.ts)：上游 `/models` 抓取归一化与 seed capabilities 回填
 
 ## 本次修复
 

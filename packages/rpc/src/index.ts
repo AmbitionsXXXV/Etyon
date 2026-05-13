@@ -1,4 +1,5 @@
 export {
+  ArchiveChatSessionInputSchema,
   ChatMentionSchema,
   ChatSessionSummarySchema,
   ChatSessionsListOutputSchema,
@@ -8,6 +9,7 @@ export {
   SetPinnedChatSessionInputSchema
 } from "./schemas/chat-sessions"
 export type {
+  ArchiveChatSessionInput,
   ChatMention,
   ChatSessionSummary,
   CreateChatSessionInput,
@@ -42,6 +44,8 @@ export {
   ListProjectSnapshotFilesOutputSchema,
   ProjectSnapshotDocumentSchema,
   ProjectSnapshotFileItemSchema,
+  ProjectSnapshotFolderItemSchema,
+  ProjectSnapshotItemSchema,
   ProjectSnapshotStateSchema
 } from "./schemas/project-snapshot"
 export type {
@@ -50,6 +54,8 @@ export type {
   ListProjectSnapshotFilesOutput,
   ProjectSnapshotDocument,
   ProjectSnapshotFileItem,
+  ProjectSnapshotFolderItem,
+  ProjectSnapshotItem,
   ProjectSnapshotState
 } from "./schemas/project-snapshot"
 export { ServerUrlOutputSchema } from "./schemas/server"

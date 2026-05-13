@@ -1,5 +1,6 @@
 import {
   AppSettingsSchema,
+  ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
   ChatSessionsListOutputSchema,
   CreateChatSessionInputSchema,
@@ -27,6 +28,7 @@ import {
 import { BrowserWindow } from "electron"
 
 import {
+  archiveChatSession,
   createChatSession,
   getChatSessionById,
   listChatSessions,
@@ -74,6 +76,16 @@ const chatSessionsCreate = rpc
       currentSessionId: input.currentSessionId,
       db: context.db,
       projectPath: input.projectPath
+    })
+  )
+
+const chatSessionsArchive = rpc
+  .input(ArchiveChatSessionInputSchema)
+  .output(ChatSessionSummarySchema)
+  .handler(({ context, input }) =>
+    archiveChatSession({
+      db: context.db,
+      sessionId: input.sessionId
     })
   )
 
@@ -180,6 +192,7 @@ const projectSnapshotsListFiles = rpc
     }
 
     return listProjectSnapshotFiles({
+      limit: input.limit,
       projectPath: session.projectPath,
       query: input.query
     })
@@ -217,6 +230,7 @@ const sidebarStateSetWidth = rpc
 
 export const router = {
   chatSessions: {
+    archive: chatSessionsArchive,
     create: chatSessionsCreate,
     list: chatSessionsList,
     open: chatSessionsOpen,

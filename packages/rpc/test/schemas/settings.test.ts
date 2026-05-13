@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { AppSettingsSchema } from "./settings"
+import { AppSettingsSchema } from "../../src/schemas/settings"
 
 describe("AppSettingsSchema", () => {
   it("adds moonshot and z.ai provider defaults for empty settings", () => {

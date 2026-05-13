@@ -70,22 +70,33 @@ ${projectPath}/.alma-snapshots/
 聊天输入框里的 `@` 文件引用不会写成脆弱的纯文本路径，而是以结构化 token 维护。请求 `/api/chat` 时会同时提交普通文本和 `mentions`：
 
 ```ts
-type ChatMention = {
-  kind: "file"
-  path: string
-  relativePath: string
-  snapshotId: string
-}
+type ChatMention =
+  | {
+      kind: "file"
+      path: string
+      relativePath: string
+      snapshotId: string
+    }
+  | {
+      kind: "folder"
+      path: string
+      relativePath: string
+      snapshotId: string
+    }
 ```
 
 - `path`
-  - 文件绝对路径。
+  - 文件或文件夹绝对路径。
 - `relativePath`
   - 相对于当前 `projectPath` 的路径，也是快照索引的主键。
 - `snapshotId`
-  - 选择该文件时关联的快照编号。
+  - 选择该候选项时关联的快照编号。
 
-服务端会优先从最新快照中读取被引用文件的 `preview`，再把这些内容作为额外上下文拼进模型输入。
+服务端会优先从最新快照中读取被引用文件的 `preview`，再把这些内容作为额外上下文拼进模型输入。引用文件夹时，服务端按文件夹相对路径前缀从同一快照中提取目录下的文本文件，并按保守上下文预算截断。
+
+文件搜索以 `projectPath` 为根处理相对路径。输入 `@` 会显示前 50 个候选项，文件夹分组固定排在文件分组前。输入 `@src/main`、`@/src/main` 或 `@./src/main` 都会匹配快照中的 `src/main...` 文件或文件夹，避免项目根路径写法导致文件索引查不到。
+
+聊天页默认不显示 session / snapshot 细节。需要排查项目快照或模型绑定时，可在 renderer 环境中设置 `VITE_ENABLE_CHAT_SESSION_DETAILS=1` 或 `VITE_ENABLE_CHAT_SESSION_DETAILS=true`，再显示右侧调试详情和底部快照 ID。
 
 ## 模型选择与会话记忆
 

@@ -1,7 +1,10 @@
 import type { AiSettings } from "@etyon/rpc"
 import { describe, expect, it } from "vite-plus/test"
 
-import { buildChatModelGroups, resolveChatModelValue } from "./model-options"
+import {
+  buildChatModelGroups,
+  resolveChatModelValue
+} from "@/renderer/lib/chat/model-options"
 
 const buildAiSettingsFixture = (): AiSettings => ({
   defaultModel: "moonshot/kimi-k2.5",

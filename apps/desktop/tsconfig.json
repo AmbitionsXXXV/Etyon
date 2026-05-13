@@ -32,5 +32,5 @@
     "target": "ESNext",
     "types": ["node", "vite-plus/client"]
   },
-  "include": ["src/**/*", "forge.env.d.ts"]
+  "include": ["src/**/*", "test/**/*", "forge.env.d.ts"]
 }

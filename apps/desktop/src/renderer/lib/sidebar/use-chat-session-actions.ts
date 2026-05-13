@@ -69,6 +69,49 @@ export const useChatSessionActions = () => {
     }
   })
 
+  const archiveChatSessionMutation = useMutation({
+    mutationFn: (sessionId: string) =>
+      rpcClient.chatSessions.archive({
+        sessionId
+      }),
+    onError: (error, sessionId) => {
+      logger.error("sidebar_archive_chat_session_failed", {
+        error,
+        sessionId
+      })
+    },
+    onSuccess: async (archivedSession) => {
+      const activeSessions = (
+        queryClient.getQueryData<ChatSessionSummary[] | undefined>(
+          chatSessionsQueryKey
+        ) ?? []
+      ).filter((session) => session.id !== archivedSession.id)
+
+      queryClient.setQueryData<ChatSessionSummary[] | undefined>(
+        chatSessionsQueryKey,
+        activeSessions
+      )
+
+      if (archivedSession.id !== currentSessionId) {
+        return
+      }
+
+      const [nextSession] = activeSessions
+
+      if (nextSession) {
+        await navigate({
+          params: {
+            sessionId: nextSession.id
+          },
+          to: "/chat/$sessionId"
+        })
+        return
+      }
+
+      await navigate({ to: "/" })
+    }
+  })
+
   const openChatSessionMutation = useMutation({
     mutationFn: (sessionId: string) =>
       rpcClient.chatSessions.open({
@@ -117,6 +160,13 @@ export const useChatSessionActions = () => {
     }
   })
 
+  const handleArchiveChatSession = useCallback(
+    (sessionId: string) => {
+      archiveChatSessionMutation.mutate(sessionId)
+    },
+    [archiveChatSessionMutation]
+  )
+
   const handleCreateChatSession = useCallback(() => {
     createChatSessionMutation.mutate({
       currentSessionId
@@ -162,10 +212,14 @@ export const useChatSessionActions = () => {
 
   return {
     currentSessionId,
+    handleArchiveChatSession,
     handleCreateChatSession,
     handleCreateProjectChatSession,
     handleOpenChatSession,
     handleSetChatSessionPinned,
+    isArchivingChatSessionId: archiveChatSessionMutation.isPending
+      ? archiveChatSessionMutation.variables
+      : undefined,
     isCreatingChatSession: createChatSessionMutation.isPending,
     isOpeningChatSession: openChatSessionMutation.isPending,
     isSettingPinnedChatSessionId: setPinnedChatSessionMutation.isPending

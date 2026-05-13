@@ -3,6 +3,7 @@ import { index, sqliteTable, text } from "drizzle-orm/sqlite-core"
 export const chatSessions = sqliteTable(
   "chat_sessions",
   {
+    archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull(),
     id: text("id").primaryKey(),
     lastOpenedAt: text("last_opened_at").notNull(),

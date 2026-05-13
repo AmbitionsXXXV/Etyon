@@ -41,22 +41,26 @@
 | `updated_at`     | text | 预留给后续 metadata 更新使用   |
 | `last_opened_at` | text | sidebar 排序主依据             |
 | `pinned_at`      | text | pinned 时间；`null` 表示未置顶 |
+| `archived_at`    | text | 归档时间；`null` 表示仍在列表  |
 
 - 索引：
   - `chat_sessions_last_opened_at_idx`
   - `chat_sessions_project_path_idx`
 - 首个 migration：[`0000_careless_proudstar.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0000_careless_proudstar.sql)
 - 第二条 migration：[`0001_parallel_magik.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0001_parallel_magik.sql)
+- 第三条 migration：[`0002_fair_black_crow.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0002_fair_black_crow.sql)
+- 第四条 migration：[`0003_tidy_magma.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0003_tidy_magma.sql)
 - 首次创建 session 且没有可继承项目时，`project_path` 回退到 `~/.config/etyon`
 - `pinned_at` 仅用于 `Projects` 模式下的顶部 `Pinned Threads` 排序：先按 `pinned_at desc`，再按 `last_opened_at desc`
+- `archived_at` 为软归档标记；`chatSessions.list` 只返回 `archived_at is null` 的 active session
 - 主进程在 `app.on("ready")` 期间先调用 `ensureDatabaseReady()`，再注册 RPC 与本地 HTTP server，保证 `chatSessions.*` RPC 首次调用时表已经存在
 
 ## 命令
 
 在 `@etyon/desktop` 包内提供以下脚本：
 
-- `pnpm --filter @etyon/desktop db:generate`
-- `pnpm --filter @etyon/desktop db:migrate`
-- `pnpm --filter @etyon/desktop db:studio`
+- `vp run @etyon/desktop#db:generate`
+- `vp run @etyon/desktop#db:migrate`
+- `vp run @etyon/desktop#db:studio`
 
 后续若新增 message 持久化或项目别名表，继续沿用这套 Drizzle schema + migration 流程即可。

@@ -7,10 +7,10 @@ import type { RouterClient } from "@orpc/server"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { AppRouter } from "@/main/rpc"
-
-import { app } from "./app"
+import { app } from "@/main/server/app"
 
 interface MockChatSession {
+  archivedAt: string | null
   createdAt: string
   id: string
   lastOpenedAt: string
@@ -30,6 +30,7 @@ const {
   streamTextMock
 } = vi.hoisted(() => {
   const defaultChatSession = {
+    archivedAt: null,
     createdAt: "2026-04-06T09:00:00.000Z",
     id: "session-1",
     lastOpenedAt: "2026-04-06T09:01:00.000Z",
@@ -248,6 +249,7 @@ describe("hono app", () => {
         mockResolvedValueOnce: (value: MockChatSession) => void
       }
     ).mockResolvedValueOnce({
+      archivedAt: null,
       createdAt: "2026-04-06T09:00:00.000Z",
       id: "session-1",
       lastOpenedAt: "2026-04-06T09:01:00.000Z",

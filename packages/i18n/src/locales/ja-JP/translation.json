@@ -34,6 +34,8 @@
     "loading": "chat session を読み込み中...",
     "mentions": {
       "empty": "一致するプロジェクトファイルがありません。",
+      "filesGroup": "ファイル",
+      "foldersGroup": "フォルダー",
       "searchPlaceholder": "現在のプロジェクトファイルを検索..."
     },
     "missing": {

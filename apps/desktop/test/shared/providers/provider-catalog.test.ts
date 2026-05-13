@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test"
 import {
   getSettingsTabProviders,
   hydrateAiSettingsProviders
-} from "./provider-catalog"
+} from "@/shared/providers/provider-catalog"
 
 describe("provider-catalog", () => {
   it("shows only moonshot and z.ai in the settings providers tab", () => {

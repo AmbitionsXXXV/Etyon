@@ -3,7 +3,7 @@ import { useI18n } from "@etyon/i18n/react"
 import type {
   ChatMention,
   ChatSessionSummary,
-  ProjectSnapshotFileItem
+  ProjectSnapshotItem
 } from "@etyon/rpc"
 import { Badge } from "@etyon/ui/components/badge"
 import { Button } from "@etyon/ui/components/button"
@@ -34,6 +34,13 @@ type ChatUiMessage = UIMessage<ChatMessageMetadata>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
+const isChatSessionDetailsEnabled =
+  import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "true" ||
+  import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "1"
+const CHAT_LAYOUT_CLASS_NAME = isChatSessionDetailsEnabled
+  ? "grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]"
+  : "grid min-h-0 flex-1 grid-cols-1 gap-6"
+const MENTION_ITEM_LIMIT = 50
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
 
 const getMessageText = (message: ChatUiMessage): string =>
@@ -103,9 +110,9 @@ const ChatDetailsPanel = ({
 }
 
 const ChatRuntime = ({
-  fileItems,
   isLoadingFileItems,
   isModelUpdating,
+  mentionItems,
   modelGroups,
   onMentionQueryChange,
   onModelChange,
@@ -115,9 +122,9 @@ const ChatRuntime = ({
   snapshotId,
   transport
 }: {
-  fileItems: ProjectSnapshotFileItem[]
   isLoadingFileItems: boolean
   isModelUpdating: boolean
+  mentionItems: ProjectSnapshotItem[]
   modelGroups: ChatModelGroup[]
   onMentionQueryChange: (query: string | null) => void
   onModelChange: (value: string | null) => void
@@ -178,7 +185,7 @@ const ChatRuntime = ({
   )
 
   return (
-    <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+    <div className={CHAT_LAYOUT_CLASS_NAME}>
       <div className="flex min-h-[420px] flex-col rounded-3xl border border-border bg-card shadow-sm">
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {messages.length === 0 ? (
@@ -240,7 +247,6 @@ const ChatRuntime = ({
         <div className="border-t border-border p-4">
           <PromptInput
             disabled={isComposerDisabled}
-            fileItems={fileItems}
             footer={
               <div className="flex items-center gap-3">
                 <ModelSelector
@@ -252,7 +258,7 @@ const ChatRuntime = ({
                   onValueChange={onModelChange}
                   value={selectedModelValue}
                 />
-                {snapshotId && (
+                {isChatSessionDetailsEnabled && snapshotId && (
                   <span className="truncate text-xs text-muted-foreground">
                     {t("chat.snapshot.ready", {
                       snapshotId
@@ -263,6 +269,9 @@ const ChatRuntime = ({
             }
             isLoadingFileItems={isLoadingFileItems}
             mentionEmptyLabel={t("chat.mentions.empty")}
+            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+            mentionItems={mentionItems}
             mentionSearchPlaceholder={t("chat.mentions.searchPlaceholder")}
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={handleSubmit}
@@ -286,11 +295,13 @@ const ChatRuntime = ({
         </div>
       </div>
 
-      <ChatDetailsPanel
-        selectedModelValue={selectedModelValue}
-        selectedSession={selectedSession}
-        snapshotId={snapshotId}
-      />
+      {isChatSessionDetailsEnabled && (
+        <ChatDetailsPanel
+          selectedModelValue={selectedModelValue}
+          selectedSession={selectedSession}
+          snapshotId={snapshotId}
+        />
+      )}
     </div>
   )
 }
@@ -317,7 +328,7 @@ const ChatPendingState = ({
   const { t } = useI18n()
 
   return (
-    <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
+    <div className={CHAT_LAYOUT_CLASS_NAME}>
       <div className="flex min-h-[420px] flex-col rounded-3xl border border-border bg-card shadow-sm">
         <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-5">
           <div className="max-w-md text-center">
@@ -331,7 +342,6 @@ const ChatPendingState = ({
         <div className="border-t border-border p-4">
           <PromptInput
             disabled
-            fileItems={[]}
             footer={
               <div className="flex items-center gap-3">
                 <ModelSelector
@@ -343,7 +353,7 @@ const ChatPendingState = ({
                   onValueChange={onModelChange}
                   value={selectedModelValue}
                 />
-                {snapshotId && (
+                {isChatSessionDetailsEnabled && snapshotId && (
                   <span className="truncate text-xs text-muted-foreground">
                     {t("chat.snapshot.ready", {
                       snapshotId
@@ -354,6 +364,9 @@ const ChatPendingState = ({
             }
             isLoadingFileItems={isLoadingFileItems}
             mentionEmptyLabel={t("chat.mentions.empty")}
+            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+            mentionItems={[]}
             mentionSearchPlaceholder={t("chat.mentions.searchPlaceholder")}
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={NOOP_PROMPT_SUBMIT}
@@ -363,11 +376,13 @@ const ChatPendingState = ({
         </div>
       </div>
 
-      <ChatDetailsPanel
-        selectedModelValue={selectedModelValue}
-        selectedSession={selectedSession}
-        snapshotId={snapshotId}
-      />
+      {isChatSessionDetailsEnabled && (
+        <ChatDetailsPanel
+          selectedModelValue={selectedModelValue}
+          selectedSession={selectedSession}
+          snapshotId={snapshotId}
+        />
+      )}
     </div>
   )
 }
@@ -395,9 +410,10 @@ const ChatSessionPage = () => {
     }),
     enabled: sessionExists
   })
-  const fileItemsQuery = useQuery({
+  const mentionItemsQuery = useQuery({
     ...orpc.projectSnapshots.listFiles.queryOptions({
       input: {
+        limit: MENTION_ITEM_LIMIT,
         query: mentionQuery ?? "",
         sessionId
       }
@@ -561,9 +577,9 @@ const ChatSessionPage = () => {
 
       {transport ? (
         <ChatRuntime
-          fileItems={fileItemsQuery.data?.files ?? []}
-          isLoadingFileItems={fileItemsQuery.isFetching}
+          isLoadingFileItems={mentionItemsQuery.isFetching}
           isModelUpdating={setModelMutation.isPending}
+          mentionItems={mentionItemsQuery.data?.files ?? []}
           modelGroups={modelGroups}
           onMentionQueryChange={setMentionQuery}
           onModelChange={handleModelChange}
@@ -575,7 +591,7 @@ const ChatSessionPage = () => {
         />
       ) : (
         <ChatPendingState
-          isLoadingFileItems={fileItemsQuery.isFetching}
+          isLoadingFileItems={mentionItemsQuery.isFetching}
           modelGroups={modelGroups}
           onMentionQueryChange={setMentionQuery}
           onModelChange={handleModelChange}

@@ -3,16 +3,16 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
-import { getDb } from "@/main/db"
-import { ensureDatabaseReady } from "@/main/db/migrate"
-
 import {
+  archiveChatSession,
   createChatSession,
   listChatSessions,
   openChatSession,
   setChatSessionModel,
   setChatSessionPinned
-} from "./chat-sessions"
+} from "@/main/chat-sessions"
+import { getDb } from "@/main/db"
+import { ensureDatabaseReady } from "@/main/db/migrate"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -126,6 +126,35 @@ describe("chat sessions", () => {
 
     expect(pinnedSession.pinnedAt).toBeTruthy()
     expect(unpinnedSession.pinnedAt).toBeNull()
+  })
+
+  it("archives chat sessions by hiding them from the active list", async () => {
+    await ensureDatabaseReady()
+
+    const fallbackSession = await createChatSession({
+      db: getDb(),
+      projectPath: "/tmp/etyon-active-project-context"
+    })
+
+    await delay(10)
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: "/tmp/etyon-archived-project-context"
+    })
+    const archivedSession = await archiveChatSession({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const nextSession = await createChatSession({
+      currentSessionId: session.id,
+      db: getDb()
+    })
+    const sessions = await listChatSessions(getDb())
+
+    expect(archivedSession.archivedAt).toBeTruthy()
+    expect(nextSession.projectPath).toBe(fallbackSession.projectPath)
+    expect(sessions.some((item) => item.id === session.id)).toBe(false)
   })
 
   it("persists a selected model for a chat session", async () => {

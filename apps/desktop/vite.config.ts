@@ -8,7 +8,7 @@ export default defineProject({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["test/**/*.test.ts"],
     name: "desktop"
   }
 })

@@ -1,3 +1,5 @@
+import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
+
 export interface ActiveMentionMatch {
   query: string
   startIndex: number
@@ -59,5 +61,25 @@ export const applyMentionSelection = ({
   return {
     nextCaretIndex: normalizedText.length,
     nextText: normalizedText
+  }
+}
+
+export const createMentionFromProjectSnapshotItem = (
+  item: ProjectSnapshotItem
+): ChatMention => {
+  if (item.kind === "folder") {
+    return {
+      kind: "folder",
+      path: item.path,
+      relativePath: item.relativePath,
+      snapshotId: item.snapshotId
+    }
+  }
+
+  return {
+    kind: "file",
+    path: item.path,
+    relativePath: item.relativePath,
+    snapshotId: item.snapshotId
   }
 }

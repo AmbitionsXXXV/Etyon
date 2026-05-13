@@ -13,7 +13,7 @@ import {
   PROJECT_GROUP_PAGE_SIZE,
   shouldShowProjectGroupLessAction,
   sortPinnedChatSessions
-} from "./chat-sessions"
+} from "@/renderer/lib/sidebar/chat-sessions"
 
 const buildSessionFixture = ({
   id,
@@ -28,6 +28,7 @@ const buildSessionFixture = ({
   projectPath: string
   title: string
 }) => ({
+  archivedAt: null,
   createdAt: "2026-03-26T12:00:00.000Z",
   id,
   lastOpenedAt,
