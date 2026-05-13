@@ -1,177 +1,95 @@
-"use client"
+import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion"
+import { cn } from "@etyon/ui/lib/utils"
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 
-import { Accordion as AccordionPrimitive } from "@base-ui-components/react/accordion"
-import { useControlledState } from "@etyon/ui/hooks/use-controlled-state"
-import { getStrictContext } from "@etyon/ui/lib/get-strict-context"
-import { AnimatePresence, motion } from "motion/react"
-import type { HTMLMotionProps } from "motion/react"
-import * as React from "react"
+type AccordionProps = AccordionPrimitive.Root.Props
+type AccordionItemProps = AccordionPrimitive.Item.Props
+type AccordionHeaderProps = AccordionPrimitive.Header.Props
+type AccordionTriggerProps = AccordionPrimitive.Trigger.Props
+type AccordionPanelProps = AccordionPrimitive.Panel.Props
 
-interface AccordionContextType {
-  value: string | string[] | undefined
-  setValue: (value: string | string[] | undefined) => void
-}
+const Accordion = ({ className, ...props }: AccordionProps) => (
+  <AccordionPrimitive.Root
+    data-slot="accordion"
+    className={cn("flex w-full flex-col", className)}
+    {...props}
+  />
+)
 
-interface AccordionItemContextType {
-  isOpen: boolean
-  setIsOpen: (open: boolean) => void
-}
+const AccordionItem = ({ className, ...props }: AccordionItemProps) => (
+  <AccordionPrimitive.Item
+    data-slot="accordion-item"
+    className={cn("not-last:border-b", className)}
+    {...props}
+  />
+)
 
-const [AccordionProvider, useAccordion] =
-  getStrictContext<AccordionContextType>("AccordionContext")
+const AccordionHeader = ({ className, ...props }: AccordionHeaderProps) => (
+  <AccordionPrimitive.Header className={cn("flex", className)} {...props} />
+)
 
-const [AccordionItemProvider, useAccordionItem] =
-  getStrictContext<AccordionItemContextType>("AccordionItemContext")
-
-type AccordionProps = React.ComponentProps<typeof AccordionPrimitive.Root>
-
-function Accordion(props: AccordionProps) {
-  const [value, setValue] = useControlledState<string | string[] | undefined>({
-    value: props?.value,
-    defaultValue: props?.defaultValue,
-    onChange: props?.onValueChange as (
-      value: string | string[] | undefined
-    ) => void
-  })
-
-  return (
-    <AccordionProvider value={{ value, setValue }}>
-      <AccordionPrimitive.Root
-        data-slot="accordion"
-        {...props}
-        onValueChange={setValue}
-      />
-    </AccordionProvider>
-  )
-}
-
-type AccordionItemProps = React.ComponentProps<typeof AccordionPrimitive.Item>
-
-function AccordionItem(props: AccordionItemProps) {
-  const { value } = useAccordion()
-  const [isOpen, setIsOpen] = React.useState(
-    value?.includes(props?.value) ?? false
-  )
-
-  React.useEffect(() => {
-    setIsOpen(value?.includes(props?.value) ?? false)
-  }, [value, props?.value])
-
-  return (
-    <AccordionItemProvider value={{ isOpen, setIsOpen }}>
-      <AccordionPrimitive.Item data-slot="accordion-item" {...props} />
-    </AccordionItemProvider>
-  )
-}
-
-type AccordionHeaderProps = React.ComponentProps<
-  typeof AccordionPrimitive.Header
->
-
-function AccordionHeader(props: AccordionHeaderProps) {
-  return <AccordionPrimitive.Header data-slot="accordion-header" {...props} />
-}
-
-type AccordionTriggerProps = React.ComponentProps<
-  typeof AccordionPrimitive.Trigger
->
-
-function AccordionTrigger(props: AccordionTriggerProps) {
-  return <AccordionPrimitive.Trigger data-slot="accordion-trigger" {...props} />
-}
-
-type AccordionPanelProps = Omit<
-  React.ComponentProps<typeof AccordionPrimitive.Panel>,
-  "keepMounted" | "render"
-> &
-  HTMLMotionProps<"div"> & {
-    keepRendered?: boolean
-  }
-
-function AccordionPanel({
-  transition = { duration: 0.35, ease: "easeInOut" },
-  hiddenUntilFound,
-  keepRendered = false,
+const AccordionTrigger = ({
+  className,
+  children,
   ...props
-}: AccordionPanelProps) {
-  const { isOpen } = useAccordionItem()
-
-  return (
-    <AnimatePresence>
-      {keepRendered ? (
-        <AccordionPrimitive.Panel
-          hidden={false}
-          hiddenUntilFound={hiddenUntilFound}
-          keepMounted
-          render={
-            <motion.div
-              key="accordion-panel"
-              data-slot="accordion-panel"
-              initial={{ height: 0, opacity: 0, "--mask-stop": "0%", y: 20 }}
-              animate={
-                isOpen
-                  ? { height: "auto", opacity: 1, "--mask-stop": "100%", y: 0 }
-                  : { height: 0, opacity: 0, "--mask-stop": "0%", y: 20 }
-              }
-              transition={transition}
-              style={{
-                maskImage:
-                  "linear-gradient(black var(--mask-stop), transparent var(--mask-stop))",
-                WebkitMaskImage:
-                  "linear-gradient(black var(--mask-stop), transparent var(--mask-stop))",
-                overflow: "hidden"
-              }}
-              {...props}
-            />
-          }
-        />
-      ) : (
-        isOpen && (
-          <AccordionPrimitive.Panel
-            hidden={false}
-            hiddenUntilFound={hiddenUntilFound}
-            keepMounted
-            render={
-              <motion.div
-                key="accordion-panel"
-                data-slot="accordion-panel"
-                initial={{ height: 0, opacity: 0, "--mask-stop": "0%", y: 20 }}
-                animate={{
-                  height: "auto",
-                  opacity: 1,
-                  "--mask-stop": "100%",
-                  y: 0
-                }}
-                exit={{ height: 0, opacity: 0, "--mask-stop": "0%", y: 20 }}
-                transition={transition}
-                style={{
-                  maskImage:
-                    "linear-gradient(black var(--mask-stop), transparent var(--mask-stop))",
-                  WebkitMaskImage:
-                    "linear-gradient(black var(--mask-stop), transparent var(--mask-stop))",
-                  overflow: "hidden"
-                }}
-                {...props}
-              />
-            }
-          />
-        )
+}: AccordionTriggerProps) => (
+  <AccordionHeader>
+    <AccordionPrimitive.Trigger
+      data-slot="accordion-trigger"
+      className={cn(
+        "group/accordion-trigger relative flex flex-1 items-start justify-between rounded-lg border border-transparent py-2.5 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:after:border-ring aria-disabled:pointer-events-none aria-disabled:opacity-50 **:data-[slot=accordion-trigger-icon]:ml-auto **:data-[slot=accordion-trigger-icon]:size-4 **:data-[slot=accordion-trigger-icon]:text-muted-foreground",
+        className
       )}
-    </AnimatePresence>
-  )
-}
+      {...props}
+    >
+      {children}
+      <ChevronDownIcon
+        data-slot="accordion-trigger-icon"
+        className="pointer-events-none shrink-0 group-aria-expanded/accordion-trigger:hidden"
+      />
+      <ChevronUpIcon
+        data-slot="accordion-trigger-icon"
+        className="pointer-events-none hidden shrink-0 group-aria-expanded/accordion-trigger:inline"
+      />
+    </AccordionPrimitive.Trigger>
+  </AccordionHeader>
+)
+
+const AccordionContent = ({
+  className,
+  children,
+  ...props
+}: AccordionPanelProps) => (
+  <AccordionPrimitive.Panel
+    data-slot="accordion-content"
+    className="overflow-hidden text-sm data-open:animate-accordion-down data-closed:animate-accordion-up"
+    {...props}
+  >
+    <div
+      className={cn(
+        "h-(--accordion-panel-height) pt-0 pb-2.5 data-ending-style:h-0 data-starting-style:h-0 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
+        className
+      )}
+    >
+      {children}
+    </div>
+  </AccordionPrimitive.Panel>
+)
+
+const AccordionPanel = AccordionContent
 
 export {
   Accordion,
-  AccordionItem,
+  AccordionContent,
   AccordionHeader,
-  AccordionTrigger,
+  AccordionItem,
   AccordionPanel,
-  useAccordionItem,
-  type AccordionProps,
-  type AccordionItemProps,
-  type AccordionHeaderProps,
-  type AccordionTriggerProps,
-  type AccordionPanelProps,
-  type AccordionItemContextType
+  AccordionTrigger
+}
+export type {
+  AccordionHeaderProps,
+  AccordionItemProps,
+  AccordionPanelProps,
+  AccordionProps,
+  AccordionTriggerProps
 }

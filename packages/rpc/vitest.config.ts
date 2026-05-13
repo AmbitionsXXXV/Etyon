@@ -1,9 +1,8 @@
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
 import { defineProject } from "vitest/config"
 
-const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
+const rootDirectory = import.meta.dirname
 
 export default defineProject({
   resolve: {

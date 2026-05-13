@@ -1,29 +1,60 @@
-import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
-import { cn } from "@etyon/ui/lib/utils"
+import { Switch as HeroSwitch } from "@heroui/react"
+import type {
+  SwitchProps as HeroSwitchProps,
+  SwitchVariants as HeroSwitchVariants
+} from "@heroui/react"
+import * as React from "react"
 
-function Switch({
-  className,
+type LegacySwitchSize = "default"
+type SwitchSize = HeroSwitchVariants["size"] | LegacySwitchSize
+
+type SwitchProps = Omit<
+  HeroSwitchProps,
+  "defaultSelected" | "isDisabled" | "isSelected" | "onChange" | "size"
+> & {
+  checked?: boolean
+  defaultChecked?: boolean
+  disabled?: boolean
+  isDisabled?: boolean
+  onCheckedChange?: (checked: boolean, eventDetails?: unknown) => void
+  size?: SwitchSize
+}
+
+const resolveSwitchSize = (size: SwitchSize): HeroSwitchVariants["size"] =>
+  size === "default" ? "md" : size
+
+const Switch = ({
+  checked,
+  defaultChecked,
+  disabled,
+  isDisabled,
+  onCheckedChange,
   size = "default",
   ...props
-}: SwitchPrimitive.Root.Props & {
-  size?: "sm" | "default"
-}) {
+}: SwitchProps) => {
+  const handleChange = React.useCallback(
+    (nextChecked: boolean) => {
+      onCheckedChange?.(nextChecked)
+    },
+    [onCheckedChange]
+  )
+
   return (
-    <SwitchPrimitive.Root
+    <HeroSwitch
       data-slot="switch"
-      data-size={size}
-      className={cn(
-        "peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-all outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-[size=default]:h-[16.6px] data-[size=default]:w-[28px] data-[size=sm]:h-[14px] data-[size=sm]:w-[24px] dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:bg-primary data-unchecked:bg-input dark:data-unchecked:bg-input/80 data-disabled:cursor-not-allowed data-disabled:opacity-50",
-        className
-      )}
+      defaultSelected={defaultChecked}
+      isDisabled={isDisabled ?? disabled}
+      isSelected={checked}
+      onChange={handleChange}
+      size={resolveSwitchSize(size)}
       {...props}
     >
-      <SwitchPrimitive.Thumb
-        data-slot="switch-thumb"
-        className="pointer-events-none block rounded-full bg-background ring-0 transition-transform group-data-[size=default]/switch:size-3.5 group-data-[size=sm]/switch:size-3 group-data-[size=default]/switch:data-checked:translate-x-[calc(100%-2px)] group-data-[size=sm]/switch:data-checked:translate-x-[calc(100%-2px)] dark:data-checked:bg-primary-foreground group-data-[size=default]/switch:data-unchecked:translate-x-0 group-data-[size=sm]/switch:data-unchecked:translate-x-0 dark:data-unchecked:bg-foreground"
-      />
-    </SwitchPrimitive.Root>
+      <HeroSwitch.Control>
+        <HeroSwitch.Thumb />
+      </HeroSwitch.Control>
+    </HeroSwitch>
   )
 }
 
 export { Switch }
+export type { SwitchProps }

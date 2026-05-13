@@ -159,7 +159,7 @@ const readJsonFile = <TValue>(filePath: string): TValue | undefined => {
     return undefined
   }
 
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as TValue
+  return JSON.parse(fs.readFileSync(filePath, "utf-8")) as TValue
 }
 
 const readSnapshotHistory = (projectPath: string): SnapshotHistoryEntry[] =>
@@ -269,10 +269,9 @@ const buildProjectSnapshotDocument = (
   buffer: Buffer,
   stats: fs.Stats
 ): ProjectSnapshotDocument => {
-  const normalizedPreview = normalizePreviewText(buffer.toString("utf8")).slice(
-    0,
-    PREVIEW_CHAR_COUNT
-  )
+  const normalizedPreview = normalizePreviewText(
+    buffer.toString("utf-8")
+  ).slice(0, PREVIEW_CHAR_COUNT)
 
   return {
     chunkCount:

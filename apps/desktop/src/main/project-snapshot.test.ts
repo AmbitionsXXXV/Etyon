@@ -111,7 +111,7 @@ describe("project snapshot", () => {
       ".alma-snapshots",
       "history.json"
     )
-    const history = JSON.parse(fs.readFileSync(historyPath, "utf8")) as {
+    const history = JSON.parse(fs.readFileSync(historyPath, "utf-8")) as {
       id: string
       message: string
       parentId: string | null

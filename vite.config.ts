@@ -1,30 +1,24 @@
-import { readFileSync } from "node:fs"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
-
+import ultraciteCoreConfig from "ultracite/oxlint/core"
+import ultraciteReactConfig from "ultracite/oxlint/react"
 import { defineConfig } from "vite-plus"
-import type { DummyRuleMap, OxlintConfig } from "vite-plus/lint"
+import type { DummyRuleMap } from "vite-plus/lint"
 
-const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
+const unsupportedLintRules = new Set([
+  "func-name-matching",
+  "jsx-a11y/interactive-supports-focus",
+  "logical-assignment-operators",
+  "no-restricted-properties",
+  "no-underscore-dangle",
+  "react/forbid-component-props",
+  "require-unicode-regexp"
+])
 
-const parseJsonc = (value: string): unknown =>
-  JSON.parse(value.replaceAll(/^\s*\/\/.*$/gmu, ""))
-
-const readJsoncConfig = <T>(filePath: string): T =>
-  parseJsonc(readFileSync(filePath, "utf8")) as T
-
-const ultraciteCoreConfig = readJsoncConfig<OxlintConfig>(
-  path.join(
-    rootDirectory,
-    "node_modules/ultracite/config/oxlint/core/.oxlintrc.json"
-  )
-)
-const ultraciteReactConfig = readJsoncConfig<OxlintConfig>(
-  path.join(
-    rootDirectory,
-    "node_modules/ultracite/config/oxlint/react/.oxlintrc.json"
-  )
-)
+const omitUnsupportedRules = (rules: DummyRuleMap | undefined): DummyRuleMap =>
+  Object.fromEntries(
+    Object.entries(rules ?? {}).filter(
+      ([ruleName]) => !unsupportedLintRules.has(ruleName)
+    )
+  ) as DummyRuleMap
 
 const lintPlugins = [
   ...new Set([
@@ -33,8 +27,8 @@ const lintPlugins = [
   ])
 ]
 const lintRules = {
-  ...ultraciteCoreConfig.rules,
-  ...ultraciteReactConfig.rules,
+  ...omitUnsupportedRules(ultraciteCoreConfig.rules),
+  ...omitUnsupportedRules(ultraciteReactConfig.rules),
   "eslint/func-style": "off",
   "eslint/no-use-before-define": "off",
   "eslint/sort-keys": "off",

@@ -1,24 +1,22 @@
 "use client"
 
-import { Separator as SeparatorPrimitive } from "@base-ui/react/separator"
-import { cn } from "@etyon/ui/lib/utils"
+import { Separator as HeroSeparator } from "@heroui/react"
+import type { SeparatorProps as HeroSeparatorProps } from "@heroui/react"
 
-function Separator({
-  className,
+type SeparatorProps = HeroSeparatorProps
+
+const Separator = ({
   orientation = "horizontal",
+  variant = "default",
   ...props
-}: SeparatorPrimitive.Props) {
-  return (
-    <SeparatorPrimitive
-      data-slot="separator"
-      orientation={orientation}
-      className={cn(
-        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
-        className
-      )}
-      {...props}
-    />
-  )
-}
+}: SeparatorProps) => (
+  <HeroSeparator
+    data-slot="separator"
+    orientation={orientation}
+    variant={variant}
+    {...props}
+  />
+)
 
 export { Separator }
+export type { SeparatorProps }

@@ -104,7 +104,7 @@ const httpsGetViaSocket = (
             res.on("data", (c: Buffer) => chunks.push(c))
             res.on("end", () => {
               resolve({
-                body: Buffer.concat(chunks).toString("utf8"),
+                body: Buffer.concat(chunks).toString("utf-8"),
                 status: res.statusCode ?? 0
               })
               tlsSocket.destroy()

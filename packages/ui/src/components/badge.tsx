@@ -1,52 +1,80 @@
-import { mergeProps } from "@base-ui/react/merge-props"
-import { useRender } from "@base-ui/react/use-render"
-import { cn } from "@etyon/ui/lib/utils"
-import { cva } from "class-variance-authority"
-import type { VariantProps } from "class-variance-authority"
+import {
+  Badge as HeroBadge,
+  badgeVariants as heroBadgeVariants
+} from "@heroui/react"
+import type {
+  BadgeProps as HeroBadgeProps,
+  BadgeVariants as HeroBadgeVariants
+} from "@heroui/react"
 
-const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-[0.625rem] font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
+type HeroBadgeColor = NonNullable<HeroBadgeVariants["color"]>
+type HeroBadgeVariant = NonNullable<HeroBadgeVariants["variant"]>
+type LegacyBadgeVariant =
+  | "default"
+  | "destructive"
+  | "ghost"
+  | "link"
+  | "outline"
+  | "secondary"
+type BadgeVariant = HeroBadgeVariant | LegacyBadgeVariant
+
+type BadgeProps = Omit<HeroBadgeProps, "color" | "variant"> & {
+  color?: HeroBadgeColor
+  variant?: BadgeVariant
+}
+interface ResolvedBadgeVariant {
+  color: HeroBadgeColor
+  variant: HeroBadgeVariant
+}
+
+const badgeVariantMap = {
+  default: { color: "accent", variant: "primary" },
+  destructive: { color: "danger", variant: "soft" },
+  ghost: { color: "default", variant: "soft" },
+  link: { color: "accent", variant: "soft" },
+  outline: { color: "default", variant: "secondary" },
+  secondary: { color: "default", variant: "secondary" }
+} satisfies Record<
+  LegacyBadgeVariant,
   {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        secondary:
-          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
-        destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
-        outline:
-          "border-border bg-input/20 text-foreground dark:bg-input/30 [a]:hover:bg-muted [a]:hover:text-muted-foreground",
-        ghost:
-          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline"
-      }
-    },
-    defaultVariants: {
-      variant: "default"
+    color: HeroBadgeColor
+    variant: HeroBadgeVariant
+  }
+>
+
+const resolveBadgeVariant = (
+  color: HeroBadgeColor | undefined,
+  variant: BadgeVariant
+): ResolvedBadgeVariant => {
+  if (variant in badgeVariantMap) {
+    const mappedVariant = badgeVariantMap[variant as LegacyBadgeVariant]
+    return {
+      color: color ?? mappedVariant.color,
+      variant: mappedVariant.variant
     }
   }
-)
 
-function Badge({
-  className,
+  return {
+    color: color ?? "default",
+    variant: variant as HeroBadgeVariant
+  }
+}
+
+const badgeVariants = ({
+  color,
   variant = "default",
-  render,
   ...props
-}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
-  return useRender({
-    defaultTagName: "span",
-    props: mergeProps<"span">(
-      {
-        className: cn(badgeVariants({ variant }), className)
-      },
-      props
-    ),
-    render,
-    state: {
-      slot: "badge",
-      variant
-    }
-  })
+}: Omit<HeroBadgeVariants, "color" | "variant"> & {
+  color?: HeroBadgeColor
+  variant?: BadgeVariant
+} = {}) =>
+  heroBadgeVariants({ ...props, ...resolveBadgeVariant(color, variant) })
+
+const Badge = ({ color, variant = "default", ...props }: BadgeProps) => {
+  const resolvedVariant = resolveBadgeVariant(color, variant)
+
+  return <HeroBadge data-slot="badge" {...resolvedVariant} {...props} />
 }
 
 export { Badge, badgeVariants }
+export type { BadgeProps }

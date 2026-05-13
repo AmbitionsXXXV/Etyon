@@ -23,7 +23,10 @@
 - 代码与配置中的 `vite` 导入改为 `vite-plus`
 - 测试文件中的 `vitest` 导入改为 `vite-plus/test`
 - 根目录测试入口不再使用单独的 `vitest.workspace.ts`，而是改由根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `test.projects` 承载
-- `lefthook` 的 `pre-commit` 现已改为 `pnpm exec vp staged`
+- 已完全移除 `lefthook`，改用 Vite+ 内置的 `.vite-hooks/` 体系（通过 `vp config` 安装）
+- `pre-commit`：先运行 `vp staged`（按 `vite.config.ts` 的 `staged` 块对暂存文件执行 `vp check --fix`），再运行 `pnpm typecheck` 做全量类型检查
+- `commit-msg`：运行 `commitlint` 校验提交信息格式
+- `prepare` 脚本从 `lefthook install` 改为 `vp config`，`pnpm install` 后自动安装 hooks
 
 ## Electron 说明
 

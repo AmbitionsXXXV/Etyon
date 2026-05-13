@@ -1,17 +1,25 @@
-import { cn } from "@etyon/ui/lib/utils"
-import * as React from "react"
+import { TextArea as HeroTextArea } from "@heroui/react"
+import type { TextAreaProps as HeroTextAreaProps } from "@heroui/react"
 
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
-  return (
-    <textarea
-      data-slot="textarea"
-      className={cn(
-        "flex field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-input/20 px-2 py-2 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 md:text-xs/relaxed dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-        className
-      )}
-      {...props}
-    />
-  )
+type TextareaProps = HeroTextAreaProps & {
+  isDisabled?: boolean
 }
 
+const Textarea = ({
+  disabled,
+  fullWidth = true,
+  isDisabled,
+  variant = "secondary",
+  ...props
+}: TextareaProps) => (
+  <HeroTextArea
+    data-slot="textarea"
+    disabled={disabled ?? isDisabled}
+    fullWidth={fullWidth}
+    variant={variant}
+    {...props}
+  />
+)
+
 export { Textarea }
+export type { TextareaProps }

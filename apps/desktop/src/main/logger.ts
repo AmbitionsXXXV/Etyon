@@ -89,7 +89,7 @@ const fileTransport: LogTransport = {
     const filePath = path.join(LOG_DIR, `${getDateString()}.jsonl`)
 
     try {
-      fs.appendFileSync(filePath, `${serializeLogEvent(event)}\n`, "utf8")
+      fs.appendFileSync(filePath, `${serializeLogEvent(event)}\n`, "utf-8")
     } catch {
       // Best-effort write
     }

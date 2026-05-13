@@ -16,36 +16,22 @@
     "dev:desktop": "turbo run dev --filter=@etyon/desktop",
     "fix": "turbo run fix",
     "lint": "turbo run lint",
-    "prepare": "lefthook install",
+    "prepare": "vp config",
     "test": "vp test --config vitest.workspace.ts",
     "test:watch": "vp test watch --config vitest.workspace.ts",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.root.json"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
-    "@commitlint/config-conventional": "^20.5.0",
-    "cz-git": "^1.12.0",
-    "lefthook": "^2.1.4",
-    "turbo": "^2.9.4",
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
+    "cz-git": "^1.13.1",
+    "turbo": "^2.9.12",
     "typescript": "catalog:",
-    "ultracite": "7.4.2",
-    "vite-plus": "^0.1.15"
+    "ultracite": "7.7.0",
+    "vite-plus": "catalog:"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@10.33.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "electron-winstaller",
-      "fs-xattr",
-      "lefthook",
-      "macos-alias",
-      "msw"
-    ],
-    "ignoredBuiltDependencies": [
-      "esbuild"
-    ]
-  }
+  "packageManager": "pnpm@11.1.1"
 }

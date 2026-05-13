@@ -1,5 +1,4 @@
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
 import { is, platform } from "@electron-toolkit/utils"
 import type { AppSettings } from "@etyon/rpc"
@@ -11,9 +10,7 @@ import { applyLiquidGlass } from "./liquid-glass"
 import { t } from "./localization"
 import { getSettings } from "./settings"
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-const preloadPath = path.join(__dirname, "preload.js")
+const preloadPath = path.join(import.meta.dirname, "preload.js")
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let shouldQuitApp = false
@@ -48,7 +45,7 @@ const loadRenderer = (
     win.loadURL(url.toString())
   } else {
     const filePath = path.join(
-      __dirname,
+      import.meta.dirname,
       `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`
     )
     win.loadFile(filePath, queryParams ? { query: queryParams } : undefined)

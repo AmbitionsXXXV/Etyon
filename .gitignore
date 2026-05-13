@@ -100,3 +100,5 @@ dist/
 package_back.json
 .alma-snapshots
 .tanstack
+# heroui-agents-md
+.heroui-docs/

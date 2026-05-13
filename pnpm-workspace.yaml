@@ -12,8 +12,8 @@ catalog:
   react: ^19.2.4
   react-dom: ^19.2.4
   tailwindcss: ^4.2.2
-  typescript: ^6.0.2
-  zod: ^4.3.6
+  typescript: ^6.0.3
+  zod: ^4.4.3
   vite-plus: latest
 peerDependencyRules:
   allowAny:
@@ -22,3 +22,23 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+blockExoticSubdeps: false
+nodeLinker: hoisted
+onlyBuiltDependencies:
+  - "@heroui-pro/react"
+  - "@zowe/secrets-for-zowe-sdk"
+  - electron
+  - electron-winstaller
+  - esbuild
+  - fs-xattr
+  - macos-alias
+  - msw
+allowBuilds:
+  "@heroui-pro/react": true
+  "@zowe/secrets-for-zowe-sdk": true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  fs-xattr: true
+  macos-alias: true
+  msw: true
