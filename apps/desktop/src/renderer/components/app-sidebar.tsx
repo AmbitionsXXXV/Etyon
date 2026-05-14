@@ -2,6 +2,17 @@ import { useI18n } from "@etyon/i18n/react"
 import type { ChatSessionSummary } from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@etyon/ui/components/dialog"
+import { Dropdown } from "@etyon/ui/components/dropdown"
+import { Input } from "@etyon/ui/components/input"
+import { Separator } from "@etyon/ui/components/separator"
+import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
@@ -21,10 +32,13 @@ import {
 import { cn } from "@etyon/ui/lib/utils"
 import {
   Archive02Icon,
+  Delete02Icon,
   FileAddIcon,
   Folder01Icon,
   FolderOpenIcon,
+  MoreHorizontalIcon,
   NoteEditIcon,
+  PencilEdit02Icon,
   PinIcon,
   PinOffIcon,
   Search01Icon
@@ -34,6 +48,9 @@ import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type {
+  ChangeEvent,
+  FormEvent,
+  Key,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode
@@ -52,6 +69,7 @@ import {
   shouldShowProjectGroupLessAction,
   sortPinnedChatSessions
 } from "@/renderer/lib/sidebar/chat-sessions"
+import type { ChatSessionGroup } from "@/renderer/lib/sidebar/chat-sessions"
 import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-actions"
 import {
   SIDEBAR_WIDTH_PX_MAX,
@@ -62,7 +80,9 @@ import {
 const EXPAND_EASE = [0.25, 1, 0.5, 1] as const
 const EXPAND_RESET_DELAY_MS = 520
 const PROJECT_GROUP_ROW_CLASS_NAME =
-  "title-bar-no-drag -mx-1 flex h-10 w-full items-center gap-3 rounded-xl px-2 text-left text-[15px] font-medium text-sidebar-foreground/82 transition-[background-color,color] hover:bg-white/4 hover:text-sidebar-accent-foreground"
+  "title-bar-no-drag group/project-row -mx-1 flex h-10 w-full items-center gap-1 rounded-xl px-2 text-left text-[15px] font-medium text-sidebar-foreground/82 transition-[background-color,color] hover:bg-white/4 hover:text-sidebar-accent-foreground focus-within:bg-white/4 focus-within:text-sidebar-accent-foreground"
+const PROJECT_GROUP_TOGGLE_CLASS_NAME =
+  "flex min-w-0 flex-1 items-center gap-3 border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
 const PROJECTS_SECTION_EMPTY_CLASS_NAME =
   "title-bar-no-drag mt-2 rounded-[1.25rem] border border-dashed border-sidebar-border/70 bg-white/[0.03] px-4 py-4 text-[12px] leading-5 text-sidebar-foreground/68"
 const PROJECTS_SECTION_HEADER_CLASS_NAME =
@@ -96,22 +116,28 @@ interface ChatSessionItemProps {
 
 interface ProjectGroupSectionProps {
   archivingSessionId?: string
+  archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
   fallbackSessionTitle: string
-  group: {
-    projectName: string
-    projectPath: string
-    sessions: ChatSessionSummary[]
-  }
+  group: ChatSessionGroup
   onArchive: (sessionId: string) => void
+  onArchiveProjectChats: (projectPath: string) => void
+  onOpenProjectInFileManager: (projectPath: string) => void
   onOpen: (sessionId: string) => void
+  onRemoveProject: (projectPath: string) => void
+  onRenameProject: (projectPath: string, displayName: string) => void
   onShowLess: (projectPath: string) => void
   onShowMore: (projectPath: string) => void
   onToggleCollapsed: (projectPath: string) => void
+  onToggleProjectPinned: (projectPath: string, pinned: boolean) => void
   onTogglePinned: (sessionId: string, pinned: boolean) => void
+  openProjectInFileManagerLabel: string
+  removingProjectPath?: string
+  renamingProjectPath?: string
   showLessLabel: string
   showMoreLabel: string
+  settingPinnedProjectPath?: string
   toggleProjectGroupLabel: string
   togglingPinnedSessionId?: string
   visibleCount: number
@@ -120,32 +146,70 @@ interface ProjectGroupSectionProps {
 interface ProjectGroupsSectionProps {
   addProjectLabel: string
   archivingSessionId?: string
+  archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
   emptyProjectsLabel: string
   fallbackSessionTitle: string
-  groups: {
-    projectName: string
-    projectPath: string
-    sessions: ChatSessionSummary[]
-  }[]
+  groups: ChatSessionGroup[]
   isCreatingProjectChatSession: boolean
   onArchive: (sessionId: string) => void
+  onArchiveProjectChats: (projectPath: string) => void
   onCreateProjectChatSession: () => void
+  onOpenProjectInFileManager: (projectPath: string) => void
   onOpen: (sessionId: string) => void
+  onRemoveProject: (projectPath: string) => void
+  onRenameProject: (projectPath: string, displayName: string) => void
   onShowLess: (projectPath: string) => void
   onShowMore: (projectPath: string) => void
   onToggleCollapsed: (projectPath: string) => void
+  onToggleProjectPinned: (projectPath: string, pinned: boolean) => void
   onTogglePinned: (sessionId: string, pinned: boolean) => void
+  openProjectInFileManagerLabel: string
   projectCount: number
   projectsCountLabel: string
   projectsLabel: string
+  removingProjectPath?: string
+  renamingProjectPath?: string
+  settingPinnedProjectPath?: string
   sessionCount: number
   showLessLabel: string
   showMoreLabel: string
   toggleProjectGroupLabel: string
   togglingPinnedSessionId?: string
   visibleCountForProject: (projectPath: string) => number
+}
+
+const getProjectMenuDisabledKeys = ({
+  isArchivingProject,
+  isRemovingProject,
+  isRenamingProject,
+  isSettingPinnedProject
+}: {
+  isArchivingProject: boolean
+  isRemovingProject: boolean
+  isRenamingProject: boolean
+  isSettingPinnedProject: boolean
+}): string[] => {
+  const disabledKeys: string[] = []
+
+  if (isArchivingProject) {
+    disabledKeys.push("archive-chats")
+  }
+
+  if (isRemovingProject) {
+    disabledKeys.push("remove")
+  }
+
+  if (isRenamingProject) {
+    disabledKeys.push("rename-project")
+  }
+
+  if (isSettingPinnedProject) {
+    disabledKeys.push("toggle-pin")
+  }
+
+  return disabledKeys
 }
 
 export const AppSidebarShell = ({
@@ -441,6 +505,7 @@ const ChatSessionItem = ({
 
 const ProjectGroupSection = ({
   archivingSessionId,
+  archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
   fallbackSessionTitle,
@@ -449,17 +514,43 @@ const ProjectGroupSection = ({
   onShowLess,
   onShowMore,
   onArchive,
+  onArchiveProjectChats,
+  onOpenProjectInFileManager,
+  onRemoveProject,
+  onRenameProject,
   onToggleCollapsed,
+  onToggleProjectPinned,
   onTogglePinned,
+  openProjectInFileManagerLabel,
+  removingProjectPath,
+  renamingProjectPath,
   showLessLabel,
   showMoreLabel,
+  settingPinnedProjectPath,
   toggleProjectGroupLabel,
   togglingPinnedSessionId,
   visibleCount
 }: ProjectGroupSectionProps) => {
+  const { t } = useI18n()
+  const [confirmAction, setConfirmAction] = useState<
+    "archive-chats" | "remove" | null
+  >(null)
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+  const [renameDraft, setRenameDraft] = useState(group.projectName)
   const expanded = isProjectGroupExpanded({
     collapsedProjectPaths,
     group
+  })
+  const isArchivingProject = archivingProjectPath === group.projectPath
+  const isPinnedProject = Boolean(group.pinnedAt)
+  const isRemovingProject = removingProjectPath === group.projectPath
+  const isRenamingProject = renamingProjectPath === group.projectPath
+  const isSettingPinnedProject = settingPinnedProjectPath === group.projectPath
+  const disabledMenuKeys = getProjectMenuDisabledKeys({
+    isArchivingProject,
+    isRemovingProject,
+    isRenamingProject,
+    isSettingPinnedProject
   })
   const visibleSessions = getVisibleProjectGroupSessions({
     sessions: group.sessions,
@@ -482,39 +573,227 @@ const ProjectGroupSection = ({
   const handleShowMore = useCallback(() => {
     onShowMore(group.projectPath)
   }, [group.projectPath, onShowMore])
+  const handleConfirmCancel = useCallback(() => {
+    setConfirmAction(null)
+  }, [])
+  const handleConfirmProjectAction = useCallback(() => {
+    if (confirmAction === "archive-chats") {
+      onArchiveProjectChats(group.projectPath)
+    }
+
+    if (confirmAction === "remove") {
+      onRemoveProject(group.projectPath)
+    }
+
+    setConfirmAction(null)
+  }, [confirmAction, group.projectPath, onArchiveProjectChats, onRemoveProject])
+  const handleMenuAction = useCallback(
+    (key: Key) => {
+      const action = String(key)
+
+      if (action === "archive-chats") {
+        setConfirmAction("archive-chats")
+        return
+      }
+
+      if (action === "open-in-file-manager") {
+        onOpenProjectInFileManager(group.projectPath)
+        return
+      }
+
+      if (action === "remove") {
+        setConfirmAction("remove")
+        return
+      }
+
+      if (action === "rename-project") {
+        setRenameDraft(group.projectName)
+        setRenameDialogOpen(true)
+        return
+      }
+
+      if (action === "toggle-pin") {
+        onToggleProjectPinned(group.projectPath, !isPinnedProject)
+      }
+    },
+    [
+      group.projectName,
+      group.projectPath,
+      isPinnedProject,
+      onOpenProjectInFileManager,
+      onToggleProjectPinned
+    ]
+  )
+  const handleRenameCancel = useCallback(() => {
+    setRenameDialogOpen(false)
+    setRenameDraft(group.projectName)
+  }, [group.projectName])
+  const handleRenameDraftChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setRenameDraft(event.target.value)
+    },
+    []
+  )
+  const handleRenameSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+
+      const nextDisplayName = renameDraft.trim()
+
+      if (!nextDisplayName) {
+        return
+      }
+
+      onRenameProject(group.projectPath, nextDisplayName)
+      setRenameDialogOpen(false)
+    },
+    [group.projectPath, onRenameProject, renameDraft]
+  )
+  const confirmDescription =
+    confirmAction === "remove"
+      ? t("home.sidebar.projectMenu.removeDescription", {
+          projectName: group.projectName
+        })
+      : t("home.sidebar.projectMenu.archiveChatsDescription", {
+          projectName: group.projectName
+        })
+  const confirmTitle =
+    confirmAction === "remove"
+      ? t("home.sidebar.projectMenu.remove")
+      : t("home.sidebar.projectMenu.archiveChats")
 
   return (
     <SidebarGroup className="px-0 pb-3" key={group.projectPath}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              aria-label={`${toggleProjectGroupLabel}: ${group.projectName}`}
-              className={PROJECT_GROUP_ROW_CLASS_NAME}
-              onClick={handleToggleCollapsed}
-              type="button"
+      <div className={PROJECT_GROUP_ROW_CLASS_NAME}>
+        <button
+          aria-label={`${toggleProjectGroupLabel}: ${group.projectName}`}
+          className={PROJECT_GROUP_TOGGLE_CLASS_NAME}
+          onClick={handleToggleCollapsed}
+          type="button"
+        >
+          <HugeiconsIcon
+            className={cn(
+              "shrink-0 transition-colors",
+              expanded
+                ? "text-sidebar-foreground/92"
+                : "text-sidebar-foreground/64"
+            )}
+            icon={expanded ? FolderOpenIcon : Folder01Icon}
+            size={18}
+            strokeWidth={2}
+          />
+          <SidebarGroupLabel className="h-auto min-w-0 flex-1 items-start px-0 py-0 text-inherit">
+            <span className="truncate font-medium">{group.projectName}</span>
+          </SidebarGroupLabel>
+          {isPinnedProject ? (
+            <HugeiconsIcon
+              className="size-3.5 shrink-0 text-sidebar-foreground/50"
+              icon={PinIcon}
+              strokeWidth={2}
+            />
+          ) : null}
+        </button>
+
+        <Dropdown>
+          <Button
+            aria-label={t("home.sidebar.projectMenu.menuLabel", {
+              projectName: group.projectName
+            })}
+            className={cn(
+              "h-7 w-7 shrink-0 text-sidebar-foreground/56 transition-[opacity,transform,color] duration-150",
+              "pointer-events-none translate-x-1 opacity-0",
+              "group-hover/project-row:pointer-events-auto group-hover/project-row:translate-x-0 group-hover/project-row:opacity-100",
+              "group-focus-within/project-row:pointer-events-auto group-focus-within/project-row:translate-x-0 group-focus-within/project-row:opacity-100",
+              "focus-visible:pointer-events-auto focus-visible:translate-x-0 focus-visible:opacity-100",
+              "hover:text-sidebar-accent-foreground"
+            )}
+            isIconOnly
+            size="icon-sm"
+            title={t("home.sidebar.projectMenu.menuLabel", {
+              projectName: group.projectName
+            })}
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              icon={MoreHorizontalIcon}
+              size={16}
+              strokeWidth={2}
+            />
+          </Button>
+          <Dropdown.Popover className="min-w-64 rounded-[1.35rem] border border-sidebar-border/70 bg-popover/95 p-1.5 text-popover-foreground shadow-[0_18px_44px_oklch(0_0_0/0.32)] backdrop-blur-xl">
+            <Dropdown.Menu
+              disabledKeys={disabledMenuKeys}
+              onAction={handleMenuAction}
             >
-              <HugeiconsIcon
-                className={cn(
-                  "shrink-0 transition-colors",
-                  expanded
-                    ? "text-sidebar-foreground/92"
-                    : "text-sidebar-foreground/64"
-                )}
-                icon={expanded ? FolderOpenIcon : Folder01Icon}
-                size={18}
-                strokeWidth={2}
-              />
-              <SidebarGroupLabel className="h-auto min-w-0 items-start px-0 py-0 text-inherit">
-                <span className="truncate font-medium">
-                  {group.projectName}
+              <Dropdown.Item
+                id="toggle-pin"
+                textValue={
+                  isPinnedProject
+                    ? t("home.sidebar.projectMenu.unpinProject")
+                    : t("home.sidebar.projectMenu.pinProject")
+                }
+              >
+                <HugeiconsIcon
+                  className="size-4 shrink-0 text-muted-foreground"
+                  icon={isPinnedProject ? PinOffIcon : PinIcon}
+                  strokeWidth={2}
+                />
+                <span>
+                  {isPinnedProject
+                    ? t("home.sidebar.projectMenu.unpinProject")
+                    : t("home.sidebar.projectMenu.pinProject")}
                 </span>
-              </SidebarGroupLabel>
-            </button>
-          }
-        />
-        <TooltipContent side="right">{group.projectPath}</TooltipContent>
-      </Tooltip>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="open-in-file-manager"
+                textValue={openProjectInFileManagerLabel}
+              >
+                <HugeiconsIcon
+                  className="size-4 shrink-0 text-muted-foreground"
+                  icon={FolderOpenIcon}
+                  strokeWidth={2}
+                />
+                <span>{openProjectInFileManagerLabel}</span>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="rename-project"
+                textValue={t("home.sidebar.projectMenu.renameProject")}
+              >
+                <HugeiconsIcon
+                  className="size-4 shrink-0 text-muted-foreground"
+                  icon={PencilEdit02Icon}
+                  strokeWidth={2}
+                />
+                <span>{t("home.sidebar.projectMenu.renameProject")}</span>
+              </Dropdown.Item>
+              <Separator className="my-1" />
+              <Dropdown.Item
+                id="archive-chats"
+                textValue={t("home.sidebar.projectMenu.archiveChats")}
+              >
+                <HugeiconsIcon
+                  className="size-4 shrink-0 text-muted-foreground"
+                  icon={Archive02Icon}
+                  strokeWidth={2}
+                />
+                <span>{t("home.sidebar.projectMenu.archiveChats")}</span>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="remove"
+                textValue={t("home.sidebar.projectMenu.remove")}
+                variant="danger"
+              >
+                <HugeiconsIcon
+                  className="size-4 shrink-0 text-danger"
+                  icon={Delete02Icon}
+                  strokeWidth={2}
+                />
+                <span>{t("home.sidebar.projectMenu.remove")}</span>
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown.Popover>
+        </Dropdown>
+      </div>
 
       {expanded ? (
         <>
@@ -546,6 +825,71 @@ const ProjectGroupSection = ({
           ) : null}
         </>
       ) : null}
+
+      <Dialog onOpenChange={setRenameDialogOpen} open={renameDialogOpen}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <form className="space-y-4" onSubmit={handleRenameSubmit}>
+            <DialogHeader>
+              <DialogTitle>
+                {t("home.sidebar.projectMenu.renameTitle")}
+              </DialogTitle>
+              <DialogDescription>{group.projectPath}</DialogDescription>
+            </DialogHeader>
+            <Input
+              autoFocus
+              onChange={handleRenameDraftChange}
+              placeholder={t("home.sidebar.projectMenu.renamePlaceholder")}
+              value={renameDraft}
+            />
+            <DialogFooter>
+              <Button
+                onClick={handleRenameCancel}
+                type="button"
+                variant="outline"
+              >
+                {t("settings.common.cancel")}
+              </Button>
+              <Button
+                disabled={!renameDraft.trim() || isRenamingProject}
+                type="submit"
+              >
+                {t("settings.common.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        onOpenChange={() => setConfirmAction(null)}
+        open={confirmAction !== null}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{confirmTitle}</DialogTitle>
+            <DialogDescription>{confirmDescription}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              onClick={handleConfirmCancel}
+              type="button"
+              variant="outline"
+            >
+              {t("settings.common.cancel")}
+            </Button>
+            <Button
+              disabled={isArchivingProject || isRemovingProject}
+              onClick={handleConfirmProjectAction}
+              type="button"
+              variant={confirmAction === "remove" ? "destructive" : "default"}
+            >
+              {confirmAction === "remove"
+                ? t("home.sidebar.projectMenu.removeConfirm")
+                : t("home.sidebar.projectMenu.archiveChatsConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarGroup>
   )
 }
@@ -553,6 +897,7 @@ const ProjectGroupSection = ({
 const ProjectGroupsSection = ({
   addProjectLabel,
   archivingSessionId,
+  archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
   emptyProjectsLabel,
@@ -560,15 +905,24 @@ const ProjectGroupsSection = ({
   groups,
   isCreatingProjectChatSession,
   onArchive,
+  onArchiveProjectChats,
   onCreateProjectChatSession,
+  onOpenProjectInFileManager,
   onOpen,
+  onRemoveProject,
+  onRenameProject,
   onShowLess,
   onShowMore,
   onToggleCollapsed,
+  onToggleProjectPinned,
   onTogglePinned,
+  openProjectInFileManagerLabel,
   projectCount,
   projectsCountLabel,
   projectsLabel,
+  removingProjectPath,
+  renamingProjectPath,
+  settingPinnedProjectPath,
   sessionCount,
   showLessLabel,
   showMoreLabel,
@@ -582,17 +936,27 @@ const ProjectGroupsSection = ({
         {groups.map((group) => (
           <ProjectGroupSection
             archivingSessionId={archivingSessionId}
+            archivingProjectPath={archivingProjectPath}
             collapsedProjectPaths={collapsedProjectPaths}
             currentSessionId={currentSessionId}
             fallbackSessionTitle={fallbackSessionTitle}
             group={group}
             key={group.projectPath}
             onArchive={onArchive}
+            onArchiveProjectChats={onArchiveProjectChats}
             onOpen={onOpen}
+            onOpenProjectInFileManager={onOpenProjectInFileManager}
+            onRemoveProject={onRemoveProject}
+            onRenameProject={onRenameProject}
             onShowLess={onShowLess}
             onShowMore={onShowMore}
             onToggleCollapsed={onToggleCollapsed}
+            onToggleProjectPinned={onToggleProjectPinned}
             onTogglePinned={onTogglePinned}
+            openProjectInFileManagerLabel={openProjectInFileManagerLabel}
+            removingProjectPath={removingProjectPath}
+            renamingProjectPath={renamingProjectPath}
+            settingPinnedProjectPath={settingPinnedProjectPath}
             showLessLabel={showLessLabel}
             showMoreLabel={showMoreLabel}
             toggleProjectGroupLabel={toggleProjectGroupLabel}
@@ -661,19 +1025,30 @@ export const AppSidebar = () => {
   const {
     currentSessionId,
     handleArchiveChatSession,
+    handleArchiveProjectChats,
     handleCreateChatSession,
     handleCreateProjectChatSession,
     handleOpenChatSession,
+    handleOpenProjectInFileManager,
+    handleRemoveProject,
     handleSetChatSessionPinned,
     isArchivingChatSessionId,
+    isArchivingProjectPath,
     isCreatingChatSession,
+    isRemovingProjectPath,
     isSettingPinnedChatSessionId
   } = useChatSessionActions()
   const {
     collapsedProjectPaths,
+    handleRenameProject,
+    handleSetProjectPinned,
     handleToggleProjectCollapsed,
+    isRenamingProjectPath,
     isSidebarStateReady,
+    isSettingPinnedProjectPath,
     persistSidebarWidth,
+    projectDisplayNames,
+    projectPins,
     setSidebarWidthLocally,
     sidebarWidthPx
   } = useProjectSidebarState()
@@ -686,13 +1061,27 @@ export const AppSidebar = () => {
   const isProjectsMode = isProjectsSidebarMode(
     settingsQuery.data?.sidebar.mode ?? "simple"
   )
-  const chatSessionGroups = groupChatSessionsByProject(chatSessions)
+  const chatSessionGroups = groupChatSessionsByProject(chatSessions, {
+    projectDisplayNames,
+    projectPins
+  })
   const projectSessionCount = chatSessionGroups.reduce(
     (total, group) => total + group.sessions.length,
     0
   )
   const pinnedChatSessions = sortPinnedChatSessions(chatSessions)
   const fallbackSessionTitle = t("actions.newChat")
+  const openProjectInFileManagerLabel = (() => {
+    if (window.electron.process.platform === "darwin") {
+      return t("sidebar.projectMenu.openInFinder")
+    }
+
+    if (window.electron.process.platform === "win32") {
+      return t("sidebar.projectMenu.openInExplorer")
+    }
+
+    return t("sidebar.projectMenu.openInFileManager")
+  })()
   const handleShowLessProjectSessions = useCallback((projectPath: string) => {
     setProjectVisibleCounts((prev) => ({
       ...prev,
@@ -808,6 +1197,7 @@ export const AppSidebar = () => {
         <ProjectGroupsSection
           addProjectLabel={t("sidebar.addProject")}
           archivingSessionId={isArchivingChatSessionId}
+          archivingProjectPath={isArchivingProjectPath}
           collapsedProjectPaths={collapsedProjectPaths}
           currentSessionId={currentSessionId}
           emptyProjectsLabel={t("sidebar.emptyProjects")}
@@ -815,18 +1205,27 @@ export const AppSidebar = () => {
           groups={chatSessionGroups}
           isCreatingProjectChatSession={isCreatingChatSession}
           onArchive={handleArchiveChatSession}
+          onArchiveProjectChats={handleArchiveProjectChats}
           onCreateProjectChatSession={handleCreateProjectChatSession}
           onOpen={handleOpenChatSession}
+          onOpenProjectInFileManager={handleOpenProjectInFileManager}
+          onRemoveProject={handleRemoveProject}
+          onRenameProject={handleRenameProject}
           onShowLess={handleShowLessProjectSessions}
           onShowMore={handleShowMoreProjectSessions}
           onToggleCollapsed={handleToggleProjectCollapsed}
+          onToggleProjectPinned={handleSetProjectPinned}
           onTogglePinned={handleSetChatSessionPinned}
+          openProjectInFileManagerLabel={openProjectInFileManagerLabel}
           projectCount={chatSessionGroups.length}
           projectsCountLabel={t("sidebar.projectsCount", {
             projectCount: chatSessionGroups.length,
             sessionCount: projectSessionCount
           })}
           projectsLabel={t("sidebar.projects")}
+          removingProjectPath={isRemovingProjectPath}
+          renamingProjectPath={isRenamingProjectPath}
+          settingPinnedProjectPath={isSettingPinnedProjectPath}
           sessionCount={projectSessionCount}
           showLessLabel={t("sidebar.showLess")}
           showMoreLabel={t("sidebar.showMore")}

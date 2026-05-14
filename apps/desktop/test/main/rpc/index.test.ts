@@ -231,17 +231,79 @@ describe("message-port rpc", () => {
 
     expect(initialState).toEqual({
       collapsedProjectPaths: [],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 272
     })
     expect(updatedState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 272
     })
     expect(resizedState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 320
     })
     expect(await client.sidebarState.get()).toEqual(resizedState)
+
+    port1.close()
+    port2.close()
+  })
+
+  it("runs project sidebar actions over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const projectPath = "/tmp/etyon-rpc-project-actions"
+    const createdSession = await client.chatSessions.create({
+      projectPath
+    })
+    const renamedState = await client.projects.rename({
+      displayName: "Project Actions",
+      projectPath
+    })
+    const pinnedState = await client.projects.setPinned({
+      pinned: true,
+      projectPath
+    })
+    const sessionsAfterArchive = await client.projects.archiveChats({
+      projectPath
+    })
+    const recreatedSession = await client.chatSessions.create({
+      projectPath
+    })
+    const sessionsAfterRemove = await client.projects.remove({
+      projectPath
+    })
+
+    expect(renamedState.projectDisplayNames[projectPath]).toBe(
+      "Project Actions"
+    )
+    expect(pinnedState.projectPins[projectPath]).toBeTruthy()
+    expect(
+      sessionsAfterArchive.some((session) => session.id === createdSession.id)
+    ).toBe(false)
+    expect(
+      sessionsAfterRemove.some((session) => session.id === recreatedSession.id)
+    ).toBe(false)
+    expect(await client.sidebarState.get()).toMatchObject({
+      projectDisplayNames: {},
+      projectPins: {}
+    })
 
     port1.close()
     port2.close()

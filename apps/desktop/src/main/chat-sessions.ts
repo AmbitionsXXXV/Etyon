@@ -220,3 +220,43 @@ export const archiveChatSession = async ({
 
   return archivedSession
 }
+
+export const archiveProjectChatSessions = async ({
+  db,
+  projectPath
+}: {
+  db: AppDatabase
+  projectPath: string
+}): Promise<ChatSessionSummary[]> => {
+  const now = new Date().toISOString()
+
+  await db
+    .update(chatSessions)
+    .set({
+      archivedAt: now,
+      pinnedAt: null,
+      updatedAt: now
+    })
+    .where(
+      and(
+        eq(chatSessions.projectPath, normalizeProjectPath(projectPath)),
+        isNull(chatSessions.archivedAt)
+      )
+    )
+
+  return listChatSessions(db)
+}
+
+export const removeProjectChatSessions = async ({
+  db,
+  projectPath
+}: {
+  db: AppDatabase
+  projectPath: string
+}): Promise<ChatSessionSummary[]> => {
+  await db
+    .delete(chatSessions)
+    .where(eq(chatSessions.projectPath, normalizeProjectPath(projectPath)))
+
+  return listChatSessions(db)
+}

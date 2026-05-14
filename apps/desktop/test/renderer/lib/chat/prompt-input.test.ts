@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vite-plus/test"
+import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
   applyMentionSelection,
   createMentionFromProjectSnapshotItem,
   getActiveMentionMatch,
-  replaceMentionQuery
+  getMentionTokenTypeLabel,
+  replaceMentionQuery,
+  scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 
 describe("prompt input helpers", () => {
@@ -85,5 +87,33 @@ describe("prompt input helpers", () => {
       relativePath: "src",
       snapshotId: "snapshot-1"
     })
+  })
+
+  it("scrolls the active mention candidate into the visible list range", () => {
+    const scrollIntoView = vi.fn()
+
+    scrollActiveMentionItemIntoView({
+      scrollIntoView
+    })
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "nearest",
+      inline: "nearest"
+    })
+  })
+
+  it("formats inline mention token type labels", () => {
+    expect(
+      getMentionTokenTypeLabel({
+        kind: "file",
+        relativePath: "src/renderer/index.ts"
+      })
+    ).toBe("TS")
+    expect(
+      getMentionTokenTypeLabel({
+        kind: "folder",
+        relativePath: "src/renderer"
+      })
+    ).toBe("DIR")
   })
 })

@@ -9,8 +9,51 @@ const SIDEBAR_UI_STATE_DIR = getAppConfigDir(app.getPath("home"))
 const SIDEBAR_WIDTH_PX_MAX = 420
 const SIDEBAR_WIDTH_PX_MIN = 240
 
+const createSortedRecord = (
+  entries: [string, string][]
+): Record<string, string> =>
+  Object.fromEntries(
+    entries.toSorted(([left], [right]) => left.localeCompare(right))
+  )
+
+const omitRecordKey = (
+  record: Record<string, string>,
+  omittedKey: string
+): Record<string, string> =>
+  createSortedRecord(
+    Object.entries(record).filter(([entryKey]) => entryKey !== omittedKey)
+  )
+
 const normalizeCollapsedProjectPaths = (projectPaths: string[]): string[] =>
-  [...new Set(projectPaths)].toSorted()
+  [
+    ...new Set(
+      projectPaths.map((projectPath) => projectPath.trim()).filter(Boolean)
+    )
+  ].toSorted()
+
+const normalizeProjectDisplayNames = (
+  projectDisplayNames: Record<string, string>
+): Record<string, string> =>
+  createSortedRecord(
+    Object.entries(projectDisplayNames)
+      .map(
+        ([projectPath, displayName]) =>
+          [projectPath.trim(), displayName.trim()] as [string, string]
+      )
+      .filter(([projectPath, displayName]) => projectPath && displayName)
+  )
+
+const normalizeProjectPins = (
+  projectPins: Record<string, string>
+): Record<string, string> =>
+  createSortedRecord(
+    Object.entries(projectPins)
+      .map(
+        ([projectPath, pinnedAt]) =>
+          [projectPath.trim(), pinnedAt.trim()] as [string, string]
+      )
+      .filter(([projectPath, pinnedAt]) => projectPath && pinnedAt)
+  )
 
 const normalizeSidebarWidthPx = (sidebarWidthPx: number): number =>
   Math.min(SIDEBAR_WIDTH_PX_MAX, Math.max(SIDEBAR_WIDTH_PX_MIN, sidebarWidthPx))
@@ -22,6 +65,10 @@ const parseStoredSidebarUiState = (value: unknown): SidebarUiState => {
     collapsedProjectPaths: normalizeCollapsedProjectPaths(
       parsedState.collapsedProjectPaths
     ),
+    projectDisplayNames: normalizeProjectDisplayNames(
+      parsedState.projectDisplayNames
+    ),
+    projectPins: normalizeProjectPins(parsedState.projectPins),
     sidebarWidthPx: normalizeSidebarWidthPx(parsedState.sidebarWidthPx)
   }
 }
@@ -43,6 +90,99 @@ export const setCollapsedProjectPaths = (
   const nextState = parseStoredSidebarUiState({
     ...getSidebarUiState(),
     collapsedProjectPaths
+  })
+
+  store.set("sidebarUiState", nextState)
+
+  return nextState
+}
+
+export const setProjectDisplayName = ({
+  displayName,
+  projectPath
+}: {
+  displayName: string
+  projectPath: string
+}): SidebarUiState => {
+  const normalizedProjectPath = projectPath.trim()
+  const normalizedDisplayName = displayName.trim()
+  const projectDisplayNames = {
+    ...getSidebarUiState().projectDisplayNames
+  }
+
+  if (normalizedDisplayName) {
+    projectDisplayNames[normalizedProjectPath] = normalizedDisplayName
+
+    const nextState = parseStoredSidebarUiState({
+      ...getSidebarUiState(),
+      projectDisplayNames
+    })
+
+    store.set("sidebarUiState", nextState)
+
+    return nextState
+  }
+
+  const nextState = parseStoredSidebarUiState({
+    ...getSidebarUiState(),
+    projectDisplayNames: omitRecordKey(
+      projectDisplayNames,
+      normalizedProjectPath
+    )
+  })
+
+  store.set("sidebarUiState", nextState)
+
+  return nextState
+}
+
+export const setProjectPinned = ({
+  pinned,
+  projectPath
+}: {
+  pinned: boolean
+  projectPath: string
+}): SidebarUiState => {
+  const normalizedProjectPath = projectPath.trim()
+  const projectPins = { ...getSidebarUiState().projectPins }
+
+  if (pinned) {
+    projectPins[normalizedProjectPath] = new Date().toISOString()
+
+    const nextState = parseStoredSidebarUiState({
+      ...getSidebarUiState(),
+      projectPins
+    })
+
+    store.set("sidebarUiState", nextState)
+
+    return nextState
+  }
+
+  const nextState = parseStoredSidebarUiState({
+    ...getSidebarUiState(),
+    projectPins: omitRecordKey(projectPins, normalizedProjectPath)
+  })
+
+  store.set("sidebarUiState", nextState)
+
+  return nextState
+}
+
+export const removeProjectUiState = (projectPath: string): SidebarUiState => {
+  const normalizedProjectPath = projectPath.trim()
+  const currentState = getSidebarUiState()
+
+  const nextState = parseStoredSidebarUiState({
+    ...currentState,
+    collapsedProjectPaths: currentState.collapsedProjectPaths.filter(
+      (collapsedProjectPath) => collapsedProjectPath !== normalizedProjectPath
+    ),
+    projectDisplayNames: omitRecordKey(
+      currentState.projectDisplayNames,
+      normalizedProjectPath
+    ),
+    projectPins: omitRecordKey(currentState.projectPins, normalizedProjectPath)
   })
 
   store.set("sidebarUiState", nextState)

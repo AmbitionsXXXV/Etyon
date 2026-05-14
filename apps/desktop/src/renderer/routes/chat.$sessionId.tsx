@@ -17,6 +17,7 @@ import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
+  buildAiSettingsWithDefaultModel,
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
@@ -34,6 +35,7 @@ type ChatUiMessage = UIMessage<ChatMessageMetadata>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
+const settingsQueryOptions = orpc.settings.get.queryOptions({})
 const isChatSessionDetailsEnabled =
   import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "true" ||
   import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "1"
@@ -396,7 +398,7 @@ const ChatSessionPage = () => {
   const [transport, setTransport] =
     useState<DefaultChatTransport<ChatUiMessage> | null>(null)
   const chatSessionsQuery = useQuery(chatSessionsQueryOptions)
-  const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
+  const settingsQuery = useQuery(settingsQueryOptions)
   const session = useMemo(
     () => chatSessionsQuery.data?.find((item) => item.id === sessionId),
     [chatSessionsQuery.data, sessionId]
@@ -437,12 +439,29 @@ const ChatSessionPage = () => {
     [modelGroups, session, settingsQuery.data]
   )
   const setModelMutation = useMutation({
-    mutationFn: (modelId: string | null) =>
-      rpcClient.chatSessions.setModel({
+    mutationFn: async (modelId: string | null) => {
+      const nextSession = await rpcClient.chatSessions.setModel({
         modelId,
         sessionId
-      }),
-    onSuccess: (nextSession) => {
+      })
+      const shouldPersistDefaultModel =
+        Boolean(modelId) && settingsQuery.data?.ai.defaultModel !== modelId
+      const nextSettings =
+        modelId && shouldPersistDefaultModel && settingsQuery.data
+          ? await rpcClient.settings.update({
+              ai: buildAiSettingsWithDefaultModel(
+                settingsQuery.data.ai,
+                modelId
+              )
+            })
+          : null
+
+      return {
+        nextSession,
+        nextSettings
+      }
+    },
+    onSuccess: ({ nextSession, nextSettings }) => {
       queryClient.setQueryData<ChatSessionSummary[] | undefined>(
         chatSessionsQueryOptions.queryKey,
         (sessions) =>
@@ -451,6 +470,10 @@ const ChatSessionPage = () => {
             sessions
           })
       )
+
+      if (nextSettings) {
+        queryClient.setQueryData(settingsQueryOptions.queryKey, nextSettings)
+      }
     }
   })
 

@@ -117,3 +117,11 @@ export const resolveChatModelValue = ({
 
   return allOptions[0]?.value ?? ""
 }
+
+export const buildAiSettingsWithDefaultModel = (
+  aiSettings: AiSettings,
+  defaultModel: string
+): AiSettings => ({
+  ...aiSettings,
+  defaultModel
+})

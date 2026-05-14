@@ -46,6 +46,36 @@ export const useChatSessionActions = () => {
     () => getCurrentSessionIdFromPathname(pathname),
     [pathname]
   )
+  const replaceChatSessionList = useCallback(
+    async (activeSessions: ChatSessionSummary[]) => {
+      queryClient.setQueryData<ChatSessionSummary[] | undefined>(
+        chatSessionsQueryKey,
+        activeSessions
+      )
+
+      if (
+        !currentSessionId ||
+        activeSessions.some((session) => session.id === currentSessionId)
+      ) {
+        return
+      }
+
+      const [nextSession] = activeSessions
+
+      if (nextSession) {
+        await navigate({
+          params: {
+            sessionId: nextSession.id
+          },
+          to: "/chat/$sessionId"
+        })
+        return
+      }
+
+      await navigate({ to: "/" })
+    },
+    [chatSessionsQueryKey, currentSessionId, navigate, queryClient]
+  )
 
   const createChatSessionMutation = useMutation({
     mutationFn: (input: CreateChatSessionInput) =>
@@ -87,29 +117,34 @@ export const useChatSessionActions = () => {
         ) ?? []
       ).filter((session) => session.id !== archivedSession.id)
 
-      queryClient.setQueryData<ChatSessionSummary[] | undefined>(
-        chatSessionsQueryKey,
-        activeSessions
-      )
-
-      if (archivedSession.id !== currentSessionId) {
-        return
-      }
-
-      const [nextSession] = activeSessions
-
-      if (nextSession) {
-        await navigate({
-          params: {
-            sessionId: nextSession.id
-          },
-          to: "/chat/$sessionId"
-        })
-        return
-      }
-
-      await navigate({ to: "/" })
+      await replaceChatSessionList(activeSessions)
     }
+  })
+  const archiveProjectChatsMutation = useMutation({
+    mutationFn: (projectPath: string) =>
+      rpcClient.projects.archiveChats({
+        projectPath
+      }),
+    onError: (error, projectPath) => {
+      logger.error("sidebar_archive_project_chats_failed", {
+        error,
+        projectPath
+      })
+    },
+    onSuccess: replaceChatSessionList
+  })
+  const removeProjectMutation = useMutation({
+    mutationFn: (projectPath: string) =>
+      rpcClient.projects.remove({
+        projectPath
+      }),
+    onError: (error, projectPath) => {
+      logger.error("sidebar_remove_project_failed", {
+        error,
+        projectPath
+      })
+    },
+    onSuccess: replaceChatSessionList
   })
 
   const openChatSessionMutation = useMutation({
@@ -192,12 +227,40 @@ export const useChatSessionActions = () => {
       logger.error("sidebar_pick_project_directory_failed", { error })
     }
   }, [createChatSessionMutation])
+  const handleArchiveProjectChats = useCallback(
+    (projectPath: string) => {
+      archiveProjectChatsMutation.mutate(projectPath)
+    },
+    [archiveProjectChatsMutation]
+  )
 
   const handleOpenChatSession = useCallback(
     (sessionId: string) => {
       openChatSessionMutation.mutate(sessionId)
     },
     [openChatSessionMutation]
+  )
+  const handleOpenProjectInFileManager = useCallback(
+    async (projectPath: string) => {
+      try {
+        await window.electron.ipcRenderer.invoke(
+          "open-project-in-file-manager",
+          projectPath
+        )
+      } catch (error: unknown) {
+        logger.error("sidebar_open_project_in_file_manager_failed", {
+          error,
+          projectPath
+        })
+      }
+    },
+    []
+  )
+  const handleRemoveProject = useCallback(
+    (projectPath: string) => {
+      removeProjectMutation.mutate(projectPath)
+    },
+    [removeProjectMutation]
   )
 
   const handleSetChatSessionPinned = useCallback(
@@ -213,15 +276,24 @@ export const useChatSessionActions = () => {
   return {
     currentSessionId,
     handleArchiveChatSession,
+    handleArchiveProjectChats,
     handleCreateChatSession,
     handleCreateProjectChatSession,
     handleOpenChatSession,
+    handleOpenProjectInFileManager,
+    handleRemoveProject,
     handleSetChatSessionPinned,
     isArchivingChatSessionId: archiveChatSessionMutation.isPending
       ? archiveChatSessionMutation.variables
       : undefined,
+    isArchivingProjectPath: archiveProjectChatsMutation.isPending
+      ? archiveProjectChatsMutation.variables
+      : undefined,
     isCreatingChatSession: createChatSessionMutation.isPending,
     isOpeningChatSession: openChatSessionMutation.isPending,
+    isRemovingProjectPath: removeProjectMutation.isPending
+      ? removeProjectMutation.variables
+      : undefined,
     isSettingPinnedChatSessionId: setPinnedChatSessionMutation.isPending
       ? setPinnedChatSessionMutation.variables?.sessionId
       : undefined

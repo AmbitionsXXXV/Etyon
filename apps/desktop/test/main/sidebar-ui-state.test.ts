@@ -4,7 +4,10 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   getSidebarUiState,
+  removeProjectUiState,
   setCollapsedProjectPaths,
+  setProjectDisplayName,
+  setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
 
@@ -50,6 +53,8 @@ describe("sidebar ui state", () => {
   it("defaults to no collapsed project paths", () => {
     expect(getSidebarUiState()).toEqual({
       collapsedProjectPaths: [],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 272
     })
   })
@@ -63,6 +68,8 @@ describe("sidebar ui state", () => {
 
     expect(nextState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 272
     })
     expect(getSidebarUiState()).toEqual(nextState)
@@ -73,11 +80,50 @@ describe("sidebar ui state", () => {
 
     expect(setSidebarWidthPx(999)).toEqual({
       collapsedProjectPaths: ["/tmp/a-project"],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 420
     })
     expect(setSidebarWidthPx(120)).toEqual({
       collapsedProjectPaths: ["/tmp/a-project"],
+      projectDisplayNames: {},
+      projectPins: {},
       sidebarWidthPx: 240
+    })
+  })
+
+  it("persists normalized project display names and pins", () => {
+    const namedState = setProjectDisplayName({
+      displayName: " Project B ",
+      projectPath: " /tmp/b-project "
+    })
+    const pinnedState = setProjectPinned({
+      pinned: true,
+      projectPath: " /tmp/b-project "
+    })
+
+    expect(namedState.projectDisplayNames).toEqual({
+      "/tmp/b-project": "Project B"
+    })
+    expect(pinnedState.projectPins["/tmp/b-project"]).toBeTruthy()
+  })
+
+  it("removes project-specific sidebar state", () => {
+    removeProjectUiState("/tmp/b-project")
+    setCollapsedProjectPaths(["/tmp/remove-project"])
+    setProjectDisplayName({
+      displayName: "Remove Me",
+      projectPath: "/tmp/remove-project"
+    })
+    setProjectPinned({
+      pinned: true,
+      projectPath: "/tmp/remove-project"
+    })
+
+    expect(removeProjectUiState("/tmp/remove-project")).toMatchObject({
+      collapsedProjectPaths: [],
+      projectDisplayNames: {},
+      projectPins: {}
     })
   })
 })

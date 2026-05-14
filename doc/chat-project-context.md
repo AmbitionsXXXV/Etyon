@@ -48,11 +48,15 @@ ${projectPath}/.alma-snapshots/
 - `.git/**`
 - `dist/**`
 - `build/**`
+- `out/**`
 - `.next/**`
 - `.alma-snapshots/**`
 - `.turbo/**`
 - `.vite/**`
 - `*.log`
+- `*.asar`
+
+如果项目根目录存在 `.gitignore`，快照扫描还会按顺序合并其中的规则。也就是说，`out/`、`coverage/`、`.env` 等项目自身已经忽略的路径默认不会进入聊天上下文；`.alma-snapshots` 和 `.git` 仍作为系统目录强制跳过。
 
 刷新策略是按需刷新，不做每次发送前全量重扫：
 

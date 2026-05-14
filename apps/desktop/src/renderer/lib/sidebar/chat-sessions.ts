@@ -12,6 +12,7 @@ export interface ChatSessionMetaItem {
 }
 
 export interface ChatSessionGroup {
+  pinnedAt: string | null
   projectName: string
   projectPath: string
   sessions: ChatSessionSummary[]
@@ -74,7 +75,14 @@ export const getProjectNameFromPath = (projectPath: string): string => {
 }
 
 export const groupChatSessionsByProject = (
-  sessions: ChatSessionSummary[]
+  sessions: ChatSessionSummary[],
+  {
+    projectDisplayNames = {},
+    projectPins = {}
+  }: {
+    projectDisplayNames?: Record<string, string>
+    projectPins?: Record<string, string>
+  } = {}
 ): ChatSessionGroup[] => {
   const groupedSessions = new Map<string, ChatSessionSummary[]>()
 
@@ -87,11 +95,30 @@ export const groupChatSessionsByProject = (
     groupedSessions.set(session.projectPath, [...existingSessions, session])
   }
 
-  return [...groupedSessions.entries()].map(([projectPath, groupedItems]) => ({
-    projectName: getProjectNameFromPath(projectPath),
-    projectPath,
-    sessions: groupedItems
-  }))
+  return [...groupedSessions.entries()]
+    .map(([projectPath, groupedItems]) => ({
+      pinnedAt: projectPins[projectPath] ?? null,
+      projectName:
+        projectDisplayNames[projectPath]?.trim() ||
+        getProjectNameFromPath(projectPath),
+      projectPath,
+      sessions: groupedItems
+    }))
+    .toSorted((left, right) => {
+      if (left.pinnedAt && !right.pinnedAt) {
+        return -1
+      }
+
+      if (!left.pinnedAt && right.pinnedAt) {
+        return 1
+      }
+
+      if (left.pinnedAt && right.pinnedAt) {
+        return right.pinnedAt.localeCompare(left.pinnedAt)
+      }
+
+      return 0
+    })
 }
 
 export const getChatSessionMetaItems = ({

@@ -36,6 +36,18 @@ export type {
   StoredProviderModel,
   StoredProviderModelCapabilities
 } from "./schemas/providers"
+export {
+  ArchiveProjectChatsInputSchema,
+  RemoveProjectInputSchema,
+  RenameProjectInputSchema,
+  SetProjectPinnedInputSchema
+} from "./schemas/projects"
+export type {
+  ArchiveProjectChatsInput,
+  RemoveProjectInput,
+  RenameProjectInput,
+  SetProjectPinnedInput
+} from "./schemas/projects"
 export { TestProxyInputSchema, TestProxyOutputSchema } from "./schemas/proxy"
 export type { TestProxyInput, TestProxyOutput } from "./schemas/proxy"
 export {

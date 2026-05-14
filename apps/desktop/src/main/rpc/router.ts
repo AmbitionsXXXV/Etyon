@@ -15,8 +15,12 @@ import {
   ProjectSnapshotStateSchema,
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
+  ArchiveProjectChatsInputSchema,
+  RemoveProjectInputSchema,
+  RenameProjectInputSchema,
   SetCollapsedProjectsInputSchema,
   SetChatSessionModelInputSchema,
+  SetProjectPinnedInputSchema,
   SetSidebarWidthInputSchema,
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
@@ -29,10 +33,12 @@ import { BrowserWindow } from "electron"
 
 import {
   archiveChatSession,
+  archiveProjectChatSessions,
   createChatSession,
   getChatSessionById,
   listChatSessions,
   openChatSession,
+  removeProjectChatSessions,
   setChatSessionModel,
   setChatSessionPinned
 } from "@/main/chat-sessions"
@@ -50,7 +56,10 @@ import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import {
   getSidebarUiState,
+  removeProjectUiState,
   setCollapsedProjectPaths,
+  setProjectDisplayName,
+  setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
@@ -63,6 +72,12 @@ const loggerEmit = rpc.input(LogEventSchema).handler(({ context, input }) => {
   })
   dispatch(enriched)
 })
+
+const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send("sidebar-state-changed", state)
+  }
+}
 
 const fontsList = rpc
   .output(FontListOutputSchema)
@@ -139,6 +154,59 @@ const providersFetchModels = rpc
   .output(ProviderFetchModelsOutputSchema)
   .handler(({ input }) => fetchProviderModels(input))
 
+const projectsArchiveChats = rpc
+  .input(ArchiveProjectChatsInputSchema)
+  .output(ChatSessionsListOutputSchema)
+  .handler(({ context, input }) =>
+    archiveProjectChatSessions({
+      db: context.db,
+      projectPath: input.projectPath
+    })
+  )
+
+const projectsRemove = rpc
+  .input(RemoveProjectInputSchema)
+  .output(ChatSessionsListOutputSchema)
+  .handler(async ({ context, input }) => {
+    const sessions = await removeProjectChatSessions({
+      db: context.db,
+      projectPath: input.projectPath
+    })
+    const sidebarState = removeProjectUiState(input.projectPath)
+
+    broadcastSidebarState(sidebarState)
+
+    return sessions
+  })
+
+const projectsRename = rpc
+  .input(RenameProjectInputSchema)
+  .output(SidebarUiStateSchema)
+  .handler(({ input }) => {
+    const sidebarState = setProjectDisplayName({
+      displayName: input.displayName,
+      projectPath: input.projectPath
+    })
+
+    broadcastSidebarState(sidebarState)
+
+    return sidebarState
+  })
+
+const projectsSetPinned = rpc
+  .input(SetProjectPinnedInputSchema)
+  .output(SidebarUiStateSchema)
+  .handler(({ input }) => {
+    const sidebarState = setProjectPinned({
+      pinned: input.pinned,
+      projectPath: input.projectPath
+    })
+
+    broadcastSidebarState(sidebarState)
+
+    return sidebarState
+  })
+
 const settingsGet = rpc.output(AppSettingsSchema).handler(() => getSettings())
 
 const settingsUpdate = rpc
@@ -208,9 +276,7 @@ const sidebarStateSetCollapsedProjects = rpc
   .handler(({ input }) => {
     const result = setCollapsedProjectPaths(input.collapsedProjectPaths)
 
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send("sidebar-state-changed", result)
-    }
+    broadcastSidebarState(result)
 
     return result
   })
@@ -221,9 +287,7 @@ const sidebarStateSetWidth = rpc
   .handler(({ input }) => {
     const result = setSidebarWidthPx(input.sidebarWidthPx)
 
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send("sidebar-state-changed", result)
-    }
+    broadcastSidebarState(result)
 
     return result
   })
@@ -250,6 +314,12 @@ export const router = {
   },
   providers: {
     fetchModels: providersFetchModels
+  },
+  projects: {
+    archiveChats: projectsArchiveChats,
+    remove: projectsRemove,
+    rename: projectsRename,
+    setPinned: projectsSetPinned
   },
   proxy: {
     test: proxyTestRpc

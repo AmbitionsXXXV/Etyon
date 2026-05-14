@@ -81,6 +81,50 @@ describe("sidebar chat session helpers", () => {
     ])
   })
 
+  it("applies project display names and sorts pinned projects first", () => {
+    const groups = groupChatSessionsByProject(
+      [
+        buildSessionFixture({
+          id: "project-a",
+          lastOpenedAt: "2026-03-26T12:03:00.000Z",
+          pinnedAt: null,
+          projectPath: "/tmp/project-a",
+          title: ""
+        }),
+        buildSessionFixture({
+          id: "project-b",
+          lastOpenedAt: "2026-03-26T12:02:00.000Z",
+          pinnedAt: null,
+          projectPath: "/tmp/project-b",
+          title: ""
+        }),
+        buildSessionFixture({
+          id: "project-c",
+          lastOpenedAt: "2026-03-26T12:01:00.000Z",
+          pinnedAt: null,
+          projectPath: "/tmp/project-c",
+          title: ""
+        })
+      ],
+      {
+        projectDisplayNames: {
+          "/tmp/project-b": "Renamed Project"
+        },
+        projectPins: {
+          "/tmp/project-b": "2026-03-26T12:10:00.000Z",
+          "/tmp/project-c": "2026-03-26T12:11:00.000Z"
+        }
+      }
+    )
+
+    expect(groups.map((group) => group.projectPath)).toEqual([
+      "/tmp/project-c",
+      "/tmp/project-b",
+      "/tmp/project-a"
+    ])
+    expect(groups[1]?.projectName).toBe("Renamed Project")
+  })
+
   it("derives project names from unix and windows style paths", () => {
     expect(getProjectNameFromPath("/Users/test/project-a")).toBe("project-a")
     expect(getProjectNameFromPath("C:\\Users\\test\\project-b")).toBe(

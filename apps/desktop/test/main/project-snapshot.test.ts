@@ -42,6 +42,7 @@ describe("project snapshot", () => {
     writeProjectFile("src/main.ts", "export const value = 1\n")
     writeProjectFile("README.md", "# hello\n")
     writeProjectFile("node_modules/ignored.js", "console.log('ignored')\n")
+    writeProjectFile("out/development/app.asar", Buffer.from([0, 1, 2, 3]))
     writeProjectFile("assets/logo.bin", Buffer.from([0, 1, 2, 3]))
 
     const snapshotState = ensureProjectSnapshot(testProjectPath)
@@ -82,6 +83,61 @@ describe("project snapshot", () => {
     expect(
       listedFiles.files.some(
         (file) => file.relativePath === "node_modules/ignored.js"
+      )
+    ).toBe(false)
+    expect(
+      listedFiles.files.some(
+        (file) => file.relativePath === "out/development/app.asar"
+      )
+    ).toBe(false)
+  })
+
+  it("applies project .gitignore rules when collecting snapshot files", () => {
+    const projectPath = createTestProjectPath("gitignore")
+
+    writeProjectFile(
+      ".gitignore",
+      ["ignored-build/", "*.generated.ts", "!keep.generated.ts"].join("\n"),
+      projectPath
+    )
+    writeProjectFile("src/main.ts", "export const main = true\n", projectPath)
+    writeProjectFile(
+      "src/ignored.generated.ts",
+      "export const ignored = true\n",
+      projectPath
+    )
+    writeProjectFile(
+      "keep.generated.ts",
+      "export const kept = true\n",
+      projectPath
+    )
+    writeProjectFile(
+      "ignored-build/cache.ts",
+      "export const ignoredBuild = true\n",
+      projectPath
+    )
+
+    const listedFiles = listProjectSnapshotFiles({
+      projectPath,
+      query: ""
+    })
+
+    expect(
+      listedFiles.files.some((file) => file.relativePath === "src/main.ts")
+    ).toBe(true)
+    expect(
+      listedFiles.files.some(
+        (file) => file.relativePath === "src/ignored.generated.ts"
+      )
+    ).toBe(false)
+    expect(
+      listedFiles.files.some(
+        (file) => file.relativePath === "keep.generated.ts"
+      )
+    ).toBe(true)
+    expect(
+      listedFiles.files.some(
+        (file) => file.relativePath === "ignored-build/cache.ts"
       )
     ).toBe(false)
   })

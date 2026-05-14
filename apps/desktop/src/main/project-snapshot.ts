@@ -20,12 +20,15 @@ const DEFAULT_IGNORE_PATTERNS = [
   ".git/**",
   "dist/**",
   "build/**",
+  "out/**",
   ".next/**",
   "*.log",
+  "*.asar",
   ".alma-snapshots/**",
   ".turbo/**",
   ".vite/**"
 ] as const
+const GITIGNORE_FILE_NAME = ".gitignore"
 const PREVIEW_CHAR_COUNT = 4000
 const NULL_BYTE = String.fromCodePoint(0)
 const SNAPSHOT_CONFIG_VERSION = 1
@@ -59,21 +62,27 @@ interface SnapshotPayload {
   timestamp: string
 }
 
+interface ProjectIgnoreRule {
+  isDirectoryOnly: boolean
+  isNegated: boolean
+  matcher: RegExp
+  pattern: string
+  usesPathSegments: boolean
+}
+
+interface ParsedIgnorePattern {
+  isAnchored: boolean
+  isDirectoryOnly: boolean
+  isNegated: boolean
+  pattern: string
+}
+
 const DEFAULT_SNAPSHOT_CONFIG: SnapshotConfigFile = {
   ignorePatterns: DEFAULT_IGNORE_PATTERNS,
   version: SNAPSHOT_CONFIG_VERSION
 }
 
-const DIRECTORY_IGNORE_NAMES = new Set([
-  ".alma-snapshots",
-  ".git",
-  ".next",
-  ".turbo",
-  ".vite",
-  "build",
-  "dist",
-  "node_modules"
-])
+const SYSTEM_DIRECTORY_IGNORE_NAMES = new Set([".alma-snapshots", ".git"])
 const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   ".cjs": "javascript",
   ".css": "css",
@@ -175,6 +184,23 @@ const readSnapshotIndex = (projectPath: string): Record<string, string> =>
   readJsonFile<Record<string, string>>(buildSnapshotIndexPath(projectPath)) ??
   {}
 
+const readSnapshotConfig = (projectPath: string): SnapshotConfigFile => {
+  const config = readJsonFile<Partial<SnapshotConfigFile>>(
+    buildSnapshotConfigPath(projectPath)
+  )
+  const ignorePatterns = Array.isArray(config?.ignorePatterns)
+    ? config.ignorePatterns.filter((pattern) => typeof pattern === "string")
+    : DEFAULT_IGNORE_PATTERNS
+
+  return {
+    ignorePatterns,
+    version:
+      typeof config?.version === "number"
+        ? config.version
+        : SNAPSHOT_CONFIG_VERSION
+  }
+}
+
 const readSnapshotDocuments = (
   projectPath: string,
   snapshotId: string
@@ -183,15 +209,249 @@ const readSnapshotDocuments = (
     buildSnapshotDocumentsPath(projectPath, snapshotId)
   ) ?? []
 
+const readProjectGitignorePatterns = (projectPath: string): string[] => {
+  const gitignorePath = path.join(projectPath, GITIGNORE_FILE_NAME)
+
+  if (!fs.existsSync(gitignorePath)) {
+    return []
+  }
+
+  return fs.readFileSync(gitignorePath, "utf-8").split("\n")
+}
+
 const getLatestSnapshotEntry = (
   projectPath: string
 ): SnapshotHistoryEntry | undefined => readSnapshotHistory(projectPath).at(-1)
 
+const REGEXP_SPECIAL_CHARS = new Set([
+  "\\",
+  "^",
+  "$",
+  "+",
+  "?",
+  ".",
+  "(",
+  ")",
+  "|",
+  "{",
+  "}",
+  "[",
+  "]"
+])
+
+const escapeRegexChar = (char: string): string =>
+  REGEXP_SPECIAL_CHARS.has(char) ? `\\${char}` : char
+
+const buildGlobMatcher = (pattern: string): RegExp => {
+  let source = ""
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]
+
+    if (char === "*") {
+      if (pattern[index + 1] === "*") {
+        source += ".*"
+        index += 1
+        continue
+      }
+
+      source += "[^/]*"
+      continue
+    }
+
+    if (char === "?") {
+      source += "[^/]"
+      continue
+    }
+
+    if (char === "[") {
+      const closingIndex = pattern.indexOf("]", index + 1)
+
+      if (closingIndex > index + 1) {
+        const characterClass = pattern.slice(index + 1, closingIndex)
+        const normalizedClass = characterClass.startsWith("!")
+          ? `^${characterClass.slice(1)}`
+          : characterClass
+
+        source += `[${normalizedClass}]`
+        index = closingIndex
+        continue
+      }
+    }
+
+    source += escapeRegexChar(char)
+  }
+
+  return new RegExp(`^${source}$`, "u")
+}
+
+const parseIgnorePattern = (line: string): ParsedIgnorePattern | undefined => {
+  const trimmedLine = line.replace(/\r$/u, "").trim()
+
+  if (!trimmedLine || trimmedLine.startsWith("#")) {
+    return undefined
+  }
+
+  let pattern = trimmedLine
+  let isNegated = false
+
+  if (pattern.startsWith("!")) {
+    isNegated = true
+    pattern = pattern.slice(1).trim()
+  }
+
+  pattern = pattern
+    .replaceAll("\\#", "#")
+    .replaceAll("\\!", "!")
+    .replaceAll("\\ ", " ")
+
+  if (!pattern || pattern === "/") {
+    return undefined
+  }
+
+  const isAnchored = pattern.startsWith("/")
+  let isDirectoryOnly = pattern.endsWith("/")
+
+  pattern = pattern.replace(/^\/+/u, "").replace(/\/+$/u, "")
+
+  if (pattern.endsWith("/**")) {
+    pattern = pattern.slice(0, -3)
+    isDirectoryOnly = true
+  }
+
+  if (!pattern) {
+    return undefined
+  }
+
+  return {
+    isAnchored,
+    isDirectoryOnly,
+    isNegated,
+    pattern
+  }
+}
+
+const buildProjectIgnoreRule = (
+  line: string
+): ProjectIgnoreRule | undefined => {
+  const parsedPattern = parseIgnorePattern(line)
+
+  if (!parsedPattern) {
+    return undefined
+  }
+
+  try {
+    return {
+      isDirectoryOnly: parsedPattern.isDirectoryOnly,
+      isNegated: parsedPattern.isNegated,
+      matcher: buildGlobMatcher(parsedPattern.pattern),
+      pattern: parsedPattern.pattern,
+      usesPathSegments:
+        parsedPattern.isAnchored || parsedPattern.pattern.includes("/")
+    }
+  } catch {
+    return undefined
+  }
+}
+
+const buildProjectIgnoreRules = (projectPath: string): ProjectIgnoreRule[] => {
+  const snapshotConfig = readSnapshotConfig(projectPath)
+  const projectGitignorePatterns = readProjectGitignorePatterns(projectPath)
+  const ignorePatterns = [
+    ...snapshotConfig.ignorePatterns,
+    ...projectGitignorePatterns
+  ]
+
+  return ignorePatterns
+    .map(buildProjectIgnoreRule)
+    .filter((rule): rule is ProjectIgnoreRule => rule !== undefined)
+}
+
+const doesSegmentIgnoreRuleMatch = ({
+  isDirectory,
+  relativePath,
+  rule
+}: {
+  isDirectory: boolean
+  relativePath: string
+  rule: ProjectIgnoreRule
+}): boolean => {
+  const segments = relativePath.split("/")
+  const lastIndex = segments.length - 1
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+
+    if (!rule.matcher.test(segment)) {
+      continue
+    }
+
+    const matchesAncestorDirectory = index < lastIndex
+
+    if (!rule.isDirectoryOnly || isDirectory || matchesAncestorDirectory) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const doesPathIgnoreRuleMatch = ({
+  isDirectory,
+  relativePath,
+  rule
+}: {
+  isDirectory: boolean
+  relativePath: string
+  rule: ProjectIgnoreRule
+}): boolean => {
+  const pathParts = relativePath.split("/")
+
+  for (let index = pathParts.length; index > 0; index -= 1) {
+    const candidatePath = pathParts.slice(0, index).join("/")
+
+    if (!rule.matcher.test(candidatePath)) {
+      continue
+    }
+
+    const matchesAncestorDirectory = index < pathParts.length
+
+    if (!rule.isDirectoryOnly || isDirectory || matchesAncestorDirectory) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const doesIgnoreRuleMatch = ({
+  isDirectory,
+  relativePath,
+  rule
+}: {
+  isDirectory: boolean
+  relativePath: string
+  rule: ProjectIgnoreRule
+}): boolean =>
+  rule.usesPathSegments
+    ? doesPathIgnoreRuleMatch({
+        isDirectory,
+        relativePath,
+        rule
+      })
+    : doesSegmentIgnoreRuleMatch({
+        isDirectory,
+        relativePath,
+        rule
+      })
+
 const isIgnoredFilePath = ({
+  ignoreRules,
   isDirectory,
   name,
   relativePath
 }: {
+  ignoreRules: readonly ProjectIgnoreRule[]
   isDirectory: boolean
   name: string
   relativePath: string
@@ -200,19 +460,30 @@ const isIgnoredFilePath = ({
     return false
   }
 
-  if (name.endsWith(".log")) {
+  if (SYSTEM_DIRECTORY_IGNORE_NAMES.has(name)) {
     return true
   }
 
-  if (isDirectory) {
-    return DIRECTORY_IGNORE_NAMES.has(name)
+  let isIgnored = false
+
+  for (const rule of ignoreRules) {
+    if (
+      doesIgnoreRuleMatch({
+        isDirectory,
+        relativePath,
+        rule
+      })
+    ) {
+      isIgnored = !rule.isNegated
+    }
   }
 
-  return relativePath.startsWith(`${SNAPSHOT_DIR_NAME}/`)
+  return isIgnored
 }
 
 const collectProjectFiles = (projectPath: string): string[] => {
   const discoveredFiles: string[] = []
+  const ignoreRules = buildProjectIgnoreRules(projectPath)
 
   const walk = (currentPath: string) => {
     const entries = fs
@@ -225,6 +496,7 @@ const collectProjectFiles = (projectPath: string): string[] => {
 
       if (
         isIgnoredFilePath({
+          ignoreRules,
           isDirectory: entry.isDirectory(),
           name: entry.name,
           relativePath

@@ -83,3 +83,25 @@ export const createMentionFromProjectSnapshotItem = (
     snapshotId: item.snapshotId
   }
 }
+
+export const scrollActiveMentionItemIntoView = (
+  itemElement: Pick<HTMLElement, "scrollIntoView"> | null | undefined
+): void => {
+  itemElement?.scrollIntoView({
+    block: "nearest",
+    inline: "nearest"
+  })
+}
+
+export const getMentionTokenTypeLabel = (
+  mention: Pick<ChatMention, "kind" | "relativePath">
+): string => {
+  if (mention.kind === "folder") {
+    return "DIR"
+  }
+
+  const fileName = mention.relativePath.split("/").at(-1) ?? ""
+  const extension = fileName.includes(".") ? fileName.split(".").at(-1) : null
+
+  return extension ? extension.toUpperCase() : "TXT"
+}

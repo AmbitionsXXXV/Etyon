@@ -1,18 +1,22 @@
 import fs from "node:fs"
 import { setTimeout as delay } from "node:timers/promises"
 
+import { eq } from "drizzle-orm"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   archiveChatSession,
+  archiveProjectChatSessions,
   createChatSession,
   listChatSessions,
   openChatSession,
+  removeProjectChatSessions,
   setChatSessionModel,
   setChatSessionPinned
 } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
+import { chatSessions } from "@/main/db/schema"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -155,6 +159,56 @@ describe("chat sessions", () => {
     expect(archivedSession.archivedAt).toBeTruthy()
     expect(nextSession.projectPath).toBe(fallbackSession.projectPath)
     expect(sessions.some((item) => item.id === session.id)).toBe(false)
+  })
+
+  it("archives all active chat sessions for a project", async () => {
+    await ensureDatabaseReady()
+
+    const projectPath = "/tmp/etyon-project-archive"
+    const firstSession = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+    const secondSession = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+
+    await archiveProjectChatSessions({
+      db: getDb(),
+      projectPath
+    })
+
+    const sessions = await listChatSessions(getDb())
+
+    expect(sessions.some((item) => item.id === firstSession.id)).toBe(false)
+    expect(sessions.some((item) => item.id === secondSession.id)).toBe(false)
+  })
+
+  it("removes all chat session rows for a project", async () => {
+    await ensureDatabaseReady()
+
+    const projectPath = "/tmp/etyon-project-remove"
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+
+    await archiveChatSession({
+      db: getDb(),
+      sessionId: session.id
+    })
+    await removeProjectChatSessions({
+      db: getDb(),
+      projectPath
+    })
+
+    const rows = await getDb()
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.projectPath, projectPath))
+
+    expect(rows).toEqual([])
   })
 
   it("persists a selected model for a chat session", async () => {

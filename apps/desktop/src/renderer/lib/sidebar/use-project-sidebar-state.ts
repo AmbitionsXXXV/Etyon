@@ -12,12 +12,22 @@ const SIDEBAR_STATE_QUERY_OPTIONS = orpc.sidebarState.get.queryOptions({})
 const clampSidebarWidthPx = (sidebarWidthPx: number): number =>
   Math.min(SIDEBAR_WIDTH_PX_MAX, Math.max(SIDEBAR_WIDTH_PX_MIN, sidebarWidthPx))
 
+const omitProjectStateRecordKey = (
+  record: Record<string, string> | undefined,
+  omittedKey: string
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(record ?? {}).filter(([entryKey]) => entryKey !== omittedKey)
+  )
+
 export const useProjectSidebarState = () => {
   const queryClient = useQueryClient()
   const sidebarStateQuery = useQuery(SIDEBAR_STATE_QUERY_OPTIONS)
   const collapsedProjectPaths =
     sidebarStateQuery.data?.collapsedProjectPaths ??
     EMPTY_COLLAPSED_PROJECT_PATHS
+  const projectDisplayNames = sidebarStateQuery.data?.projectDisplayNames ?? {}
+  const projectPins = sidebarStateQuery.data?.projectPins ?? {}
   const sidebarWidthPx = sidebarStateQuery.data?.sidebarWidthPx ?? 272
 
   const setCollapsedProjectsMutation = useMutation<
@@ -45,6 +55,8 @@ export const useProjectSidebarState = () => {
         SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
         (currentState) => ({
           collapsedProjectPaths: nextCollapsedProjectPaths,
+          projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
         })
       )
@@ -82,7 +94,111 @@ export const useProjectSidebarState = () => {
           collapsedProjectPaths:
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
+          projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: clampSidebarWidthPx(nextSidebarWidthPx)
+        })
+      )
+
+      return previousState
+    },
+    onSuccess: (nextState) => {
+      queryClient.setQueryData(SIDEBAR_STATE_QUERY_OPTIONS.queryKey, nextState)
+    }
+  })
+  const renameProjectMutation = useMutation<
+    SidebarUiState,
+    Error,
+    {
+      displayName: string
+      projectPath: string
+    },
+    SidebarUiState | undefined
+  >({
+    mutationFn: ({ displayName, projectPath }) =>
+      rpcClient.projects.rename({
+        displayName,
+        projectPath
+      }),
+    onError: (_error, _variables, previousState) => {
+      queryClient.setQueryData(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        previousState
+      )
+    },
+    onMutate: ({ displayName, projectPath }) => {
+      const previousState = queryClient.getQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey
+      )
+      const normalizedDisplayName = displayName.trim()
+      const projectDisplayNamesDraft = normalizedDisplayName
+        ? {
+            ...previousState?.projectDisplayNames,
+            [projectPath]: normalizedDisplayName
+          }
+        : omitProjectStateRecordKey(
+            previousState?.projectDisplayNames,
+            projectPath
+          )
+
+      queryClient.setQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        (currentState) => ({
+          collapsedProjectPaths:
+            currentState?.collapsedProjectPaths ??
+            EMPTY_COLLAPSED_PROJECT_PATHS,
+          projectDisplayNames: projectDisplayNamesDraft,
+          projectPins: currentState?.projectPins ?? {},
+          sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
+        })
+      )
+
+      return previousState
+    },
+    onSuccess: (nextState) => {
+      queryClient.setQueryData(SIDEBAR_STATE_QUERY_OPTIONS.queryKey, nextState)
+    }
+  })
+  const setProjectPinnedMutation = useMutation<
+    SidebarUiState,
+    Error,
+    {
+      pinned: boolean
+      projectPath: string
+    },
+    SidebarUiState | undefined
+  >({
+    mutationFn: ({ pinned, projectPath }) =>
+      rpcClient.projects.setPinned({
+        pinned,
+        projectPath
+      }),
+    onError: (_error, _variables, previousState) => {
+      queryClient.setQueryData(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        previousState
+      )
+    },
+    onMutate: ({ pinned, projectPath }) => {
+      const previousState = queryClient.getQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey
+      )
+      const projectPinsDraft = pinned
+        ? {
+            ...previousState?.projectPins,
+            [projectPath]: new Date().toISOString()
+          }
+        : omitProjectStateRecordKey(previousState?.projectPins, projectPath)
+
+      queryClient.setQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        (currentState) => ({
+          collapsedProjectPaths:
+            currentState?.collapsedProjectPaths ??
+            EMPTY_COLLAPSED_PROJECT_PATHS,
+          projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectPins: projectPinsDraft,
+          sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
         })
       )
 
@@ -113,6 +229,8 @@ export const useProjectSidebarState = () => {
           collapsedProjectPaths:
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
+          projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: clampSidebarWidthPx(nextSidebarWidthPx)
         })
       )
@@ -125,12 +243,40 @@ export const useProjectSidebarState = () => {
     },
     [setSidebarWidthMutation]
   )
+  const handleRenameProject = useCallback(
+    (projectPath: string, displayName: string) => {
+      renameProjectMutation.mutate({
+        displayName,
+        projectPath
+      })
+    },
+    [renameProjectMutation]
+  )
+  const handleSetProjectPinned = useCallback(
+    (projectPath: string, pinned: boolean) => {
+      setProjectPinnedMutation.mutate({
+        pinned,
+        projectPath
+      })
+    },
+    [setProjectPinnedMutation]
+  )
 
   return {
     collapsedProjectPaths,
+    handleRenameProject,
+    handleSetProjectPinned,
     handleToggleProjectCollapsed,
+    isRenamingProjectPath: renameProjectMutation.isPending
+      ? renameProjectMutation.variables?.projectPath
+      : undefined,
     isSidebarStateReady: sidebarStateQuery.isSuccess,
+    isSettingPinnedProjectPath: setProjectPinnedMutation.isPending
+      ? setProjectPinnedMutation.variables?.projectPath
+      : undefined,
     persistSidebarWidth,
+    projectDisplayNames,
+    projectPins,
     setSidebarWidthLocally,
     sidebarWidthPx
   }

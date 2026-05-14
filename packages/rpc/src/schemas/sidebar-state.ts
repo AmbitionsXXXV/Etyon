@@ -1,12 +1,18 @@
 import * as z from "zod"
 
 const EMPTY_COLLAPSED_PROJECT_PATHS: string[] = []
+const EMPTY_PROJECT_DISPLAY_NAMES: Record<string, string> = {}
+const EMPTY_PROJECT_PINS: Record<string, string> = {}
 const DEFAULT_SIDEBAR_WIDTH_PX = 272
 
 export const SidebarUiStateSchema = z.object({
   collapsedProjectPaths: z
     .array(z.string())
     .default(EMPTY_COLLAPSED_PROJECT_PATHS),
+  projectDisplayNames: z
+    .record(z.string(), z.string())
+    .default(EMPTY_PROJECT_DISPLAY_NAMES),
+  projectPins: z.record(z.string(), z.string()).default(EMPTY_PROJECT_PINS),
   sidebarWidthPx: z
     .number()
     .int()

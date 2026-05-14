@@ -2,6 +2,7 @@ import type { AiSettings } from "@etyon/rpc"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  buildAiSettingsWithDefaultModel,
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
@@ -98,5 +99,16 @@ describe("chat model options", () => {
         sessionModelId: null
       })
     ).toBe("moonshot/kimi-k2.5")
+  })
+
+  it("persists the last selected chat model as the default model", () => {
+    const aiSettings = buildAiSettingsFixture()
+    const nextAiSettings = buildAiSettingsWithDefaultModel(
+      aiSettings,
+      "zai-coding-plan/glm-5"
+    )
+
+    expect(nextAiSettings.defaultModel).toBe("zai-coding-plan/glm-5")
+    expect(nextAiSettings.providers).toBe(aiSettings.providers)
   })
 })

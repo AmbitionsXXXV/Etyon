@@ -1,5 +1,4 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
-import { Badge } from "@etyon/ui/components/badge"
 import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
 import { Textarea } from "@etyon/ui/components/textarea"
@@ -24,7 +23,9 @@ import {
   applyMentionSelection,
   createMentionFromProjectSnapshotItem,
   getActiveMentionMatch,
-  replaceMentionQuery
+  getMentionTokenTypeLabel,
+  replaceMentionQuery,
+  scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 
 const formatFileSize = (size: number): string => {
@@ -49,6 +50,9 @@ const formatMentionItemMetadata = (item: ProjectSnapshotItem): string => {
 
 const getMentionItemName = (item: ProjectSnapshotItem): string =>
   item.relativePath.split("/").at(-1) ?? item.relativePath
+
+const getMentionName = (mention: ChatMention): string =>
+  mention.relativePath.split("/").at(-1) ?? mention.relativePath
 
 const focusTextareaAt = (
   nextCaretIndex: number,
@@ -99,11 +103,15 @@ export const PromptInput = ({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [mentions, setMentions] = useState<ChatMention[]>([])
   const [text, setText] = useState("")
+  const mentionItemElementByPathRef = useRef(
+    new Map<string, HTMLButtonElement>()
+  )
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const activeMentionMatch = useMemo(
     () => getActiveMentionMatch(text, caretIndex),
     [caretIndex, text]
   )
+  const activeMentionItemPath = mentionItems[activeItemIndex]?.path ?? null
   const mentionItemsByPath = useMemo(
     () => new Map(mentionItems.map((item) => [item.path, item])),
     [mentionItems]
@@ -132,6 +140,16 @@ export const PromptInput = ({
   useEffect(() => {
     setActiveItemIndex(0)
   }, [mentionItems])
+
+  useEffect(() => {
+    if (!activeMentionMatch || !activeMentionItemPath) {
+      return
+    }
+
+    scrollActiveMentionItemIntoView(
+      mentionItemElementByPathRef.current.get(activeMentionItemPath)
+    )
+  }, [activeMentionItemPath, activeMentionMatch])
 
   const handleRemoveMention = useCallback((relativePath: string) => {
     setMentions((previousMentions) =>
@@ -247,6 +265,18 @@ export const PromptInput = ({
       }
     },
     [handleSelectMentionItem, mentionItemsByPath]
+  )
+
+  const handleMentionItemRef = useCallback(
+    (itemPath: string, element: HTMLButtonElement | null) => {
+      if (!element) {
+        mentionItemElementByPathRef.current.delete(itemPath)
+        return
+      }
+
+      mentionItemElementByPathRef.current.set(itemPath, element)
+    },
+    []
   )
 
   const handleTextareaChange = useCallback(
@@ -378,6 +408,9 @@ export const PromptInput = ({
                         data-item-path={item.path}
                         key={item.path}
                         onClick={handleSelectMentionItemClick}
+                        ref={(element) => {
+                          handleMentionItemRef(item.path, element)
+                        }}
                         role="option"
                         type="button"
                       >
@@ -408,35 +441,43 @@ export const PromptInput = ({
         </div>
       )}
 
-      {mentions.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-4 pt-4">
-          {mentions.map((mention) => (
-            <Badge
-              className="gap-1.5"
-              key={mention.relativePath}
-              variant="outline"
-            >
-              <span className="max-w-60 truncate">{mention.relativePath}</span>
-              <button
-                className="rounded-full opacity-60 transition-opacity hover:opacity-100"
-                data-relative-path={mention.relativePath}
-                onClick={handleRemoveMentionClick}
-                type="button"
-              >
-                <HugeiconsIcon
-                  className="size-3"
-                  icon={Cancel01Icon}
-                  strokeWidth={2}
-                />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-
       <div className="p-4">
+        {mentions.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            {mentions.map((mention) => (
+              <span
+                className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 text-sm font-medium text-foreground ring-1 ring-border/70"
+                key={mention.relativePath}
+                title={mention.relativePath}
+              >
+                <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
+                  {getMentionTokenTypeLabel(mention)}
+                </span>
+                <span className="max-w-52 truncate">
+                  {getMentionName(mention)}
+                </span>
+                <button
+                  aria-label={`Remove ${mention.relativePath}`}
+                  className="rounded-sm text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100"
+                  data-relative-path={mention.relativePath}
+                  onClick={handleRemoveMentionClick}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    className="size-3"
+                    icon={Cancel01Icon}
+                    strokeWidth={2}
+                  />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <Textarea
-          className="min-h-28 border-0 bg-transparent px-0 py-0 text-sm shadow-none ring-0 focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+          className={cn(
+            "resize-none border-0 bg-transparent px-0 py-0 text-sm shadow-none ring-0 focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
+            mentions.length > 0 ? "min-h-20" : "min-h-28"
+          )}
           disabled={disabled || isSubmitting}
           onChange={handleTextareaChange}
           onClick={handleTextareaClick}
