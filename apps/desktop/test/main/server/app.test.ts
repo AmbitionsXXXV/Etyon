@@ -6,6 +6,7 @@ import { RPCLink } from "@orpc/client/fetch"
 import type { RouterClient } from "@orpc/server"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
+import { getLocalConnectionToken } from "@/main/local-connection"
 import type { AppRouter } from "@/main/rpc"
 import { app } from "@/main/server/app"
 
@@ -129,6 +130,20 @@ const readLogEntries = (): Record<string, unknown>[] => {
     .map((line) => JSON.parse(line) as Record<string, unknown>)
 }
 
+const buildAuthorizedHeaders = (init?: HeadersInit): Headers => {
+  const headers = new Headers(init)
+
+  headers.set("authorization", `Bearer ${getLocalConnectionToken()}`)
+
+  return headers
+}
+
+const authorizeRequest = (request: Request): Request => {
+  const headers = buildAuthorizedHeaders(request.headers)
+
+  return new Request(request, { headers })
+}
+
 describe("hono app", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
@@ -146,13 +161,36 @@ describe("hono app", () => {
     expect(await response.json()).toEqual({ ok: true })
   })
 
+  it("rejects protected routes without the local connection token", async () => {
+    const rpcResponse = await app.request("/rpc/ping", {
+      body: JSON.stringify({ message: "via-http" }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+    const chatResponse = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [],
+        sessionId: "session-1"
+      }),
+      headers: {
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(rpcResponse.status).toBe(401)
+    expect(chatResponse.status).toBe(401)
+  })
+
   it("serves oRPC over /rpc and logs a single structured request event", async () => {
     let capturedResponse: Response | undefined
 
     const client: RouterClient<AppRouter> = createORPCClient(
       new RPCLink({
         fetch: async (request) => {
-          const response = await app.request(request)
+          const response = await app.request(authorizeRequest(request))
           capturedResponse = response.clone()
           return response
         },
@@ -202,6 +240,7 @@ describe("hono app", () => {
         sessionId: "session-1"
       }),
       headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
         "content-type": "application/json"
       },
       method: "POST"
@@ -234,6 +273,7 @@ describe("hono app", () => {
         sessionId: "session-1"
       }),
       headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
         "content-type": "application/json"
       },
       method: "POST"
@@ -272,6 +312,7 @@ describe("hono app", () => {
         sessionId: "session-1"
       }),
       headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
         "content-type": "application/json"
       },
       method: "POST"

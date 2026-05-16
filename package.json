@@ -18,15 +18,21 @@
     "fix": "turbo run fix",
     "lint": "turbo run lint",
     "prepare": "vp config",
+    "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check bans licenses sources",
+    "rust:clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+    "rust:deny": "cargo deny check bans licenses sources",
+    "rust:fmt": "cargo fmt --all",
+    "rust:fmt:check": "cargo fmt --all -- --check",
+    "rust:test": "cargo nextest run --workspace",
     "test": "vp test",
     "test:watch": "vp test watch",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.root.json"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.0.0",
-    "@commitlint/config-conventional": "^21.0.0",
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
     "cz-git": "^1.13.1",
-    "turbo": "^2.9.12",
+    "turbo": "^2.9.14",
     "typescript": "catalog:",
     "ultracite": "7.7.0",
     "vite-plus": "catalog:"
@@ -34,5 +40,12 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.1.1"
+  "packageManager": "pnpm@11.1.2",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "heroui-pro",
+      "@heroui-pro/react",
+      "heroui-native-pro"
+    ]
+  }
 }

@@ -87,7 +87,8 @@ export default defineConfig({
     rules: lintRules
   },
   staged: {
-    "*.{css,js,json,jsonc,jsx,ts,tsx}": "vp check --fix"
+    "*.{css,js,json,jsonc,jsx,ts,tsx}": "vp check --fix",
+    "**/*.rs": "sh -c 'cargo fmt --all'"
   },
   test: {
     projects: ["./apps/desktop/vite.config.ts", "./packages/rpc/vite.config.ts"]

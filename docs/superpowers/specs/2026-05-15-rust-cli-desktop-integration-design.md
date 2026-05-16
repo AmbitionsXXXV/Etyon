@@ -349,7 +349,14 @@ Stores text document records:
 Stores real chunk rows:
 
 ```json
-{"chunkId":"...","relativePath":"src/main.rs","startByte":0,"endByte":1200,"text":"...","hash":"..."}
+{
+  "chunkId": "...",
+  "relativePath": "src/main.rs",
+  "startByte": 0,
+  "endByte": 1200,
+  "text": "...",
+  "hash": "..."
+}
 ```
 
 Chunks are the first durable unit for future coding-agent retrieval. They are generated in phase one even though embeddings are not.

@@ -18,9 +18,9 @@
   "dependencies": {
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/inter": "^5.2.8",
-    "@heroui-pro/react": "1.0.0-beta.3",
-    "@heroui/react": "^3.0.4",
-    "@heroui/styles": "^3.0.4",
+    "@heroui-pro/react": "1.0.0-beta.4",
+    "@heroui/react": "^3.0.5",
+    "@heroui/styles": "^3.0.5",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@number-flow/react": "^0.6.0",
@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
-    "@turbo/gen": "^2.9.12",
+    "@turbo/gen": "^2.9.14",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

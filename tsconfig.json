@@ -9,6 +9,6 @@
     "target": "ESNext",
     "types": []
   },
-  "references": [{ "path": "apps/desktop" }, { "path": "apps/cli" }],
+  "references": [{ "path": "apps/desktop" }],
   "files": []
 }

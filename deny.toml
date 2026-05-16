@@ -1,0 +1,39 @@
+[graph]
+all-features = true
+
+[advisories]
+ignore = []
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "MIT",
+  "Unicode-3.0"
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+ignore = true
+
+[bans]
+allow = []
+deny = []
+highlight = "all"
+multiple-versions = "warn"
+skip = [
+  { crate = "core-foundation@0.9.4", reason = "transitive split from native TLS dependencies; revisit when the TLS stack changes" },
+  { crate = "wit-bindgen@0.46.0", reason = "transitive WASI split from tempfile dependencies; revisit on dependency refresh" }
+]
+wildcards = "deny"
+workspace-default-features = "allow"
+
+[sources]
+allow-git = []
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+unknown-git = "deny"
+unknown-registry = "deny"

@@ -5,13 +5,13 @@ packages:
 catalog:
   "@hugeicons/core-free-icons": ^4.0.0
   "@hugeicons/react": ^1.1.6
-  "@tailwindcss/vite": ^4.2.2
+  "@tailwindcss/vite": ^4.3.0
   "@types/node": ^25.5.0
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
-  react: ^19.2.4
-  react-dom: ^19.2.4
-  tailwindcss: ^4.2.2
+  react: ^19.2.6
+  react-dom: ^19.2.6
+  tailwindcss: ^4.3.0
   typescript: ^6.0.3
   zod: ^4.4.3
   vite-plus: latest

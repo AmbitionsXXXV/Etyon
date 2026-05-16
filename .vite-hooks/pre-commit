@@ -1,2 +1,5 @@
 vp staged
 vp run typecheck
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo deny check bans licenses sources
