@@ -1,6 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { CustomTheme } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import {
   Dialog,
   DialogContent,
@@ -9,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@etyon/ui/components/dialog"
+import { Button } from "@heroui/react"
 import { useCallback } from "react"
 
 export const DeleteCustomThemeDialog = ({
@@ -40,10 +40,10 @@ export const DeleteCustomThemeDialog = ({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button onClick={handleCancel} type="button" variant="outline">
+          <Button onPress={handleCancel} type="button" variant="outline">
             {t("settings.common.cancel")}
           </Button>
-          <Button onClick={onConfirm} type="button" variant="destructive">
+          <Button onPress={onConfirm} type="button" variant="danger-soft">
             {t("settings.customThemes.delete.confirm")}
           </Button>
         </DialogFooter>

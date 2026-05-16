@@ -19,7 +19,7 @@
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@heroui-pro/react": "1.0.0-beta.4",
-    "@heroui/react": "^3.0.5",
+    "@heroui/react": "catalog:",
     "@heroui/styles": "^3.0.5",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",

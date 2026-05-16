@@ -51,10 +51,10 @@ Sidebar 采用 **卡片嵌入式侧栏** 设计语言：
 
 - **大圆角容器**：`rounded-2xl`，外层 `p-1.5` 间距，sidebar-inner 和 `collapsible="none"` 模式均带 `rounded-2xl` + `m-1.5`
 - **柔和阴影分层**：`shadow-[0_2px_8px_0_oklch(0_0_0/0.15),0_0_0_1px_oklch(1_0_0/0.04)_inset]`，弱化边框存在感，通过阴影和背景差异定义区域
-- **颜色跟随主题**：sidebar 的 `--sidebar` 等 CSS 变量保持在 `default-theme` layer 中为中性值（light 浅、dark 深），custom theme 在 `color-schemas` layer 中正常覆盖
-- **Liquid glass 兼容**：`[data-liquid-glass]` 覆盖放在 `default-theme` layer 中（与 `:root` / `.dark` 同层级），没有 custom theme 时生效半透明值，有 custom theme 时被 `color-schemas` layer 覆盖
+- **颜色跟随主题**：sidebar 的 `--sidebar` 等项目扩展 token 由 `globals.css` 从 HeroUI `surface` / `default` / `accent` / `separator` token 派生，随当前 `data-theme` 一起变化
+- **Liquid glass 兼容**：`[data-liquid-glass]` 覆盖放在 `theme` layer 中，直接半透明化 `background`、`surface`、`overlay`、`sidebar`，并通过兼容别名影响 `card` / `popover`
 
-CSS 变量 layer 优先级：`default-theme` < `color-schemas`。Liquid glass 覆盖在 `default-theme` 中，确保 custom theme 完整还原。
+主题选择由 renderer 把 `lightColorSchema` / `darkColorSchema` 解析为 HeroUI `data-theme`，schema 文件只覆盖 HeroUI 语义 token。
 
 ### Sidebar 组件来源
 

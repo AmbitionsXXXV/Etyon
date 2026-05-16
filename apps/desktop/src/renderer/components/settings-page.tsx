@@ -1,5 +1,4 @@
 import { useI18n } from "@etyon/i18n/react"
-import { Button } from "@etyon/ui/components/button"
 import {
   SidebarGroup,
   SidebarInset,
@@ -10,6 +9,7 @@ import {
 } from "@etyon/ui/components/sidebar"
 import { Skeleton } from "@etyon/ui/components/skeleton"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { AnimatePresence, motion } from "motion/react"
 import type { CSSProperties } from "react"
@@ -551,13 +551,16 @@ export const SettingsPage = ({
               transition={{ duration: 0.2, ease: SETTINGS_PAGE_EASE_CURVE }}
             >
               <Button
-                disabled={updateMutation.isPending}
-                onClick={handleCancel}
+                isDisabled={updateMutation.isPending}
+                onPress={handleCancel}
                 variant="ghost"
               >
                 {t("settings.common.cancel")}
               </Button>
-              <Button disabled={updateMutation.isPending} onClick={handleSave}>
+              <Button
+                isDisabled={updateMutation.isPending}
+                onPress={handleSave}
+              >
                 {updateMutation.isPending
                   ? t("settings.common.saving")
                   : t("settings.common.save")}

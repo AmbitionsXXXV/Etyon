@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 
-import { applySettings, applyThemePreview } from "../settings"
+import { applySettings } from "../settings"
 import { settingsEqual } from "./settings-equal"
 
 export const useSettingsPageDraft = () => {
@@ -136,8 +136,6 @@ export const useSettingsPageDraft = () => {
     }
   })
 
-  const draftTheme = draft?.theme
-
   useEffect(() => {
     if (draft) {
       applySettings(draft)
@@ -157,12 +155,6 @@ export const useSettingsPageDraft = () => {
       lightColorSchema: draftLightColorSchema
     })
   }, [draftDarkColorSchema, draftLightColorSchema])
-
-  useEffect(() => {
-    if (draftTheme) {
-      applyThemePreview(draftTheme)
-    }
-  }, [draftTheme])
 
   useEffect(
     () => () => {

@@ -5,7 +5,6 @@ import type {
   SidebarMode,
   Theme
 } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import {
   Combobox,
   ComboboxContent,
@@ -18,6 +17,7 @@ import {
 } from "@etyon/ui/components/combobox"
 import { Input } from "@etyon/ui/components/input"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"
@@ -232,7 +232,7 @@ const SidebarModeButton = ({
       className={cn(
         "flex min-h-40 flex-col items-center justify-center gap-4 rounded-2xl border px-6 py-5 text-center transition-all",
         isActive
-          ? "border-primary bg-primary/12 text-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.25)]"
+          ? "border-primary bg-primary/12 text-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_25%,transparent)]"
           : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
       )}
       onClick={handleClick}
@@ -410,9 +410,10 @@ export const FontSizeInput = ({
     <div>
       <div className="flex items-center gap-1">
         <Button
-          disabled={value <= FONT_SIZE_MIN}
-          onClick={decrement}
-          size="icon"
+          isDisabled={value <= FONT_SIZE_MIN}
+          isIconOnly
+          onPress={decrement}
+          size="sm"
           variant="outline"
         >
           <HugeiconsIcon icon={MinusSignIcon} size={14} />
@@ -430,9 +431,10 @@ export const FontSizeInput = ({
           />
         </div>
         <Button
-          disabled={value >= FONT_SIZE_MAX}
-          onClick={increment}
-          size="icon"
+          isDisabled={value >= FONT_SIZE_MAX}
+          isIconOnly
+          onPress={increment}
+          size="sm"
           variant="outline"
         >
           <HugeiconsIcon icon={PlusSignIcon} size={14} />

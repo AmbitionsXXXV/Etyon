@@ -1,5 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
-import { Button } from "@etyon/ui/components/button"
+import { Button } from "@heroui/react"
 import { createFileRoute } from "@tanstack/react-router"
 import { motion } from "motion/react"
 
@@ -42,7 +42,7 @@ const HomePage = () => {
         />
 
         <h1
-          className="mt-6 text-5xl font-semibold tracking-[-0.05em] text-foreground sm:text-6xl"
+          className="mt-6 text-5xl font-semibold tracking-tighter text-foreground sm:text-6xl"
           style={{
             fontFamily:
               '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif'
@@ -58,8 +58,8 @@ const HomePage = () => {
         <div className="mt-10 w-full max-w-136 space-y-3">
           <Button
             className="h-13 w-full rounded-2xl text-sm font-semibold"
-            disabled={isCreatingChatSession}
-            onClick={handleCreateChatSession}
+            isDisabled={isCreatingChatSession}
+            onPress={handleCreateChatSession}
             size="lg"
           >
             {t("home.actions.newChat")}
@@ -68,7 +68,7 @@ const HomePage = () => {
           <div className="flex gap-2">
             <Button
               className="h-12 flex-1 rounded-2xl text-sm font-semibold"
-              onClick={handleConfigureProviderClick}
+              onPress={handleConfigureProviderClick}
               size="lg"
               variant="outline"
             >
@@ -77,7 +77,7 @@ const HomePage = () => {
 
             <Button
               className="h-12 flex-1 rounded-2xl text-sm font-semibold"
-              onClick={handleOpenSettingsClick}
+              onPress={handleOpenSettingsClick}
               size="lg"
               variant="outline"
             >

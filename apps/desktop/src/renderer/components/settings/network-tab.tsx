@@ -1,6 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { ProxySettings, ProxyType } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import { Checkbox } from "@etyon/ui/components/checkbox"
 import { Input } from "@etyon/ui/components/input"
 import {
@@ -12,6 +11,7 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { motion } from "motion/react"
 import { useCallback, useState } from "react"
 
@@ -221,8 +221,8 @@ export const NetworkTab = ({
 
           <div className="flex items-center gap-3">
             <Button
-              disabled={!proxy.host || isTesting}
-              onClick={handleTestProxy}
+              isDisabled={!proxy.host || isTesting}
+              onPress={handleTestProxy}
               variant="outline"
             >
               {isTesting

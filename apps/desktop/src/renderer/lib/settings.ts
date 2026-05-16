@@ -4,49 +4,86 @@ const THEME_TRANSITION_MS = 200
 
 const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
 
+type ColorSchemaSettings = Pick<
+  AppSettings,
+  "darkColorSchema" | "lightColorSchema"
+>
+
+type ThemeColorSettings = ColorSchemaSettings & Pick<AppSettings, "theme">
+
 const resolvePrefersDark = (theme: Theme) =>
   theme === "system" ? darkMediaQuery.matches : theme === "dark"
 
-const applyColorSchemas = ({
-  darkColorSchema,
-  lightColorSchema
-}: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">) => {
-  const root = document.documentElement
-  root.dataset.darkColorSchema = darkColorSchema
-  root.dataset.lightColorSchema = lightColorSchema
+const resolveThemeName = (
+  { darkColorSchema, lightColorSchema }: ColorSchemaSettings,
+  prefersDark: boolean
+) => {
+  const colorSchema = prefersDark ? darkColorSchema : lightColorSchema
+
+  if (colorSchema === "default") {
+    return prefersDark ? "dark" : "light"
+  }
+
+  return colorSchema
 }
 
-export const applyColorSchemaPreview = (
-  settings: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
+const clearLegacyColorSchemaAttributes = (root: HTMLElement) => {
+  delete root.dataset.darkColorSchema
+  delete root.dataset.lightColorSchema
+}
+
+const resolveCurrentPrefersDark = () => {
+  const root = document.documentElement
+
+  if (root.classList.contains("dark")) {
+    return true
+  }
+
+  if (root.classList.contains("light")) {
+    return false
+  }
+
+  return darkMediaQuery.matches
+}
+
+const applyResolvedColorTheme = (
+  settings: ColorSchemaSettings,
+  prefersDark: boolean
 ) => {
   const root = document.documentElement
+  clearLegacyColorSchemaAttributes(root)
+  root.dataset.theme = resolveThemeName(settings, prefersDark)
+}
+
+const beginThemeTransition = () => {
+  const root = document.documentElement
   root.classList.add("theme-transitioning")
-  applyColorSchemas(settings)
   setTimeout(() => {
     root.classList.remove("theme-transitioning")
   }, THEME_TRANSITION_MS)
 }
 
-const applyTheme = (theme: Theme) => {
+const applyThemeClass = (theme: Theme) => {
   const prefersDark = resolvePrefersDark(theme)
   const root = document.documentElement
   root.classList.remove("dark", "light")
   root.classList.toggle("dark", prefersDark)
   root.classList.toggle("light", !prefersDark)
+  return prefersDark
 }
 
-export const applyThemePreview = (theme: Theme) => {
-  const root = document.documentElement
-  root.classList.add("theme-transitioning")
-  applyTheme(theme)
-  setTimeout(() => {
-    root.classList.remove("theme-transitioning")
-  }, THEME_TRANSITION_MS)
+const applyThemeSettings = (settings: ThemeColorSettings) => {
+  const prefersDark = applyThemeClass(settings.theme)
+  applyResolvedColorTheme(settings, prefersDark)
+}
+
+export const applyColorSchemaPreview = (settings: ColorSchemaSettings) => {
+  beginThemeTransition()
+  applyResolvedColorTheme(settings, resolveCurrentPrefersDark())
 }
 
 export const applySettings = (settings: AppSettings) => {
-  applyTheme(settings.theme)
-  applyColorSchemas(settings)
+  applyThemeSettings(settings)
 
   const fontFamily =
     settings.fontFamily === "System Default"
@@ -59,13 +96,16 @@ export const applySettings = (settings: AppSettings) => {
 }
 
 export const watchSystemTheme = (
-  getCurrentTheme: () => Theme,
-  onSystemChange: () => void
+  getCurrentSettings: () => ThemeColorSettings,
+  onSystemChange?: () => void
 ) => {
   const handler = () => {
-    if (getCurrentTheme() === "system") {
-      applyThemePreview("system")
-      onSystemChange()
+    const settings = getCurrentSettings()
+
+    if (settings.theme === "system") {
+      beginThemeTransition()
+      applyThemeSettings(settings)
+      onSystemChange?.()
     }
   }
 

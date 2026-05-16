@@ -1,6 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { CustomTheme, DarkColorSchema, LightColorSchema } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import {
   Empty,
   EmptyDescription,
@@ -8,6 +7,7 @@ import {
   EmptyMedia,
   EmptyTitle
 } from "@etyon/ui/components/empty"
+import { Button } from "@heroui/react"
 import { PaintBrush01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { motion } from "motion/react"
@@ -119,7 +119,7 @@ export const ColorSchemaTab = ({
 
             <Button
               className="self-start"
-              onClick={handleCreateDialogOpen}
+              onPress={handleCreateDialogOpen}
               type="button"
             >
               <HugeiconsIcon icon={PlusSignIcon} />

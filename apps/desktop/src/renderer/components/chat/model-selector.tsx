@@ -1,4 +1,3 @@
-import { Button } from "@etyon/ui/components/button"
 import {
   Select,
   SelectContent,
@@ -8,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@etyon/ui/components/select"
+import { Button } from "@heroui/react"
 
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 
@@ -32,8 +32,8 @@ export const ModelSelector = ({
     return (
       <div className="flex items-center gap-2">
         <Button
-          disabled={disabled}
-          onClick={onOpenSettings}
+          isDisabled={disabled}
+          onPress={onOpenSettings}
           size="sm"
           type="button"
           variant="outline"

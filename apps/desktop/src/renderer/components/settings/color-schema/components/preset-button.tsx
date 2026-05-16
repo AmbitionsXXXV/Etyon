@@ -1,4 +1,4 @@
-import { Button } from "@etyon/ui/components/button"
+import { Button } from "@heroui/react"
 import { useCallback } from "react"
 
 import type { CustomThemePresetRow } from "../constants/presets"
@@ -19,7 +19,7 @@ export const PresetButton = ({
   return (
     <Button
       className="h-auto gap-2 rounded-lg px-3 py-2"
-      onClick={handleClick}
+      onPress={handleClick}
       type="button"
       variant={active ? "secondary" : "outline"}
     >

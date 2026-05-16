@@ -1,7 +1,7 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import {
   File01Icon,
   Folder01Icon,
@@ -460,8 +460,8 @@ export const PromptInput = ({
       <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
         <div className="min-w-0 flex-1">{footer}</div>
         <Button
-          disabled={disabled || isSubmitting}
-          onClick={handleSubmitClick}
+          isDisabled={disabled || isSubmitting}
+          onPress={handleSubmitClick}
           size="sm"
           type="button"
         >

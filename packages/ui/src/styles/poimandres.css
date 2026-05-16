@@ -1,86 +1,55 @@
-:root.dark[data-dark-color-schema="poimandres"] {
-  --theme-accent: oklch(75% 0.0464 277deg);
-  --theme-background: oklch(31.1% 0.0297 271deg);
-  --theme-destructive: oklch(65.4% 0.146 350deg);
-  --theme-foreground: oklch(94.9% 0.0203 243deg);
-  --theme-primary: oklch(85.6% 0.0929 225deg);
-  --theme-success: oklch(70.9% 0.0868 178deg);
+:root[data-theme="poimandres"] {
+  color-scheme: dark;
 
-  --accent: color-mix(
-    in srgb,
-    var(--theme-accent) 16%,
-    var(--theme-background)
+  --background-opaque: oklch(31.1% 0.0297 271deg);
+  --background: var(--background-opaque);
+  --foreground: oklch(94.9% 0.0203 243deg);
+  --surface-opaque: color-mix(
+    in oklab,
+    oklch(75% 0.0464 277deg) 6%,
+    var(--background)
   );
-  --accent-foreground: var(--theme-foreground);
-  --background: var(--theme-background);
-  --border: color-mix(
-    in srgb,
-    var(--theme-foreground) 14%,
-    var(--theme-background)
+  --surface: var(--surface-opaque);
+  --surface-foreground: var(--foreground);
+  --surface-secondary: color-mix(
+    in oklab,
+    oklch(75% 0.0464 277deg) 18%,
+    var(--background)
   );
-  --card: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-background));
-  --card-foreground: var(--theme-foreground);
-  --chart-1: var(--theme-primary);
-  --chart-2: var(--theme-success);
-  --chart-3: var(--theme-accent);
-  --chart-4: var(--theme-destructive);
-  --chart-5: var(--theme-foreground);
-  --destructive: var(--theme-destructive);
-  --foreground: var(--theme-foreground);
-  --input: color-mix(
-    in srgb,
-    var(--theme-primary) 18%,
-    var(--theme-background)
+  --surface-secondary-foreground: var(--foreground);
+  --surface-tertiary: color-mix(in oklab, var(--accent) 10%, var(--background));
+  --surface-tertiary-foreground: var(--muted);
+  --overlay-opaque: color-mix(
+    in oklab,
+    oklch(75% 0.0464 277deg) 8%,
+    var(--background)
   );
-  --muted: color-mix(
-    in srgb,
-    var(--theme-primary) 10%,
-    var(--theme-background)
-  );
-  --muted-foreground: color-mix(
-    in srgb,
-    var(--theme-foreground) 74%,
-    var(--theme-background)
-  );
-  --popover: color-mix(
-    in srgb,
-    var(--theme-accent) 8%,
-    var(--theme-background)
-  );
-  --popover-foreground: var(--theme-foreground);
-  --primary: var(--theme-primary);
-  --primary-foreground: var(--theme-background);
-  --ring: var(--theme-primary);
-  --scrollbar-thumb: color-mix(in srgb, var(--theme-primary) 32%, transparent);
-  --scrollbar-thumb-hover: color-mix(
-    in srgb,
-    var(--theme-primary) 48%,
-    transparent
-  );
-  --secondary: color-mix(
-    in srgb,
-    var(--theme-accent) 18%,
-    var(--theme-background)
-  );
-  --secondary-foreground: var(--theme-foreground);
-  --sidebar: color-mix(
-    in srgb,
-    var(--theme-accent) 8%,
-    var(--theme-background)
-  );
-  --sidebar-accent: color-mix(
-    in srgb,
-    var(--theme-primary) 18%,
-    var(--theme-background)
-  );
-  --sidebar-accent-foreground: var(--theme-foreground);
-  --sidebar-border: color-mix(
-    in srgb,
-    var(--theme-foreground) 14%,
-    var(--theme-background)
-  );
-  --sidebar-foreground: var(--theme-foreground);
-  --sidebar-primary: var(--theme-primary);
-  --sidebar-primary-foreground: var(--theme-background);
-  --sidebar-ring: var(--theme-primary);
+  --overlay: var(--overlay-opaque);
+  --overlay-foreground: var(--foreground);
+  --muted: color-mix(in oklab, var(--foreground) 74%, var(--background));
+  --scrollbar: color-mix(in oklab, var(--accent) 48%, var(--background));
+  --default: var(--surface-secondary);
+  --default-foreground: var(--foreground);
+  --accent: oklch(85.6% 0.0929 225deg);
+  --accent-foreground: var(--background);
+  --field-background: var(--surface);
+  --field-border: var(--border);
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --success: oklch(70.9% 0.0868 178deg);
+  --success-foreground: var(--background);
+  --warning: oklch(78% 0.13 83deg);
+  --warning-foreground: var(--background);
+  --danger: oklch(65.4% 0.146 350deg);
+  --danger-foreground: var(--foreground);
+  --segment: var(--surface-secondary);
+  --segment-foreground: var(--foreground);
+  --border: color-mix(in oklab, var(--foreground) 14%, var(--background));
+  --separator: var(--border);
+  --focus: var(--accent);
+  --link: var(--accent);
+  --backdrop: oklch(0% 0 0 / 55%);
+  --surface-shadow: 0 0 0 0 transparent inset;
+  --overlay-shadow:
+    0 0 0 1px oklch(100% 0 0 / 8%) inset, 0 18px 36px -18px oklch(0% 0 0 / 60%);
 }

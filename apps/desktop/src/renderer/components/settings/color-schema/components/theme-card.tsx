@@ -1,6 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { CustomTheme } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
+import { Button } from "@heroui/react"
 import { useCallback, useMemo } from "react"
 
 import { buildPresetLabelMap, buildTypeLabelMap } from "../utils/theme-labels"
@@ -31,7 +31,7 @@ export const CustomThemeCard = ({
               {presetLabels[theme.preset]} · {typeLabels[theme.type]}
             </div>
           </div>
-          <Button onClick={handleDelete} type="button" variant="destructive">
+          <Button onPress={handleDelete} type="button" variant="danger-soft">
             {t("settings.customThemes.actions.delete")}
           </Button>
         </div>

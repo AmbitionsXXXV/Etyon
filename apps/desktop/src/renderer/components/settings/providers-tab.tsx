@@ -7,7 +7,6 @@ import type {
   ProviderFetchModelsOutput,
   StoredProviderModel
 } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import { Checkbox } from "@etyon/ui/components/checkbox"
 import { Input } from "@etyon/ui/components/input"
 import { ScrollArea } from "@etyon/ui/components/scroll-area"
@@ -21,6 +20,7 @@ import {
 } from "@etyon/ui/components/select"
 import { Switch } from "@etyon/ui/components/switch"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation } from "@tanstack/react-query"
@@ -589,8 +589,8 @@ export const ProvidersTab = ({
                       {t("settings.providers.fields.apiKey.label")}
                     </label>
                     <Button
-                      onClick={handleToggleApiKeyVisibility}
-                      size="xs"
+                      onPress={handleToggleApiKeyVisibility}
+                      size="sm"
                       type="button"
                       variant="ghost"
                     >
@@ -674,11 +674,11 @@ export const ProvidersTab = ({
                       </p>
                     </div>
                     <Button
-                      disabled={
+                      isDisabled={
                         fetchModelsMutation.isPending ||
                         !activeProviderConfig.apiKey
                       }
-                      onClick={handleFetchClick}
+                      onPress={handleFetchClick}
                       type="button"
                       variant="outline"
                     >

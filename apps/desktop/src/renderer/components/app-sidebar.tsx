@@ -1,6 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { ChatSessionSummary } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +29,7 @@ import {
   TooltipTrigger
 } from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import {
   Archive02Icon,
   Delete02Icon,
@@ -747,10 +747,7 @@ const ProjectGroupSection = ({
               "hover:text-sidebar-accent-foreground"
             )}
             isIconOnly
-            size="icon-sm"
-            title={t("home.sidebar.projectMenu.menuLabel", {
-              projectName: group.projectName
-            })}
+            size="sm"
             variant="ghost"
           >
             <HugeiconsIcon
@@ -882,14 +879,14 @@ const ProjectGroupSection = ({
             />
             <DialogFooter>
               <Button
-                onClick={handleRenameCancel}
+                onPress={handleRenameCancel}
                 type="button"
                 variant="outline"
               >
                 {t("settings.common.cancel")}
               </Button>
               <Button
-                disabled={!renameDraft.trim() || isRenamingProject}
+                isDisabled={!renameDraft.trim() || isRenamingProject}
                 type="submit"
               >
                 {t("settings.common.save")}
@@ -910,17 +907,17 @@ const ProjectGroupSection = ({
           </DialogHeader>
           <DialogFooter>
             <Button
-              onClick={handleConfirmCancel}
+              onPress={handleConfirmCancel}
               type="button"
               variant="outline"
             >
               {t("settings.common.cancel")}
             </Button>
             <Button
-              disabled={isArchivingProject || isRemovingProject}
-              onClick={handleConfirmProjectAction}
+              isDisabled={isArchivingProject || isRemovingProject}
+              onPress={handleConfirmProjectAction}
               type="button"
-              variant={confirmAction === "remove" ? "destructive" : "default"}
+              variant={confirmAction === "remove" ? "danger-soft" : "primary"}
             >
               {confirmAction === "remove"
                 ? t("home.sidebar.projectMenu.removeConfirm")
@@ -1086,10 +1083,10 @@ const ProjectGroupsSection = ({
                   "focus-visible:pointer-events-auto focus-visible:translate-x-0 focus-visible:opacity-100",
                   "hover:text-sidebar-accent-foreground"
                 )}
-                disabled={isCreatingProjectChatSession}
-                onClick={onCreateProjectChatSession}
-                size="icon-sm"
-                title={addProjectLabel}
+                isDisabled={isCreatingProjectChatSession}
+                isIconOnly
+                onPress={onCreateProjectChatSession}
+                size="sm"
                 variant="ghost"
               >
                 <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={2} />
@@ -1198,7 +1195,12 @@ export const AppSidebar = () => {
   )
 
   const searchButton = (
-    <Button aria-label={t("sidebar.search")} size="icon-lg" variant="ghost">
+    <Button
+      aria-label={t("sidebar.search")}
+      isIconOnly
+      size="lg"
+      variant="ghost"
+    >
       <HugeiconsIcon icon={Search01Icon} strokeWidth={2} />
     </Button>
   )
@@ -1206,9 +1208,10 @@ export const AppSidebar = () => {
   const newChatButton = (
     <Button
       aria-label={t("actions.newChat")}
-      disabled={isCreatingChatSession}
-      onClick={handleCreateChatSession}
-      size="icon-lg"
+      isDisabled={isCreatingChatSession}
+      isIconOnly
+      onPress={handleCreateChatSession}
+      size="lg"
       variant="ghost"
     >
       <HugeiconsIcon icon={NoteEditIcon} strokeWidth={2} />

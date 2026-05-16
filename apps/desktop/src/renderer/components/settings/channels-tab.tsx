@@ -1,10 +1,10 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { TelegramSettings, TelegramTestConnectionOutput } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
 import { Switch } from "@etyon/ui/components/switch"
 import { Textarea } from "@etyon/ui/components/textarea"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { useMutation } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
@@ -227,8 +227,8 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
               {t("settings.telegram.fields.botToken.label")}
             </label>
             <Button
-              onClick={handleToggleBotTokenVisibility}
-              size="xs"
+              onPress={handleToggleBotTokenVisibility}
+              size="sm"
               type="button"
               variant="ghost"
             >
@@ -318,8 +318,8 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
 
         <div className="flex items-center gap-3">
           <Button
-            disabled={!canTest}
-            onClick={handleTestConnection}
+            isDisabled={!canTest}
+            onPress={handleTestConnection}
             type="button"
             variant="outline"
           >

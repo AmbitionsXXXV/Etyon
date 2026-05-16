@@ -7,7 +7,7 @@ import type {
   ProjectSnapshotItem
 } from "@etyon/rpc"
 import { Badge } from "@etyon/ui/components/badge"
-import { Button } from "@etyon/ui/components/button"
+import { Button } from "@heroui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, UIMessage } from "ai"
@@ -356,7 +356,7 @@ const ChatRuntime = ({
             <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
               <span className="truncate">{error.message}</span>
               <Button
-                onClick={clearError}
+                onPress={clearError}
                 size="sm"
                 type="button"
                 variant="ghost"
@@ -662,7 +662,7 @@ const ChatSessionPage = () => {
           <p className="mt-3 text-sm text-muted-foreground">
             {t("chat.missing.description")}
           </p>
-          <Button className="mt-6" onClick={handleGoHome}>
+          <Button className="mt-6" onPress={handleGoHome}>
             {t("chat.missing.action")}
           </Button>
         </div>

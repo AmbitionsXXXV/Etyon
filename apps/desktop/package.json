@@ -32,6 +32,7 @@
     "@chat-adapter/telegram": "^4.28.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@heroui/react": "catalog:",
     "@hono/node-server": "^2.0.2",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",

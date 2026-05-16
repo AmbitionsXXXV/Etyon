@@ -245,18 +245,18 @@ interface StoredProviderModel {
 设置变更后通过 `applySettings()` 实时应用：
 
 - **主题**：切换 `document.documentElement` 的 `dark` / `light` class
-- **颜色方案**：设置 `data-dark-color-schema` / `data-light-color-schema`，由 `packages/ui/src/styles/*.css` 下的 schema 文件覆盖 CSS 变量
+- **颜色方案**：根据当前外观模式把 `darkColorSchema` / `lightColorSchema` 解析为 HeroUI 的 `data-theme`，由 `packages/ui/src/styles/*.css` 下的 schema 文件直接覆盖 HeroUI 语义 token
 - **字体**：设置 CSS 自定义属性 `--user-font-family` 和 `--user-font-size`
 - **字号生效机制**：`--user-font-size` 应用在 `:root` 的 `font-size` 上（而非 `body`），确保所有使用 `rem` 单位的 Tailwind 类（`text-sm`、`text-xs`、`text-lg` 等）按比例缩放。早期版本放在 `body` 上导致 Tailwind 工具类覆盖失效
 - **启动加载**：`index.tsx` 中启动时异步调用 `rpcClient.settings.get()`，随后执行 `applySettings(settings)`，确保首帧尽早应用用户配置
-- **系统主题跟随**：当 `theme === "system"` 时，`watchSystemTheme()` 通过 `matchMedia("(prefers-color-scheme: dark)")` 的 `change` 事件监听操作系统外观切换，自动应用 `applyThemePreview("system")` 并带过渡动画；每个 `BrowserWindow` 的 renderer 各自注册独立监听器
+- **系统主题跟随**：当 `theme === "system"` 时，`watchSystemTheme()` 通过 `matchMedia("(prefers-color-scheme: dark)")` 的 `change` 事件监听操作系统外观切换，自动重新解析 `data-theme` 并带过渡动画；每个 `BrowserWindow` 的 renderer 各自注册独立监听器
 
 ### Color Schema
 
 - `theme` 仍只负责 `light` / `dark` / `system` 外观模式切换
 - Settings 左侧导航使用单独的 `Color Schema` tab，当前布局为 `Custom Themes` area + `Dark Mode Theme` block + `Light Mode Theme` block
 - 新增 `darkColorSchema` 和 `lightColorSchema` 两个设置字段，分别控制深色和浅色模式下的色板
-- `default` 表示继续使用 `globals.css` 中现有的内建 token，不需要单独的 schema 文件
+- `default` 表示继续使用 HeroUI 内建的 `light` / `dark` theme，不需要单独的 schema 文件
 - 自定义色板放在 `packages/ui/src/styles/`，目前提供：
   - `aquarium.css`（dark）
   - `chadracula-evondev.css`（dark）
@@ -264,7 +264,8 @@ interface StoredProviderModel {
   - `tokyo-night.css`（dark）
   - `one-light.css`（light）
   - `paper.css`（light）
-- 所有色板 token 使用 `oklch(...)` 定义，并通过独立 CSS 文件覆盖 `--background`、`--foreground`、`--primary`、`--sidebar-*`、`--chart-*`、scrollbar 等语义变量
+- 所有色板 token 使用 `oklch(...)` 定义，并通过独立 CSS 文件覆盖 `--background`、`--foreground`、`--accent`、`--surface`、`--overlay`、`--default`、`--field-*`、`--success`、`--warning`、`--danger`、`--segment`、`--border`、`--separator`、`--focus`、`--link` 等 HeroUI 语义变量
+- `globals.css` 保留旧调用点需要的兼容别名：`primary -> accent`、`secondary -> default`、`card -> surface`、`popover -> overlay`、`ring -> focus`、`destructive -> danger`；`sidebar-*`、`chart-*`、`muted-foreground`、`input` 作为项目扩展从 HeroUI token 派生
 - 设置页 swatch 预览的 React key 使用 `schema value + swatch index`，以支持同一 palette 内重复色值
 
 #### 跨窗口实时预览
@@ -280,13 +281,13 @@ Main Process (ipcMain.on)
   → webContents.send("settings-preview-color-schemas", preview)
 Other Renderers (RendererRoot)
   → ipcRenderer.on("settings-preview-color-schemas")
-  → applyColorSchemaPreview() 设置 data-dark-color-schema / data-light-color-schema + 200ms 过渡动画
+  → applyColorSchemaPreview() 按当前 dark/light class 重新解析 data-theme + 200ms 过渡动画
 ```
 
-- 预览仅修改 CSS data 属性，不改变 theme 模式（dark/light class）
+- 预览仅修改 `data-theme`，不改变 theme 模式（dark/light class）
 - effect 依赖精确为 `[draftDarkColorSchema, draftLightColorSchema]`，避免非 color schema 字段变更触发冗余 IPC
 - 设置窗口关闭时（`closed` 事件 + 组件卸载 cleanup），会将 preview 重置回已保存的 snapshot 值
-- `applyColorSchemaPreview` 带 `theme-transitioning` 过渡动画，与 `applyThemePreview` 一致
+- `applyColorSchemaPreview` 带 `theme-transitioning` 过渡动画
 
 ### Custom Themes Area
 

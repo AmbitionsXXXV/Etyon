@@ -1,5 +1,4 @@
 import { useI18n } from "@etyon/i18n/react"
-import { Button } from "@etyon/ui/components/button"
 import {
   SidebarInset,
   SidebarProvider,
@@ -14,6 +13,7 @@ import {
   TooltipTrigger
 } from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
+import { Button } from "@heroui/react"
 import { NoteEditIcon, Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { TanStackDevtools } from "@tanstack/react-devtools"
@@ -40,7 +40,12 @@ const InsetHeader = () => {
   const collapsed = state === "collapsed"
 
   const searchButton = (
-    <Button aria-label={t("sidebar.search")} size="icon-lg" variant="ghost">
+    <Button
+      aria-label={t("sidebar.search")}
+      isIconOnly
+      size="lg"
+      variant="ghost"
+    >
       <HugeiconsIcon icon={Search01Icon} strokeWidth={2} />
     </Button>
   )
@@ -48,9 +53,10 @@ const InsetHeader = () => {
   const newChatButton = (
     <Button
       aria-label={t("actions.newChat")}
-      disabled={isCreatingChatSession}
-      onClick={handleCreateChatSession}
-      size="icon-lg"
+      isDisabled={isCreatingChatSession}
+      isIconOnly
+      onPress={handleCreateChatSession}
+      size="lg"
       variant="ghost"
     >
       <HugeiconsIcon icon={NoteEditIcon} strokeWidth={2} />

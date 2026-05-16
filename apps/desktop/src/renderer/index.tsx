@@ -63,8 +63,8 @@ const RendererRoot = ({
     [settings.locale, systemLocale]
   )
 
-  const themeRef = useRef(settings.theme)
-  themeRef.current = settings.theme
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   useEffect(() => {
     applySettings(settings)
@@ -116,16 +116,7 @@ const RendererRoot = ({
     return removeListener
   }, [])
 
-  useEffect(
-    () =>
-      watchSystemTheme(
-        () => themeRef.current,
-        () => {
-          console.log("system theme changed")
-        }
-      ),
-    []
-  )
+  useEffect(() => watchSystemTheme(() => settingsRef.current), [])
 
   const content: ReactNode = isSettingsWindowMode ? (
     <SettingsPage isStandaloneWindow />

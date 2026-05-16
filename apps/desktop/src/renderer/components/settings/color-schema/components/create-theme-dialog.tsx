@@ -1,6 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { CustomTheme, CustomThemeType } from "@etyon/rpc"
-import { Button } from "@etyon/ui/components/button"
 import {
   Dialog,
   DialogContent,
@@ -10,6 +9,7 @@ import {
   DialogTitle
 } from "@etyon/ui/components/dialog"
 import { FieldGroup, FieldLegend, FieldSet } from "@etyon/ui/components/field"
+import { Button } from "@heroui/react"
 import { useForm } from "@tanstack/react-form"
 import { useCallback, useEffect, useMemo } from "react"
 
@@ -289,12 +289,12 @@ export const CreateCustomThemeDialog = ({
           </div>
 
           <DialogFooter className="col-span-full px-0 pt-2 pb-0">
-            <Button onClick={handleCancel} type="button" variant="outline">
+            <Button onPress={handleCancel} type="button" variant="outline">
               {t("settings.common.cancel")}
             </Button>
             <form.Subscribe selector={selectIsSubmitting}>
               {(isSubmitting) => (
-                <Button disabled={isSubmitting} type="submit">
+                <Button isDisabled={isSubmitting} type="submit">
                   {isSubmitting
                     ? t("settings.common.saving")
                     : t("settings.common.save")}
