@@ -1,6 +1,7 @@
 import * as z from "zod/mini"
 
 export const ServerUrlOutputSchema = z.object({
+  token: z.string(),
   url: z.string()
 })
 

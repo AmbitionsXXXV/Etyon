@@ -9,9 +9,12 @@ export const getChatTransport = async <
   UI_MESSAGE extends UIMessage = UIMessage
 >(): Promise<DefaultChatTransport<UI_MESSAGE>> => {
   if (!transport) {
-    const { url } = await rpcClient.server.getUrl()
+    const { token, url } = await rpcClient.server.getUrl()
     transport = new DefaultChatTransport<UIMessage>({
-      api: `${url}/api/chat`
+      api: `${url}/api/chat`,
+      headers: {
+        authorization: `Bearer ${token}`
+      }
     })
   }
 

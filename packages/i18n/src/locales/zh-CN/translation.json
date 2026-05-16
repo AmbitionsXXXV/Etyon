@@ -282,6 +282,7 @@
       "general": "通用",
       "network": "网络",
       "providers": "Providers",
+      "telegram": "Telegram",
       "userInterface": "用户界面"
     },
     "network": {
@@ -381,6 +382,46 @@
       "description": "依赖系统登录项。开发构建中，这项能力可能要等应用打包后才可用。",
       "startMinimizedToTray": "启动时最小化到系统托盘",
       "title": "启动设置"
+    },
+    "telegram": {
+      "actions": {
+        "hideBotToken": "隐藏",
+        "showBotToken": "显示",
+        "test": "测试连接",
+        "testing": "测试中..."
+      },
+      "description": "把 Telegram bot 接入本机 Etyon，会使用当前默认模型回复已授权的文本消息。",
+      "fields": {
+        "allowedChatIds": {
+          "description": "可选。填写后只响应这些 chat；支持逗号、空格或换行分隔。",
+          "label": "允许的 Chat ID",
+          "placeholder": "例如 123456789 或 -1001234567890"
+        },
+        "allowedUserIds": {
+          "description": "可选。填写后只响应这些用户；支持 telegram: / tg: 前缀。",
+          "label": "允许的 User ID",
+          "placeholder": "例如 8734062810"
+        },
+        "botToken": {
+          "label": "Bot Token",
+          "placeholder": "123456:ABC..."
+        },
+        "botUsername": {
+          "description": "群聊里需要先把 {{bot}} 加入目标 chat；Telegram 客户端只有在 bot 已在该 chat 中时才会在 @ 列表提示。",
+          "label": "Bot Username",
+          "placeholder": "测试连接后显示 @bot_username"
+        },
+        "requireMentionInGroups": {
+          "description": "群聊和超级群中，仅在消息包含 bot 用户名时回复。",
+          "label": "群聊需要 @bot"
+        }
+      },
+      "status": {
+        "connected": "已连接 {{bot}}（ID: {{id}}）。",
+        "failed": "连接失败。",
+        "savedSettingsOnly": "保存后，Telegram bridge 才会启动或重启。"
+      },
+      "title": "Telegram Bridge"
     },
     "theme": {
       "appearance": "外观",

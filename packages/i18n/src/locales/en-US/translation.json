@@ -282,6 +282,7 @@
       "general": "General",
       "network": "Network",
       "providers": "Providers",
+      "telegram": "Telegram",
       "userInterface": "User Interface"
     },
     "network": {
@@ -381,6 +382,46 @@
       "description": "Uses your system login items. Development builds may not support this until the app is packaged.",
       "startMinimizedToTray": "Start minimized to system tray",
       "title": "Startup Settings"
+    },
+    "telegram": {
+      "actions": {
+        "hideBotToken": "Hide",
+        "showBotToken": "Show",
+        "test": "Test Connection",
+        "testing": "Testing..."
+      },
+      "description": "Connect a Telegram bot to local Etyon. It replies to authorized text messages with the current default model.",
+      "fields": {
+        "allowedChatIds": {
+          "description": "Optional. When set, only these chats are handled. Supports comma, space, or newline separators.",
+          "label": "Allowed Chat IDs",
+          "placeholder": "e.g. 123456789 or -1001234567890"
+        },
+        "allowedUserIds": {
+          "description": "Optional. When set, only these users are handled. telegram: and tg: prefixes are accepted.",
+          "label": "Allowed User IDs",
+          "placeholder": "e.g. 8734062810"
+        },
+        "botToken": {
+          "label": "Bot Token",
+          "placeholder": "123456:ABC..."
+        },
+        "botUsername": {
+          "description": "Add {{bot}} to the target chat first. Telegram only shows a bot in @ suggestions after that bot is already in the chat.",
+          "label": "Bot Username",
+          "placeholder": "Test connection to show @bot_username"
+        },
+        "requireMentionInGroups": {
+          "description": "In groups and supergroups, reply only when the bot username is mentioned.",
+          "label": "Require @bot in groups"
+        }
+      },
+      "status": {
+        "connected": "Connected to {{bot}} (ID: {{id}}).",
+        "failed": "Connection failed.",
+        "savedSettingsOnly": "Save settings to start or restart the Telegram bridge."
+      },
+      "title": "Telegram Bridge"
     },
     "theme": {
       "appearance": "Appearance",

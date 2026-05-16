@@ -17,6 +17,7 @@ Main Process (Hono + @hono/node-server)
 
 Renderer 通过 oRPC 的 `server.getUrl` procedure 获取动态端口 URL，然后直接以标准 `fetch` / SSE 连接 Hono 服务。
 其中 `/rpc/*` 仅作为 oRPC 的本地 HTTP 面向机器入口使用，不承担手写 REST / OpenAPI 职责。
+`server.getUrl` 会同时返回本次 main process 生成的本地连接 token；renderer 的 AI SDK `DefaultChatTransport` 会把它作为 `Authorization: Bearer <token>` 发送到 `/api/chat`。
 
 主进程会通过请求日志中间件为每个 HTTP 请求输出一条结构化 wide event，包含 `request_id`、路径、方法、状态码、耗时等字段，并将 `x-request-id` 回写到响应头，便于在终端输出、文件日志与调用链之间对齐排查。
 
@@ -65,7 +66,8 @@ app.route("/api", myRoute)
 
 ### CORS 配置
 
-当前 CORS 允许 `http://localhost:*` 的源。如需更严格限制，修改 `app.ts` 中的 `cors()` 配置。
+当前 CORS 允许 loopback HTTP origin，包括 `http://localhost:<port>`、`http://127.0.0.1:<port>` 和 IPv6 loopback。Hono 的 `cors({ origin })` 不支持 `"http://localhost:*"` 这类字符串通配，必须使用函数按 origin 判断。
+`OPTIONS` 预检不要求本地 token；实际 `/api/chat` 请求仍需 `Authorization: Bearer <token>`。
 
 ### `/rpc/*` 入口约束
 

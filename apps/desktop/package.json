@@ -28,6 +28,8 @@
     "@ai-sdk/anthropic": "^3.0.78",
     "@ai-sdk/gateway": "^3.0.115",
     "@ai-sdk/openai": "^3.0.64",
+    "@chat-adapter/state-memory": "^4.28.1",
+    "@chat-adapter/telegram": "^4.28.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@hono/node-server": "^2.0.2",

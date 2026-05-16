@@ -9,6 +9,7 @@ import type {
   LightColorSchema,
   ProxySettings,
   SidebarMode,
+  TelegramSettings,
   Theme
 } from "@etyon/rpc"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -320,6 +321,10 @@ export const useSettingsPageDraft = () => {
     (v: boolean) => updateDraftRef.current("startMinimizedToTray", v),
     []
   )
+  const handleTelegramChange = useCallback(
+    (v: TelegramSettings) => updateDraftRef.current("telegram", v),
+    []
+  )
   const handleThemeChange = useCallback(
     (v: Theme) => updateDraftRef.current("theme", v),
     []
@@ -357,6 +362,7 @@ export const useSettingsPageDraft = () => {
     handleSave,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
+    handleTelegramChange,
     handleThemeChange,
     isDirty,
     updateMutation

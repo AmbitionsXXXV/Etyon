@@ -42,6 +42,7 @@ import {
 } from "./settings/general-tab"
 import { NetworkTab } from "./settings/network-tab"
 import { ProvidersTab } from "./settings/providers-tab"
+import { TelegramTab } from "./settings/telegram-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
@@ -66,6 +67,7 @@ const SETTINGS_SECTION_IDS = new Set<string>([
   "general",
   "network",
   "providers",
+  "telegram",
   "user-interface"
 ])
 
@@ -182,6 +184,7 @@ export const SettingsPage = ({
     handleSave,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
+    handleTelegramChange,
     handleThemeChange,
     isDirty,
     updateMutation
@@ -506,6 +509,13 @@ export const SettingsPage = ({
 
               {activeSection === "network" && (
                 <NetworkTab onChange={handleProxyChange} proxy={draft.proxy} />
+              )}
+
+              {activeSection === "telegram" && (
+                <TelegramTab
+                  onChange={handleTelegramChange}
+                  telegram={draft.telegram}
+                />
               )}
             </div>
           </div>

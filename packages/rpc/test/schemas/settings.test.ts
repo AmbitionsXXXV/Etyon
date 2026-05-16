@@ -54,4 +54,19 @@ describe("AppSettingsSchema", () => {
 
     expect(settings.sidebar.mode).toBe("simple")
   })
+
+  it("adds disabled telegram bridge defaults for empty and legacy settings", () => {
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.telegram).toEqual({
+      allowedChatIds: "",
+      allowedUserIds: "",
+      botToken: "",
+      botUsername: "",
+      enabled: false,
+      requireMentionInGroups: true
+    })
+  })
 })

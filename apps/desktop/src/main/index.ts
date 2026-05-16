@@ -15,6 +15,7 @@ import {
   shouldStartMainWindowHidden,
   syncStartupSettings
 } from "@/main/startup"
+import { stopTelegramBridge, syncTelegramBridge } from "@/main/telegram/bridge"
 import { destroyTray, setupTray } from "@/main/tray"
 import {
   createSettingsWindow,
@@ -50,6 +51,7 @@ const handleAppReady = async (): Promise<void> => {
 
   registerRpcHandler()
   await startServer()
+  syncTelegramBridge(settings)
   setupMenu(appDisplayName)
   setupTray()
 
@@ -98,6 +100,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   setAppQuitting(true)
   stopServer()
+  stopTelegramBridge()
   destroyTray()
 })
 

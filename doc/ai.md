@@ -77,6 +77,11 @@ Hono Server (127.0.0.1:<port>)
 AI Provider Factory
   ↓ streamText({ model, messages })
 OpenAI / Anthropic / AI Gateway / Moonshot / Z.AI
+
+Telegram Bridge (main process)
+  ↓ @chat-adapter/telegram polling
+  ↓ toAiMessages() + streamText({ model: resolveModel(), messages })
+  ↓ Chat SDK thread.post(result.textStream)
 ```
 
 ## Renderer 端使用
@@ -147,7 +152,8 @@ const ChatComponent = () => {
 
 ### OpenAI-compatible Providers
 
-- `moonshot` 与 `zai-coding-plan` 在运行时统一复用 `createOpenAI({ apiKey, baseURL })`
+- `moonshot` 与 `zai-coding-plan` 在运行时复用 `createOpenAI({ apiKey, baseURL }).chat(model)`，请求会落到 OpenAI-compatible 的 `/chat/completions`
+- `openai` 官方 provider 继续使用 `createOpenAI({ apiKey, baseURL })(model)`，保持 AI SDK v6 默认的 Responses API 行为
 - 建模前会检查：
   - `enabled === true`
   - `apiKey` 已填写
@@ -178,6 +184,7 @@ Renderer draft.availableModels / draft.models
 - API Key 存储在 `~/.config/etyon/settings.json`
 - Hono 服务仅绑定 `127.0.0.1`
 - 日志中不记录 API Key
+- Telegram bot token 存储在 `settings.telegram.botToken`，`getMe.username` 存储在 `settings.telegram.botUsername` 用于 mention detection；日志不记录 token，可用 `allowedUserIds` / `allowedChatIds` 限制入口
 - 后续可引入 `electron.safeStorage` 加密 API Key
 
 ## 涉及文件
@@ -186,6 +193,8 @@ Renderer draft.availableModels / draft.models
 | ----------------------------------------------------------- | ---------------------------------------- |
 | `apps/desktop/src/main/server/routes/chat.ts`               | Chat 流式对话端点                        |
 | `apps/desktop/src/main/server/lib/providers.ts`             | AI Provider 工厂                         |
+| `apps/desktop/src/main/telegram/bridge.ts`                  | Chat SDK Telegram adapter 与 AI 回复桥接 |
+| `apps/desktop/src/main/telegram/client.ts`                  | Telegram `getMe` 连接测试 client         |
 | `apps/desktop/src/main/providers/fetch-provider-models.ts`  | provider models 抓取与归一化             |
 | `apps/desktop/src/shared/providers/provider-catalog.ts`     | 内建 provider catalog 与 seed 挂载       |
 | `apps/desktop/src/shared/providers/provider-seed-models.ts` | 内建 provider seed 模型静态定义          |

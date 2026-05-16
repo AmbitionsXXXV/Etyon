@@ -80,6 +80,12 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.64
         version: 3.0.64(zod@4.4.3)
+      '@chat-adapter/state-memory':
+        specifier: ^4.28.1
+        version: 4.28.1
+      '@chat-adapter/telegram':
+        specifier: ^4.28.1
+        version: 4.28.1
       '@electron-toolkit/preload':
         specifier: ^3.0.2
         version: 3.0.2(electron@42.0.1)
@@ -623,6 +629,15 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  '@chat-adapter/shared@4.28.1':
+    resolution: {integrity: sha512-v7AcZMrvS2gxFlRiUO1o9Nta2iipnnmV54Gie8e3nQTQvnghENfSf7j7nimA5DOUWCgj+e4DV7LE0x1pakNtkA==}
+
+  '@chat-adapter/state-memory@4.28.1':
+    resolution: {integrity: sha512-KMKrPPU9inr+GVH5pIL81aSW0+LXulxZMktSzf5JOgE6C8WHmUAcGN9B0C80edyeC5qeXOyl0Vl3ZecPZsWDqQ==}
+
+  '@chat-adapter/telegram@4.28.1':
+    resolution: {integrity: sha512-ZBw6zx36enxXGlbOoigzCsWH6slbTCOWyTGatCz7jq4DFTDpvjRgBBH760n9peFkZpXJWOAXZKJm/IW8saT5aw==}
 
   '@clack/core@1.1.0':
     resolution: {integrity: sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA==}
@@ -7732,6 +7747,25 @@ snapshots:
       use-sync-external-store: 1.6.0(react@19.2.6)
     optionalDependencies:
       '@types/react': 19.2.14
+
+  '@chat-adapter/shared@4.28.1':
+    dependencies:
+      chat: 4.28.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@chat-adapter/state-memory@4.28.1':
+    dependencies:
+      chat: 4.28.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@chat-adapter/telegram@4.28.1':
+    dependencies:
+      '@chat-adapter/shared': 4.28.1
+      chat: 4.28.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@clack/core@1.1.0':
     dependencies:

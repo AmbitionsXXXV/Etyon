@@ -102,5 +102,6 @@ package_back.json
 .tanstack
 # heroui-agents-md
 .heroui-docs/
+.pnpm-store/
 
 target/

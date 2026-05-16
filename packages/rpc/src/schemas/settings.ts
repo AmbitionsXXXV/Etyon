@@ -161,6 +161,24 @@ export const ProxySettingsSchema = z.object({
   username: z.string().default("")
 })
 
+const TELEGRAM_SETTINGS_DEFAULT = {
+  allowedChatIds: "",
+  allowedUserIds: "",
+  botToken: "",
+  botUsername: "",
+  enabled: false,
+  requireMentionInGroups: true
+} as const
+
+export const TelegramSettingsSchema = z.object({
+  allowedChatIds: z.string().default(""),
+  allowedUserIds: z.string().default(""),
+  botToken: z.string().default(""),
+  botUsername: z.string().default(""),
+  enabled: z.boolean().default(false),
+  requireMentionInGroups: z.boolean().default(true)
+})
+
 export const AppSettingsSchema = z.object({
   ai: AiSettingsSchema.default({
     defaultModel: "",
@@ -186,6 +204,7 @@ export const AppSettingsSchema = z.object({
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
   sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
+  telegram: TelegramSettingsSchema.default(TELEGRAM_SETTINGS_DEFAULT),
   theme: ThemeSchema.default("system")
 })
 
@@ -204,6 +223,7 @@ export const UpdateSettingsSchema = z.object({
   proxy: ProxySettingsSchema.optional(),
   sidebar: SidebarSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
+  telegram: TelegramSettingsSchema.optional(),
   theme: ThemeSchema.optional()
 })
 
@@ -221,4 +241,5 @@ export type ProxySettings = z.infer<typeof ProxySettingsSchema>
 export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
+export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>
 export type Theme = z.infer<typeof ThemeSchema>

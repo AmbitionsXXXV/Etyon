@@ -98,6 +98,7 @@ export {
   ProxyTypeSchema,
   SidebarModeSchema,
   SidebarSettingsSchema,
+  TelegramSettingsSchema,
   ThemeSchema,
   UpdateSettingsSchema
 } from "./schemas/settings"
@@ -116,5 +117,16 @@ export type {
   ProxyType,
   SidebarMode,
   SidebarSettings,
+  TelegramSettings,
   Theme
 } from "./schemas/settings"
+export {
+  TelegramBotConnectionSchema,
+  TelegramTestConnectionInputSchema,
+  TelegramTestConnectionOutputSchema
+} from "./schemas/telegram"
+export type {
+  TelegramBotConnection,
+  TelegramTestConnectionInput,
+  TelegramTestConnectionOutput
+} from "./schemas/telegram"

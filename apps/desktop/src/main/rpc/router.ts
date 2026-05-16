@@ -25,6 +25,8 @@ import {
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
   SidebarUiStateSchema,
+  TelegramTestConnectionInputSchema,
+  TelegramTestConnectionOutputSchema,
   TestProxyInputSchema,
   TestProxyOutputSchema,
   UpdateSettingsSchema
@@ -43,6 +45,7 @@ import {
   setChatSessionPinned
 } from "@/main/chat-sessions"
 import { listSystemFonts } from "@/main/fonts"
+import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import {
@@ -63,6 +66,8 @@ import {
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
+import { syncTelegramBridge } from "@/main/telegram/bridge"
+import { testTelegramConnection } from "@/main/telegram/test-connection"
 
 const loggerEmit = rpc.input(LogEventSchema).handler(({ context, input }) => {
   const enriched = enrichLogEvent({
@@ -221,20 +226,27 @@ const settingsUpdate = rpc
     }
 
     refreshLocalizedAppShell()
+    syncTelegramBridge(result)
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send("settings-changed", result)
     }
     return result
   })
 
+const telegramTestConnection = rpc
+  .input(TelegramTestConnectionInputSchema)
+  .output(TelegramTestConnectionOutputSchema)
+  .handler(({ input }) => testTelegramConnection(input.botToken))
+
 const proxyTestRpc = rpc
   .input(TestProxyInputSchema)
   .output(TestProxyOutputSchema)
   .handler(({ input }) => testProxy(input))
 
-const serverGetUrl = rpc
-  .output(ServerUrlOutputSchema)
-  .handler(() => ({ url: getServerUrl() }))
+const serverGetUrl = rpc.output(ServerUrlOutputSchema).handler(() => ({
+  token: getLocalConnectionToken(),
+  url: getServerUrl()
+}))
 
 const projectSnapshotsEnsure = rpc
   .input(EnsureProjectSnapshotInputSchema)
@@ -335,6 +347,9 @@ export const router = {
   settings: {
     get: settingsGet,
     update: settingsUpdate
+  },
+  telegram: {
+    testConnection: telegramTestConnection
   }
 }
 

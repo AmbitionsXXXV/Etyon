@@ -30,6 +30,10 @@ const optimizedDependencies = [
   "@tanstack/react-query-devtools",
   "@tanstack/react-router",
   "@tanstack/react-router-devtools",
+  "@tiptap/core",
+  "@tiptap/extension-placeholder",
+  "@tiptap/react",
+  "@tiptap/starter-kit",
   "ai",
   "class-variance-authority",
   "clsx",
@@ -45,11 +49,29 @@ const optimizedDependencies = [
   "sonner",
   "tailwind-merge",
   "use-sync-external-store/shim",
+  "use-sync-external-store/shim/index.js",
   "use-sync-external-store/shim/with-selector",
+  "use-sync-external-store/shim/with-selector.js",
   "zod",
   "zod/mini"
 ] as const
-const reactDedupeDependencies = ["react", "react-dom"] as const
+const reactDedupeDependencies = [
+  "react",
+  "react-dom",
+  "use-sync-external-store"
+] as const
+const useSyncExternalStoreAliases = [
+  // Tiptap imports these CJS shims with explicit .js suffixes. Normalize them
+  // before Vite serves the nested package copy directly in the browser.
+  {
+    find: /^use-sync-external-store\/shim\/index\.js$/u,
+    replacement: "use-sync-external-store/shim"
+  },
+  {
+    find: /^use-sync-external-store\/shim\/with-selector\.js$/u,
+    replacement: "use-sync-external-store/shim/with-selector"
+  }
+] as const
 
 export default defineConfig({
   optimizeDeps: {
@@ -66,7 +88,7 @@ export default defineConfig({
     tailwindcss()
   ],
   resolve: {
-    alias: [...desktopAliases],
+    alias: [...useSyncExternalStoreAliases, ...desktopAliases],
     dedupe: [...reactDedupeDependencies],
     tsconfigPaths: true
   }

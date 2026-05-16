@@ -184,6 +184,48 @@ describe("hono app", () => {
     expect(chatResponse.status).toBe(401)
   })
 
+  it("allows localhost preflight requests before local token authorization", async () => {
+    const response = await app.request("/api/chat", {
+      headers: {
+        "access-control-request-headers": "authorization,content-type",
+        "access-control-request-method": "POST",
+        origin: "http://localhost:5173"
+      },
+      method: "OPTIONS"
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173"
+    )
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "POST"
+    )
+    expect(response.headers.get("access-control-allow-headers")).toBe(
+      "Authorization,Content-Type"
+    )
+  })
+
+  it("adds CORS headers to authorized localhost chat responses", async () => {
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json",
+        origin: "http://localhost:5173"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173"
+    )
+  })
+
   it("serves oRPC over /rpc and logs a single structured request event", async () => {
     let capturedResponse: Response | undefined
 

@@ -6,7 +6,6 @@ import { ipcMain } from "electron"
 import { initLogger, logger } from "@/main/logger"
 import type { AppRpcContext } from "@/main/rpc/context"
 import {
-  createHttpRpcContext,
   createMessagePortRpcContext,
   RPC_HTTP_PREFIX
 } from "@/main/rpc/context"

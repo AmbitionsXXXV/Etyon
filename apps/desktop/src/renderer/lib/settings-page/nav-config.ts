@@ -1,10 +1,11 @@
 import type { TranslationKey } from "@etyon/i18n"
 import {
+  ChatBotIcon,
   ComputerIcon,
+  InternetIcon,
   NoteEditIcon,
   PaintBrush01Icon,
-  Settings02Icon,
-  InternetIcon
+  Settings02Icon
 } from "@hugeicons/core-free-icons"
 
 export type SettingsSectionId =
@@ -12,6 +13,7 @@ export type SettingsSectionId =
   | "general"
   | "network"
   | "providers"
+  | "telegram"
   | "user-interface"
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
@@ -19,6 +21,7 @@ export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   general: "settings.nav.general",
   network: "settings.nav.network",
   providers: "settings.nav.providers",
+  telegram: "settings.nav.telegram",
   "user-interface": "settings.nav.userInterface"
 } as const satisfies Record<SettingsSectionId, TranslationKey>
 
@@ -33,6 +36,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: NoteEditIcon,
     id: "providers"
+  },
+  {
+    icon: ChatBotIcon,
+    id: "telegram"
   },
   {
     icon: PaintBrush01Icon,

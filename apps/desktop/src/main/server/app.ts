@@ -10,8 +10,31 @@ import { chatRoute } from "@/main/server/routes/chat"
 
 const app = new Hono<AppServerEnv>()
 
+const LOCAL_CORS_HOSTNAMES = new Set(["127.0.0.1", "::1", "[::1]", "localhost"])
+const isAllowedLocalCorsOrigin = (origin: string): boolean => {
+  if (origin === "null") {
+    return true
+  }
+
+  try {
+    const url = new URL(origin)
+
+    return url.protocol === "http:" && LOCAL_CORS_HOSTNAMES.has(url.hostname)
+  } catch {
+    return false
+  }
+}
+const resolveLocalCorsOrigin = (origin: string): string | null =>
+  isAllowedLocalCorsOrigin(origin) ? origin : null
+
 app.use(requestLogger)
-app.use(cors({ origin: "http://localhost:*" }))
+app.use(
+  cors({
+    allowHeaders: ["Authorization", "Content-Type"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    origin: resolveLocalCorsOrigin
+  })
+)
 
 const unauthorizedLocalRequest = (): Response =>
   Response.json({ error: "unauthorized" }, { status: 401 })

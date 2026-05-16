@@ -41,6 +41,7 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                          |
 | Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
 | Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
+| Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                           |
 | Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                      | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
 | Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`                | `applySettings()` DOM 应用函数                                                                                                 |
 | i18n Package       | `packages/i18n/`                                           | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
@@ -85,6 +86,13 @@ interface AppSettings {
     mode: "projects" | "simple" // 默认 "simple"
   }
   startMinimizedToTray: boolean // 默认 false，仅在登录项自动启动时生效
+  telegram: {
+    allowedChatIds: string // 逗号 / 空格 / 换行分隔，默认 ""
+    allowedUserIds: string // 逗号 / 空格 / 换行分隔，默认 ""
+    botToken: string // 默认 ""
+    enabled: boolean // 默认 false
+    requireMentionInGroups: boolean // 默认 true
+  }
   theme: "light" | "dark" | "system"
 }
 interface CustomTheme {
@@ -151,6 +159,21 @@ interface StoredProviderModel {
   - `models` 保存当前启用模型子集
 - 若本地已经勾选一部分模型，抓取后仅保留仍存在的勾选项；若此前没有勾选模型，则默认启用全部抓到的模型
 - `settings-equal()` 现在按整个 `AppSettings` 深比较，保证 provider 配置、抓取结果与模型勾选都能正确触发底部 `Save / Cancel` 浮条
+
+## Telegram Tab
+
+- Settings 左侧导航包含 `Telegram` tab，用于配置本机 Telegram bridge
+- 当前字段：
+  - `enabled`：保存后启动 / 停止主进程 polling runtime
+  - `botToken`：Telegram Bot API token
+  - `botUsername`：`Test Connection` 成功后从 `getMe.username` 写入 draft，保存后用于 mention detection
+  - `allowedUserIds`：可选用户 allowlist，支持 `telegram:` / `tg:` 前缀
+  - `allowedChatIds`：可选 chat allowlist，支持私聊、群聊与 supergroup 的数字 ID
+  - `requireMentionInGroups`：群聊中默认要求消息包含 bot 用户名
+- `Test Connection` 只调用 `getMe` 验证草稿 token，不会启动 polling；成功后设置页显示 `@bot_username`，但 Telegram 客户端只有在 bot 已加入目标 chat 时才会在 `@` 列表提示
+- bridge 只跟随已保存 settings
+- 主进程 runtime 使用 `Chat`、`@chat-adapter/telegram` 和 `@chat-adapter/state-memory`，由 Telegram adapter 负责 polling、消息格式转换、thread history 与 `thread.post(result.textStream)` 发回消息
+- 主进程在 app ready 与 `settings.update` 后调用 `syncTelegramBridge(settings)`，退出时调用 `stopTelegramBridge()`
 
 ## Provider Seed / Defaults
 

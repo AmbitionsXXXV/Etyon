@@ -56,7 +56,17 @@ const createProviderModel = (
     throw new Error(`Provider "${provider}" is missing an API Key.`)
   }
 
-  const createOpenAICompatibleModel = (baseURL?: string) => {
+  const createOpenAICompatibleChatModel = (baseURL?: string): LanguageModel => {
+    const openai = createOpenAI({
+      apiKey,
+      name: provider,
+      ...(baseURL ? { baseURL } : {})
+    })
+
+    return openai.chat(model)
+  }
+
+  const createOpenAIResponsesModel = (baseURL?: string): LanguageModel => {
     const openai = createOpenAI({
       apiKey,
       ...(baseURL ? { baseURL } : {})
@@ -77,15 +87,15 @@ const createProviderModel = (
       return gateway(model)
     }
     case "moonshot": {
-      return createOpenAICompatibleModel(
+      return createOpenAICompatibleChatModel(
         resolveProviderBaseURL(provider, providerConfig)
       )
     }
     case "openai": {
-      return createOpenAICompatibleModel(providerConfig.baseURL)
+      return createOpenAIResponsesModel(providerConfig.baseURL)
     }
     case "zai-coding-plan": {
-      return createOpenAICompatibleModel(
+      return createOpenAICompatibleChatModel(
         resolveProviderBaseURL(provider, providerConfig)
       )
     }
