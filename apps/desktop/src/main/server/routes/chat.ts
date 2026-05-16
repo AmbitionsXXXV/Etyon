@@ -3,6 +3,11 @@ import type { UIMessage } from "ai"
 import { convertToModelMessages, streamText } from "ai"
 import { Hono } from "hono"
 
+import { replaceChatMessages } from "@/main/chat-messages"
+import {
+  buildSessionMemorySystemPrompt,
+  getChatSessionMemory
+} from "@/main/chat-session-memory"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { buildMentionContext } from "@/main/project-snapshot"
@@ -23,25 +28,36 @@ chatRoute.post("/chat", async (c) => {
     model?: string
     sessionId: string
   }
-  const session = await getChatSessionById(getDb(), sessionId)
+  const db = getDb()
+  const session = await getChatSessionById(db, sessionId)
 
   if (!session) {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  const memory = await getChatSessionMemory(db, sessionId)
   const { system } = buildMentionContext({
     mentions,
     projectPath: session.projectPath
   })
+  const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
+  const systemPrompts = [sessionMemorySystem, system].filter(Boolean)
   const model = resolveModel(requestedModelId ?? session.modelId ?? undefined)
   const modelMessages = await convertToModelMessages(messages)
   const result = streamText({
-    ...(system ? { system } : {}),
+    ...(systemPrompts.length > 0 ? { system: systemPrompts.join("\n\n") } : {}),
     messages: modelMessages,
     model
   })
 
   return result.toUIMessageStreamResponse({
+    onFinish: async ({ messages: nextMessages }) => {
+      await replaceChatMessages({
+        db,
+        messages: nextMessages,
+        sessionId
+      })
+    },
     originalMessages: messages
   })
 })

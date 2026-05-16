@@ -3,6 +3,7 @@ import * as z from "zod"
 const EMPTY_COLLAPSED_PROJECT_PATHS: string[] = []
 const EMPTY_PROJECT_DISPLAY_NAMES: Record<string, string> = {}
 const EMPTY_PROJECT_PINS: Record<string, string> = {}
+const EMPTY_PROJECT_ORDER: string[] = []
 const DEFAULT_SIDEBAR_WIDTH_PX = 272
 
 export const SidebarUiStateSchema = z.object({
@@ -12,6 +13,7 @@ export const SidebarUiStateSchema = z.object({
   projectDisplayNames: z
     .record(z.string(), z.string())
     .default(EMPTY_PROJECT_DISPLAY_NAMES),
+  projectOrder: z.array(z.string()).default(EMPTY_PROJECT_ORDER),
   projectPins: z.record(z.string(), z.string()).default(EMPTY_PROJECT_PINS),
   sidebarWidthPx: z
     .number()
@@ -25,6 +27,10 @@ export const SetCollapsedProjectsInputSchema = z.object({
   collapsedProjectPaths: z.array(z.string())
 })
 
+export const SetProjectOrderInputSchema = z.object({
+  projectOrder: z.array(z.string())
+})
+
 export const SetSidebarWidthInputSchema = z.object({
   sidebarWidthPx: z.number().int().min(240).max(420)
 })
@@ -32,5 +38,6 @@ export const SetSidebarWidthInputSchema = z.object({
 export type SetCollapsedProjectsInput = z.infer<
   typeof SetCollapsedProjectsInputSchema
 >
+export type SetProjectOrderInput = z.infer<typeof SetProjectOrderInputSchema>
 export type SetSidebarWidthInput = z.infer<typeof SetSidebarWidthInputSchema>
 export type SidebarUiState = z.infer<typeof SidebarUiStateSchema>

@@ -5,6 +5,7 @@ import { useCallback } from "react"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 
 const EMPTY_COLLAPSED_PROJECT_PATHS: string[] = []
+const EMPTY_PROJECT_ORDER: string[] = []
 export const SIDEBAR_WIDTH_PX_MAX = 420
 export const SIDEBAR_WIDTH_PX_MIN = 240
 const SIDEBAR_STATE_QUERY_OPTIONS = orpc.sidebarState.get.queryOptions({})
@@ -27,6 +28,7 @@ export const useProjectSidebarState = () => {
     sidebarStateQuery.data?.collapsedProjectPaths ??
     EMPTY_COLLAPSED_PROJECT_PATHS
   const projectDisplayNames = sidebarStateQuery.data?.projectDisplayNames ?? {}
+  const projectOrder = sidebarStateQuery.data?.projectOrder ?? []
   const projectPins = sidebarStateQuery.data?.projectPins ?? {}
   const sidebarWidthPx = sidebarStateQuery.data?.sidebarWidthPx ?? 272
 
@@ -56,6 +58,7 @@ export const useProjectSidebarState = () => {
         (currentState) => ({
           collapsedProjectPaths: nextCollapsedProjectPaths,
           projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectOrder: currentState?.projectOrder ?? EMPTY_PROJECT_ORDER,
           projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
         })
@@ -95,6 +98,7 @@ export const useProjectSidebarState = () => {
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
           projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectOrder: currentState?.projectOrder ?? EMPTY_PROJECT_ORDER,
           projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: clampSidebarWidthPx(nextSidebarWidthPx)
         })
@@ -148,6 +152,7 @@ export const useProjectSidebarState = () => {
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
           projectDisplayNames: projectDisplayNamesDraft,
+          projectOrder: currentState?.projectOrder ?? EMPTY_PROJECT_ORDER,
           projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
         })
@@ -197,7 +202,48 @@ export const useProjectSidebarState = () => {
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
           projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectOrder: currentState?.projectOrder ?? EMPTY_PROJECT_ORDER,
           projectPins: projectPinsDraft,
+          sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
+        })
+      )
+
+      return previousState
+    },
+    onSuccess: (nextState) => {
+      queryClient.setQueryData(SIDEBAR_STATE_QUERY_OPTIONS.queryKey, nextState)
+    }
+  })
+  const setProjectOrderMutation = useMutation<
+    SidebarUiState,
+    Error,
+    string[],
+    SidebarUiState | undefined
+  >({
+    mutationFn: (nextProjectOrder) =>
+      rpcClient.sidebarState.setProjectOrder({
+        projectOrder: nextProjectOrder
+      }),
+    onError: (_error, _variables, previousState) => {
+      queryClient.setQueryData(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        previousState
+      )
+    },
+    onMutate: (nextProjectOrder) => {
+      const previousState = queryClient.getQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey
+      )
+
+      queryClient.setQueryData<SidebarUiState>(
+        SIDEBAR_STATE_QUERY_OPTIONS.queryKey,
+        (currentState) => ({
+          collapsedProjectPaths:
+            currentState?.collapsedProjectPaths ??
+            EMPTY_COLLAPSED_PROJECT_PATHS,
+          projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectOrder: nextProjectOrder,
+          projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: currentState?.sidebarWidthPx ?? 272
         })
       )
@@ -230,6 +276,7 @@ export const useProjectSidebarState = () => {
             currentState?.collapsedProjectPaths ??
             EMPTY_COLLAPSED_PROJECT_PATHS,
           projectDisplayNames: currentState?.projectDisplayNames ?? {},
+          projectOrder: currentState?.projectOrder ?? EMPTY_PROJECT_ORDER,
           projectPins: currentState?.projectPins ?? {},
           sidebarWidthPx: clampSidebarWidthPx(nextSidebarWidthPx)
         })
@@ -261,10 +308,17 @@ export const useProjectSidebarState = () => {
     },
     [setProjectPinnedMutation]
   )
+  const handleSetProjectOrder = useCallback(
+    (nextProjectOrder: string[]) => {
+      setProjectOrderMutation.mutate(nextProjectOrder)
+    },
+    [setProjectOrderMutation]
+  )
 
   return {
     collapsedProjectPaths,
     handleRenameProject,
+    handleSetProjectOrder,
     handleSetProjectPinned,
     handleToggleProjectCollapsed,
     isRenamingProjectPath: renameProjectMutation.isPending
@@ -276,6 +330,7 @@ export const useProjectSidebarState = () => {
       : undefined,
     persistSidebarWidth,
     projectDisplayNames,
+    projectOrder,
     projectPins,
     setSidebarWidthLocally,
     sidebarWidthPx

@@ -2,6 +2,7 @@ import { useChat } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type {
   ChatMention,
+  ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
   ProjectSnapshotItem
 } from "@etyon/rpc"
@@ -40,6 +41,12 @@ type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
 const settingsQueryOptions = orpc.settings.get.queryOptions({})
+const getChatSessionMessagesQueryOptions = (sessionId: string) =>
+  orpc.chatSessions.listMessages.queryOptions({
+    input: {
+      sessionId
+    }
+  })
 const isChatSessionDetailsEnabled =
   import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "true" ||
   import.meta.env.VITE_ENABLE_CHAT_SESSION_DETAILS === "1"
@@ -54,6 +61,25 @@ const getMessageText = (message: ChatUiMessage): string =>
     .filter((part): part is TextChatPart => part.type === "text")
     .map((part) => part.text)
     .join("")
+
+const toRuntimeChatMessage = (
+  message: PersistedChatUiMessage
+): ChatUiMessage => {
+  const runtimeMessage = {
+    id: message.id,
+    parts: message.parts as ChatUiMessage["parts"],
+    role: message.role
+  }
+
+  if (message.metadata === undefined) {
+    return runtimeMessage
+  }
+
+  return {
+    ...runtimeMessage,
+    metadata: message.metadata as ChatMessageMetadata
+  }
+}
 
 const getMentionName = (mention: ChatMention): string =>
   mention.relativePath.split("/").at(-1) ?? mention.relativePath
@@ -135,6 +161,8 @@ const ChatRuntime = ({
   isModelUpdating,
   mentionItems,
   modelGroups,
+  initialMessages,
+  onChatFinish,
   onMentionQueryChange,
   onModelChange,
   onOpenSettings,
@@ -145,8 +173,10 @@ const ChatRuntime = ({
 }: {
   isLoadingFileItems: boolean
   isModelUpdating: boolean
+  initialMessages: ChatUiMessage[]
   mentionItems: ProjectSnapshotItem[]
   modelGroups: ChatModelGroup[]
+  onChatFinish: () => void
   onMentionQueryChange: (query: string | null) => void
   onModelChange: (value: string | null) => void
   onOpenSettings: () => void
@@ -160,6 +190,8 @@ const ChatRuntime = ({
   const { clearError, error, messages, sendMessage, status } =
     useChat<ChatUiMessage>({
       id: selectedSession.id,
+      messages: initialMessages,
+      onFinish: onChatFinish,
       transport
     })
 
@@ -437,12 +469,20 @@ const ChatSessionPage = () => {
   const [transport, setTransport] =
     useState<DefaultChatTransport<ChatUiMessage> | null>(null)
   const chatSessionsQuery = useQuery(chatSessionsQueryOptions)
+  const chatSessionMessagesQueryOptions = useMemo(
+    () => getChatSessionMessagesQueryOptions(sessionId),
+    [sessionId]
+  )
   const settingsQuery = useQuery(settingsQueryOptions)
   const session = useMemo(
     () => chatSessionsQuery.data?.find((item) => item.id === sessionId),
     [chatSessionsQuery.data, sessionId]
   )
   const sessionExists = Boolean(session)
+  const persistedMessagesQuery = useQuery({
+    ...chatSessionMessagesQueryOptions,
+    enabled: sessionExists
+  })
   const snapshotStateQuery = useQuery({
     ...orpc.projectSnapshots.ensure.queryOptions({
       input: {
@@ -515,6 +555,11 @@ const ChatSessionPage = () => {
       }
     }
   })
+  const persistedMessages = useMemo(
+    () =>
+      (persistedMessagesQuery.data?.messages ?? []).map(toRuntimeChatMessage),
+    [persistedMessagesQuery.data?.messages]
+  )
 
   useEffect(() => {
     let disposed = false
@@ -548,15 +593,14 @@ const ChatSessionPage = () => {
         return
       }
 
-      queryClient.setQueryData(
+      queryClient.setQueryData<ChatSessionSummary[] | undefined>(
         chatSessionsQueryOptions.queryKey,
         (previousSessions) =>
           sortChatSessionsByLastOpenedAt([
             openedSession,
-            ...(
-              (previousSessions as typeof chatSessionsQuery.data | undefined) ??
-              []
-            ).filter((item) => item.id !== openedSession.id)
+            ...(previousSessions ?? []).filter(
+              (item) => item.id !== openedSession.id
+            )
           ])
       )
     }
@@ -574,13 +618,16 @@ const ChatSessionPage = () => {
     return () => {
       disposed = true
     }
-  }, [
-    chatSessionsQuery.data,
-    chatSessionsQuery.isSuccess,
-    queryClient,
-    sessionExists,
-    sessionId
-  ])
+  }, [chatSessionsQuery.isSuccess, queryClient, sessionExists, sessionId])
+
+  const handleChatFinish = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: chatSessionsQueryOptions.queryKey
+    })
+    void queryClient.invalidateQueries({
+      queryKey: chatSessionMessagesQueryOptions.queryKey
+    })
+  }, [chatSessionMessagesQueryOptions.queryKey, queryClient])
 
   const handleModelChange = useCallback(
     (nextValue: string | null) => {
@@ -637,12 +684,14 @@ const ChatSessionPage = () => {
         <p className="text-sm text-muted-foreground">{session.projectPath}</p>
       </div>
 
-      {transport ? (
+      {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
+          initialMessages={persistedMessages}
           isLoadingFileItems={mentionItemsQuery.isFetching}
           isModelUpdating={setModelMutation.isPending}
           mentionItems={mentionItemsQuery.data?.files ?? []}
           modelGroups={modelGroups}
+          onChatFinish={handleChatFinish}
           onMentionQueryChange={setMentionQuery}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}

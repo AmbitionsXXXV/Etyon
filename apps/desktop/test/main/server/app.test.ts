@@ -24,9 +24,12 @@ interface MockChatSession {
 
 const {
   buildMentionContextMock,
+  buildSessionMemorySystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionByIdMock,
+  getChatSessionMemoryMock,
   mockedHomeDir,
+  replaceChatMessagesMock,
   resolveModelMock,
   streamTextMock
 } = vi.hoisted(() => {
@@ -47,18 +50,47 @@ const {
       snapshotId: "snapshot-1",
       system: "snapshot context"
     })),
+    buildSessionMemorySystemPromptMock: vi.fn(() => "session memory context"),
     convertToModelMessagesMock: vi.fn((messages) => Promise.resolve(messages)),
     getChatSessionByIdMock: vi.fn(() => Promise.resolve(defaultChatSession)),
+    getChatSessionMemoryMock: vi.fn(() =>
+      Promise.resolve({
+        content: "remember prior context",
+        createdAt: "2026-04-06T09:00:00.000Z",
+        messageCount: 2,
+        sessionId: "session-1",
+        updatedAt: "2026-04-06T09:01:00.000Z"
+      })
+    ),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    replaceChatMessagesMock: vi.fn(() => Promise.resolve([])),
     resolveModelMock: vi.fn(() => ({ modelId: "test-model" })),
     streamTextMock: vi.fn(() => ({
-      toUIMessageStreamResponse: () =>
-        Response.json(
+      toUIMessageStreamResponse: async (options: {
+        onFinish?: (event: { messages: unknown[] }) => Promise<void> | void
+      }) => {
+        await options.onFinish?.({
+          messages: [
+            {
+              id: "message-1",
+              parts: [],
+              role: "user"
+            },
+            {
+              id: "message-2",
+              parts: [],
+              role: "assistant"
+            }
+          ]
+        })
+
+        return Response.json(
           { ok: true },
           {
             status: 200
           }
         )
+      }
     }))
   }
 })
@@ -98,6 +130,15 @@ vi.mock("electron", () => ({
 
 vi.mock("@/main/server/lib/providers", () => ({
   resolveModel: resolveModelMock
+}))
+
+vi.mock("@/main/chat-messages", () => ({
+  replaceChatMessages: replaceChatMessagesMock
+}))
+
+vi.mock("@/main/chat-session-memory", () => ({
+  buildSessionMemorySystemPrompt: buildSessionMemorySystemPromptMock,
+  getChatSessionMemory: getChatSessionMemoryMock
 }))
 
 vi.mock("@/main/chat-sessions", () => ({
@@ -299,7 +340,27 @@ describe("hono app", () => {
       mentions,
       projectPath: "/tmp/project-a"
     })
-    expect(streamTextMock).toHaveBeenCalled()
+    expect(streamTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: "session memory context\n\nsnapshot context"
+      })
+    )
+    expect(replaceChatMessagesMock).toHaveBeenCalledWith({
+      db: expect.anything(),
+      messages: [
+        {
+          id: "message-1",
+          parts: [],
+          role: "user"
+        },
+        {
+          id: "message-2",
+          parts: [],
+          role: "assistant"
+        }
+      ],
+      sessionId: "session-1"
+    })
   })
 
   it("falls back to the session model when the request body does not provide one", async () => {

@@ -12,6 +12,7 @@ export interface ChatSessionMetaItem {
 }
 
 export interface ChatSessionGroup {
+  firstCreatedAt: string
   pinnedAt: string | null
   projectName: string
   projectPath: string
@@ -78,9 +79,11 @@ export const groupChatSessionsByProject = (
   sessions: ChatSessionSummary[],
   {
     projectDisplayNames = {},
+    projectOrder = [],
     projectPins = {}
   }: {
     projectDisplayNames?: Record<string, string>
+    projectOrder?: string[]
     projectPins?: Record<string, string>
   } = {}
 ): ChatSessionGroup[] => {
@@ -95,15 +98,27 @@ export const groupChatSessionsByProject = (
     groupedSessions.set(session.projectPath, [...existingSessions, session])
   }
 
+  const projectOrderIndex = new Map(
+    projectOrder.map((projectPath, index) => [projectPath, index])
+  )
+
   return [...groupedSessions.entries()]
-    .map(([projectPath, groupedItems]) => ({
-      pinnedAt: projectPins[projectPath] ?? null,
-      projectName:
-        projectDisplayNames[projectPath]?.trim() ||
-        getProjectNameFromPath(projectPath),
-      projectPath,
-      sessions: groupedItems
-    }))
+    .map(([projectPath, groupedItems]) => {
+      const firstCreatedAt = groupedItems
+        .map((session) => session.createdAt)
+        .toSorted((left, right) => left.localeCompare(right))
+        .at(0)
+
+      return {
+        firstCreatedAt: firstCreatedAt ?? "",
+        pinnedAt: projectPins[projectPath] ?? null,
+        projectName:
+          projectDisplayNames[projectPath]?.trim() ||
+          getProjectNameFromPath(projectPath),
+        projectPath,
+        sessions: groupedItems
+      }
+    })
     .toSorted((left, right) => {
       if (left.pinnedAt && !right.pinnedAt) {
         return -1
@@ -117,7 +132,30 @@ export const groupChatSessionsByProject = (
         return right.pinnedAt.localeCompare(left.pinnedAt)
       }
 
-      return 0
+      const leftProjectOrder = projectOrderIndex.get(left.projectPath)
+      const rightProjectOrder = projectOrderIndex.get(right.projectPath)
+
+      if (leftProjectOrder !== undefined && rightProjectOrder !== undefined) {
+        return leftProjectOrder - rightProjectOrder
+      }
+
+      if (leftProjectOrder !== undefined) {
+        return -1
+      }
+
+      if (rightProjectOrder !== undefined) {
+        return 1
+      }
+
+      const createdAtComparison = right.firstCreatedAt.localeCompare(
+        left.firstCreatedAt
+      )
+
+      if (createdAtComparison !== 0) {
+        return createdAtComparison
+      }
+
+      return left.projectPath.localeCompare(right.projectPath)
     })
 }
 
@@ -166,6 +204,34 @@ export const isProjectGroupExpanded = ({
   collapsedProjectPaths: string[]
   group: ChatSessionGroup
 }): boolean => !collapsedProjectPaths.includes(group.projectPath)
+
+export const reorderProjectPaths = ({
+  activeProjectPath,
+  overProjectPath,
+  projectPaths
+}: {
+  activeProjectPath: string
+  overProjectPath: string
+  projectPaths: string[]
+}): string[] => {
+  const activeIndex = projectPaths.indexOf(activeProjectPath)
+  const overIndex = projectPaths.indexOf(overProjectPath)
+
+  if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+    return projectPaths
+  }
+
+  const nextProjectPaths = [...projectPaths]
+  const [activeProject] = nextProjectPaths.splice(activeIndex, 1)
+
+  if (!activeProject) {
+    return projectPaths
+  }
+
+  nextProjectPaths.splice(overIndex, 0, activeProject)
+
+  return nextProjectPaths
+}
 
 export const isProjectsSidebarMode = (mode: SidebarMode): boolean =>
   mode === "projects"

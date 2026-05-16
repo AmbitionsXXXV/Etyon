@@ -1,8 +1,13 @@
 export {
   ArchiveChatSessionInputSchema,
   ChatMentionSchema,
+  ChatSessionMemoryOutputSchema,
+  ChatSessionMemorySchema,
+  ChatSessionMessagesInputSchema,
+  ChatSessionMessagesOutputSchema,
   ChatSessionSummarySchema,
   ChatSessionsListOutputSchema,
+  ChatUiMessageSchema,
   CreateChatSessionInputSchema,
   OpenChatSessionInputSchema,
   SetChatSessionModelInputSchema,
@@ -11,7 +16,11 @@ export {
 export type {
   ArchiveChatSessionInput,
   ChatMention,
+  ChatSessionMemory,
+  ChatSessionMessagesInput,
+  ChatSessionMessagesOutput,
   ChatSessionSummary,
+  ChatUiMessage,
   CreateChatSessionInput,
   OpenChatSessionInput,
   SetChatSessionModelInput,
@@ -74,11 +83,13 @@ export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {
   SetCollapsedProjectsInputSchema,
+  SetProjectOrderInputSchema,
   SetSidebarWidthInputSchema,
   SidebarUiStateSchema
 } from "./schemas/sidebar-state"
 export type {
   SetCollapsedProjectsInput,
+  SetProjectOrderInput,
   SetSidebarWidthInput,
   SidebarUiState
 } from "./schemas/sidebar-state"

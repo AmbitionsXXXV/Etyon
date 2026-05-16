@@ -11,17 +11,20 @@ import {
   isProjectGroupExpanded,
   isProjectsSidebarMode,
   PROJECT_GROUP_PAGE_SIZE,
+  reorderProjectPaths,
   shouldShowProjectGroupLessAction,
   sortPinnedChatSessions
 } from "@/renderer/lib/sidebar/chat-sessions"
 
 const buildSessionFixture = ({
+  createdAt = "2026-03-26T12:00:00.000Z",
   id,
   lastOpenedAt,
   pinnedAt,
   projectPath,
   title
 }: {
+  createdAt?: string
   id: string
   lastOpenedAt: string
   pinnedAt: string | null
@@ -29,7 +32,7 @@ const buildSessionFixture = ({
   title: string
 }) => ({
   archivedAt: null,
-  createdAt: "2026-03-26T12:00:00.000Z",
+  createdAt,
   id,
   lastOpenedAt,
   modelId: null,
@@ -40,9 +43,10 @@ const buildSessionFixture = ({
 })
 
 describe("sidebar chat session helpers", () => {
-  it("groups unpinned chat sessions by exact project path and sorts each group by last opened at", () => {
+  it("groups unpinned chat sessions by exact project path without letting last opened time reorder projects", () => {
     const groups = groupChatSessionsByProject([
       buildSessionFixture({
+        createdAt: "2026-03-26T12:00:00.000Z",
         id: "older-project-a",
         lastOpenedAt: "2026-03-26T12:01:00.000Z",
         pinnedAt: null,
@@ -50,6 +54,7 @@ describe("sidebar chat session helpers", () => {
         title: ""
       }),
       buildSessionFixture({
+        createdAt: "2026-03-26T11:00:00.000Z",
         id: "project-b",
         lastOpenedAt: "2026-03-26T12:03:00.000Z",
         pinnedAt: null,
@@ -57,6 +62,7 @@ describe("sidebar chat session helpers", () => {
         title: ""
       }),
       buildSessionFixture({
+        createdAt: "2026-03-26T12:30:00.000Z",
         id: "newer-project-a",
         lastOpenedAt: "2026-03-26T12:02:00.000Z",
         pinnedAt: null,
@@ -73,15 +79,15 @@ describe("sidebar chat session helpers", () => {
     ])
 
     expect(groups).toHaveLength(2)
-    expect(groups[0]?.projectName).toBe("project-b")
-    expect(groups[1]?.projectName).toBe("project-a")
-    expect(groups[1]?.sessions.map((session) => session.id)).toEqual([
+    expect(groups[0]?.projectName).toBe("project-a")
+    expect(groups[1]?.projectName).toBe("project-b")
+    expect(groups[0]?.sessions.map((session) => session.id)).toEqual([
       "newer-project-a",
       "older-project-a"
     ])
   })
 
-  it("applies project display names and sorts pinned projects first", () => {
+  it("applies project display names, custom order, and pinned project precedence", () => {
     const groups = groupChatSessionsByProject(
       [
         buildSessionFixture({
@@ -110,6 +116,7 @@ describe("sidebar chat session helpers", () => {
         projectDisplayNames: {
           "/tmp/project-b": "Renamed Project"
         },
+        projectOrder: ["/tmp/project-a", "/tmp/project-c", "/tmp/project-b"],
         projectPins: {
           "/tmp/project-b": "2026-03-26T12:10:00.000Z",
           "/tmp/project-c": "2026-03-26T12:11:00.000Z"
@@ -123,6 +130,23 @@ describe("sidebar chat session helpers", () => {
       "/tmp/project-a"
     ])
     expect(groups[1]?.projectName).toBe("Renamed Project")
+  })
+
+  it("reorders project paths for drag and drop", () => {
+    expect(
+      reorderProjectPaths({
+        activeProjectPath: "/tmp/project-a",
+        overProjectPath: "/tmp/project-c",
+        projectPaths: ["/tmp/project-a", "/tmp/project-b", "/tmp/project-c"]
+      })
+    ).toEqual(["/tmp/project-b", "/tmp/project-c", "/tmp/project-a"])
+    expect(
+      reorderProjectPaths({
+        activeProjectPath: "/tmp/missing",
+        overProjectPath: "/tmp/project-c",
+        projectPaths: ["/tmp/project-a", "/tmp/project-b", "/tmp/project-c"]
+      })
+    ).toEqual(["/tmp/project-a", "/tmp/project-b", "/tmp/project-c"])
   })
 
   it("derives project names from unix and windows style paths", () => {

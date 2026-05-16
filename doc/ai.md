@@ -73,9 +73,11 @@ AI 配置存储在 `electron-store` 的 `settings.ai` 字段中：
 Renderer (useChat + DefaultChatTransport)
   ↓ HTTP POST /api/chat (SSE stream)
 Hono Server (127.0.0.1:<port>)
+  ↓ load session memory + project mention context
   ↓ resolveModel(modelId)
 AI Provider Factory
   ↓ streamText({ model, messages })
+  ↓ onFinish -> persist UIMessage history + rolling session memory
 OpenAI / Anthropic / AI Gateway / Moonshot / Z.AI
 
 Telegram Bridge (main process)
@@ -140,6 +142,25 @@ const ChatComponent = () => {
 - Tool 调用使用 `part.type === "tool-<toolName>"` 替代 `"tool-invocation"`
 - `inputSchema` 替代 `parameters`，`maxOutputTokens` 替代 `maxTokens`
 
+## Chat Session 持久化
+
+桌面端 chat session 的消息历史由主进程 SQLite 持久化：
+
+- renderer 进入 `/chat/$sessionId` 后，通过 `chatSessions.listMessages` 拉取该 session 的 `UIMessage[]`
+- `ChatRuntime` 把这些消息作为 `useChat({ id, messages })` 的初始状态
+- 每次 `/api/chat` 的 UI stream 完成后，server 端 `onFinish` 调用 `replaceChatMessages()`，整体替换当前 session 的消息快照
+- 持久化消息时会同步更新 session `updatedAt`；如果 title 为空，会从第一条 user 文本生成 session 标题
+- renderer 的 `onFinish` 只负责失效 `chatSessions.list` 与 `chatSessions.listMessages` 缓存，让 sidebar title 与下次进入页面的历史保持一致
+
+## Session Memory
+
+当前 session memory 是本地确定性 rolling memory，不额外调用模型：
+
+- `chat_session_memories` 以 `session_id` 为主键保存当前 session 的 memory 文本
+- memory 取最近 `16` 条有文本内容的 `UIMessage`，并限制在 `6000` 字符以内
+- `/api/chat` 会读取已有 session memory，并与 `@` 项目引用生成的 snapshot context 一起组成 system prompt
+- 该模块边界在 [`chat-session-memory.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/chat-session-memory.ts)，后续可替换为模型总结或 embedding 检索，但不要把总结逻辑散落在 route 组件里
+
 ## Provider 工厂
 
 `resolveModel(modelId)` 解析 model ID 字符串：
@@ -191,6 +212,8 @@ Renderer draft.availableModels / draft.models
 
 | 文件                                                        | 说明                                     |
 | ----------------------------------------------------------- | ---------------------------------------- |
+| `apps/desktop/src/main/chat-messages.ts`                    | Chat UIMessage 持久化                    |
+| `apps/desktop/src/main/chat-session-memory.ts`              | Session memory 构建、读取与 prompt 注入  |
 | `apps/desktop/src/main/server/routes/chat.ts`               | Chat 流式对话端点                        |
 | `apps/desktop/src/main/server/lib/providers.ts`             | AI Provider 工厂                         |
 | `apps/desktop/src/main/telegram/bridge.ts`                  | Chat SDK Telegram adapter 与 AI 回复桥接 |

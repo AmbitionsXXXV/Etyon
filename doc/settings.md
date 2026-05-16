@@ -269,6 +269,8 @@ Other Renderers (RendererRoot)
   - 顶部新增独立的 `Pinned Threads` 扁平区块，显示所有已 pinned 的 session
   - 普通项目组只显示未 pinned 的 session
   - 组标题显示文件夹名，完整绝对路径只放在 tooltip
+  - 项目组默认使用稳定顺序，不再因为点击/打开 session 更新 `lastOpenedAt` 而自动移动
+  - 项目组支持拖拽排序；排序结果写入 `projectOrder`，保存在 `~/.config/etyon/sidebar-ui-state.json`
   - 每个项目组都支持折叠；`collapsedProjectPaths` 以精确 `projectPath` 作为 key，并跨窗口、重启保持
   - 当前 active session 所在项目组也遵循用户手动折叠态；点击项目组标题可直接收起当前项目
   - 每个项目组默认显示 `10` 条 session；点击 `Show more` 每次增量展开 `10` 条；全部显示后切成 `Show less`，回到默认 `10` 条

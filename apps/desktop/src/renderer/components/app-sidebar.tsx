@@ -33,6 +33,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import {
   Archive02Icon,
   Delete02Icon,
+  DragDropVerticalIcon,
   FileAddIcon,
   Folder01Icon,
   FolderOpenIcon,
@@ -49,6 +50,7 @@ import { motion } from "motion/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type {
   ChangeEvent,
+  DragEvent,
   Key,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -66,6 +68,7 @@ import {
   isProjectGroupExpanded,
   isProjectsSidebarMode,
   PROJECT_GROUP_PAGE_SIZE,
+  reorderProjectPaths,
   shouldShowProjectGroupLessAction,
   sortPinnedChatSessions
 } from "@/renderer/lib/sidebar/chat-sessions"
@@ -119,12 +122,24 @@ interface ProjectGroupSectionProps {
   archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
+  dragProjectLabel: string
+  draggingProjectPath?: string
   fallbackSessionTitle: string
   group: ChatSessionGroup
   onArchive: (sessionId: string) => void
   onArchiveProjectChats: (projectPath: string) => void
   onOpenProjectInFileManager: (projectPath: string) => void
   onOpen: (sessionId: string) => void
+  onProjectDragEnd: () => void
+  onProjectDragOver: (
+    event: DragEvent<HTMLDivElement>,
+    projectPath: string
+  ) => void
+  onProjectDragStart: (
+    event: DragEvent<HTMLButtonElement>,
+    projectPath: string
+  ) => void
+  onProjectDrop: (event: DragEvent<HTMLDivElement>, projectPath: string) => void
   onRemoveProject: (projectPath: string) => void
   onRenameProject: (projectPath: string, displayName: string) => void
   onShowLess: (projectPath: string) => void
@@ -149,6 +164,7 @@ interface ProjectGroupsSectionProps {
   archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
+  dragProjectLabel: string
   emptyProjectsLabel: string
   fallbackSessionTitle: string
   groups: ChatSessionGroup[]
@@ -158,6 +174,7 @@ interface ProjectGroupsSectionProps {
   onCreateProjectChatSession: () => void
   onOpenProjectInFileManager: (projectPath: string) => void
   onOpen: (sessionId: string) => void
+  onReorderProjects: (projectPaths: string[]) => void
   onRemoveProject: (projectPath: string) => void
   onRenameProject: (projectPath: string, displayName: string) => void
   onShowLess: (projectPath: string) => void
@@ -508,6 +525,8 @@ const ProjectGroupSection = ({
   archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
+  dragProjectLabel,
+  draggingProjectPath,
   fallbackSessionTitle,
   group,
   onOpen,
@@ -516,6 +535,10 @@ const ProjectGroupSection = ({
   onArchive,
   onArchiveProjectChats,
   onOpenProjectInFileManager,
+  onProjectDragEnd,
+  onProjectDragOver,
+  onProjectDragStart,
+  onProjectDrop,
   onRemoveProject,
   onRenameProject,
   onToggleCollapsed,
@@ -543,6 +566,7 @@ const ProjectGroupSection = ({
   })
   const isArchivingProject = archivingProjectPath === group.projectPath
   const isPinnedProject = Boolean(group.pinnedAt)
+  const isDraggingProject = draggingProjectPath === group.projectPath
   const isRemovingProject = removingProjectPath === group.projectPath
   const isRenamingProject = renamingProjectPath === group.projectPath
   const isSettingPinnedProject = settingPinnedProjectPath === group.projectPath
@@ -663,8 +687,37 @@ const ProjectGroupSection = ({
       : t("home.sidebar.projectMenu.archiveChats")
 
   return (
-    <SidebarGroup className="px-0 pb-3" key={group.projectPath}>
+    <SidebarGroup
+      className={cn("px-0 pb-3", isDraggingProject && "opacity-60")}
+      key={group.projectPath}
+      onDragEnd={onProjectDragEnd}
+      onDragOver={(event) => {
+        onProjectDragOver(event, group.projectPath)
+      }}
+      onDrop={(event) => {
+        onProjectDrop(event, group.projectPath)
+      }}
+    >
       <div className={PROJECT_GROUP_ROW_CLASS_NAME}>
+        <button
+          aria-label={`${dragProjectLabel}: ${group.projectName}`}
+          className={cn(
+            "flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded-lg border-0 bg-transparent p-0 text-sidebar-foreground/40 outline-none transition-[opacity,color] duration-150 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring active:cursor-grabbing",
+            "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 focus-visible:opacity-100"
+          )}
+          draggable
+          onDragStart={(event) => {
+            onProjectDragStart(event, group.projectPath)
+          }}
+          title={`${dragProjectLabel}: ${group.projectName}`}
+          type="button"
+        >
+          <HugeiconsIcon
+            className="size-3.5 shrink-0"
+            icon={DragDropVerticalIcon}
+            strokeWidth={2}
+          />
+        </button>
         <button
           aria-label={`${toggleProjectGroupLabel}: ${group.projectName}`}
           className={PROJECT_GROUP_TOGGLE_CLASS_NAME}
@@ -900,6 +953,7 @@ const ProjectGroupsSection = ({
   archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
+  dragProjectLabel,
   emptyProjectsLabel,
   fallbackSessionTitle,
   groups,
@@ -909,6 +963,7 @@ const ProjectGroupsSection = ({
   onCreateProjectChatSession,
   onOpenProjectInFileManager,
   onOpen,
+  onReorderProjects,
   onRemoveProject,
   onRenameProject,
   onShowLess,
@@ -930,6 +985,54 @@ const ProjectGroupsSection = ({
   togglingPinnedSessionId,
   visibleCountForProject
 }: ProjectGroupsSectionProps) => {
+  const [draggingProjectPath, setDraggingProjectPath] = useState<string | null>(
+    null
+  )
+  const handleProjectDragEnd = useCallback(() => {
+    setDraggingProjectPath(null)
+  }, [])
+  const handleProjectDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>, projectPath: string) => {
+      if (!draggingProjectPath || draggingProjectPath === projectPath) {
+        return
+      }
+
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+    },
+    [draggingProjectPath]
+  )
+  const handleProjectDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>, projectPath: string) => {
+      event.dataTransfer.effectAllowed = "move"
+      event.dataTransfer.setData("text/plain", projectPath)
+      setDraggingProjectPath(projectPath)
+    },
+    []
+  )
+  const handleProjectDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>, overProjectPath: string) => {
+      event.preventDefault()
+
+      const activeProjectPath =
+        draggingProjectPath || event.dataTransfer.getData("text/plain")
+
+      if (!activeProjectPath || activeProjectPath === overProjectPath) {
+        setDraggingProjectPath(null)
+        return
+      }
+
+      onReorderProjects(
+        reorderProjectPaths({
+          activeProjectPath,
+          overProjectPath,
+          projectPaths: groups.map((group) => group.projectPath)
+        })
+      )
+      setDraggingProjectPath(null)
+    },
+    [draggingProjectPath, groups, onReorderProjects]
+  )
   const sectionContent =
     groups.length > 0 ? (
       <div className="mt-1">
@@ -939,6 +1042,8 @@ const ProjectGroupsSection = ({
             archivingProjectPath={archivingProjectPath}
             collapsedProjectPaths={collapsedProjectPaths}
             currentSessionId={currentSessionId}
+            dragProjectLabel={dragProjectLabel}
+            draggingProjectPath={draggingProjectPath ?? undefined}
             fallbackSessionTitle={fallbackSessionTitle}
             group={group}
             key={group.projectPath}
@@ -946,6 +1051,10 @@ const ProjectGroupsSection = ({
             onArchiveProjectChats={onArchiveProjectChats}
             onOpen={onOpen}
             onOpenProjectInFileManager={onOpenProjectInFileManager}
+            onProjectDragEnd={handleProjectDragEnd}
+            onProjectDragOver={handleProjectDragOver}
+            onProjectDragStart={handleProjectDragStart}
+            onProjectDrop={handleProjectDrop}
             onRemoveProject={onRemoveProject}
             onRenameProject={onRenameProject}
             onShowLess={onShowLess}
@@ -1041,6 +1150,7 @@ export const AppSidebar = () => {
   const {
     collapsedProjectPaths,
     handleRenameProject,
+    handleSetProjectOrder,
     handleSetProjectPinned,
     handleToggleProjectCollapsed,
     isRenamingProjectPath,
@@ -1048,6 +1158,7 @@ export const AppSidebar = () => {
     isSettingPinnedProjectPath,
     persistSidebarWidth,
     projectDisplayNames,
+    projectOrder,
     projectPins,
     setSidebarWidthLocally,
     sidebarWidthPx
@@ -1063,6 +1174,7 @@ export const AppSidebar = () => {
   )
   const chatSessionGroups = groupChatSessionsByProject(chatSessions, {
     projectDisplayNames,
+    projectOrder,
     projectPins
   })
   const projectSessionCount = chatSessionGroups.reduce(
@@ -1200,6 +1312,7 @@ export const AppSidebar = () => {
           archivingProjectPath={isArchivingProjectPath}
           collapsedProjectPaths={collapsedProjectPaths}
           currentSessionId={currentSessionId}
+          dragProjectLabel={t("sidebar.dragProject")}
           emptyProjectsLabel={t("sidebar.emptyProjects")}
           fallbackSessionTitle={fallbackSessionTitle}
           groups={chatSessionGroups}
@@ -1209,6 +1322,7 @@ export const AppSidebar = () => {
           onCreateProjectChatSession={handleCreateProjectChatSession}
           onOpen={handleOpenChatSession}
           onOpenProjectInFileManager={handleOpenProjectInFileManager}
+          onReorderProjects={handleSetProjectOrder}
           onRemoveProject={handleRemoveProject}
           onRenameProject={handleRenameProject}
           onShowLess={handleShowLessProjectSessions}

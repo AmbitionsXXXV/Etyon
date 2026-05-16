@@ -67,6 +67,7 @@
     "sidebar": {
       "addProject": "Add project",
       "archiveSession": "Archive Session",
+      "dragProject": "Reorder project",
       "empty": "No chat sessions yet. Click New Chat in the top-right to start.",
       "emptyProjects": "No project entries yet. Use the add project button to create your first project chat.",
       "pinSession": "Pin Session",

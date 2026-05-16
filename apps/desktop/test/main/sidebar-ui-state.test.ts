@@ -7,6 +7,7 @@ import {
   removeProjectUiState,
   setCollapsedProjectPaths,
   setProjectDisplayName,
+  setProjectOrder,
   setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
@@ -54,6 +55,7 @@ describe("sidebar ui state", () => {
     expect(getSidebarUiState()).toEqual({
       collapsedProjectPaths: [],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 272
     })
@@ -69,6 +71,7 @@ describe("sidebar ui state", () => {
     expect(nextState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 272
     })
@@ -81,12 +84,14 @@ describe("sidebar ui state", () => {
     expect(setSidebarWidthPx(999)).toEqual({
       collapsedProjectPaths: ["/tmp/a-project"],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 420
     })
     expect(setSidebarWidthPx(120)).toEqual({
       collapsedProjectPaths: ["/tmp/a-project"],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 240
     })
@@ -108,6 +113,21 @@ describe("sidebar ui state", () => {
     expect(pinnedState.projectPins["/tmp/b-project"]).toBeTruthy()
   })
 
+  it("persists project order without sorting it", () => {
+    const orderedState = setProjectOrder([
+      "/tmp/c-project",
+      "/tmp/a-project",
+      "/tmp/a-project",
+      " /tmp/b-project "
+    ])
+
+    expect(orderedState.projectOrder).toEqual([
+      "/tmp/c-project",
+      "/tmp/a-project",
+      "/tmp/b-project"
+    ])
+  })
+
   it("removes project-specific sidebar state", () => {
     removeProjectUiState("/tmp/b-project")
     setCollapsedProjectPaths(["/tmp/remove-project"])
@@ -115,6 +135,7 @@ describe("sidebar ui state", () => {
       displayName: "Remove Me",
       projectPath: "/tmp/remove-project"
     })
+    setProjectOrder(["/tmp/stay-project", "/tmp/remove-project"])
     setProjectPinned({
       pinned: true,
       projectPath: "/tmp/remove-project"
@@ -123,6 +144,7 @@ describe("sidebar ui state", () => {
     expect(removeProjectUiState("/tmp/remove-project")).toMatchObject({
       collapsedProjectPaths: [],
       projectDisplayNames: {},
+      projectOrder: ["/tmp/stay-project"],
       projectPins: {}
     })
   })

@@ -43,6 +43,12 @@ const normalizeProjectDisplayNames = (
       .filter(([projectPath, displayName]) => projectPath && displayName)
   )
 
+const normalizeProjectOrder = (projectOrder: string[]): string[] => [
+  ...new Set(
+    projectOrder.map((projectPath) => projectPath.trim()).filter(Boolean)
+  )
+]
+
 const normalizeProjectPins = (
   projectPins: Record<string, string>
 ): Record<string, string> =>
@@ -68,6 +74,7 @@ const parseStoredSidebarUiState = (value: unknown): SidebarUiState => {
     projectDisplayNames: normalizeProjectDisplayNames(
       parsedState.projectDisplayNames
     ),
+    projectOrder: normalizeProjectOrder(parsedState.projectOrder),
     projectPins: normalizeProjectPins(parsedState.projectPins),
     sidebarWidthPx: normalizeSidebarWidthPx(parsedState.sidebarWidthPx)
   }
@@ -169,6 +176,17 @@ export const setProjectPinned = ({
   return nextState
 }
 
+export const setProjectOrder = (projectOrder: string[]): SidebarUiState => {
+  const nextState = parseStoredSidebarUiState({
+    ...getSidebarUiState(),
+    projectOrder
+  })
+
+  store.set("sidebarUiState", nextState)
+
+  return nextState
+}
+
 export const removeProjectUiState = (projectPath: string): SidebarUiState => {
   const normalizedProjectPath = projectPath.trim()
   const currentState = getSidebarUiState()
@@ -181,6 +199,9 @@ export const removeProjectUiState = (projectPath: string): SidebarUiState => {
     projectDisplayNames: omitRecordKey(
       currentState.projectDisplayNames,
       normalizedProjectPath
+    ),
+    projectOrder: currentState.projectOrder.filter(
+      (orderedProjectPath) => orderedProjectPath !== normalizedProjectPath
     ),
     projectPins: omitRecordKey(currentState.projectPins, normalizedProjectPath)
   })

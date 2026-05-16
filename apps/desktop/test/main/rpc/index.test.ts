@@ -232,18 +232,21 @@ describe("message-port rpc", () => {
     expect(initialState).toEqual({
       collapsedProjectPaths: [],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 272
     })
     expect(updatedState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 272
     })
     expect(resizedState).toEqual({
       collapsedProjectPaths: ["/tmp/a-project", "/tmp/b-project"],
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {},
       sidebarWidthPx: 320
     })
@@ -280,6 +283,9 @@ describe("message-port rpc", () => {
       pinned: true,
       projectPath
     })
+    const orderedState = await client.sidebarState.setProjectOrder({
+      projectOrder: [projectPath]
+    })
     const sessionsAfterArchive = await client.projects.archiveChats({
       projectPath
     })
@@ -294,6 +300,7 @@ describe("message-port rpc", () => {
       "Project Actions"
     )
     expect(pinnedState.projectPins[projectPath]).toBeTruthy()
+    expect(orderedState.projectOrder).toEqual([projectPath])
     expect(
       sessionsAfterArchive.some((session) => session.id === createdSession.id)
     ).toBe(false)
@@ -302,6 +309,7 @@ describe("message-port rpc", () => {
     ).toBe(false)
     expect(await client.sidebarState.get()).toMatchObject({
       projectDisplayNames: {},
+      projectOrder: [],
       projectPins: {}
     })
 

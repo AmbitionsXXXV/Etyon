@@ -37,6 +37,35 @@ export const ArchiveChatSessionInputSchema = z.object({
   sessionId: z.string()
 })
 
+export const ChatUiMessageSchema = z.object({
+  id: z.string(),
+  metadata: z.unknown().optional(),
+  parts: z.array(z.unknown()),
+  role: z.enum(["assistant", "system", "user"])
+})
+
+export const ChatSessionMessagesInputSchema = z.object({
+  sessionId: z.string()
+})
+
+export const ChatSessionMessagesOutputSchema = z.object({
+  messages: z.array(ChatUiMessageSchema),
+  sessionId: z.string()
+})
+
+export const ChatSessionMemorySchema = z.object({
+  content: z.string(),
+  createdAt: z.string(),
+  messageCount: z.number().int().nonnegative(),
+  sessionId: z.string(),
+  updatedAt: z.string()
+})
+
+export const ChatSessionMemoryOutputSchema = z.object({
+  memory: ChatSessionMemorySchema.nullable(),
+  sessionId: z.string()
+})
+
 export const CreateChatSessionInputSchema = z.object({
   currentSessionId: z.string().optional(),
   projectPath: z.string().min(1).optional()
@@ -60,7 +89,15 @@ export type ArchiveChatSessionInput = z.infer<
   typeof ArchiveChatSessionInputSchema
 >
 export type ChatMention = z.infer<typeof ChatMentionSchema>
+export type ChatSessionMemory = z.infer<typeof ChatSessionMemorySchema>
+export type ChatSessionMessagesInput = z.infer<
+  typeof ChatSessionMessagesInputSchema
+>
+export type ChatSessionMessagesOutput = z.infer<
+  typeof ChatSessionMessagesOutputSchema
+>
 export type ChatSessionSummary = z.infer<typeof ChatSessionSummarySchema>
+export type ChatUiMessage = z.infer<typeof ChatUiMessageSchema>
 export type CreateChatSessionInput = z.infer<
   typeof CreateChatSessionInputSchema
 >

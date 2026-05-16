@@ -2,6 +2,9 @@ import {
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
+  ChatSessionMemoryOutputSchema,
+  ChatSessionMessagesInputSchema,
+  ChatSessionMessagesOutputSchema,
   ChatSessionsListOutputSchema,
   CreateChatSessionInputSchema,
   EnsureProjectSnapshotInputSchema,
@@ -21,6 +24,7 @@ import {
   SetCollapsedProjectsInputSchema,
   SetChatSessionModelInputSchema,
   SetProjectPinnedInputSchema,
+  SetProjectOrderInputSchema,
   SetSidebarWidthInputSchema,
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
@@ -33,6 +37,8 @@ import {
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
+import { listChatMessages } from "@/main/chat-messages"
+import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
   archiveChatSession,
   archiveProjectChatSessions,
@@ -62,6 +68,7 @@ import {
   removeProjectUiState,
   setCollapsedProjectPaths,
   setProjectDisplayName,
+  setProjectOrder,
   setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
@@ -112,6 +119,25 @@ const chatSessionsArchive = rpc
 const chatSessionsList = rpc
   .output(ChatSessionsListOutputSchema)
   .handler(({ context }) => listChatSessions(context.db))
+
+const chatSessionsListMessages = rpc
+  .input(ChatSessionMessagesInputSchema)
+  .output(ChatSessionMessagesOutputSchema)
+  .handler(async ({ context, input }) => ({
+    messages: await listChatMessages({
+      db: context.db,
+      sessionId: input.sessionId
+    }),
+    sessionId: input.sessionId
+  }))
+
+const chatSessionsGetMemory = rpc
+  .input(ChatSessionMessagesInputSchema)
+  .output(ChatSessionMemoryOutputSchema)
+  .handler(async ({ context, input }) => ({
+    memory: (await getChatSessionMemory(context.db, input.sessionId)) ?? null,
+    sessionId: input.sessionId
+  }))
 
 const chatSessionsOpen = rpc
   .input(OpenChatSessionInputSchema)
@@ -293,6 +319,17 @@ const sidebarStateSetCollapsedProjects = rpc
     return result
   })
 
+const sidebarStateSetProjectOrder = rpc
+  .input(SetProjectOrderInputSchema)
+  .output(SidebarUiStateSchema)
+  .handler(({ input }) => {
+    const result = setProjectOrder(input.projectOrder)
+
+    broadcastSidebarState(result)
+
+    return result
+  })
+
 const sidebarStateSetWidth = rpc
   .input(SetSidebarWidthInputSchema)
   .output(SidebarUiStateSchema)
@@ -308,7 +345,9 @@ export const router = {
   chatSessions: {
     archive: chatSessionsArchive,
     create: chatSessionsCreate,
+    getMemory: chatSessionsGetMemory,
     list: chatSessionsList,
+    listMessages: chatSessionsListMessages,
     open: chatSessionsOpen,
     setModel: chatSessionsSetModel,
     setPinned: chatSessionsSetPinned
@@ -342,6 +381,7 @@ export const router = {
   sidebarState: {
     get: sidebarStateGet,
     setCollapsedProjects: sidebarStateSetCollapsedProjects,
+    setProjectOrder: sidebarStateSetProjectOrder,
     setWidth: sidebarStateSetWidth
   },
   settings: {
