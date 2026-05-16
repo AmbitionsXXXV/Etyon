@@ -8,6 +8,7 @@ import { app } from "electron"
 import type { AppDatabase } from "@/main/db"
 import { getAppConfigDir } from "@/main/db/libsql-paths"
 import { chatSessions } from "@/main/db/schema"
+import { getGitProjectStatuses } from "@/main/git-project-status"
 
 const buildDefaultProjectPath = (): string =>
   getAppConfigDir(app.getPath("home"))
@@ -117,14 +118,23 @@ export const createChatSession = async ({
   return createdSession
 }
 
-export const listChatSessions = (
+export const listChatSessions = async (
   db: AppDatabase
-): Promise<ChatSessionSummary[]> =>
-  db
+): Promise<ChatSessionSummary[]> => {
+  const sessions = await db
     .select()
     .from(chatSessions)
     .where(isNull(chatSessions.archivedAt))
     .orderBy(desc(chatSessions.lastOpenedAt), desc(chatSessions.createdAt))
+  const gitStatuses = await getGitProjectStatuses(
+    sessions.map((session) => session.projectPath)
+  )
+
+  return sessions.map((session) => ({
+    ...session,
+    gitStatus: gitStatuses.get(path.resolve(session.projectPath))
+  }))
+}
 
 export const openChatSession = async ({
   db,

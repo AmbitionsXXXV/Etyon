@@ -9,6 +9,8 @@ import {
   CreateChatSessionInputSchema,
   EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
+  GitProjectDiffInputSchema,
+  GitProjectDiffOutputSchema,
   ListMemoryEntriesInputSchema,
   MemoryEntriesOutputSchema,
   MemoryStatsOutputSchema,
@@ -55,6 +57,7 @@ import {
   setChatSessionPinned
 } from "@/main/chat-sessions"
 import { listSystemFonts } from "@/main/fonts"
+import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { getMemoryStats, listMemoryEntries } from "@/main/memory"
@@ -100,6 +103,19 @@ const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
 const fontsList = rpc
   .output(FontListOutputSchema)
   .handler(() => listSystemFonts())
+
+const gitProjectDiff = rpc
+  .input(GitProjectDiffInputSchema)
+  .output(GitProjectDiffOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return getGitProjectDiff(session.projectPath)
+  })
 
 const memoryList = rpc
   .input(ListMemoryEntriesInputSchema)
@@ -383,6 +399,9 @@ export const router = {
   },
   fonts: {
     list: fontsList
+  },
+  git: {
+    diff: gitProjectDiff
   },
   logger: {
     emit: loggerEmit

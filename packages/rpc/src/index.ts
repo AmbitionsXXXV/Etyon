@@ -27,6 +27,20 @@ export type {
   SetPinnedChatSessionInput
 } from "./schemas/chat-sessions"
 export { FontListOutputSchema } from "./schemas/fonts"
+export {
+  GitFileStatusSchema,
+  GitProjectDiffInputSchema,
+  GitProjectDiffOutputSchema,
+  GitProjectStatusSchema,
+  GitStatusFileSchema
+} from "./schemas/git"
+export type {
+  GitFileStatus,
+  GitProjectDiffInput,
+  GitProjectDiffOutput,
+  GitProjectStatus,
+  GitStatusFile
+} from "./schemas/git"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export {
   ListMemoryEntriesInputSchema,

@@ -29,11 +29,19 @@ const upsertChatSession = ({
 }: {
   nextSession: ChatSessionSummary
   sessions: ChatSessionSummary[] | undefined
-}): ChatSessionSummary[] =>
-  sortChatSessionsByLastOpenedAt([
-    nextSession,
+}): ChatSessionSummary[] => {
+  const previousSession = sessions?.find(
+    (session) => session.id === nextSession.id
+  )
+
+  return sortChatSessionsByLastOpenedAt([
+    {
+      ...nextSession,
+      gitStatus: nextSession.gitStatus ?? previousSession?.gitStatus
+    },
     ...(sessions ?? []).filter((session) => session.id !== nextSession.id)
   ])
+}
 
 export const useChatSessionActions = () => {
   const navigate = useNavigate()

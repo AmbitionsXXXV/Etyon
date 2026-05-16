@@ -58,6 +58,7 @@ import type {
 
 import { orpc } from "@/renderer/lib/rpc"
 import {
+  CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
   getChatSessionTitle,
   getChatSessionMetaItems,
   getVisibleProjectGroupSessions,
@@ -89,9 +90,9 @@ const PROJECTS_SECTION_EMPTY_CLASS_NAME =
 const PROJECTS_SECTION_HEADER_CLASS_NAME =
   "title-bar-no-drag group/projects-header flex items-center gap-1 rounded-[1.125rem] px-1 py-1.5 transition-[background-color,color] hover:bg-white/[0.03] focus-within:bg-white/[0.03]"
 const SESSION_ROW_CLASS_NAME =
-  "h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-[14px] font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
+  "min-h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-sm font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
 const SESSION_ROW_META_CLASS_NAME =
-  "shrink-0 text-[14px] leading-none font-medium tabular-nums text-sidebar-foreground/58"
+  "shrink-0 text-sm leading-none font-medium tabular-nums text-sidebar-foreground/58"
 
 interface AppSidebarShellProps {
   children?: ReactNode
@@ -107,6 +108,7 @@ interface ChatSessionItemProps {
   archivingSessionId?: string
   currentSessionId?: string
   fallbackSessionTitle: string
+  layout?: "project" | "simple"
   onArchive: (sessionId: string) => void
   onOpen: (sessionId: string) => void
   onTogglePinned?: (sessionId: string, pinned: boolean) => void
@@ -223,6 +225,70 @@ const getProjectMenuDisabledKeys = ({
   }
 
   return disabledKeys
+}
+
+const getSessionButtonTitle = ({
+  diffLabel,
+  projectPath
+}: {
+  diffLabel?: string
+  projectPath: string
+}): string => (diffLabel ? `${projectPath} - ${diffLabel}` : projectPath)
+
+const getSessionMainButtonPaddingClassName = (showPinAction: boolean): string =>
+  showPinAction ? "pl-1 pr-0" : "px-0"
+
+const getSessionRowPaddingClassName = (showPinAction: boolean): string =>
+  showPinAction ? "px-0" : "px-3"
+
+const getSessionTitleContainerLayoutClassName = (
+  showProjectDiffLine: boolean
+): string =>
+  showProjectDiffLine
+    ? "flex-col justify-center gap-1 py-1.5"
+    : "items-center leading-none"
+
+const SidebarGitStatusSummary = ({
+  gitStatus
+}: {
+  gitStatus: ChatSessionSummary["gitStatus"]
+}) => {
+  if (!gitStatus?.isRepository || gitStatus.changedFileCount === 0) {
+    return null
+  }
+
+  const items = [
+    gitStatus.added > 0
+      ? { className: "text-success", label: `+${gitStatus.added}` }
+      : null,
+    gitStatus.modified > 0
+      ? { className: "text-warning", label: `~${gitStatus.modified}` }
+      : null,
+    gitStatus.deleted > 0
+      ? { className: "text-danger", label: `-${gitStatus.deleted}` }
+      : null,
+    gitStatus.renamed > 0
+      ? { className: "text-accent", label: `R${gitStatus.renamed}` }
+      : null,
+    gitStatus.untracked > 0
+      ? {
+          className: "text-sidebar-foreground/55",
+          label: `?${gitStatus.untracked}`
+        }
+      : null
+  ].filter(
+    (item): item is { className: string; label: string } => item !== null
+  )
+
+  return (
+    <span className="inline-flex max-w-22 min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-full border border-sidebar-border/60 bg-white/[0.035] px-1.5 py-0.5 text-[11px] leading-none font-semibold tabular-nums">
+      {items.map((item) => (
+        <span className={cn("shrink-0", item.className)} key={item.label}>
+          {item.label}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 export const AppSidebarShell = ({
@@ -403,6 +469,7 @@ const ChatSessionItem = ({
   const isArchiving = archivingSessionId === session.id
   const isPinned = Boolean(session.pinnedAt)
   const isTogglingPinned = togglingPinnedSessionId === session.id
+  const pinActionLabel = t(isPinned ? "unpinSession" : "pinSession")
   const handleTogglePinned = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
@@ -423,6 +490,7 @@ const ChatSessionItem = ({
   )
 
   const isRowActive = currentSessionId === session.id
+  const showProjectDiffLine = false
 
   return (
     <SidebarMenuItem>
@@ -430,13 +498,13 @@ const ChatSessionItem = ({
         className={cn(
           SESSION_ROW_CLASS_NAME,
           "flex w-full items-center gap-0 overflow-hidden py-0",
-          showPinAction ? "px-0" : "px-3"
+          getSessionRowPaddingClassName(showPinAction)
         )}
         data-active={isRowActive ? true : undefined}
       >
         {showPinAction ? (
           <button
-            aria-label={isPinned ? t("unpinSession") : t("pinSession")}
+            aria-label={pinActionLabel}
             className={cn(
               "flex min-h-10.5 w-9 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-sidebar-foreground/70 outline-none transition-[opacity,color] duration-150 hover:bg-white/5 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50",
               "pointer-events-none opacity-0",
@@ -446,7 +514,7 @@ const ChatSessionItem = ({
             )}
             disabled={isTogglingPinned}
             onClick={handleTogglePinned}
-            title={isPinned ? t("unpinSession") : t("pinSession")}
+            title={pinActionLabel}
             type="button"
           >
             <HugeiconsIcon
@@ -459,30 +527,36 @@ const ChatSessionItem = ({
           <button
             className={cn(
               "flex min-w-0 flex-1 items-center gap-0 border-0 bg-transparent py-0 text-left text-inherit outline-none transition-colors hover:bg-transparent focus-visible:z-1 focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-              showPinAction ? "pl-1 pr-0" : "px-0"
+              getSessionMainButtonPaddingClassName(showPinAction)
             )}
             onClick={handleClick}
-            title={session.projectPath}
+            title={getSessionButtonTitle({
+              diffLabel: diffMetaItem?.label,
+              projectPath: session.projectPath
+            })}
             type="button"
           >
-            <div className="flex min-w-0 flex-1 items-center text-left leading-none">
-              <span className="block truncate leading-none">
+            <div
+              className={cn(
+                "flex min-w-0 flex-1 text-left",
+                getSessionTitleContainerLayoutClassName(showProjectDiffLine)
+              )}
+            >
+              <span className="block max-w-full truncate leading-none">
                 {getChatSessionTitle({
                   fallbackTitle: fallbackSessionTitle,
                   session
                 })}
               </span>
+              {showProjectDiffLine ? (
+                <span className="block max-w-full truncate text-[12px] leading-none font-medium text-sidebar-foreground/50 tabular-nums">
+                  {diffMetaItem?.label}
+                </span>
+              ) : null}
             </div>
             <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-none">
               {diffMetaItem?.label ? (
-                <span
-                  className={cn(
-                    SESSION_ROW_META_CLASS_NAME,
-                    "min-w-17 text-right"
-                  )}
-                >
-                  {diffMetaItem.label}
-                </span>
+                <SidebarGitStatusSummary gitStatus={session.gitStatus} />
               ) : null}
               <span
                 className={cn(
@@ -839,6 +913,7 @@ const ProjectGroupSection = ({
                 archivingSessionId={archivingSessionId}
                 fallbackSessionTitle={fallbackSessionTitle}
                 key={session.id}
+                layout="project"
                 onArchive={onArchive}
                 onOpen={onOpen}
                 onTogglePinned={onTogglePinned}
@@ -1143,7 +1218,10 @@ export const AppSidebar = () => {
     setSidebarWidthLocally,
     sidebarWidthPx
   } = useProjectSidebarState()
-  const chatSessionsQuery = useQuery(orpc.chatSessions.list.queryOptions({}))
+  const chatSessionsQuery = useQuery({
+    ...orpc.chatSessions.list.queryOptions({}),
+    refetchInterval: CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+  })
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
   const [projectVisibleCounts, setProjectVisibleCounts] = useState<
     Record<string, number>
@@ -1280,6 +1358,7 @@ export const AppSidebar = () => {
                   currentSessionId={currentSessionId}
                   fallbackSessionTitle={fallbackSessionTitle}
                   key={session.id}
+                  layout="project"
                   onArchive={handleArchiveChatSession}
                   onOpen={handleOpenChatSession}
                   onTogglePinned={handleSetChatSessionPinned}

@@ -4,6 +4,7 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000
 const HOUR_IN_MS = 60 * 60 * 1000
 const MINUTE_IN_MS = 60 * 1000
 const PATH_SEPARATOR_PATTERN = /[\\/]+/u
+export const CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS = 10_000
 export const PROJECT_GROUP_PAGE_SIZE = 10
 
 export interface ChatSessionMetaItem {
@@ -59,6 +60,24 @@ export const formatChatSessionRelativeTime = (
   }
 
   return `${Math.max(1, Math.floor(diffInMs / DAY_IN_MS))}d`
+}
+
+export const formatGitStatusCompactLabel = (
+  gitStatus: ChatSessionSummary["gitStatus"]
+): string | null => {
+  if (!gitStatus?.isRepository || gitStatus.changedFileCount === 0) {
+    return null
+  }
+
+  const parts = [
+    gitStatus.added > 0 ? `+${gitStatus.added}` : null,
+    gitStatus.modified > 0 ? `~${gitStatus.modified}` : null,
+    gitStatus.deleted > 0 ? `-${gitStatus.deleted}` : null,
+    gitStatus.renamed > 0 ? `R${gitStatus.renamed}` : null,
+    gitStatus.untracked > 0 ? `?${gitStatus.untracked}` : null
+  ].filter((part): part is string => part !== null)
+
+  return parts.join(" ")
 }
 
 export const getChatSessionTitle = ({
@@ -165,12 +184,24 @@ export const getChatSessionMetaItems = ({
 }: {
   now?: Date
   session: ChatSessionSummary
-}): ChatSessionMetaItem[] => [
-  {
-    kind: "time",
-    label: formatChatSessionRelativeTime(session.lastOpenedAt, now)
-  }
-]
+}): ChatSessionMetaItem[] => {
+  const gitStatusLabel = formatGitStatusCompactLabel(session.gitStatus)
+
+  return [
+    ...(gitStatusLabel
+      ? [
+          {
+            kind: "git-diff" as const,
+            label: gitStatusLabel
+          }
+        ]
+      : []),
+    {
+      kind: "time",
+      label: formatChatSessionRelativeTime(session.lastOpenedAt, now)
+    }
+  ]
+}
 
 export const getVisibleProjectGroupSessions = ({
   sessions,

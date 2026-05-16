@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   formatChatSessionRelativeTime,
+  formatGitStatusCompactLabel,
   getChatSessionMetaItems,
   getChatSessionTitle,
   getVisibleProjectGroupSessions,
@@ -229,9 +230,43 @@ describe("sidebar chat session helpers", () => {
     expect(
       getChatSessionMetaItems({
         now: new Date("2026-03-26T13:00:00.000Z"),
-        session: firstSession
+        session: {
+          ...firstSession,
+          gitStatus: {
+            added: 1,
+            changedFileCount: 4,
+            deleted: 0,
+            files: [
+              {
+                path: "src/app.tsx",
+                status: "added"
+              },
+              {
+                path: "src/main.ts",
+                status: "modified"
+              },
+              {
+                path: "src/settings.ts",
+                status: "modified"
+              },
+              {
+                path: "README.md",
+                status: "untracked"
+              }
+            ],
+            isRepository: true,
+            modified: 2,
+            projectPath: "/tmp/project-a",
+            renamed: 0,
+            untracked: 1
+          }
+        }
       })
     ).toEqual([
+      {
+        kind: "git-diff",
+        label: "+1 ~2 ?1"
+      },
       {
         kind: "time",
         label: "1h"
@@ -289,5 +324,34 @@ describe("sidebar chat session helpers", () => {
   it("exposes the mode predicate", () => {
     expect(isProjectsSidebarMode("projects")).toBe(true)
     expect(isProjectsSidebarMode("simple")).toBe(false)
+  })
+
+  it("keeps git status labels compact", () => {
+    expect(
+      formatGitStatusCompactLabel({
+        added: 1,
+        changedFileCount: 5,
+        deleted: 1,
+        files: [],
+        isRepository: true,
+        modified: 1,
+        projectPath: "/tmp/project-a",
+        renamed: 1,
+        untracked: 1
+      })
+    ).toBe("+1 ~1 -1 R1 ?1")
+    expect(
+      formatGitStatusCompactLabel({
+        added: 0,
+        changedFileCount: 0,
+        deleted: 0,
+        files: [],
+        isRepository: true,
+        modified: 0,
+        projectPath: "/tmp/project-a",
+        renamed: 0,
+        untracked: 0
+      })
+    ).toBeNull()
   })
 })

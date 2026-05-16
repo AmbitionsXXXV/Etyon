@@ -47,7 +47,7 @@ export const EnsureProjectSnapshotInputSchema = z.object({
 })
 
 export const ListProjectSnapshotFilesInputSchema = z.object({
-  limit: z.number().int().positive().max(100).default(50),
+  limit: z.number().int().positive().max(5000).default(50),
   query: z.string().default(""),
   sessionId: z.string()
 })

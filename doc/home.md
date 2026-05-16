@@ -72,6 +72,22 @@ Sidebar 采用 **卡片嵌入式侧栏** 设计语言：
 - 会话行外层 `flex items-center`：左侧 pin 为独立 `button`（`showPinAction` 时），中间为打开会话的主 `button`（标题 + git diff 元数据 + 时间列），与时间列对齐的归档为兄弟 `button` 绝对定位叠放，避免 `button` 嵌套。
 - 时间列固定 `min-w-8`；归档默认隐藏（`opacity-0` + `pointer-events-none`），在 `SidebarMenuItem` 的 `group/menu-item` 上通过 `group-hover` 与 `group-focus-within` 显示并启用点击，时间文案同步淡出。
 - 归档按钮调用 `chatSessions.archive`，主进程写入 `archived_at` 并清空 `pinned_at`。归档后的会话不会再出现在 sidebar active list；如果归档的是当前会话，renderer 会自动跳到列表中的下一个会话，没有下一个会话则回到首页。
+- `chatSessions.list` 会在主进程通过 `git status --porcelain=v1 -z` 为每个项目目录补充可选 `gitStatus`；非 Git 目录不展示 Git 元信息。
+- Git 变更摘要不再回退为 `5 files` 文案，也不再在 `Projects` 模式下额外占用第二行；会话 item 统一在右侧用小型状态徽标展示 `+1 ~2 -1 R1 ?1`，与右侧 review panel 的新增 / 删除颜色保持一致。
+
+### Chat 项目上下文面板
+
+- Chat 页面通过顶部 `Review` trigger 展开右侧项目上下文面板，不再依赖 `VITE_ENABLE_CHAT_SESSION_DETAILS` 调试开关。
+- 面板使用 `@heroui-pro/react` 的 `Resizable` 组织为主聊天区 + 可拖拽右侧面板；`Resizable` 占满 chat 路由可用高度，标题和 `Review` trigger 放在左侧 panel 内，右侧 panel 不再被标题区挤压成局部高度。
+- app shell 的折叠侧栏控制区改为绝对浮层，不再占用 chat route 高度；chat 标题行和右侧 panel 顶部 tab bar 使用 `title-bar-drag`，交互按钮使用 `title-bar-no-drag`，保证顶部空间可用于内容且仍能拖动窗口。
+- `Review` trigger 使用紧凑 diff stat（例如 `11 +508 -47`）；展开后的面板状态条使用完整文案（例如 `11 files changed +508 -47`）。数字使用千分位分隔，新增为 success，删除为 danger。
+- 右侧 panel 本身是一个完整工作区：顶部全局 `Files` / `Changes` / `Commit` tabs 和刷新按钮，项目路径、当前模型、snapshot id、Git 摘要作为统一状态条展示在 tabs 下方。
+- 右侧 panel 收起时保留窄 toolbar rail，提供 `Files` / `Changes` / `Commit` 图标入口；点击任一入口会先切换目标 view 再展开 panel，`Commit` 图标用 badge 显示变更文件数。
+- `Files` view 显示文件树，`Changes` view 显示基于 Git 的 file diff，`Commit` view 显示变更文件列表和提交信息编辑区；当前 `Commit` 按钮仅作为视图入口，不执行 Git 写操作。
+- `Files` view 使用 `@pierre/trees/react`：数据来自 `projectSnapshots.listFiles({ query: "", limit: 5000 })`，传入文件相对路径，并用 `gitStatus.files` 显示变更状态。
+- `Changes` view 使用 `@pierre/diffs/react`：主进程通过 `git diff --cached` 和 `git diff` 返回 patch，renderer 用 `parsePatchFiles` 拆成多个 `FileDiff`，再放入 `Virtualizer` 中渲染；新增行使用 success 颜色，删除行使用 danger 颜色。
+- Git 摘要和文件树会区分新增 / 删除 / 修改 / 重命名 / 未跟踪状态，其中新增使用 success，删除使用 danger。
+- 当前 diff 只展示 tracked file patch；untracked 文件会出现在 Git 摘要和文件树状态中，但不会展开为 patch 内容。
 
 ### Projects 树
 

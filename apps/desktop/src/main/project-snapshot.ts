@@ -15,6 +15,7 @@ import type {
 const AGENT_DOCUMENTS_DIR_NAME = "documents"
 const CHUNK_CHAR_COUNT = 2000
 const DEFAULT_PROJECT_SNAPSHOT_LIST_LIMIT = 50
+const MAX_PROJECT_SNAPSHOT_LIST_LIMIT = 5000
 const DEFAULT_IGNORE_PATTERNS = [
   "node_modules/**",
   ".git/**",
@@ -539,7 +540,7 @@ const clampProjectSnapshotListLimit = (limit: number | undefined): number => {
     return DEFAULT_PROJECT_SNAPSHOT_LIST_LIMIT
   }
 
-  return Math.min(Math.max(limit, 1), 100)
+  return Math.min(Math.max(limit, 1), MAX_PROJECT_SNAPSHOT_LIST_LIMIT)
 }
 
 const compareProjectSnapshotItems = <

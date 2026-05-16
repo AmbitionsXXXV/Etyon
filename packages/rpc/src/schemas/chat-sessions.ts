@@ -1,5 +1,7 @@
 import * as z from "zod"
 
+import { GitProjectStatusSchema } from "./git"
+
 const ChatFileMentionSchema = z.object({
   kind: z.literal("file"),
   path: z.string(),
@@ -22,6 +24,7 @@ export const ChatMentionSchema = z.discriminatedUnion("kind", [
 export const ChatSessionSummarySchema = z.object({
   archivedAt: z.string().nullable(),
   createdAt: z.string(),
+  gitStatus: GitProjectStatusSchema.optional(),
   id: z.string(),
   lastOpenedAt: z.string(),
   modelId: z.string().nullable(),
