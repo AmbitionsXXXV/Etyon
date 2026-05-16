@@ -1,7 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { ParsedSkill, SkillsSettings } from "@etyon/rpc"
-import { Input } from "@etyon/ui/components/input"
-import { Switch } from "@etyon/ui/components/switch"
+import { Input, Switch } from "@heroui/react"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
@@ -36,6 +35,22 @@ const getSkillDisplayPath = (skill: ParsedSkill): string => {
   return skill.path.replace(`${skill.projectPath}/`, "")
 }
 
+const SkillsSwitch = ({
+  checked,
+  label,
+  onChange
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) => (
+  <Switch aria-label={label} isSelected={checked} onChange={onChange}>
+    <Switch.Control>
+      <Switch.Thumb />
+    </Switch.Control>
+  </Switch>
+)
+
 const SkillsSwitchRow = ({
   checked,
   description,
@@ -48,7 +63,7 @@ const SkillsSwitchRow = ({
       <p className="text-xs leading-5 text-muted-foreground">{description}</p>
     </div>
 
-    <Switch checked={checked} onCheckedChange={onChange} />
+    <SkillsSwitch checked={checked} label={label} onChange={onChange} />
   </div>
 )
 
@@ -143,9 +158,10 @@ export const SkillsTab = ({ onChange, skills }: SkillsTabProps) => {
             </p>
           </div>
 
-          <Switch
+          <SkillsSwitch
             checked={skills.enabled}
-            onCheckedChange={handleEnabledChange}
+            label={t("settings.skills.title")}
+            onChange={handleEnabledChange}
           />
         </div>
 

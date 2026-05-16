@@ -9,7 +9,6 @@ import {
   DialogTitle
 } from "@etyon/ui/components/dialog"
 import { Dropdown } from "@etyon/ui/components/dropdown"
-import { Input } from "@etyon/ui/components/input"
 import { Separator } from "@etyon/ui/components/separator"
 import {
   Sidebar,
@@ -29,7 +28,7 @@ import {
   TooltipTrigger
 } from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Input } from "@heroui/react"
 import {
   Archive02Icon,
   Delete02Icon,

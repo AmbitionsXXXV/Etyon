@@ -1,7 +1,6 @@
 import type { LocalePreference } from "@etyon/i18n"
 import { useI18n } from "@etyon/i18n/react"
 import type { AppIcon } from "@etyon/rpc"
-import { Checkbox } from "@etyon/ui/components/checkbox"
 import {
   Select,
   SelectContent,
@@ -11,6 +10,7 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
+import { Checkbox, Label } from "@heroui/react"
 import { Tick01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useMemo } from "react"
@@ -169,14 +169,18 @@ const SettingsCheckbox = ({
   )
 
   return (
-    <label className="flex cursor-pointer items-center gap-2.5">
-      <Checkbox
-        checked={value}
-        className="size-4 cursor-pointer rounded border-border accent-primary"
-        onCheckedChange={handleChange}
-      />
-      <span className="text-sm">{label}</span>
-    </label>
+    <Checkbox
+      className="cursor-pointer"
+      isSelected={value}
+      onChange={handleChange}
+    >
+      <Checkbox.Control>
+        <Checkbox.Indicator />
+      </Checkbox.Control>
+      <Checkbox.Content>
+        <Label className="text-sm">{label}</Label>
+      </Checkbox.Content>
+    </Checkbox>
   )
 }
 

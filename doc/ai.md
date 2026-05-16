@@ -83,7 +83,7 @@ OpenAI / Anthropic / AI Gateway / Moonshot / Z.AI
 Telegram Bridge (main process)
   ↓ @chat-adapter/telegram polling
   ↓ toAiMessages() + shared long-term memory
-  ↓ streamText({ model: resolveModel(), messages })
+  ↓ streamText({ model: resolveModel(settings.telegram.defaultModel || undefined), messages })
   ↓ Chat SDK thread.post(result.textStream)
 ```
 

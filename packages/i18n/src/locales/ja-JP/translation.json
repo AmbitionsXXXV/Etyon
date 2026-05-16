@@ -29,7 +29,8 @@
       "title": "セッション情報"
     },
     "error": {
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "regenerate": "再生成"
     },
     "loading": "chat session を読み込み中...",
     "mentions": {
@@ -450,7 +451,7 @@
         "testing": "テスト中..."
       },
       "botFatherHint": "Telegram の {{link}} から Bot Token を取得してください。",
-      "description": "Telegram bot をローカル Etyon に接続し、許可されたテキストメッセージへ現在の既定モデルで返信します。",
+      "description": "Telegram bot をローカル Etyon に接続し、許可されたテキストメッセージへこのチャネルの既定モデルで返信します。",
       "fields": {
         "allowedChatIds": {
           "description": "任意。設定すると、指定した chat のみ処理します。カンマ、空白、改行で区切れます。",
@@ -470,6 +471,13 @@
           "description": "まず {{bot}} を対象 chat に追加してください。Telegram は bot がその chat に参加している場合のみ @ 候補に表示します。",
           "label": "Bot Username",
           "placeholder": "接続テスト後に @bot_username を表示"
+        },
+        "defaultModel": {
+          "description": "Telegram で別のモデルを使う必要がなければ、グローバルデフォルトのままにしてください。",
+          "inherit": "グローバルデフォルトモデルを使用",
+          "label": "デフォルトモデル",
+          "placeholder": "Telegram モデルを選択",
+          "unavailable": "現在設定されているモデルは利用できません。"
         },
         "requireMentionInGroups": {
           "description": "グループとスーパーグループでは、bot ユーザー名が含まれる場合だけ返信します。",

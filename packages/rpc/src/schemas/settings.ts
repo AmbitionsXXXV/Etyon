@@ -168,6 +168,7 @@ const TELEGRAM_SETTINGS_DEFAULT = {
   allowedUserIds: "",
   botToken: "",
   botUsername: "",
+  defaultModel: "",
   enabled: false,
   requireMentionInGroups: true
 } as const
@@ -191,6 +192,7 @@ export const TelegramSettingsSchema = z.object({
   allowedUserIds: z.string().default(""),
   botToken: z.string().default(""),
   botUsername: z.string().default(""),
+  defaultModel: z.string().default(""),
   enabled: z.boolean().default(false),
   requireMentionInGroups: z.boolean().default(true)
 })

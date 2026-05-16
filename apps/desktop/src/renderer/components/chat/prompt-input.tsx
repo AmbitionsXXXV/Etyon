@@ -1,7 +1,6 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
-import { Input } from "@etyon/ui/components/input"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Input } from "@heroui/react"
 import {
   File01Icon,
   Folder01Icon,

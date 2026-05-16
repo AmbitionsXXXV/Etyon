@@ -60,6 +60,7 @@ const buildBridgeSignature = (
     allowedUserIds: settings.allowedUserIds,
     botToken: settings.botToken,
     botUsername: settings.botUsername,
+    defaultModel: settings.defaultModel,
     enabled: settings.enabled,
     memory,
     requireMentionInGroups: settings.requireMentionInGroups
@@ -293,7 +294,7 @@ const handleTelegramMessage = async ({
     })
     const result = streamText({
       messages,
-      model: resolveModel(),
+      model: resolveModel(settings.defaultModel || undefined),
       system
     })
 
@@ -475,6 +476,7 @@ export const syncTelegramBridge = (
   activeBridge = bridge
 
   logger.info("telegram_bridge_started", {
+    default_model: telegram.defaultModel || null,
     has_allowed_chat_ids: Boolean(telegram.allowedChatIds.trim()),
     has_allowed_user_ids: Boolean(telegram.allowedUserIds.trim()),
     require_mention_in_groups: telegram.requireMentionInGroups

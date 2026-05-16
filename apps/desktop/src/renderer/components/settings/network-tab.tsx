@@ -1,7 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { ProxySettings, ProxyType } from "@etyon/rpc"
-import { Checkbox } from "@etyon/ui/components/checkbox"
-import { Input } from "@etyon/ui/components/input"
 import {
   Select,
   SelectContent,
@@ -11,7 +9,7 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Checkbox, Input } from "@heroui/react"
 import { motion } from "motion/react"
 import { useCallback, useState } from "react"
 
@@ -128,14 +126,20 @@ export const NetworkTab = ({
           {t("settings.network.proxy.title")}
         </h2>
 
-        <label className="flex cursor-pointer items-center gap-2.5">
-          <Checkbox
-            checked={proxy.enabled}
-            className="size-4 cursor-pointer rounded border-border accent-primary"
-            onCheckedChange={handleEnabledChange}
-          />
-          <span className="text-sm">{t("settings.network.proxy.enable")}</span>
-        </label>
+        <Checkbox
+          className="cursor-pointer"
+          isSelected={proxy.enabled}
+          onChange={handleEnabledChange}
+        >
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          <Checkbox.Content>
+            <span className="text-sm">
+              {t("settings.network.proxy.enable")}
+            </span>
+          </Checkbox.Content>
+        </Checkbox>
 
         <div
           className={cn(

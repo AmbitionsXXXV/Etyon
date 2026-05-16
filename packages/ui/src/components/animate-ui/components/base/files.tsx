@@ -15,18 +15,27 @@ import {
 } from "@etyon/ui/components/animate-ui/primitives/base/files"
 import type {
   FilesProps as FilesPrimitiveProps,
-  FolderItemProps as FolderItemPrimitiveProps,
-  FolderPanelProps as FolderPanelPrimitiveProps,
   FileProps as FilePrimitiveProps,
-  FileLabelProps as FileLabelPrimitiveProps
+  FileLabelProps as FileLabelPrimitiveProps,
+  FolderItemProps as FolderItemPrimitiveProps,
+  FolderPanelProps as FolderPanelPrimitiveProps
 } from "@etyon/ui/components/animate-ui/primitives/base/files"
 import { cn } from "@etyon/ui/lib/utils"
-import { FolderIcon, FolderOpenIcon, FileIcon } from "lucide-react"
+import {
+  File01Icon,
+  Folder01Icon,
+  FolderOpenIcon
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import * as React from "react"
 
 type GitStatus = "untracked" | "modified" | "deleted"
 
 type FilesProps = FilesPrimitiveProps
+
+const DefaultFileIcon = ({ className }: { className?: string }) => (
+  <HugeiconsIcon className={className} icon={File01Icon} />
+)
 
 function Files({ className, children, ...props }: FilesProps) {
   return (
@@ -74,8 +83,12 @@ function FolderTrigger({
               )}
             >
               <FolderIconPrimitive
-                closeIcon={<FolderIcon className="size-4.5" />}
-                openIcon={<FolderOpenIcon className="size-4.5" />}
+                closeIcon={
+                  <HugeiconsIcon className="size-4.5" icon={Folder01Icon} />
+                }
+                openIcon={
+                  <HugeiconsIcon className="size-4.5" icon={FolderOpenIcon} />
+                }
               />
               <FileLabelPrimitive
                 className={cn("text-sm", className)}
@@ -118,7 +131,7 @@ type FileItemProps = FilePrimitiveProps & {
 }
 
 function FileItem({
-  icon: Icon = FileIcon,
+  icon: Icon = DefaultFileIcon,
   className,
   children,
   gitStatus,

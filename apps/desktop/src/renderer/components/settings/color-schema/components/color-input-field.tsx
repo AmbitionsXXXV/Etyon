@@ -5,12 +5,12 @@ import {
   FieldError,
   FieldLabel
 } from "@etyon/ui/components/field"
-import { Input } from "@etyon/ui/components/input"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput
 } from "@etyon/ui/components/input-group"
+import { Input } from "@heroui/react"
 import { useCallback, useId } from "react"
 
 import { getValidHexColor } from "../utils/color"

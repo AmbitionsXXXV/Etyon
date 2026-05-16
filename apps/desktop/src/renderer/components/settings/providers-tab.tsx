@@ -7,8 +7,6 @@ import type {
   ProviderFetchModelsOutput,
   StoredProviderModel
 } from "@etyon/rpc"
-import { Checkbox } from "@etyon/ui/components/checkbox"
-import { Input } from "@etyon/ui/components/input"
 import { ScrollArea } from "@etyon/ui/components/scroll-area"
 import {
   Select,
@@ -18,9 +16,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@etyon/ui/components/select"
-import { Switch } from "@etyon/ui/components/switch"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Checkbox, Input, Switch } from "@heroui/react"
 import { Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation } from "@tanstack/react-query"
@@ -131,6 +128,22 @@ const StatusPill = ({
   </span>
 )
 
+const ProviderSwitch = ({
+  checked,
+  label,
+  onChange
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) => (
+  <Switch aria-label={label} isSelected={checked} onChange={onChange}>
+    <Switch.Control>
+      <Switch.Thumb />
+    </Switch.Control>
+  </Switch>
+)
+
 const ProviderRailItem = ({
   isActive,
   name,
@@ -192,7 +205,16 @@ const ProviderModelItem = ({
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-border px-3 py-3 transition-colors hover:bg-muted/30">
-      <Checkbox checked={isChecked} onCheckedChange={handleCheckedChange} />
+      <Checkbox
+        aria-label={model.name}
+        className="mt-0.5"
+        isSelected={isChecked}
+        onChange={handleCheckedChange}
+      >
+        <Checkbox.Control>
+          <Checkbox.Indicator />
+        </Checkbox.Control>
+      </Checkbox>
 
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{model.name}</div>
@@ -564,9 +586,10 @@ export const ProvidersTab = ({
                 </p>
               </div>
 
-              <Switch
+              <ProviderSwitch
                 checked={activeProviderConfig.enabled}
-                onCheckedChange={handleEnabledChange}
+                label={activeProvider.name}
+                onChange={handleEnabledChange}
               />
             </div>
           </div>

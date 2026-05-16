@@ -4,7 +4,7 @@ import {
   FieldError,
   FieldLabel
 } from "@etyon/ui/components/field"
-import { Input } from "@etyon/ui/components/input"
+import { Input } from "@heroui/react"
 import type { AnyFieldApi } from "@tanstack/react-form"
 import { useCallback } from "react"
 

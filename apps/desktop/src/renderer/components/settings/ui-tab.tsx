@@ -15,9 +15,8 @@ import {
   ComboboxTrigger,
   ComboboxValue
 } from "@etyon/ui/components/combobox"
-import { Input } from "@etyon/ui/components/input"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Input } from "@heroui/react"
 import { MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"

@@ -29,7 +29,8 @@
       "title": "Session Details"
     },
     "error": {
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "regenerate": "Regenerate"
     },
     "loading": "Loading chat session...",
     "mentions": {
@@ -450,7 +451,7 @@
         "testing": "Testing..."
       },
       "botFatherHint": "Get your bot token from {{link}} on Telegram.",
-      "description": "Connect a Telegram bot to local Etyon. It replies to authorized text messages with the current default model.",
+      "description": "Connect a Telegram bot to local Etyon. It replies to authorized text messages with this channel's default model.",
       "fields": {
         "allowedChatIds": {
           "description": "Optional. When set, only these chats are handled. Supports comma, space, or newline separators.",
@@ -470,6 +471,13 @@
           "description": "Add {{bot}} to the target chat first. Telegram only shows a bot in @ suggestions after that bot is already in the chat.",
           "label": "Bot Username",
           "placeholder": "Test connection to show @bot_username"
+        },
+        "defaultModel": {
+          "description": "Leave this on global default unless Telegram should use a different model.",
+          "inherit": "Use global default model",
+          "label": "Default Model",
+          "placeholder": "Select a Telegram model",
+          "unavailable": "This configured model is not currently available."
         },
         "requireMentionInGroups": {
           "description": "In groups and supergroups, reply only when the bot username is mentioned.",

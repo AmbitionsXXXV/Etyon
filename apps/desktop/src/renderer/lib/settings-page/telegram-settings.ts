@@ -9,6 +9,7 @@ export const normalizeTelegramSettingsDraft = (
   allowedUserIds: telegram.allowedUserIds ?? "",
   botToken: telegram.botToken ?? "",
   botUsername: telegram.botUsername ?? "",
+  defaultModel: telegram.defaultModel ?? "",
   enabled: telegram.enabled ?? false,
   requireMentionInGroups: telegram.requireMentionInGroups ?? true
 })

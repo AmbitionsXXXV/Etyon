@@ -24,12 +24,19 @@
 ## 已迁移组件
 
 - `apps/desktop` 业务侧 `Button`：直接使用 `@heroui/react` 的 `Button`，按 HeroUI v3 使用 `onPress`、`isDisabled`、`isIconOnly`、`variant="danger-soft"` 等语义 prop。
+- `apps/desktop` 设置页和聊天页的基础控件：`Input`、`TextArea`、`Switch`、`Checkbox`、`Chip` 直接使用 `@heroui/react`，其中 `Switch` / `Checkbox` 按 v3 compound API 渲染 `Control`、`Thumb`、`Indicator`、`Content`。
+- `apps/desktop` `Channels` tab 的 Telegram 默认模型选择：直接使用 HeroUI `Select` + `ListBox.Section`，模型组选项来自 `settings.ai.providers`。
 - `@etyon/ui` 内部 `Button`：暂保留薄适配层，继续服务共享组件内部和未迁移调用点，只桥接旧 `variant`、`size`、`disabled`、`onClick` 和元素式 `render`。
 - `Input` / `Textarea`：直接使用 HeroUI `Input` / `TextArea`，仅桥接旧 `disabled` 写法。
 - `Badge`：直接使用 HeroUI `Badge`，旧 variant 只映射到 HeroUI `color` / `variant`。
 - `Separator`：直接使用 HeroUI `Separator`。
 - `Empty`：根节点使用 HeroUI `EmptyState`，子组件保持原有导出。
 - `Switch` / `Checkbox`：直接使用 HeroUI compound API，仅桥接旧 `checked`、`defaultChecked`、`onCheckedChange`。
+
+## 图标约定
+
+- 业务代码和 `packages/ui` 默认图标统一使用 `@hugeicons/react` + `@hugeicons/core-free-icons`。
+- `lucide-react` 已从 `@etyon/ui` 依赖中移除；新 UI 代码不要重新引入。
 
 ## 暂保留组件
 

@@ -16,6 +16,7 @@ import type { CSSProperties } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { AppSidebarShell } from "@/renderer/components/app-sidebar"
+import { buildChatModelGroups } from "@/renderer/lib/chat/model-options"
 import {
   buildDarkColorSchemaOptions,
   buildLightColorSchemaOptions
@@ -217,6 +218,10 @@ export const SettingsPage = ({
   )
 
   const themeOptions = useMemo(() => buildThemeOptions(t), [t])
+  const channelModelGroups = useMemo(
+    () => (draft ? buildChatModelGroups(draft.ai) : []),
+    [draft]
+  )
   const sidebarModeOptions = useMemo(() => buildSidebarModeOptions(t), [t])
   const darkColorSchemaOptions = useMemo(
     () => buildDarkColorSchemaOptions(t),
@@ -533,6 +538,7 @@ export const SettingsPage = ({
 
               {activeSection === "channels" && (
                 <ChannelsTab
+                  modelGroups={channelModelGroups}
                   onChange={handleTelegramChange}
                   telegram={draft.telegram}
                 />

@@ -29,7 +29,8 @@
       "title": "会话信息"
     },
     "error": {
-      "dismiss": "关闭"
+      "dismiss": "关闭",
+      "regenerate": "重新生成"
     },
     "loading": "正在加载 chat session...",
     "mentions": {
@@ -450,7 +451,7 @@
         "testing": "测试中..."
       },
       "botFatherHint": "从 Telegram 的 {{link}} 获取 Bot Token。",
-      "description": "把 Telegram bot 接入本机 Etyon，会使用当前默认模型回复已授权的文本消息。",
+      "description": "把 Telegram bot 接入本机 Etyon，会使用这个渠道的默认模型回复已授权的文本消息。",
       "fields": {
         "allowedChatIds": {
           "description": "可选。填写后只响应这些 chat；支持逗号、空格或换行分隔。",
@@ -470,6 +471,13 @@
           "description": "群聊里需要先把 {{bot}} 加入目标 chat；Telegram 客户端只有在 bot 已在该 chat 中时才会在 @ 列表提示。",
           "label": "Bot Username",
           "placeholder": "测试连接后显示 @bot_username"
+        },
+        "defaultModel": {
+          "description": "除非 Telegram 需要使用不同模型，否则保留为全局默认模型。",
+          "inherit": "使用全局默认模型",
+          "label": "默认模型",
+          "placeholder": "选择 Telegram 模型",
+          "unavailable": "当前配置的模型暂不可用。"
         },
         "requireMentionInGroups": {
           "description": "群聊和超级群中，仅在消息包含 bot 用户名时回复。",

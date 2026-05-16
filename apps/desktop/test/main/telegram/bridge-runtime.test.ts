@@ -219,6 +219,7 @@ const createTelegramSettings = (
   allowedUserIds: "1001",
   botToken: "123:abc",
   botUsername: "etyon_bot",
+  defaultModel: "",
   enabled: true,
   requireMentionInGroups: true,
   ...override
@@ -353,6 +354,7 @@ describe("telegram bridge runtime", () => {
 
     await chatInstances[0]?.mentionHandlers[0]?.(thread, message)
 
+    expect(resolveModelMock).toHaveBeenCalledWith(undefined)
     expect(thread.startTyping).toHaveBeenCalledTimes(1)
     expect(toAiMessagesMock).toHaveBeenCalledTimes(1)
     expect(streamTextMock).toHaveBeenCalledWith(
@@ -367,6 +369,34 @@ describe("telegram bridge runtime", () => {
       })
     )
     expect(thread.post).toHaveBeenCalledWith(textStream)
+  })
+
+  it("uses the Telegram channel default model when configured", async () => {
+    const { syncTelegramBridge } = await import("@/main/telegram/bridge")
+    const textStream = createTextStream("AI reply")
+
+    resolveModelMock.mockReturnValue({ modelId: "test-model" })
+    streamTextMock.mockReturnValue({ textStream })
+    syncTelegramBridge(
+      createAppSettings(
+        createTelegramSettings({
+          defaultModel: "moonshot/kimi-k2.6"
+        })
+      )
+    )
+    await waitForMicrotasks()
+
+    const message = createTelegramMessage()
+    const thread = createThread([message])
+
+    await chatInstances[0]?.mentionHandlers[0]?.(thread, message)
+
+    expect(resolveModelMock).toHaveBeenCalledWith("moonshot/kimi-k2.6")
+    expect(streamTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { modelId: "test-model" }
+      })
+    )
   })
 
   it("connects Telegram replies to the shared memory layer", async () => {

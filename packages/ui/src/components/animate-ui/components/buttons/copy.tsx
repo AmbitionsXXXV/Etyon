@@ -4,9 +4,10 @@ import { Button as ButtonPrimitive } from "@etyon/ui/components/animate-ui/primi
 import type { ButtonProps as ButtonPrimitiveProps } from "@etyon/ui/components/animate-ui/primitives/buttons/button"
 import { useControlledState } from "@etyon/ui/hooks/use-controlled-state"
 import { cn } from "@etyon/ui/lib/utils"
+import { CheckmarkCircle01Icon, Copy01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { cva } from "class-variance-authority"
 import type { VariantProps } from "class-variance-authority"
-import { CheckIcon, CopyIcon } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import * as React from "react"
 
@@ -91,7 +92,7 @@ function CopyButton({
     [onClick, copied, content, setIsCopied, onCopiedChange, delay]
   )
 
-  const Icon = isCopied ? CheckIcon : CopyIcon
+  const icon = isCopied ? CheckmarkCircle01Icon : Copy01Icon
 
   return (
     <ButtonPrimitive
@@ -109,7 +110,7 @@ function CopyButton({
           exit={{ scale: 0, opacity: 0.4, filter: "blur(4px)" }}
           transition={{ duration: 0.25 }}
         >
-          <Icon />
+          <HugeiconsIcon icon={icon} size={16} />
         </motion.span>
       </AnimatePresence>
     </ButtonPrimitive>

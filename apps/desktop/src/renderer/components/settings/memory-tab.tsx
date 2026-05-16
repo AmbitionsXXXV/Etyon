@@ -1,7 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { MemoryEntry, MemorySettings } from "@etyon/rpc"
-import { Input } from "@etyon/ui/components/input"
-import { Switch } from "@etyon/ui/components/switch"
+import { Input, Switch } from "@heroui/react"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
@@ -42,6 +41,22 @@ const formatMemoryDate = (value: string | null): string => {
 const getMemoryEntryTitle = (entry: MemoryEntry): string =>
   entry.projectPath ?? entry.sourceId
 
+const MemorySwitch = ({
+  checked,
+  label,
+  onChange
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) => (
+  <Switch aria-label={label} isSelected={checked} onChange={onChange}>
+    <Switch.Control>
+      <Switch.Thumb />
+    </Switch.Control>
+  </Switch>
+)
+
 const MemorySwitchRow = ({
   checked,
   description,
@@ -54,7 +69,7 @@ const MemorySwitchRow = ({
       <p className="text-xs leading-5 text-muted-foreground">{description}</p>
     </div>
 
-    <Switch checked={checked} onCheckedChange={onChange} />
+    <MemorySwitch checked={checked} label={label} onChange={onChange} />
   </div>
 )
 
@@ -135,9 +150,10 @@ export const MemoryTab = ({ memory, onChange }: MemoryTabProps) => {
             </p>
           </div>
 
-          <Switch
+          <MemorySwitch
             checked={memory.enabled}
-            onCheckedChange={handleEnabledChange}
+            label={t("settings.memory.title")}
+            onChange={handleEnabledChange}
           />
         </div>
 

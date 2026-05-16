@@ -6,8 +6,12 @@ import type {
   ChatSessionSummary,
   ProjectSnapshotItem
 } from "@etyon/rpc"
-import { Badge } from "@etyon/ui/components/badge"
-import { Button } from "@heroui/react"
+import { Button, Chip } from "@heroui/react"
+import {
+  ArrowReloadHorizontalIcon,
+  Cancel01Icon
+} from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, UIMessage } from "ai"
@@ -95,6 +99,50 @@ const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
     <span className="max-w-52 truncate">{getMentionName(mention)}</span>
   </span>
 )
+
+const ChatErrorActionBar = ({
+  errorMessage,
+  isRegenerating,
+  onDismiss,
+  onRegenerate
+}: {
+  errorMessage: string
+  isRegenerating: boolean
+  onDismiss: () => void
+  onRegenerate: () => void
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-[78%] rounded-3xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive">
+        <p className="text-xs leading-5">{errorMessage}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            isDisabled={isRegenerating}
+            onPress={onRegenerate}
+            size="sm"
+            type="button"
+            variant="danger-soft"
+          >
+            <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={14} />
+            {t("chat.error.regenerate")}
+          </Button>
+          <Button
+            isDisabled={isRegenerating}
+            onPress={onDismiss}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={14} />
+            {t("chat.error.dismiss")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const upsertChatSession = ({
   nextSession,
@@ -187,7 +235,7 @@ const ChatRuntime = ({
 }) => {
   const { t } = useI18n()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const { clearError, error, messages, sendMessage, status } =
+  const { clearError, error, messages, regenerate, sendMessage, status } =
     useChat<ChatUiMessage>({
       id: selectedSession.id,
       messages: initialMessages,
@@ -204,6 +252,16 @@ const ChatRuntime = ({
 
   const isComposerDisabled =
     isModelUpdating || status === "streaming" || status === "submitted"
+  const isRequestPending = status === "streaming" || status === "submitted"
+  const latestUserMentions = useMemo(() => {
+    for (const message of messages.toReversed()) {
+      if (message.role === "user") {
+        return message.metadata?.mentions ?? []
+      }
+    }
+
+    return []
+  }, [messages])
 
   const handleSubmit = useCallback(
     async ({
@@ -237,11 +295,28 @@ const ChatRuntime = ({
     [selectedModelValue, selectedSession.id, sendMessage]
   )
 
+  const handleRegenerate = useCallback(() => {
+    clearError()
+    void regenerate({
+      body: {
+        mentions: latestUserMentions,
+        model: selectedModelValue || undefined,
+        sessionId: selectedSession.id
+      }
+    })
+  }, [
+    clearError,
+    latestUserMentions,
+    regenerate,
+    selectedModelValue,
+    selectedSession.id
+  ])
+
   return (
     <div className={CHAT_LAYOUT_CLASS_NAME}>
       <div className="flex min-h-[420px] flex-col rounded-3xl border border-border bg-card shadow-sm">
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {messages.length === 0 ? (
+          {messages.length === 0 && !error ? (
             <div className="flex h-full items-center justify-center">
               <div className="max-w-md text-center">
                 <h2 className="text-lg font-semibold">
@@ -281,15 +356,17 @@ const ChatRuntime = ({
                       {messageMentions.length > 0 && !hasInlineMentions && (
                         <div className="mb-2 flex flex-wrap gap-2">
                           {messageMentions.map((mention) => (
-                            <Badge
+                            <Chip
+                              color={isAssistant ? "default" : "accent"}
                               className="max-w-full"
                               key={`${message.id}-${mention.relativePath}`}
-                              variant={isAssistant ? "outline" : "secondary"}
+                              size="sm"
+                              variant={isAssistant ? "secondary" : "soft"}
                             >
-                              <span className="truncate">
+                              <Chip.Label className="truncate">
                                 {mention.relativePath}
-                              </span>
-                            </Badge>
+                              </Chip.Label>
+                            </Chip>
                           ))}
                         </div>
                       )}
@@ -312,6 +389,14 @@ const ChatRuntime = ({
                   </div>
                 )
               })}
+              {error && (
+                <ChatErrorActionBar
+                  errorMessage={error.message}
+                  isRegenerating={isRequestPending}
+                  onDismiss={clearError}
+                  onRegenerate={handleRegenerate}
+                />
+              )}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -351,20 +436,6 @@ const ChatRuntime = ({
             placeholder={t("chat.composer.placeholder")}
             submitLabel={t("chat.composer.send")}
           />
-
-          {error && (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <span className="truncate">{error.message}</span>
-              <Button
-                onPress={clearError}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                {t("chat.error.dismiss")}
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 

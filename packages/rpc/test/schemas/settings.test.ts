@@ -65,6 +65,7 @@ describe("AppSettingsSchema", () => {
       allowedUserIds: "",
       botToken: "",
       botUsername: "",
+      defaultModel: "",
       enabled: false,
       requireMentionInGroups: true
     })

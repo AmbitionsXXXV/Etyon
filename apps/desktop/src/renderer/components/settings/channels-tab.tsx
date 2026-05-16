@@ -1,15 +1,23 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { TelegramSettings, TelegramTestConnectionOutput } from "@etyon/rpc"
-import { Input } from "@etyon/ui/components/input"
-import { Switch } from "@etyon/ui/components/switch"
-import { Textarea } from "@etyon/ui/components/textarea"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import {
+  Button,
+  Header,
+  Input,
+  Label,
+  ListBox,
+  Select,
+  Switch,
+  TextArea
+} from "@heroui/react"
+import type { Key } from "@heroui/react"
 import { useMutation } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
 import { useCallback, useMemo, useState } from "react"
 
+import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import { rpcClient } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 import {
@@ -19,6 +27,7 @@ import {
 
 const BOT_FATHER_LINK_PLACEHOLDER = "{{LINK}}"
 const BOT_FATHER_URL = "https://t.me/BotFather"
+const TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE = "__global_default_model__"
 
 const openExternalUrl = (url: string): void => {
   window.electron.ipcRenderer.invoke("open-external-url", url)
@@ -56,6 +65,7 @@ const BotFatherHint = () => {
 }
 
 interface ChannelsTabProps {
+  modelGroups: ChatModelGroup[]
   onChange: (telegram: TelegramSettings) => void
   telegram: Partial<TelegramSettings>
 }
@@ -104,7 +114,135 @@ const TelegramStatusPanel = ({
   )
 }
 
-export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
+const TelegramSwitch = ({
+  checked,
+  label,
+  onChange
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) => (
+  <Switch aria-label={label} isSelected={checked} onChange={onChange}>
+    <Switch.Control>
+      <Switch.Thumb />
+    </Switch.Control>
+  </Switch>
+)
+
+const TelegramDefaultModelSelect = ({
+  modelGroups,
+  onChange,
+  value
+}: {
+  modelGroups: ChatModelGroup[]
+  onChange: (value: string) => void
+  value: string
+}) => {
+  const { t } = useI18n()
+  const allOptions = useMemo(
+    () => modelGroups.flatMap((group) => group.options),
+    [modelGroups]
+  )
+  const selectedOption = allOptions.find((option) => option.value === value)
+  const shouldShowUnavailableModel = Boolean(value && !selectedOption)
+  const selectedValue = value || TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE
+
+  const handleChange = useCallback(
+    (nextValue: Key | Key[] | null) => {
+      if (Array.isArray(nextValue)) {
+        return
+      }
+
+      const normalizedValue =
+        nextValue === TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE || nextValue === null
+          ? ""
+          : String(nextValue)
+
+      onChange(normalizedValue)
+    },
+    [onChange]
+  )
+
+  return (
+    <div className="space-y-2">
+      <Select
+        className="mx-0.5"
+        fullWidth
+        onChange={handleChange}
+        placeholder={t("settings.telegram.fields.defaultModel.placeholder")}
+        value={selectedValue}
+      >
+        <Label className="text-xs font-medium">
+          {t("settings.telegram.fields.defaultModel.label")}
+        </Label>
+        <Select.Trigger>
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            <ListBox.Item
+              id={TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE}
+              textValue={t("settings.telegram.fields.defaultModel.inherit")}
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">
+                  {t("settings.telegram.fields.defaultModel.inherit")}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {t("settings.telegram.fields.defaultModel.description")}
+                </div>
+              </div>
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+
+            {shouldShowUnavailableModel && (
+              <ListBox.Item id={value} textValue={value}>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{value}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {t("settings.telegram.fields.defaultModel.unavailable")}
+                  </div>
+                </div>
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            )}
+
+            {modelGroups.map((group) => (
+              <ListBox.Section key={group.providerId}>
+                <Header>{group.providerName}</Header>
+                {group.options.map((option) => (
+                  <ListBox.Item
+                    id={option.value}
+                    key={option.value}
+                    textValue={option.label}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {option.label}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {option.summary || option.id}
+                      </div>
+                    </div>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox.Section>
+            ))}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+    </div>
+  )
+}
+
+export const ChannelsTab = ({
+  modelGroups,
+  onChange,
+  telegram
+}: ChannelsTabProps) => {
   const { t } = useI18n()
   const normalizedTelegram = useMemo(
     () => normalizeTelegramSettingsDraft(telegram),
@@ -170,6 +308,11 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
     [updateTelegram]
   )
 
+  const handleDefaultModelChange = useCallback(
+    (defaultModel: string) => updateTelegram({ defaultModel }),
+    [updateTelegram]
+  )
+
   const handleRequireMentionChange = useCallback(
     (checked: boolean) => updateTelegram({ requireMentionInGroups: checked }),
     [updateTelegram]
@@ -215,9 +358,10 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
             <BotFatherHint />
           </div>
 
-          <Switch
+          <TelegramSwitch
             checked={normalizedTelegram.enabled}
-            onCheckedChange={handleEnabledChange}
+            label={t("settings.telegram.title")}
+            onChange={handleEnabledChange}
           />
         </div>
 
@@ -262,12 +406,18 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
           </p>
         </div>
 
+        <TelegramDefaultModelSelect
+          modelGroups={modelGroups}
+          onChange={handleDefaultModelChange}
+          value={normalizedTelegram.defaultModel}
+        />
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <label className="text-xs font-medium">
               {t("settings.telegram.fields.allowedUserIds.label")}
             </label>
-            <Textarea
+            <TextArea
               className="mx-0.5 min-h-24"
               onChange={handleAllowedUserIdsChange}
               placeholder={t(
@@ -285,7 +435,7 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
             <label className="text-xs font-medium">
               {t("settings.telegram.fields.allowedChatIds.label")}
             </label>
-            <Textarea
+            <TextArea
               className="mx-0.5 min-h-24"
               onChange={handleAllowedChatIdsChange}
               placeholder={t(
@@ -310,9 +460,10 @@ export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
             </p>
           </div>
 
-          <Switch
+          <TelegramSwitch
             checked={normalizedTelegram.requireMentionInGroups}
-            onCheckedChange={handleRequireMentionChange}
+            label={t("settings.telegram.fields.requireMentionInGroups.label")}
+            onChange={handleRequireMentionChange}
           />
         </div>
 
