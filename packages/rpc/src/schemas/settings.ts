@@ -39,8 +39,11 @@ export const CustomThemeSchema = z.object({
 
 export const DarkColorSchemaSchema = z.enum([
   "aquarium",
+  "brutalism-dark",
   "chadracula-evondev",
   "default",
+  "glass-dark",
+  "mouve-dark",
   "poimandres",
   "tokyo-night"
 ])
@@ -49,7 +52,14 @@ export const ThemeSchema = z.enum(["dark", "light", "system"])
 
 export const AppIconSchema = z.enum(["default", "alt"])
 
-export const LightColorSchemaSchema = z.enum(["default", "one-light", "paper"])
+export const LightColorSchemaSchema = z.enum([
+  "brutalism-light",
+  "default",
+  "glass-light",
+  "mouve-light",
+  "one-light",
+  "paper"
+])
 
 export const SidebarModeSchema = z.enum(["projects", "simple"])
 

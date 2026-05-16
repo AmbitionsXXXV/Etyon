@@ -39,6 +39,14 @@
       "foldersGroup": "Folders",
       "searchPlaceholder": "Search project files..."
     },
+    "messageActions": {
+      "badResponse": "Bad response",
+      "copied": "Copied",
+      "copy": "Copy",
+      "goodResponse": "Good response",
+      "label": "Message actions",
+      "regenerate": "Regenerate"
+    },
     "missing": {
       "action": "Back Home",
       "description": "This chat session does not exist or has not synced into the local list yet.",
@@ -244,12 +252,19 @@
       },
       "option": {
         "aquarium": "Aquarium",
+        "brutalism": "Brutalism",
         "chadraculaEvondev": "Chadracula Evondev",
         "default": "Default (Built-in)",
+        "glass": "Glass",
+        "mouve": "Mouve",
         "oneLight": "One Light",
         "paper": "Paper",
         "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
+      },
+      "proPresets": {
+        "description": "Apply a HeroUI Pro theme pair to both light and dark modes.",
+        "label": "HeroUI Pro Presets"
       },
       "title": "Color Scheme"
     },

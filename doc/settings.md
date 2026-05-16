@@ -74,13 +74,22 @@ interface AppSettings {
   customThemes: CustomTheme[] // 默认 []
   darkColorSchema:
     | "aquarium"
+    | "brutalism-dark"
     | "chadracula-evondev"
     | "default"
+    | "glass-dark"
+    | "mouve-dark"
     | "poimandres"
     | "tokyo-night" // 默认 "default"
   fontFamily: string // 默认 "System Default"
   fontSize: number // 12-24，默认 16
-  lightColorSchema: "default" | "one-light" | "paper" // 默认 "default"
+  lightColorSchema:
+    | "brutalism-light"
+    | "default"
+    | "glass-light"
+    | "mouve-light"
+    | "one-light"
+    | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
   memory: {
     enabled: boolean // 默认 true，控制长期 memory 读写与注入
@@ -254,9 +263,10 @@ interface StoredProviderModel {
 ### Color Schema
 
 - `theme` 仍只负责 `light` / `dark` / `system` 外观模式切换
-- Settings 左侧导航使用单独的 `Color Schema` tab，当前布局为 `Custom Themes` area + `Dark Mode Theme` block + `Light Mode Theme` block
+- Settings 左侧导航使用单独的 `Color Schema` tab，当前布局为 `Custom Themes` area + `HeroUI Pro Presets` block + `Dark Mode Theme` block + `Light Mode Theme` block
 - 新增 `darkColorSchema` 和 `lightColorSchema` 两个设置字段，分别控制深色和浅色模式下的色板
 - `default` 表示继续使用 HeroUI 内建的 `light` / `dark` theme，不需要单独的 schema 文件
+- HeroUI Pro theme 在 UI 中先以成对 preset 展示，选择 `brutalism`、`glass` 或 `mouve` 会同时写入对应的 `*-light` 和 `*-dark`；下方仍保留单独的 light / dark blocks 用于高级细调
 - 自定义色板放在 `packages/ui/src/styles/`，目前提供：
   - `aquarium.css`（dark）
   - `chadracula-evondev.css`（dark）
@@ -264,6 +274,11 @@ interface StoredProviderModel {
   - `tokyo-night.css`（dark）
   - `one-light.css`（light）
   - `paper.css`（light）
+- HeroUI Pro preset theme 通过 `@etyon/ui/themes/*` 完整重导出，目前包括：
+  - `brutalism`（`brutalism-light` / `brutalism-dark`）
+  - `glass`（`glass-light` / `glass-dark`）
+  - `mouve`（`mouve-light` / `mouve-dark`）
+- Pro preset theme 的 CSS 包含组件级覆盖，不放进 `globals.css` 常驻加载；renderer 会在当前 `data-theme` 命中 `brutalism-*`、`glass-*` 或 `mouve-*` 时动态挂载对应 stylesheet，切回普通 schema 时移除
 - 所有色板 token 使用 `oklch(...)` 定义，并通过独立 CSS 文件覆盖 `--background`、`--foreground`、`--accent`、`--surface`、`--overlay`、`--default`、`--field-*`、`--success`、`--warning`、`--danger`、`--segment`、`--border`、`--separator`、`--focus`、`--link` 等 HeroUI 语义变量
 - `globals.css` 保留旧调用点需要的兼容别名：`primary -> accent`、`secondary -> default`、`card -> surface`、`popover -> overlay`、`ring -> focus`、`destructive -> danger`；`sidebar-*`、`chart-*`、`muted-foreground`、`input` 作为项目扩展从 HeroUI token 派生
 - 设置页 swatch 预览的 React key 使用 `schema value + swatch index`，以支持同一 palette 内重复色值
@@ -452,7 +467,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `apps/desktop/src/renderer/components/settings-page.tsx` — 设置页面组件
 - `apps/desktop/src/renderer/lib/settings-page/` — `constants.ts`（缓动曲线）、`motion.ts`、`nav-config.ts`、`color-schema-swatches.ts`、`build-*-options`、`use-settings-page-draft.ts`、`settings-equal.ts`
 - `apps/desktop/src/renderer/components/settings/network-tab.tsx` — Network tab 主组件（Proxy Settings 表单与代理测试）
-- `apps/desktop/src/renderer/components/settings/color-schema/color-schema-tab.tsx` — `Color Schema` tab 主组件，包含 `Custom Themes` 区块，以及拆分后的 `Dark Mode` / `Light Mode` 独立 blocks
+- `apps/desktop/src/renderer/components/settings/color-schema/color-schema-tab.tsx` — `Color Schema` tab 主组件，包含 `Custom Themes`、`HeroUI Pro Presets`，以及拆分后的 `Dark Mode` / `Light Mode` 独立 blocks
 - `apps/desktop/src/renderer/components/settings/color-schema/` — 子模块：`constants/`（`defaults.ts`、`presets.ts`）、`utils/`（表单与颜色、`theme-labels.ts` 共享文案映射）、`components/` 对话框与字段；对外仅 `index.ts` 导出 `ColorSchemaTab`
 - `apps/desktop/src/renderer/routes/settings.tsx` — 设置页面路由（复用组件）
 - `apps/desktop/src/renderer/routes/__root.tsx` — 快捷键 IPC 触发
@@ -465,6 +480,7 @@ Font Size 输入使用 `@etyon/ui` 的 `Input` 组件（基于 `@base-ui/react/i
 - `packages/ui/src/styles/one-light.css` — One Light light color schema（base OKLCH tokens）
 - `packages/ui/src/styles/paper.css` — Paper light color schema
 - `packages/ui/src/styles/poimandres.css` — Poimandres dark color schema
+- `packages/ui/src/styles/themes/` — HeroUI Pro preset theme wrapper exports（`brutalism`、`glass`、`mouve`）
 - `packages/ui/src/styles/tokyo-night.css` — Tokyo Night dark color schema（base OKLCH tokens）
 
 ## Partial Update Schema 设计

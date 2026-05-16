@@ -19,6 +19,7 @@ import { AppSidebarShell } from "@/renderer/components/app-sidebar"
 import { buildChatModelGroups } from "@/renderer/lib/chat/model-options"
 import {
   buildDarkColorSchemaOptions,
+  buildHeroUiProColorSchemaPairOptions,
   buildLightColorSchemaOptions
 } from "@/renderer/lib/settings-page/build-color-schema-options"
 import { buildSidebarModeOptions } from "@/renderer/lib/settings-page/build-sidebar-mode-options"
@@ -177,6 +178,7 @@ export const SettingsPage = ({
     handleAutoStartChange,
     handleCancel,
     handleCloseToTrayChange,
+    handleColorSchemaPairChange,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,
@@ -225,6 +227,10 @@ export const SettingsPage = ({
   const sidebarModeOptions = useMemo(() => buildSidebarModeOptions(t), [t])
   const darkColorSchemaOptions = useMemo(
     () => buildDarkColorSchemaOptions(t),
+    [t]
+  )
+  const heroUiProColorSchemaPairOptions = useMemo(
+    () => buildHeroUiProColorSchemaPairOptions(t),
     [t]
   )
   const lightColorSchemaOptions = useMemo(
@@ -422,8 +428,12 @@ export const SettingsPage = ({
                 <ColorSchemaTab
                   darkColorSchema={draft.darkColorSchema}
                   darkColorSchemaOptions={darkColorSchemaOptions}
+                  heroUiProColorSchemaPairOptions={
+                    heroUiProColorSchemaPairOptions
+                  }
                   lightColorSchema={draft.lightColorSchema}
                   lightColorSchemaOptions={lightColorSchemaOptions}
+                  onColorSchemaPairChange={handleColorSchemaPairChange}
                   onCreateTheme={handleCustomThemeCreate}
                   onDarkColorSchemaChange={handleDarkColorSchemaChange}
                   onDeleteTheme={handleCustomThemeDelete}

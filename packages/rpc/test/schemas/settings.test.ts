@@ -96,4 +96,22 @@ describe("AppSettingsSchema", () => {
       maxContextSkills: 4
     })
   })
+
+  it("accepts HeroUI Pro color schema presets", () => {
+    const presets = [
+      ["brutalism-dark", "brutalism-light"],
+      ["glass-dark", "glass-light"],
+      ["mouve-dark", "mouve-light"]
+    ] as const
+
+    for (const [darkColorSchema, lightColorSchema] of presets) {
+      const settings = AppSettingsSchema.parse({
+        darkColorSchema,
+        lightColorSchema
+      })
+
+      expect(settings.darkColorSchema).toBe(darkColorSchema)
+      expect(settings.lightColorSchema).toBe(lightColorSchema)
+    }
+  })
 })

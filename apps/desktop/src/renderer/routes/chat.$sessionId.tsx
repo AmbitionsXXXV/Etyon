@@ -17,6 +17,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, UIMessage } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { MessageActions } from "@/renderer/components/chat/message-actions"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
@@ -346,45 +347,54 @@ const ChatRuntime = ({
                     className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
                     key={message.id}
                   >
-                    <div
-                      className={`max-w-[78%] rounded-3xl px-4 py-3 ${
-                        isAssistant
-                          ? "bg-muted/60 text-foreground"
-                          : "bg-primary text-primary-foreground"
-                      }`}
-                    >
-                      {messageMentions.length > 0 && !hasInlineMentions && (
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          {messageMentions.map((mention) => (
-                            <Chip
-                              color={isAssistant ? "default" : "accent"}
-                              className="max-w-full"
-                              key={`${message.id}-${mention.relativePath}`}
-                              size="sm"
-                              variant={isAssistant ? "secondary" : "soft"}
-                            >
-                              <Chip.Label className="truncate">
-                                {mention.relativePath}
-                              </Chip.Label>
-                            </Chip>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="whitespace-pre-wrap">
-                        {messageParts.map((part, index) =>
-                          part.type === "mention" ? (
-                            <InlineMentionToken
-                              key={`${message.id}-mention-${part.mention.relativePath}-${index}`}
-                              mention={part.mention}
-                            />
-                          ) : (
-                            <span key={`${message.id}-text-${index}`}>
-                              {part.text}
-                            </span>
-                          )
+                    <div className="max-w-[78%]">
+                      <div
+                        className={`rounded-3xl px-4 py-3 ${
+                          isAssistant
+                            ? "bg-muted/60 text-foreground"
+                            : "bg-primary text-primary-foreground"
+                        }`}
+                      >
+                        {messageMentions.length > 0 && !hasInlineMentions && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {messageMentions.map((mention) => (
+                              <Chip
+                                color={isAssistant ? "default" : "accent"}
+                                className="max-w-full"
+                                key={`${message.id}-${mention.relativePath}`}
+                                size="sm"
+                                variant={isAssistant ? "secondary" : "soft"}
+                              >
+                                <Chip.Label className="truncate">
+                                  {mention.relativePath}
+                                </Chip.Label>
+                              </Chip>
+                            ))}
+                          </div>
                         )}
-                      </p>
+
+                        <p className="whitespace-pre-wrap">
+                          {messageParts.map((part, index) =>
+                            part.type === "mention" ? (
+                              <InlineMentionToken
+                                key={`${message.id}-mention-${part.mention.relativePath}-${index}`}
+                                mention={part.mention}
+                              />
+                            ) : (
+                              <span key={`${message.id}-text-${index}`}>
+                                {part.text}
+                              </span>
+                            )
+                          )}
+                        </p>
+                      </div>
+                      {isAssistant && (
+                        <MessageActions
+                          isRegenerating={isRequestPending}
+                          messageText={messageText}
+                          onRegenerate={handleRegenerate}
+                        />
+                      )}
                     </div>
                   </div>
                 )

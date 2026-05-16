@@ -39,6 +39,14 @@
       "foldersGroup": "フォルダー",
       "searchPlaceholder": "現在のプロジェクトファイルを検索..."
     },
+    "messageActions": {
+      "badResponse": "よくない回答",
+      "copied": "コピー済み",
+      "copy": "コピー",
+      "goodResponse": "よい回答",
+      "label": "メッセージ操作",
+      "regenerate": "再生成"
+    },
     "missing": {
       "action": "ホームに戻る",
       "description": "この chat session は存在しないか、まだローカル一覧に同期されていません。",
@@ -244,12 +252,19 @@
       },
       "option": {
         "aquarium": "Aquarium",
+        "brutalism": "Brutalism",
         "chadraculaEvondev": "Chadracula Evondev",
         "default": "Default（Built-in）",
+        "glass": "Glass",
+        "mouve": "Mouve",
         "oneLight": "One Light",
         "paper": "Paper",
         "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
+      },
+      "proPresets": {
+        "description": "HeroUI Pro のテーマペアをライトモードとダークモードにまとめて適用します。",
+        "label": "HeroUI Pro プリセット"
       },
       "title": "カラースキーム"
     },

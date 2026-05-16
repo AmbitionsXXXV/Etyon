@@ -69,6 +69,10 @@ export const workspacePackageAliases = [
   {
     find: /^@etyon\/ui\/lib\/(.*)$/u,
     replacement: `${resolveFromWorkspace("packages/ui/src/lib")}/$1`
+  },
+  {
+    find: /^@etyon\/ui\/themes\/(.+?)(?:\.css)?(\?.*)?$/u,
+    replacement: `${resolveFromWorkspace("packages/ui/src/styles/themes")}/$1.css$2`
   }
 ] as const
 

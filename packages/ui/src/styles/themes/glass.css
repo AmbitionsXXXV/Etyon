@@ -1,0 +1,9 @@
+@import "@heroui-pro/react/themes/glass";
+
+:root[data-theme="glass-light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="glass-dark"] {
+  color-scheme: dark;
+}

@@ -39,6 +39,14 @@
       "foldersGroup": "文件夹",
       "searchPlaceholder": "搜索当前项目文件..."
     },
+    "messageActions": {
+      "badResponse": "回复不好",
+      "copied": "已复制",
+      "copy": "复制",
+      "goodResponse": "回复很好",
+      "label": "消息操作",
+      "regenerate": "重新生成"
+    },
     "missing": {
       "action": "返回首页",
       "description": "这个 chat session 不存在，或者还没有同步到本地列表。",
@@ -244,12 +252,19 @@
       },
       "option": {
         "aquarium": "Aquarium",
+        "brutalism": "Brutalism",
         "chadraculaEvondev": "Chadracula Evondev",
         "default": "默认（内建）",
+        "glass": "Glass",
+        "mouve": "Mouve",
         "oneLight": "One Light",
         "paper": "Paper",
         "poimandres": "Poimandres",
         "tokyoNight": "Tokyo Night"
+      },
+      "proPresets": {
+        "description": "将一组 HeroUI Pro theme 同时应用到浅色和深色模式。",
+        "label": "HeroUI Pro 预设"
       },
       "title": "颜色方案"
     },

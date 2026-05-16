@@ -13,6 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { motion } from "motion/react"
 import { useCallback, useState } from "react"
 
+import type { ColorSchemaPairOption } from "@/renderer/lib/settings-page/build-color-schema-options"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 
 import { ColorSchemaSelector } from "../ui-tab"
@@ -34,8 +35,13 @@ interface ColorSchemaBlockProps<TValue extends ColorSchemaValue> {
 interface ColorSchemaTabProps {
   darkColorSchema: DarkColorSchema
   darkColorSchemaOptions: ColorSchemaOption<DarkColorSchema>[]
+  heroUiProColorSchemaPairOptions: ColorSchemaPairOption[]
   lightColorSchema: LightColorSchema
   lightColorSchemaOptions: ColorSchemaOption<LightColorSchema>[]
+  onColorSchemaPairChange: (value: {
+    darkColorSchema: DarkColorSchema
+    lightColorSchema: LightColorSchema
+  }) => void
   onCreateTheme: (theme: CustomTheme) => void
   onDarkColorSchemaChange: (value: DarkColorSchema) => void
   onDeleteTheme: (themeId: string) => void
@@ -60,11 +66,108 @@ const ColorSchemaBlock = <TValue extends ColorSchemaValue>({
   </div>
 )
 
+interface ColorSchemaPairButtonProps {
+  isActive: boolean
+  onChange: (value: ColorSchemaPairOption) => void
+  option: ColorSchemaPairOption
+}
+
+const buildSwatchItems = (swatches: readonly string[]) => {
+  const swatchOccurrences = new Map<string, number>()
+
+  return swatches.map((swatch) => {
+    const occurrenceCount = swatchOccurrences.get(swatch) ?? 0
+    swatchOccurrences.set(swatch, occurrenceCount + 1)
+
+    return {
+      key: `${swatch}-${occurrenceCount}`,
+      value: swatch
+    }
+  })
+}
+
+const ColorSchemaSwatchRow = ({
+  swatches
+}: {
+  swatches: readonly string[]
+}) => (
+  <div className="flex min-w-0 items-center gap-1.5">
+    {buildSwatchItems(swatches).map((swatchItem) => (
+      <span
+        className="size-3 rounded-full border border-black/10"
+        key={swatchItem.key}
+        style={{ backgroundColor: swatchItem.value }}
+      />
+    ))}
+  </div>
+)
+
+const ColorSchemaPairButton = ({
+  isActive,
+  onChange,
+  option
+}: ColorSchemaPairButtonProps) => {
+  const handleClick = useCallback(() => {
+    onChange(option)
+  }, [onChange, option])
+
+  return (
+    <button
+      aria-pressed={isActive}
+      className={[
+        "flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition-colors",
+        isActive
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
+      ].join(" ")}
+      onClick={handleClick}
+      type="button"
+    >
+      <span className="text-sm font-medium text-foreground">
+        {option.label}
+      </span>
+
+      <div className="grid w-full grid-cols-2 gap-3">
+        <ColorSchemaSwatchRow swatches={option.lightSwatches} />
+        <ColorSchemaSwatchRow swatches={option.darkSwatches} />
+      </div>
+    </button>
+  )
+}
+
+const ColorSchemaPairSelector = ({
+  darkColorSchema,
+  lightColorSchema,
+  onChange,
+  options
+}: {
+  darkColorSchema: DarkColorSchema
+  lightColorSchema: LightColorSchema
+  onChange: (value: ColorSchemaPairOption) => void
+  options: ColorSchemaPairOption[]
+}) => (
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    {options.map((option) => (
+      <ColorSchemaPairButton
+        isActive={
+          darkColorSchema === option.darkColorSchema &&
+          lightColorSchema === option.lightColorSchema
+        }
+        key={option.id}
+        onChange={onChange}
+        option={option}
+      />
+    ))}
+  </div>
+)
+
 export const ColorSchemaTab = ({
   darkColorSchema,
   darkColorSchemaOptions,
+  heroUiProColorSchemaPairOptions,
   lightColorSchema,
   lightColorSchemaOptions,
+  onColorSchemaPairChange,
   onCreateTheme,
   onDarkColorSchemaChange,
   onDeleteTheme,
@@ -79,6 +182,16 @@ export const ColorSchemaTab = ({
   const handleCreateDialogOpen = useCallback(() => {
     setIsCreateDialogOpen(true)
   }, [])
+
+  const handleColorSchemaPairChange = useCallback(
+    (option: ColorSchemaPairOption) => {
+      onColorSchemaPairChange({
+        darkColorSchema: option.darkColorSchema,
+        lightColorSchema: option.lightColorSchema
+      })
+    },
+    [onColorSchemaPairChange]
+  )
 
   const handleDeleteDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -153,6 +266,26 @@ export const ColorSchemaTab = ({
                 ))}
               </div>
             )}
+          </div>
+        </motion.section>
+
+        <motion.section {...settingsPageSectionMotion(0.2)}>
+          <div className="space-y-4 rounded-lg border border-border bg-card p-5">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold">
+                {t("settings.colorScheme.proPresets.label")}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.colorScheme.proPresets.description")}
+              </p>
+            </div>
+
+            <ColorSchemaPairSelector
+              darkColorSchema={darkColorSchema}
+              lightColorSchema={lightColorSchema}
+              onChange={handleColorSchemaPairChange}
+              options={heroUiProColorSchemaPairOptions}
+            />
           </div>
         </motion.section>
 

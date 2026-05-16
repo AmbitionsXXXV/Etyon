@@ -153,6 +153,14 @@ const ChatComponent = () => {
 - 持久化消息时会同步更新 session `updatedAt`；如果 title 为空，会从第一条 user 文本生成 session 标题
 - renderer 的 `onFinish` 只负责失效 `chatSessions.list` 与 `chatSessions.listMessages` 缓存，让 sidebar title 与下次进入页面的历史保持一致
 
+## Chat Message Actions
+
+assistant 消息下方固定展示一组本地 action，顺序为复制、好评、差评、重新生成：
+
+- 复制：使用 `navigator.clipboard.writeText()` 复制当前 assistant 文本，并展示短暂的已复制反馈
+- 好评 / 差评：当前仅保存 renderer 本地的单条消息反馈状态，不写入 SQLite 或发送到后端
+- 重新生成：调用当前 `useChat()` 实例的 `regenerate()`，并沿用最近一条 user 消息的 mentions、当前模型与 session id
+
 ## Session Memory
 
 当前 session memory 是本地确定性 rolling memory，不额外调用模型：

@@ -4,10 +4,34 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./globals.css": "./src/styles/globals.css",
-    "./lib/*": "./src/lib/*.ts",
     "./components/*": "./src/components/*.tsx",
-    "./hooks/*": "./src/hooks/*.ts"
+    "./globals.css": "./src/styles/globals.css",
+    "./hooks/*": "./src/hooks/*.ts",
+    "./lib/*": "./src/lib/*.ts",
+    "./themes/brutalism": {
+      "default": "./src/styles/themes/brutalism.css",
+      "style": "./src/styles/themes/brutalism.css"
+    },
+    "./themes/brutalism.css": {
+      "default": "./src/styles/themes/brutalism.css",
+      "style": "./src/styles/themes/brutalism.css"
+    },
+    "./themes/glass": {
+      "default": "./src/styles/themes/glass.css",
+      "style": "./src/styles/themes/glass.css"
+    },
+    "./themes/glass.css": {
+      "default": "./src/styles/themes/glass.css",
+      "style": "./src/styles/themes/glass.css"
+    },
+    "./themes/mouve": {
+      "default": "./src/styles/themes/mouve.css",
+      "style": "./src/styles/themes/mouve.css"
+    },
+    "./themes/mouve.css": {
+      "default": "./src/styles/themes/mouve.css",
+      "style": "./src/styles/themes/mouve.css"
+    }
   },
   "scripts": {
     "check": "vp check",

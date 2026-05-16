@@ -12,6 +12,13 @@ export const DARK_COLOR_SCHEMA_SWATCHES: Record<
     "oklch(85.9% 0.0882 336deg)",
     "oklch(86.8% 0.017 259deg)"
   ],
+  "brutalism-dark": [
+    "oklch(0.145 0 0)",
+    "oklch(0.205 0 0)",
+    "oklch(0.269 0 0)",
+    "oklch(0.985 0 0)",
+    "oklch(0.708 0 0)"
+  ],
   "chadracula-evondev": [
     "oklch(27% 0.0479 283deg)",
     "oklch(78.9% 0.142 226deg)",
@@ -26,6 +33,22 @@ export const DARK_COLOR_SCHEMA_SWATCHES: Record<
     "oklch(0.269 0 0)",
     "oklch(0.488 0.243 264.376)",
     "oklch(0.704 0.191 22.216)"
+  ],
+  "glass-dark": [
+    "oklch(0.15 0.003 240)",
+    "oklch(1 0 0 / 4%)",
+    "oklch(1 0 0 / 8%)",
+    "oklch(0.98 0.001 240)",
+    "oklch(0 0 0 / 0.3)",
+    "oklch(1 0 0 / 12%)"
+  ],
+  "mouve-dark": [
+    "oklch(16% 0.02 300)",
+    "oklch(20% 0.02 300)",
+    "oklch(26% 0.02 300)",
+    "oklch(70% 0.16 300)",
+    "oklch(62% 0.2 15)",
+    "oklch(99.11% 0 0)"
   ],
   poimandres: [
     "oklch(31.1% 0.0297 271deg)",
@@ -49,12 +72,35 @@ export const LIGHT_COLOR_SCHEMA_SWATCHES: Record<
   LightColorSchema,
   readonly string[]
 > = {
+  "brutalism-light": [
+    "oklch(1 0 0)",
+    "oklch(0.97 0 0)",
+    "oklch(0.922 0 0)",
+    "oklch(0.205 0 0)",
+    "oklch(0.556 0 0)"
+  ],
   default: [
     "oklch(1 0 0)",
     "oklch(0.97 0 0)",
     "oklch(0.922 0 0)",
     "oklch(0.205 0 0)",
     "oklch(0.577 0.245 27.325)"
+  ],
+  "glass-light": [
+    "oklch(0.97 0.0029 264.54)",
+    "oklch(100% 0 0 / 0.8)",
+    "oklch(0 0 0 / 7%)",
+    "oklch(0.3 0.006 240)",
+    "oklch(0.65 0.06 240)",
+    "oklch(0 0 0 / 10%)"
+  ],
+  "mouve-light": [
+    "oklch(95.5% 0.012 300)",
+    "oklch(97.5% 0.008 300)",
+    "oklch(92% 0.012 300)",
+    "oklch(55% 0.18 300)",
+    "oklch(58% 0.2 15)",
+    "oklch(25% 0.02 300)"
   ],
   "one-light": [
     "oklch(98.5% 0.000000000000000508 0deg)",

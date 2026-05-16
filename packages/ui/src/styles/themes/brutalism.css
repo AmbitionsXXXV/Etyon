@@ -1,0 +1,9 @@
+@import "@heroui-pro/react/themes/brutalism";
+
+:root[data-theme="brutalism-light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="brutalism-dark"] {
+  color-scheme: dark;
+}

@@ -16,6 +16,9 @@
   `tailwindcss` -> `@heroui/styles` -> `@heroui-pro/react/css` -> `tw-animate-css` -> `shadcn/tailwind.css` -> 项目主题文件。
 - 以 HeroUI 语义 token 为主：`surface`、`overlay`、`separator`、`default`、`success`、`warning`、`danger`、`segment`、`surface-shadow`、`overlay-shadow`。
 - 主题切换使用 HeroUI v3 推荐的 `data-theme`：`default` 会解析为 `light` / `dark`，内置 schema 会解析为 `one-light`、`paper`、`aquarium` 等具体主题名。
+- HeroUI Pro preset theme 使用 `@etyon/ui/themes/*` 重导出，目前覆盖 `brutalism`、`glass`、`mouve`；Settings 中对应的 `data-theme` 值是 `*-light` / `*-dark`。
+- Settings 会优先以成对 preset 应用 Pro theme，一次选择同时设置 light / dark schema；单独的 light / dark blocks 只用于用户需要跨 preset 混搭时调整。
+- Pro preset theme CSS 含组件级覆盖，因此不常驻导入 `globals.css`；renderer 在 `applySettings()` / preview 时根据当前解析出的 `data-theme` 动态挂载对应 stylesheet，避免多个 Pro theme 覆盖同时生效。
 - 现有 color schema 文件直接覆盖 HeroUI 主 token：`accent`、`background`、`foreground`、`surface`、`overlay`、`default`、`field-*`、`success`、`warning`、`danger`、`segment`、`border`、`separator`、`focus`、`link`。
 - 旧 shadcn / Etyon 变量只作为兼容别名存在，并映射到 HeroUI token：`primary -> accent`、`secondary -> default`、`card -> surface`、`popover -> overlay`、`ring -> focus`、`destructive -> danger`。
 - `sidebar-*`、`chart-*`、`muted-foreground`、`input` 仍是项目扩展 token，但由 `globals.css` 统一从 HeroUI token 派生，schema 文件不再单独维护这些项目变量。

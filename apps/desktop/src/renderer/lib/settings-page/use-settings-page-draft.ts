@@ -229,6 +229,26 @@ export const useSettingsPageDraft = () => {
     (v: LightColorSchema) => updateDraftRef.current("lightColorSchema", v),
     []
   )
+  const handleColorSchemaPairChange = useCallback(
+    ({
+      darkColorSchema,
+      lightColorSchema
+    }: {
+      darkColorSchema: DarkColorSchema
+      lightColorSchema: LightColorSchema
+    }) => {
+      setDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              darkColorSchema,
+              lightColorSchema
+            }
+          : prev
+      )
+    },
+    []
+  )
   const handleAiProviderConfigChange = useCallback(
     (
       providerId: AiProviderName,
@@ -352,6 +372,7 @@ export const useSettingsPageDraft = () => {
     handleAutoStartChange,
     handleCancel,
     handleCloseToTrayChange,
+    handleColorSchemaPairChange,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,

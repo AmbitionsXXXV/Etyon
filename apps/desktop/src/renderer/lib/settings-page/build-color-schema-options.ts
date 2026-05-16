@@ -2,6 +2,7 @@ import type { TranslationKey } from "@etyon/i18n"
 import type { DarkColorSchema, LightColorSchema } from "@etyon/rpc"
 
 import type { ColorSchemaOption } from "@/renderer/components/settings/ui-tab"
+import { HEROUI_PRO_COLOR_SCHEMA_PRESETS } from "@/renderer/lib/color-schema/heroui-pro-themes"
 
 import {
   DARK_COLOR_SCHEMA_SWATCHES,
@@ -9,6 +10,27 @@ import {
 } from "./color-schema-swatches"
 
 type Translate = (key: TranslationKey) => string
+
+export interface ColorSchemaPairOption {
+  darkColorSchema: DarkColorSchema
+  darkSwatches: readonly string[]
+  id: string
+  label: string
+  lightColorSchema: LightColorSchema
+  lightSwatches: readonly string[]
+}
+
+export const buildHeroUiProColorSchemaPairOptions = (
+  t: Translate
+): ColorSchemaPairOption[] =>
+  HEROUI_PRO_COLOR_SCHEMA_PRESETS.map((preset) => ({
+    darkColorSchema: preset.darkColorSchema,
+    darkSwatches: DARK_COLOR_SCHEMA_SWATCHES[preset.darkColorSchema],
+    id: preset.id,
+    label: t(preset.labelKey),
+    lightColorSchema: preset.lightColorSchema,
+    lightSwatches: LIGHT_COLOR_SCHEMA_SWATCHES[preset.lightColorSchema]
+  }))
 
 export const buildDarkColorSchemaOptions = (
   t: Translate
@@ -24,9 +46,24 @@ export const buildDarkColorSchemaOptions = (
     value: "aquarium"
   },
   {
+    label: t("settings.colorScheme.option.brutalism"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES["brutalism-dark"],
+    value: "brutalism-dark"
+  },
+  {
     label: t("settings.colorScheme.option.chadraculaEvondev"),
     swatches: DARK_COLOR_SCHEMA_SWATCHES["chadracula-evondev"],
     value: "chadracula-evondev"
+  },
+  {
+    label: t("settings.colorScheme.option.glass"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES["glass-dark"],
+    value: "glass-dark"
+  },
+  {
+    label: t("settings.colorScheme.option.mouve"),
+    swatches: DARK_COLOR_SCHEMA_SWATCHES["mouve-dark"],
+    value: "mouve-dark"
   },
   {
     label: t("settings.colorScheme.option.poimandres"),
@@ -47,6 +84,21 @@ export const buildLightColorSchemaOptions = (
     label: t("settings.colorScheme.option.default"),
     swatches: LIGHT_COLOR_SCHEMA_SWATCHES.default,
     value: "default"
+  },
+  {
+    label: t("settings.colorScheme.option.brutalism"),
+    swatches: LIGHT_COLOR_SCHEMA_SWATCHES["brutalism-light"],
+    value: "brutalism-light"
+  },
+  {
+    label: t("settings.colorScheme.option.glass"),
+    swatches: LIGHT_COLOR_SCHEMA_SWATCHES["glass-light"],
+    value: "glass-light"
+  },
+  {
+    label: t("settings.colorScheme.option.mouve"),
+    swatches: LIGHT_COLOR_SCHEMA_SWATCHES["mouve-light"],
+    value: "mouve-light"
   },
   {
     label: t("settings.colorScheme.option.oneLight"),
