@@ -39,6 +39,7 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | IPC                | `apps/desktop/src/main/index.ts`                           | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
 | Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                         |
 | Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                          |
+| Memory Runtime     | `apps/desktop/src/main/memory.ts`                          | 长期 memory 的写入、检索、prompt 注入与统计                                                                                    |
 | Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
 | Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
 | Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                           |
@@ -80,6 +81,12 @@ interface AppSettings {
   fontSize: number // 12-24，默认 16
   lightColorSchema: "default" | "one-light" | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
+  memory: {
+    enabled: boolean // 默认 true，控制长期 memory 读写与注入
+    includeChatbot: boolean // 默认 true，Telegram chatbot 使用同一套 memory
+    maxContextEntries: number // 1-20，默认 8
+    shareAcrossProjects: boolean // 默认 true，允许 project memory 跨项目检索
+  }
   minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
   proxy: ProxySettings // 代理配置
   sidebar: {
@@ -141,6 +148,17 @@ interface StoredProviderModel {
   name: string
 }
 ```
+
+## Memory Tab
+
+- Settings 左侧导航包含 `Memory` tab，用于控制长期 memory 行为
+- 当前字段：
+  - `enabled`：关闭后不再写入或检索 `memory_entries`
+  - `shareAcrossProjects`：开启时，一个 project 中产生的 memory 可被其他 project 检索；关闭时只使用当前 project 或非 project memory
+  - `includeChatbot`：开启时，Telegram chatbot 会读取并写入同一套长期 memory
+  - `maxContextEntries`：每次模型请求最多注入的 memory 条数，范围 `1-20`
+- 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
+- 当前实现是本地 SQLite + 关键词 overlap 检索；后续如果引入 embedding 或模型总结，继续保持 runtime 逻辑在 `apps/desktop/src/main/memory.ts`，Settings panel 只负责用户可控开关
 
 ## Providers Tab
 

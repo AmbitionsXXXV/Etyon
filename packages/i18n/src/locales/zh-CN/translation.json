@@ -281,10 +281,37 @@
     "nav": {
       "colorSchema": "颜色方案",
       "general": "通用",
+      "memory": "Memory",
       "network": "网络",
       "providers": "Providers",
       "telegram": "Telegram",
       "userInterface": "用户界面"
+    },
+    "memory": {
+      "description": "把精简后的长期记忆保存在模型上下文之外，让 chat sessions、projects 和 Telegram chatbot 能共享相关记忆。",
+      "includeChatbot": {
+        "description": "允许 chatbot 对话读取并写入同一套长期记忆。",
+        "label": "联通 chatbot memory"
+      },
+      "retrieval": {
+        "maxContextEntries": {
+          "description": "控制每次模型请求最多注入多少条匹配的 memory。",
+          "label": "上下文条数"
+        },
+        "title": "检索预算"
+      },
+      "shareAcrossProjects": {
+        "description": "当请求匹配时，允许一个 project 中生成的 memory 被另一个 project 使用。",
+        "label": "跨 project 共享"
+      },
+      "status": {
+        "empty": "还没有 memory 条目。",
+        "lastUpdated": "最后更新",
+        "recent": "最近条目",
+        "title": "Memory 存储",
+        "totalEntries": "条目总数"
+      },
+      "title": "长期 Memory"
     },
     "network": {
       "proxy": {

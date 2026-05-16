@@ -28,6 +28,26 @@ export type {
 } from "./schemas/chat-sessions"
 export { FontListOutputSchema } from "./schemas/fonts"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
+export {
+  ListMemoryEntriesInputSchema,
+  MemoryEntriesOutputSchema,
+  MemoryEntrySchema,
+  MemoryKindSchema,
+  MemoryScopeSchema,
+  MemorySettingsSchema,
+  MemorySourceSchema,
+  MemoryStatsOutputSchema
+} from "./schemas/memory"
+export type {
+  ListMemoryEntriesInput,
+  MemoryEntriesOutput,
+  MemoryEntry,
+  MemoryKind,
+  MemoryScope,
+  MemorySettings,
+  MemorySource,
+  MemoryStatsOutput
+} from "./schemas/memory"
 export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
 export {
   BuiltInProviderIdSchema,

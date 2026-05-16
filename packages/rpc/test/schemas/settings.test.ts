@@ -69,4 +69,17 @@ describe("AppSettingsSchema", () => {
       requireMentionInGroups: true
     })
   })
+
+  it("adds memory defaults for empty and legacy settings", () => {
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.memory).toEqual({
+      enabled: true,
+      includeChatbot: true,
+      maxContextEntries: 8,
+      shareAcrossProjects: true
+    })
+  })
 })

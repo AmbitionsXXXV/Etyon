@@ -1,6 +1,7 @@
 import { LocalePreferenceSchema } from "@etyon/i18n"
 import * as z from "zod"
 
+import { MemorySettingsSchema } from "./memory"
 import {
   BuiltInProviderIdSchema,
   MoonshotRegionSchema,
@@ -170,6 +171,13 @@ const TELEGRAM_SETTINGS_DEFAULT = {
   requireMentionInGroups: true
 } as const
 
+const MEMORY_SETTINGS_DEFAULT = {
+  enabled: true,
+  includeChatbot: true,
+  maxContextEntries: 8,
+  shareAcrossProjects: true
+} as const
+
 export const TelegramSettingsSchema = z.object({
   allowedChatIds: z.string().default(""),
   allowedUserIds: z.string().default(""),
@@ -200,6 +208,7 @@ export const AppSettingsSchema = z.object({
   fontSize: z.number().min(12).max(24).default(16),
   lightColorSchema: LightColorSchemaSchema.default("default"),
   locale: LocalePreferenceSchema.default("system"),
+  memory: MemorySettingsSchema.default(MEMORY_SETTINGS_DEFAULT),
   minimizeToTray: z.boolean().default(false),
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
   sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
@@ -219,6 +228,7 @@ export const UpdateSettingsSchema = z.object({
   fontSize: z.number().min(12).max(24).optional(),
   lightColorSchema: LightColorSchemaSchema.optional(),
   locale: LocalePreferenceSchema.optional(),
+  memory: MemorySettingsSchema.optional(),
   minimizeToTray: z.boolean().optional(),
   proxy: ProxySettingsSchema.optional(),
   sidebar: SidebarSettingsSchema.optional(),
@@ -237,6 +247,7 @@ export type CustomThemePreset = z.infer<typeof CustomThemePresetSchema>
 export type CustomThemeType = z.infer<typeof CustomThemeTypeSchema>
 export type DarkColorSchema = z.infer<typeof DarkColorSchemaSchema>
 export type LightColorSchema = z.infer<typeof LightColorSchemaSchema>
+export type MemorySettings = z.infer<typeof MemorySettingsSchema>
 export type ProxySettings = z.infer<typeof ProxySettingsSchema>
 export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>

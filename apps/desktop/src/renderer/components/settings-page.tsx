@@ -40,6 +40,7 @@ import {
   MinimizeToTrayCheckbox,
   StartMinimizedToTrayCheckbox
 } from "./settings/general-tab"
+import { MemoryTab } from "./settings/memory-tab"
 import { NetworkTab } from "./settings/network-tab"
 import { ProvidersTab } from "./settings/providers-tab"
 import { TelegramTab } from "./settings/telegram-tab"
@@ -65,6 +66,7 @@ interface SettingsNavItem {
 const SETTINGS_SECTION_IDS = new Set<string>([
   "color-schema",
   "general",
+  "memory",
   "network",
   "providers",
   "telegram",
@@ -179,6 +181,7 @@ export const SettingsPage = ({
     handleFontSizeChange,
     handleLightColorSchemaChange,
     handleLocaleChange,
+    handleMemoryChange,
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,
@@ -509,6 +512,13 @@ export const SettingsPage = ({
 
               {activeSection === "network" && (
                 <NetworkTab onChange={handleProxyChange} proxy={draft.proxy} />
+              )}
+
+              {activeSection === "memory" && (
+                <MemoryTab
+                  memory={draft.memory}
+                  onChange={handleMemoryChange}
+                />
               )}
 
               {activeSection === "telegram" && (

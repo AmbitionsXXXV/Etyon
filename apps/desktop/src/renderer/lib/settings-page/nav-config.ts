@@ -1,5 +1,6 @@
 import type { TranslationKey } from "@etyon/i18n"
 import {
+  BrainIcon,
   ChatBotIcon,
   ComputerIcon,
   InternetIcon,
@@ -11,6 +12,7 @@ import {
 export type SettingsSectionId =
   | "color-schema"
   | "general"
+  | "memory"
   | "network"
   | "providers"
   | "telegram"
@@ -19,6 +21,7 @@ export type SettingsSectionId =
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   "color-schema": "settings.nav.colorSchema",
   general: "settings.nav.general",
+  memory: "settings.nav.memory",
   network: "settings.nav.network",
   providers: "settings.nav.providers",
   telegram: "settings.nav.telegram",
@@ -40,6 +43,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: ChatBotIcon,
     id: "telegram"
+  },
+  {
+    icon: BrainIcon,
+    id: "memory"
   },
   {
     icon: PaintBrush01Icon,

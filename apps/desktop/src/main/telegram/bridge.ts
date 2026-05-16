@@ -4,7 +4,7 @@ import type {
   TelegramAdapter,
   TelegramRawMessage
 } from "@chat-adapter/telegram"
-import type { AppSettings, TelegramSettings } from "@etyon/rpc"
+import type { AppSettings, MemorySettings, TelegramSettings } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { streamText } from "ai"
 import { Chat, toAiMessages } from "chat"
@@ -16,7 +16,12 @@ import type {
   Thread
 } from "chat"
 
+import { getDb } from "@/main/db"
 import { logger } from "@/main/logger"
+import {
+  buildMemorySystemPrompt,
+  upsertChatbotMemoryEntry
+} from "@/main/memory"
 import { resolveModel } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
 import { toTelegramErrorMessage } from "@/main/telegram/client"
@@ -46,13 +51,17 @@ interface TelegramBridgeRuntime {
 
 let activeBridge: TelegramBridgeRuntime | null = null
 
-const buildBridgeSignature = (settings: TelegramSettings): string =>
+const buildBridgeSignature = (
+  memory: MemorySettings,
+  settings: TelegramSettings
+): string =>
   JSON.stringify({
     allowedChatIds: settings.allowedChatIds,
     allowedUserIds: settings.allowedUserIds,
     botToken: settings.botToken,
     botUsername: settings.botUsername,
     enabled: settings.enabled,
+    memory,
     requireMentionInGroups: settings.requireMentionInGroups
   })
 
@@ -224,13 +233,34 @@ const buildTelegramAiMessages = async ({
   ]
 }
 
+const buildTelegramSystemPrompt = async ({
+  memory,
+  prompt
+}: {
+  memory: MemorySettings
+  prompt: string
+}): Promise<string> => {
+  const memorySystemPrompt = await buildMemorySystemPrompt({
+    db: getDb(),
+    projectPath: null,
+    query: prompt,
+    settings: memory
+  })
+
+  return [TELEGRAM_SYSTEM_PROMPT, memorySystemPrompt]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
 const handleTelegramMessage = async ({
   botUserName,
+  memory,
   message,
   settings,
   thread
 }: {
   botUserName: string
+  memory: MemorySettings
   message: TelegramChatMessage
   settings: TelegramSettings
   thread: TelegramChatThread
@@ -257,13 +287,24 @@ const handleTelegramMessage = async ({
       message,
       thread
     })
+    const system = await buildTelegramSystemPrompt({
+      memory,
+      prompt
+    })
     const result = streamText({
       messages,
       model: resolveModel(),
-      system: TELEGRAM_SYSTEM_PROMPT
+      system
     })
 
     await thread.post(result.textStream)
+    if (memory.enabled && memory.includeChatbot) {
+      await upsertChatbotMemoryEntry({
+        chatbotId: `telegram:${getTelegramRawMessage(message).chat.id}`,
+        db: getDb(),
+        messages
+      })
+    }
   } catch (error) {
     const rawMessage = getTelegramRawMessage(message)
 
@@ -289,10 +330,12 @@ const handleTelegramMessage = async ({
 
 const registerTelegramHandlers = ({
   bot,
+  memory,
   settings,
   telegram
 }: {
   bot: Chat<{ telegram: TelegramAdapter }>
+  memory: MemorySettings
   settings: TelegramSettings
   telegram: TelegramAdapter
 }): void => {
@@ -302,6 +345,7 @@ const registerTelegramHandlers = ({
   ) =>
     handleTelegramMessage({
       botUserName: telegram.userName,
+      memory,
       message,
       settings,
       thread
@@ -314,6 +358,7 @@ const registerTelegramHandlers = ({
 }
 
 const createTelegramBridgeRuntime = (
+  memory: MemorySettings,
   settings: TelegramSettings,
   signature: string
 ): TelegramBridgeRuntime => {
@@ -344,7 +389,7 @@ const createTelegramBridgeRuntime = (
     userName: botUserName || TELEGRAM_FALLBACK_USER_NAME
   })
 
-  registerTelegramHandlers({ bot, settings, telegram })
+  registerTelegramHandlers({ bot, memory, settings, telegram })
 
   return {
     bot,
@@ -412,8 +457,8 @@ export const stopTelegramBridge = (): void => {
 export const syncTelegramBridge = (
   appSettings: AppSettings = getSettings()
 ): void => {
-  const { telegram } = appSettings
-  const signature = buildBridgeSignature(telegram)
+  const { memory, telegram } = appSettings
+  const signature = buildBridgeSignature(memory, telegram)
 
   if (!telegram.enabled || !telegram.botToken.trim()) {
     stopTelegramBridge()
@@ -425,7 +470,7 @@ export const syncTelegramBridge = (
   }
 
   stopTelegramBridge()
-  const bridge = createTelegramBridgeRuntime(telegram, signature)
+  const bridge = createTelegramBridgeRuntime(memory, telegram, signature)
 
   activeBridge = bridge
 

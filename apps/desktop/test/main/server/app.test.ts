@@ -24,6 +24,7 @@ interface MockChatSession {
 
 const {
   buildMentionContextMock,
+  buildMemorySystemPromptMock,
   buildSessionMemorySystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionByIdMock,
@@ -50,6 +51,9 @@ const {
       snapshotId: "snapshot-1",
       system: "snapshot context"
     })),
+    buildMemorySystemPromptMock: vi.fn(() =>
+      Promise.resolve("long-term memory context")
+    ),
     buildSessionMemorySystemPromptMock: vi.fn(() => "session memory context"),
     convertToModelMessagesMock: vi.fn((messages) => Promise.resolve(messages)),
     getChatSessionByIdMock: vi.fn(() => Promise.resolve(defaultChatSession)),
@@ -145,8 +149,23 @@ vi.mock("@/main/chat-sessions", () => ({
   getChatSessionById: getChatSessionByIdMock
 }))
 
+vi.mock("@/main/memory", () => ({
+  buildMemorySystemPrompt: buildMemorySystemPromptMock
+}))
+
 vi.mock("@/main/project-snapshot", () => ({
   buildMentionContext: buildMentionContextMock
+}))
+
+vi.mock("@/main/settings", () => ({
+  getSettings: vi.fn(() => ({
+    memory: {
+      enabled: true,
+      includeChatbot: true,
+      maxContextEntries: 8,
+      shareAcrossProjects: true
+    }
+  }))
 }))
 
 const getLogFilePath = (): string =>
@@ -340,9 +359,21 @@ describe("hono app", () => {
       mentions,
       projectPath: "/tmp/project-a"
     })
+    expect(buildMemorySystemPromptMock).toHaveBeenCalledWith({
+      db: expect.anything(),
+      projectPath: "/tmp/project-a",
+      query: "",
+      settings: {
+        enabled: true,
+        includeChatbot: true,
+        maxContextEntries: 8,
+        shareAcrossProjects: true
+      }
+    })
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: "session memory context\n\nsnapshot context"
+        system:
+          "session memory context\n\nlong-term memory context\n\nsnapshot context"
       })
     )
     expect(replaceChatMessagesMock).toHaveBeenCalledWith({

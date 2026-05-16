@@ -98,6 +98,33 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("exposes memory stats and entries over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const stats = await client.memory.stats()
+    const entries = await client.memory.list({
+      limit: 5
+    })
+
+    expect(stats.totalEntries).toBeGreaterThanOrEqual(0)
+    expect(entries.entries).toEqual(expect.any(Array))
+
+    port1.close()
+    port2.close()
+  })
+
   it("creates, lists, opens, and pins chat sessions over the message-port adapter", async () => {
     await ensureDatabaseReady()
 

@@ -4,6 +4,8 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
 import { chatMessages, chatSessions } from "@/main/db/schema"
+import { upsertChatSessionMemoryEntry } from "@/main/memory"
+import { getSettings } from "@/main/settings"
 
 const CHAT_TITLE_MAX_LENGTH = 64
 const WHITESPACE_PATTERN = /\s+/gu
@@ -132,6 +134,13 @@ export const replaceChatMessages = async ({
     messages,
     sessionId
   })
+  if (getSettings().memory.enabled) {
+    await upsertChatSessionMemoryEntry({
+      db,
+      messages,
+      session
+    })
+  }
 
   return listChatMessages({
     db,

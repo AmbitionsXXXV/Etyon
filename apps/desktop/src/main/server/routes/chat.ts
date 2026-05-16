@@ -10,10 +10,32 @@ import {
 } from "@/main/chat-session-memory"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
+import { buildMemorySystemPrompt } from "@/main/memory"
 import { buildMentionContext } from "@/main/project-snapshot"
 import { resolveModel } from "@/main/server/lib/providers"
+import { getSettings } from "@/main/settings"
 
 const chatRoute = new Hono()
+const WHITESPACE_PATTERN = /\s+/gu
+
+const getMessageText = (message: UIMessage): string =>
+  message.parts
+    .filter(
+      (part): part is Extract<UIMessage["parts"][number], { type: "text" }> =>
+        part.type === "text"
+    )
+    .map((part) => part.text)
+    .join("\n")
+    .replace(WHITESPACE_PATTERN, " ")
+    .trim()
+
+const buildMemoryQuery = (messages: UIMessage[]): string =>
+  messages
+    .filter((message) => message.role === "user")
+    .map(getMessageText)
+    .filter(Boolean)
+    .slice(-3)
+    .join("\n")
 
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
@@ -41,7 +63,18 @@ chatRoute.post("/chat", async (c) => {
     projectPath: session.projectPath
   })
   const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
-  const systemPrompts = [sessionMemorySystem, system].filter(Boolean)
+  const settings = getSettings()
+  const longTermMemorySystem = await buildMemorySystemPrompt({
+    db,
+    projectPath: session.projectPath,
+    query: buildMemoryQuery(messages),
+    settings: settings.memory
+  })
+  const systemPrompts = [
+    sessionMemorySystem,
+    longTermMemorySystem,
+    system
+  ].filter(Boolean)
   const model = resolveModel(requestedModelId ?? session.modelId ?? undefined)
   const modelMessages = await convertToModelMessages(messages)
   const result = streamText({

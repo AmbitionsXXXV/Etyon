@@ -7,6 +7,7 @@ import type {
   CustomTheme,
   DarkColorSchema,
   LightColorSchema,
+  MemorySettings,
   ProxySettings,
   SidebarMode,
   TelegramSettings,
@@ -300,6 +301,10 @@ export const useSettingsPageDraft = () => {
     (v: boolean) => updateDraftRef.current("minimizeToTray", v),
     []
   )
+  const handleMemoryChange = useCallback(
+    (v: MemorySettings) => updateDraftRef.current("memory", v),
+    []
+  )
   const handleProxyChange = useCallback(
     (v: ProxySettings) => updateDraftRef.current("proxy", v),
     []
@@ -357,6 +362,7 @@ export const useSettingsPageDraft = () => {
     handleFontSizeChange,
     handleLightColorSchemaChange,
     handleLocaleChange,
+    handleMemoryChange,
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,

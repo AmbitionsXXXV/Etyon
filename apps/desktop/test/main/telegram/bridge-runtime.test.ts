@@ -61,12 +61,15 @@ const {
   chatInstances,
   createMemoryStateMock,
   createTelegramAdapterMock,
+  getDbMock,
   loggerErrorMock,
   loggerInfoMock,
+  buildMemorySystemPromptMock,
   resolveModelMock,
   streamTextMock,
   telegramAdapters,
-  toAiMessagesMock
+  toAiMessagesMock,
+  upsertChatbotMemoryEntryMock
 } = vi.hoisted(() => {
   const chatInstanceStore: ChatInstanceMock[] = []
   const telegramAdapterStore: TelegramAdapterMock[] = []
@@ -147,15 +150,18 @@ const {
 
   return {
     ChatMock: chatConstructorMock,
+    buildMemorySystemPromptMock: vi.fn(),
     chatInstances: chatInstanceStore,
     createMemoryStateMock: vi.fn(() => ({ kind: "memory-state" })),
     createTelegramAdapterMock: telegramAdapterFactoryMock,
+    getDbMock: vi.fn(() => ({ kind: "db" })),
     loggerErrorMock: vi.fn(),
     loggerInfoMock: vi.fn(),
     resolveModelMock: vi.fn(),
     streamTextMock: vi.fn(),
     telegramAdapters: telegramAdapterStore,
-    toAiMessagesMock: aiMessagesConverterMock
+    toAiMessagesMock: aiMessagesConverterMock,
+    upsertChatbotMemoryEntryMock: vi.fn()
   }
 })
 
@@ -184,12 +190,21 @@ vi.mock("@/main/logger", () => ({
   }
 }))
 
+vi.mock("@/main/db", () => ({
+  getDb: getDbMock
+}))
+
 vi.mock("@/main/server/lib/providers", () => ({
   resolveModel: resolveModelMock
 }))
 
 vi.mock("@/main/settings", () => ({
   getSettings: vi.fn()
+}))
+
+vi.mock("@/main/memory", () => ({
+  buildMemorySystemPrompt: buildMemorySystemPromptMock,
+  upsertChatbotMemoryEntry: upsertChatbotMemoryEntryMock
 }))
 
 const createTextStream = (text: string) =>
@@ -213,6 +228,12 @@ const createAppSettings = (
   telegram: TelegramSettings = createTelegramSettings()
 ): AppSettings =>
   ({
+    memory: {
+      enabled: true,
+      includeChatbot: true,
+      maxContextEntries: 8,
+      shareAcrossProjects: true
+    },
     telegram
   }) as AppSettings
 
@@ -346,6 +367,45 @@ describe("telegram bridge runtime", () => {
       })
     )
     expect(thread.post).toHaveBeenCalledWith(textStream)
+  })
+
+  it("connects Telegram replies to the shared memory layer", async () => {
+    const { syncTelegramBridge } = await import("@/main/telegram/bridge")
+    const textStream = createTextStream("AI reply")
+
+    buildMemorySystemPromptMock.mockResolvedValue("Shared memory: dense UI")
+    resolveModelMock.mockReturnValue({ modelId: "test-model" })
+    streamTextMock.mockReturnValue({ textStream })
+    syncTelegramBridge(createAppSettings())
+    await waitForMicrotasks()
+
+    const message = createTelegramMessage()
+    const thread = createThread([message])
+
+    await chatInstances[0]?.mentionHandlers[0]?.(thread, message)
+
+    expect(buildMemorySystemPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectPath: null,
+        query: "summarize this"
+      })
+    )
+    expect(streamTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining("Shared memory: dense UI")
+      })
+    )
+    expect(upsertChatbotMemoryEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatbotId: "telegram:-10042",
+        messages: [
+          {
+            content: "summarize this",
+            role: "user"
+          }
+        ]
+      })
+    )
   })
 
   it("ignores non-mentioned group messages when group mentions are required", async () => {

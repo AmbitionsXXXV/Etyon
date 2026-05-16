@@ -3,7 +3,7 @@
 ## 概述
 
 桌面端主进程现已铺设本地数据库基础设施，采用 `drizzle-orm + @libsql/client` 连接本地 SQLite 文件。
-当前已包含 `chat_sessions`、`chat_messages` 与 `chat_session_memories`，用于持久化 sidebar 所需的 chat session 元数据、AI SDK UIMessage 历史与 session 级 memory。
+当前已包含 `chat_sessions`、`chat_messages`、`chat_session_memories` 与 `memory_entries`，用于持久化 sidebar 所需的 chat session 元数据、AI SDK UIMessage 历史、session 级 memory 与跨 session / project / chatbot 的长期 memory。
 
 ## 选型
 
@@ -51,6 +51,7 @@
 - 第三条 migration：[`0002_fair_black_crow.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0002_fair_black_crow.sql)
 - 第四条 migration：[`0003_tidy_magma.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0003_tidy_magma.sql)
 - 第五条 migration：[`0004_red_nicolaos.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0004_red_nicolaos.sql)
+- 第六条 migration：[`0005_sleepy_grey_gargoyle.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0005_sleepy_grey_gargoyle.sql)
 - 首次创建 session 且没有可继承项目时，`project_path` 回退到 `~/.config/etyon`
 - `pinned_at` 仅用于 `Projects` 模式下的顶部 `Pinned Threads` 排序：先按 `pinned_at desc`，再按 `last_opened_at desc`
 - `archived_at` 为软归档标记；`chatSessions.list` 只返回 `archived_at is null` 的 active session
@@ -92,6 +93,35 @@
 - 当前 memory 由本地确定性逻辑生成，取最近 `16` 条有文本内容的消息并限制在 `6000` 字符以内
 - `/api/chat` 会把已存在的 session memory 与当前项目 `@` 引用上下文一起作为 system prompt 追加给模型
 - 后续如果引入模型总结或 embedding 检索，应继续复用这张表作为 session memory 的持久化边界
+
+## memory_entries
+
+`memory_entries` 是长期 memory 存储层。它借鉴 Awesome-AI-Memory 中关于显式外部记忆、生命周期管理、检索与共享范围的工程拆分，但当前实现保持本地 SQLite + 确定性文本检索，不引入向量库。
+
+| 字段               | 类型    | 说明                                                    |
+| ------------------ | ------- | ------------------------------------------------------- |
+| `id`               | text    | memory 条目主键                                         |
+| `scope`            | text    | `project` / `chatbot` / `global`                        |
+| `kind`             | text    | `episodic` / `semantic` / `working`                     |
+| `source`           | text    | `chat-session` / `chatbot`                              |
+| `source_id`        | text    | 来源唯一 ID；chat session 使用 `session_id`             |
+| `session_id`       | text    | 可选关联 `chat_sessions.id`，级联删除                   |
+| `project_path`     | text    | project memory 的所属项目路径；chatbot memory 可为 null |
+| `content`          | text    | 压缩后的 memory 文本                                    |
+| `access_count`     | integer | 被检索注入的次数                                        |
+| `last_accessed_at` | text    | 最近检索时间                                            |
+| `archived_at`      | text    | 归档时间；`null` 表示仍可检索                           |
+| `created_at`       | text    | ISO 时间戳                                              |
+| `updated_at`       | text    | ISO 时间戳                                              |
+
+- 唯一索引：`memory_entries_source_id_idx`，保证同一个 source / source_id 只维护一条当前 memory
+- 普通索引：
+  - `memory_entries_project_path_idx`
+  - `memory_entries_session_id_idx`
+  - `memory_entries_updated_at_idx`
+- `replaceChatMessages()` 会在长期 memory 开启时同步 upsert 当前 chat session 的 project memory
+- Telegram bridge 在 `settings.memory.includeChatbot` 开启时会读取并 upsert chatbot memory
+- `memory.stats` 与 `memory.list` RPC 为 Settings `Memory` tab 提供状态与最近条目预览
 
 ## 命令
 

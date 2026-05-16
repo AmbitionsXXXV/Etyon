@@ -9,6 +9,9 @@ import {
   CreateChatSessionInputSchema,
   EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
+  ListMemoryEntriesInputSchema,
+  MemoryEntriesOutputSchema,
+  MemoryStatsOutputSchema,
   ListProjectSnapshotFilesInputSchema,
   ListProjectSnapshotFilesOutputSchema,
   LogEventSchema,
@@ -53,6 +56,7 @@ import {
 import { listSystemFonts } from "@/main/fonts"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
+import { getMemoryStats, listMemoryEntries } from "@/main/memory"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import {
   ensureProjectSnapshot,
@@ -94,6 +98,17 @@ const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
 const fontsList = rpc
   .output(FontListOutputSchema)
   .handler(() => listSystemFonts())
+
+const memoryList = rpc
+  .input(ListMemoryEntriesInputSchema)
+  .output(MemoryEntriesOutputSchema)
+  .handler(async ({ context, input }) => ({
+    entries: await listMemoryEntries(context.db, input.limit)
+  }))
+
+const memoryStats = rpc
+  .output(MemoryStatsOutputSchema)
+  .handler(({ context }) => getMemoryStats(context.db))
 
 const chatSessionsCreate = rpc
   .input(CreateChatSessionInputSchema)
@@ -357,6 +372,10 @@ export const router = {
   },
   logger: {
     emit: loggerEmit
+  },
+  memory: {
+    list: memoryList,
+    stats: memoryStats
   },
   ping,
   projectSnapshots: {

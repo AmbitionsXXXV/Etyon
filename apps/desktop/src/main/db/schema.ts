@@ -3,7 +3,8 @@ import {
   integer,
   primaryKey,
   sqliteTable,
-  text
+  text,
+  uniqueIndex
 } from "drizzle-orm/sqlite-core"
 
 export const chatSessions = sqliteTable(
@@ -66,8 +67,47 @@ export const chatSessionMemories = sqliteTable("chat_session_memories", {
   updatedAt: text("updated_at").notNull()
 })
 
+export const memoryEntries = sqliteTable(
+  "memory_entries",
+  {
+    accessCount: integer("access_count").notNull().default(0),
+    archivedAt: text("archived_at"),
+    content: text("content").notNull(),
+    createdAt: text("created_at").notNull(),
+    id: text("id").primaryKey(),
+    kind: text("kind", {
+      enum: ["episodic", "semantic", "working"]
+    }).notNull(),
+    lastAccessedAt: text("last_accessed_at"),
+    projectPath: text("project_path"),
+    scope: text("scope", {
+      enum: ["chatbot", "global", "project"]
+    }).notNull(),
+    sessionId: text("session_id").references(() => chatSessions.id, {
+      onDelete: "cascade"
+    }),
+    source: text("source", {
+      enum: ["chat-session", "chatbot"]
+    }).notNull(),
+    sourceId: text("source_id").notNull(),
+    updatedAt: text("updated_at").notNull()
+  },
+  (table) => ({
+    projectPathIdx: index("memory_entries_project_path_idx").on(
+      table.projectPath
+    ),
+    sessionIdIdx: index("memory_entries_session_id_idx").on(table.sessionId),
+    sourceIdIdx: uniqueIndex("memory_entries_source_id_idx").on(
+      table.source,
+      table.sourceId
+    ),
+    updatedAtIdx: index("memory_entries_updated_at_idx").on(table.updatedAt)
+  })
+)
+
 export const schema = {
   chatMessages,
   chatSessionMemories,
-  chatSessions
+  chatSessions,
+  memoryEntries
 } as const

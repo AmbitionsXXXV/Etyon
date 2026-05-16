@@ -281,10 +281,37 @@
     "nav": {
       "colorSchema": "カラースキーマ",
       "general": "一般",
+      "memory": "Memory",
       "network": "ネットワーク",
       "providers": "Providers",
       "telegram": "Telegram",
       "userInterface": "ユーザーインターフェース"
+    },
+    "memory": {
+      "description": "圧縮された長期 memory をモデルのコンテキスト外に保存し、chat sessions、projects、Telegram chatbot が関連する記憶を共有できるようにします。",
+      "includeChatbot": {
+        "description": "chatbot の会話が同じ長期 memory を読み書きできるようにします。",
+        "label": "chatbot memory を接続"
+      },
+      "retrieval": {
+        "maxContextEntries": {
+          "description": "モデルリクエストに注入できる一致 memory の最大件数を制御します。",
+          "label": "コンテキスト件数"
+        },
+        "title": "検索予算"
+      },
+      "shareAcrossProjects": {
+        "description": "リクエストに一致する場合、ある project で作成された memory を別の project でも使えるようにします。",
+        "label": "project 間で共有"
+      },
+      "status": {
+        "empty": "memory エントリはまだありません。",
+        "lastUpdated": "最終更新",
+        "recent": "最近のエントリ",
+        "title": "Memory ストア",
+        "totalEntries": "エントリ総数"
+      },
+      "title": "長期 Memory"
     },
     "network": {
       "proxy": {

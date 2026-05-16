@@ -132,6 +132,15 @@ Logger SDK 在 `index.tsx` 中通过 `initLogger()` 初始化，注入 RPC emit 
 - 旧的本地设置文件即使没有 `locale` 字段，也会由 `AppSettingsSchema.parse()` 自动补默认值 `"system"`
 - `renderer` 与 `main` 会继续通过同一条 `settings-changed` 广播链路同步完整的设置对象
 
+### Memory Procedures
+
+长期 memory 的只读状态通过 RPC 暴露给 Settings：
+
+- `memory.stats`：返回当前 active memory 条目数与最近更新时间
+- `memory.list({ limit })`：返回最近更新的 memory 条目，用于 Settings `Memory` tab 预览
+
+memory 的写入和检索由 main process runtime 直接调用 `apps/desktop/src/main/memory.ts`，不通过 renderer 触发。
+
 ### 新增本地 HTTP RPC 入口
 
 同一个 `router` 可以同时被 MessagePort adapter 和 Hono / Fetch adapter 消费：
@@ -147,6 +156,7 @@ const httpHandler = new FetchRPCHandler(router)
 | 文件                                   | 说明                                |
 | -------------------------------------- | ----------------------------------- |
 | `packages/rpc/src/schemas/logger.ts`   | LogEvent Zod schema                 |
+| `packages/rpc/src/schemas/memory.ts`   | Memory Zod schema                   |
 | `packages/rpc/src/index.ts`            | Schema 统一导出                     |
 | `apps/desktop/src/main/rpc/context.ts` | `AppRpcContext` + transport builder |
 | `apps/desktop/src/main/rpc/router.ts`  | App Router 定义                     |

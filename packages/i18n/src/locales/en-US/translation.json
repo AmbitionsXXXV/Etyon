@@ -281,10 +281,37 @@
     "nav": {
       "colorSchema": "Color Schema",
       "general": "General",
+      "memory": "Memory",
       "network": "Network",
       "providers": "Providers",
       "telegram": "Telegram",
       "userInterface": "User Interface"
+    },
+    "memory": {
+      "description": "Store compact long-term memory outside the model context so chat sessions, projects, and the Telegram bridge can share relevant recall.",
+      "includeChatbot": {
+        "description": "Let chatbot conversations read from and write to the same long-term memory store.",
+        "label": "Connect chatbot memory"
+      },
+      "retrieval": {
+        "maxContextEntries": {
+          "description": "Controls how many matching memory entries can be injected into a model request.",
+          "label": "Context entries"
+        },
+        "title": "Retrieval Budget"
+      },
+      "shareAcrossProjects": {
+        "description": "Allow memory created in one project to be retrieved from another project when it matches the current request.",
+        "label": "Share across projects"
+      },
+      "status": {
+        "empty": "No memory entries yet.",
+        "lastUpdated": "Last Updated",
+        "recent": "Recent Entries",
+        "title": "Memory Store",
+        "totalEntries": "Total Entries"
+      },
+      "title": "Long-Term Memory"
     },
     "network": {
       "proxy": {

@@ -73,16 +73,17 @@ AI 配置存储在 `electron-store` 的 `settings.ai` 字段中：
 Renderer (useChat + DefaultChatTransport)
   ↓ HTTP POST /api/chat (SSE stream)
 Hono Server (127.0.0.1:<port>)
-  ↓ load session memory + project mention context
+  ↓ load session memory + long-term memory + project mention context
   ↓ resolveModel(modelId)
 AI Provider Factory
   ↓ streamText({ model, messages })
-  ↓ onFinish -> persist UIMessage history + rolling session memory
+  ↓ onFinish -> persist UIMessage history + rolling session memory + long-term memory
 OpenAI / Anthropic / AI Gateway / Moonshot / Z.AI
 
 Telegram Bridge (main process)
   ↓ @chat-adapter/telegram polling
-  ↓ toAiMessages() + streamText({ model: resolveModel(), messages })
+  ↓ toAiMessages() + shared long-term memory
+  ↓ streamText({ model: resolveModel(), messages })
   ↓ Chat SDK thread.post(result.textStream)
 ```
 
@@ -160,6 +161,27 @@ const ChatComponent = () => {
 - memory 取最近 `16` 条有文本内容的 `UIMessage`，并限制在 `6000` 字符以内
 - `/api/chat` 会读取已有 session memory，并与 `@` 项目引用生成的 snapshot context 一起组成 system prompt
 - 该模块边界在 [`chat-session-memory.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/chat-session-memory.ts)，后续可替换为模型总结或 embedding 检索，但不要把总结逻辑散落在 route 组件里
+
+## Long-Term Memory
+
+长期 memory 用于跨 session、跨 project，并可联通 Telegram chatbot。实现参考 [Awesome-AI-Memory](https://github.com/IAAR-Shanghai/Awesome-AI-Memory) 对外部显式记忆、短期 / 长期记忆、检索、压缩、生命周期与共享范围的分类，但当前不引入外部向量数据库，先落成本地 SQLite 可验证版本。
+
+当前实现：
+
+- 存储层：`memory_entries` 保存压缩后的长期 memory 条目
+- 写入层：`replaceChatMessages()` 在长期 memory 开启时，把当前 chat session 的最近文本消息 upsert 为 `source=chat-session`、`scope=project`
+- chatbot 写入：Telegram bridge 在 `settings.memory.includeChatbot` 开启时，把每个 Telegram chat 的最近消息 upsert 为 `source=chatbot`、`scope=chatbot`
+- 检索层：`buildMemorySystemPrompt()` 根据当前请求文本做关键词 overlap 排序，并按 `settings.memory.maxContextEntries` 控制注入条数
+- 控制层：`settings.memory.enabled` 关闭长期 memory；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
+- 注入层：`/api/chat` 会把 long-term memory 放在 session memory 与 project snapshot context 之间；Telegram bridge 会把 long-term memory 追加到 Telegram system prompt 后
+
+模块边界：
+
+| 文件                                                           | 职责                                      |
+| -------------------------------------------------------------- | ----------------------------------------- |
+| `apps/desktop/src/main/memory.ts`                              | 长期 memory 写入、检索、prompt 构建、统计 |
+| `packages/rpc/src/schemas/memory.ts`                           | memory settings / entry / stats schema    |
+| `apps/desktop/src/renderer/components/settings/memory-tab.tsx` | Settings `Memory` panel                   |
 
 ## Provider 工厂
 
