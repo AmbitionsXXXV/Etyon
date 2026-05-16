@@ -5,7 +5,31 @@ export interface ActiveMentionMatch {
   startIndex: number
 }
 
+export interface PromptEditorActiveMentionRange {
+  from: number
+  query: string
+  to: number
+}
+
+export type PromptTextDisplayPart =
+  | {
+      text: string
+      type: "text"
+    }
+  | {
+      mention: ChatMention
+      type: "mention"
+    }
+
+interface PromptEditorJsonNode {
+  attrs?: Record<string, unknown>
+  content?: PromptEditorJsonNode[]
+  text?: string
+  type?: string
+}
+
 const MENTION_PREFIX_PATTERN = /(^|[\s.,:;!?()[\]{}])@([^\s@]*)$/u
+export const PROJECT_MENTION_NODE_TYPE = "projectMention"
 
 export const getActiveMentionMatch = (
   text: string,
@@ -104,4 +128,156 @@ export const getMentionTokenTypeLabel = (
   const extension = fileName.includes(".") ? fileName.split(".").at(-1) : null
 
   return extension ? extension.toUpperCase() : "TXT"
+}
+
+const createMentionFromEditorAttrs = (
+  attrs: Record<string, unknown> | undefined
+): ChatMention | null => {
+  if (!attrs) {
+    return null
+  }
+
+  const { kind, path, relativePath, snapshotId } = attrs
+  const isValidKind = kind === "file" || kind === "folder"
+
+  if (
+    !isValidKind ||
+    typeof path !== "string" ||
+    typeof relativePath !== "string" ||
+    typeof snapshotId !== "string"
+  ) {
+    return null
+  }
+
+  return {
+    kind,
+    path,
+    relativePath,
+    snapshotId
+  }
+}
+
+export const extractPromptEditorPayload = (
+  documentNode: PromptEditorJsonNode
+): {
+  mentions: ChatMention[]
+  text: string
+} => {
+  const mentions: ChatMention[] = []
+  const textParts: string[] = []
+
+  const visitNode = (node: PromptEditorJsonNode): void => {
+    if (node.type === "text" && node.text) {
+      textParts.push(node.text)
+      return
+    }
+
+    if (node.type === PROJECT_MENTION_NODE_TYPE) {
+      const mention = createMentionFromEditorAttrs(node.attrs)
+
+      if (mention) {
+        mentions.push(mention)
+        textParts.push(`@${mention.relativePath}`)
+      }
+
+      return
+    }
+
+    for (const childNode of node.content ?? []) {
+      visitNode(childNode)
+    }
+  }
+
+  visitNode(documentNode)
+
+  return {
+    mentions,
+    text: textParts.join("").trim()
+  }
+}
+
+export const getPromptEditorActiveMentionRange = ({
+  selectionFrom,
+  textBeforeCaret
+}: {
+  selectionFrom: number
+  textBeforeCaret: string
+}): PromptEditorActiveMentionRange | null => {
+  const activeMentionMatch = getActiveMentionMatch(
+    textBeforeCaret,
+    textBeforeCaret.length
+  )
+
+  if (!activeMentionMatch) {
+    return null
+  }
+
+  const from = selectionFrom - activeMentionMatch.query.length - 1
+
+  if (from < 0) {
+    return null
+  }
+
+  return {
+    from,
+    query: activeMentionMatch.query,
+    to: selectionFrom
+  }
+}
+
+export const splitPromptTextByMentions = ({
+  mentions,
+  text
+}: {
+  mentions: ChatMention[]
+  text: string
+}): PromptTextDisplayPart[] => {
+  const parts: PromptTextDisplayPart[] = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    let nextMatch:
+      | {
+          index: number
+          mention: ChatMention
+        }
+      | undefined
+
+    for (const mention of mentions) {
+      const mentionIndex = text.indexOf(`@${mention.relativePath}`, cursor)
+
+      if (
+        mentionIndex !== -1 &&
+        (!nextMatch || mentionIndex < nextMatch.index)
+      ) {
+        nextMatch = {
+          index: mentionIndex,
+          mention
+        }
+      }
+    }
+
+    if (!nextMatch) {
+      parts.push({
+        text: text.slice(cursor),
+        type: "text"
+      })
+      break
+    }
+
+    if (nextMatch.index > cursor) {
+      parts.push({
+        text: text.slice(cursor, nextMatch.index),
+        type: "text"
+      })
+    }
+
+    parts.push({
+      mention: nextMatch.mention,
+      type: "mention"
+    })
+    cursor = nextMatch.index + nextMatch.mention.relativePath.length + 1
+  }
+
+  return parts
 }

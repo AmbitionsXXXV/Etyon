@@ -21,6 +21,10 @@ import {
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
+import {
+  getMentionTokenTypeLabel,
+  splitPromptTextByMentions
+} from "@/renderer/lib/chat/prompt-input"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   getChatSessionTitle,
@@ -50,6 +54,21 @@ const getMessageText = (message: ChatUiMessage): string =>
     .filter((part): part is TextChatPart => part.type === "text")
     .map((part) => part.text)
     .join("")
+
+const getMentionName = (mention: ChatMention): string =>
+  mention.relativePath.split("/").at(-1) ?? mention.relativePath
+
+const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
+  <span
+    className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 align-baseline text-sm font-medium text-foreground ring-1 ring-border/70"
+    title={mention.relativePath}
+  >
+    <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
+      {getMentionTokenTypeLabel(mention)}
+    </span>
+    <span className="max-w-52 truncate">{getMentionName(mention)}</span>
+  </span>
+)
 
 const upsertChatSession = ({
   nextSession,
@@ -207,6 +226,13 @@ const ChatRuntime = ({
                 const isAssistant = message.role === "assistant"
                 const messageMentions = message.metadata?.mentions ?? []
                 const messageText = getMessageText(message)
+                const messageParts = splitPromptTextByMentions({
+                  mentions: messageMentions,
+                  text: messageText
+                })
+                const hasInlineMentions = messageParts.some(
+                  (part) => part.type === "mention"
+                )
 
                 return (
                   <div
@@ -220,7 +246,7 @@ const ChatRuntime = ({
                           : "bg-primary text-primary-foreground"
                       }`}
                     >
-                      {messageMentions.length > 0 && (
+                      {messageMentions.length > 0 && !hasInlineMentions && (
                         <div className="mb-2 flex flex-wrap gap-2">
                           {messageMentions.map((mention) => (
                             <Badge
@@ -236,7 +262,20 @@ const ChatRuntime = ({
                         </div>
                       )}
 
-                      <p className="whitespace-pre-wrap">{messageText}</p>
+                      <p className="whitespace-pre-wrap">
+                        {messageParts.map((part, index) =>
+                          part.type === "mention" ? (
+                            <InlineMentionToken
+                              key={`${message.id}-mention-${part.mention.relativePath}-${index}`}
+                              mention={part.mention}
+                            />
+                          ) : (
+                            <span key={`${message.id}-text-${index}`}>
+                              {part.text}
+                            </span>
+                          )
+                        )}
+                      </p>
                     </div>
                   </div>
                 )

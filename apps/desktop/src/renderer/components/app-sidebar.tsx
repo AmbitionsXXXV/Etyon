@@ -49,11 +49,11 @@ import { motion } from "motion/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import type {
   ChangeEvent,
-  FormEvent,
   Key,
   MouseEvent,
   PointerEvent as ReactPointerEvent,
-  ReactNode
+  ReactNode,
+  SyntheticEvent
 } from "react"
 
 import { orpc } from "@/renderer/lib/rpc"
@@ -635,7 +635,7 @@ const ProjectGroupSection = ({
     []
   )
   const handleRenameSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
+    (event: SyntheticEvent<HTMLFormElement>) => {
       event.preventDefault()
 
       const nextDisplayName = renameDraft.trim()

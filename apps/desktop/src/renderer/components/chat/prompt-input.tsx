@@ -1,30 +1,26 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
 import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
-import { Textarea } from "@etyon/ui/components/textarea"
 import { cn } from "@etyon/ui/lib/utils"
 import {
-  Cancel01Icon,
   File01Icon,
   Folder01Icon,
   Search01Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import type {
-  ChangeEvent,
-  KeyboardEvent,
-  MouseEvent,
-  ReactNode,
-  SyntheticEvent
-} from "react"
+import type { Editor } from "@tiptap/core"
+import { Placeholder } from "@tiptap/extension-placeholder"
+import { EditorContent, useEditor } from "@tiptap/react"
+import { StarterKit } from "@tiptap/starter-kit"
+import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
-  applyMentionSelection,
+  PROJECT_MENTION_NODE_TYPE,
   createMentionFromProjectSnapshotItem,
-  getActiveMentionMatch,
-  getMentionTokenTypeLabel,
-  replaceMentionQuery,
+  extractPromptEditorPayload,
+  getPromptEditorActiveMentionRange,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 
@@ -50,23 +46,6 @@ const formatMentionItemMetadata = (item: ProjectSnapshotItem): string => {
 
 const getMentionItemName = (item: ProjectSnapshotItem): string =>
   item.relativePath.split("/").at(-1) ?? item.relativePath
-
-const getMentionName = (mention: ChatMention): string =>
-  mention.relativePath.split("/").at(-1) ?? mention.relativePath
-
-const focusTextareaAt = (
-  nextCaretIndex: number,
-  textareaElement: HTMLTextAreaElement | null
-): void => {
-  if (!textareaElement) {
-    return
-  }
-
-  requestAnimationFrame(() => {
-    textareaElement.focus()
-    textareaElement.setSelectionRange(nextCaretIndex, nextCaretIndex)
-  })
-}
 
 export const PromptInput = ({
   disabled = false,
@@ -99,17 +78,14 @@ export const PromptInput = ({
   submitLabel: string
 }) => {
   const [activeItemIndex, setActiveItemIndex] = useState(0)
-  const [caretIndex, setCaretIndex] = useState(0)
+  const [activeMentionRange, setActiveMentionRange] = useState<{
+    from: number
+    query: string
+    to: number
+  } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [mentions, setMentions] = useState<ChatMention[]>([])
-  const [text, setText] = useState("")
   const mentionItemElementByPathRef = useRef(
     new Map<string, HTMLButtonElement>()
-  )
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
-  const activeMentionMatch = useMemo(
-    () => getActiveMentionMatch(text, caretIndex),
-    [caretIndex, text]
   )
   const activeMentionItemPath = mentionItems[activeItemIndex]?.path ?? null
   const mentionItemsByPath = useMemo(
@@ -133,81 +109,137 @@ export const PromptInput = ({
     [mentionFileGroupLabel, mentionFolderGroupLabel, mentionItems]
   )
 
+  const updateActiveMentionRange = useCallback((nextEditor: Editor) => {
+    const { selection } = nextEditor.state
+
+    if (selection.from !== selection.to) {
+      setActiveMentionRange(null)
+      return
+    }
+
+    const textBeforeCaret = nextEditor.state.doc.textBetween(
+      0,
+      selection.from,
+      "\n",
+      "\n"
+    )
+
+    setActiveMentionRange(
+      getPromptEditorActiveMentionRange({
+        selectionFrom: selection.from,
+        textBeforeCaret
+      })
+    )
+  }, [])
+  const editor = useEditor(
+    {
+      content: "",
+      editable: !(disabled || isSubmitting),
+      editorProps: {
+        attributes: {
+          class: "min-h-28 whitespace-pre-wrap break-words text-sm outline-none"
+        }
+      },
+      extensions: [
+        StarterKit,
+        ProjectMentionExtension,
+        Placeholder.configure({
+          placeholder
+        })
+      ],
+      onSelectionUpdate: ({ editor: nextEditor }) => {
+        updateActiveMentionRange(nextEditor)
+      },
+      onUpdate: ({ editor: nextEditor }) => {
+        updateActiveMentionRange(nextEditor)
+      }
+    },
+    [placeholder, updateActiveMentionRange]
+  )
+
   useEffect(() => {
-    onMentionQueryChange(activeMentionMatch ? activeMentionMatch.query : null)
-  }, [activeMentionMatch, onMentionQueryChange])
+    onMentionQueryChange(activeMentionRange ? activeMentionRange.query : null)
+  }, [activeMentionRange, onMentionQueryChange])
+
+  useEffect(() => {
+    editor?.setEditable(!(disabled || isSubmitting))
+  }, [disabled, editor, isSubmitting])
 
   useEffect(() => {
     setActiveItemIndex(0)
   }, [mentionItems])
 
   useEffect(() => {
-    if (!activeMentionMatch || !activeMentionItemPath) {
+    if (!activeMentionRange || !activeMentionItemPath) {
       return
     }
 
     scrollActiveMentionItemIntoView(
       mentionItemElementByPathRef.current.get(activeMentionItemPath)
     )
-  }, [activeMentionItemPath, activeMentionMatch])
-
-  const handleRemoveMention = useCallback((relativePath: string) => {
-    setMentions((previousMentions) =>
-      previousMentions.filter(
-        (mention) => mention.relativePath !== relativePath
-      )
-    )
-  }, [])
+  }, [activeMentionItemPath, activeMentionRange])
 
   const handleSelectMentionItem = useCallback(
     (item: ProjectSnapshotItem) => {
-      if (!activeMentionMatch) {
+      if (!activeMentionRange || !editor) {
         return
       }
 
       const nextMention = createMentionFromProjectSnapshotItem(item)
-      const { nextCaretIndex, nextText } = applyMentionSelection({
-        selectionEnd: caretIndex,
-        startIndex: activeMentionMatch.startIndex,
-        text
-      })
 
-      setMentions((previousMentions) =>
-        previousMentions.some(
-          (previousMention) =>
-            previousMention.relativePath === nextMention.relativePath
-        )
-          ? previousMentions
-          : [...previousMentions, nextMention]
-      )
-      setText(nextText)
-      setCaretIndex(nextCaretIndex)
-      focusTextareaAt(nextCaretIndex, textareaRef.current)
+      editor
+        .chain()
+        .focus()
+        .deleteRange({
+          from: activeMentionRange.from,
+          to: activeMentionRange.to
+        })
+        .insertContent([
+          {
+            attrs: nextMention,
+            type: PROJECT_MENTION_NODE_TYPE
+          },
+          {
+            text: " ",
+            type: "text"
+          }
+        ])
+        .run()
+      setActiveMentionRange(null)
     },
-    [activeMentionMatch, caretIndex, text]
+    [activeMentionRange, editor]
   )
 
   const handleEmbeddedSearchChange = useCallback(
     (nextQuery: string) => {
-      if (!activeMentionMatch) {
+      if (!activeMentionRange || !editor) {
         return
       }
 
-      const { nextCaretIndex, nextText } = replaceMentionQuery({
-        nextQuery,
-        selectionEnd: caretIndex,
-        startIndex: activeMentionMatch.startIndex,
-        text
-      })
+      const nextCaretPosition = activeMentionRange.from + nextQuery.length + 1
 
-      setText(nextText)
-      setCaretIndex(nextCaretIndex)
-      focusTextareaAt(nextCaretIndex, textareaRef.current)
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(
+          {
+            from: activeMentionRange.from,
+            to: activeMentionRange.to
+          },
+          `@${nextQuery}`
+        )
+        .setTextSelection(nextCaretPosition)
+        .run()
     },
-    [activeMentionMatch, caretIndex, text]
+    [activeMentionRange, editor]
   )
 
   const handleSubmit = useCallback(async () => {
+    if (!editor) {
+      return
+    }
+
+    const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
     const normalizedText = text.trim()
 
     if ((normalizedText === "" && mentions.length === 0) || disabled) {
@@ -221,33 +253,19 @@ export const PromptInput = ({
         mentions,
         text: normalizedText
       })
-      setMentions([])
-      setText("")
-      setCaretIndex(0)
-      focusTextareaAt(0, textareaRef.current)
+      editor.commands.clearContent()
+      editor.commands.focus()
+      setActiveMentionRange(null)
     } finally {
       setIsSubmitting(false)
     }
-  }, [disabled, mentions, onSubmit, text])
+  }, [disabled, editor, onSubmit])
 
   const handleEmbeddedSearchInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       handleEmbeddedSearchChange(event.currentTarget.value)
     },
     [handleEmbeddedSearchChange]
-  )
-
-  const handleRemoveMentionClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      const { relativePath } = event.currentTarget.dataset
-
-      if (!relativePath) {
-        return
-      }
-
-      handleRemoveMention(relativePath)
-    },
-    [handleRemoveMention]
   )
 
   const handleSelectMentionItemClick = useCallback(
@@ -279,24 +297,9 @@ export const PromptInput = ({
     []
   )
 
-  const handleTextareaChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
-      setText(event.currentTarget.value)
-      setCaretIndex(event.currentTarget.selectionStart)
-    },
-    []
-  )
-
-  const handleTextareaClick = useCallback(
-    (event: MouseEvent<HTMLTextAreaElement>) => {
-      setCaretIndex(event.currentTarget.selectionStart)
-    },
-    []
-  )
-
-  const handleTextareaKeyDown = useCallback(
-    async (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (activeMentionMatch && mentionItems.length > 0) {
+  const handleEditorKeyDown = useCallback(
+    async (event: KeyboardEvent<HTMLDivElement>) => {
+      if (activeMentionRange && mentionItems.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault()
           setActiveItemIndex((previousIndex) =>
@@ -330,18 +333,11 @@ export const PromptInput = ({
     },
     [
       activeItemIndex,
-      activeMentionMatch,
+      activeMentionRange,
       handleSelectMentionItem,
       handleSubmit,
       mentionItems
     ]
-  )
-
-  const handleTextareaSelect = useCallback(
-    (event: SyntheticEvent<HTMLTextAreaElement>) => {
-      setCaretIndex(event.currentTarget.selectionStart)
-    },
-    []
   )
 
   const handleSubmitClick = useCallback(() => {
@@ -350,7 +346,7 @@ export const PromptInput = ({
 
   return (
     <div className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none">
-      {activeMentionMatch && (
+      {activeMentionRange && (
         <div className="absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden rounded-2xl bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
           <div className="border-b border-border/60 p-2">
             <div className="relative">
@@ -363,7 +359,7 @@ export const PromptInput = ({
                 className="h-8 rounded-xl bg-none pl-8"
                 onChange={handleEmbeddedSearchInputChange}
                 placeholder={mentionSearchPlaceholder}
-                value={activeMentionMatch.query}
+                value={activeMentionRange.query}
               />
             </div>
           </div>
@@ -442,51 +438,23 @@ export const PromptInput = ({
       )}
 
       <div className="p-4">
-        {mentions.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {mentions.map((mention) => (
-              <span
-                className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 text-sm font-medium text-foreground ring-1 ring-border/70"
-                key={mention.relativePath}
-                title={mention.relativePath}
-              >
-                <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
-                  {getMentionTokenTypeLabel(mention)}
-                </span>
-                <span className="max-w-52 truncate">
-                  {getMentionName(mention)}
-                </span>
-                <button
-                  aria-label={`Remove ${mention.relativePath}`}
-                  className="rounded-sm text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100"
-                  data-relative-path={mention.relativePath}
-                  onClick={handleRemoveMentionClick}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    className="size-3"
-                    icon={Cancel01Icon}
-                    strokeWidth={2}
-                  />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <Textarea
+        <div
           className={cn(
-            "resize-none border-0 bg-transparent px-0 py-0 text-sm shadow-none ring-0 focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
-            mentions.length > 0 ? "min-h-20" : "min-h-28"
+            "min-h-28 cursor-text text-sm",
+            "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
+            "[&_.ProseMirror]:min-h-28 [&_.ProseMirror]:outline-none",
+            "[&_.ProseMirror_p]:my-0",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
+            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]"
           )}
-          disabled={disabled || isSubmitting}
-          onChange={handleTextareaChange}
-          onClick={handleTextareaClick}
-          onKeyDown={handleTextareaKeyDown}
-          onSelect={handleTextareaSelect}
-          placeholder={placeholder}
-          ref={textareaRef}
-          value={text}
-        />
+          data-disabled={disabled || isSubmitting}
+          onKeyDownCapture={handleEditorKeyDown}
+        >
+          <EditorContent editor={editor} />
+        </div>
       </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
