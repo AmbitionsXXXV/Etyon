@@ -3,6 +3,7 @@ import fs from "node:fs"
 import type { OpenDialogOptions } from "electron"
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
 
+const OPEN_EXTERNAL_URL_CHANNEL = "open-external-url"
 const OPEN_PROJECT_IN_FILE_MANAGER_CHANNEL = "open-project-in-file-manager"
 const PICK_PROJECT_DIRECTORY_CHANNEL = "pick-project-directory"
 
@@ -52,7 +53,29 @@ const registerOpenProjectInFileManager = (): void => {
   )
 }
 
+const registerOpenExternalUrl = (): void => {
+  ipcMain.removeHandler(OPEN_EXTERNAL_URL_CHANNEL)
+  ipcMain.handle(OPEN_EXTERNAL_URL_CHANNEL, async (_event, url: unknown) => {
+    if (typeof url !== "string" || url.trim().length === 0) {
+      throw new Error("URL is required")
+    }
+
+    const trimmedUrl = url.trim()
+
+    if (
+      !trimmedUrl.startsWith("https://") &&
+      !trimmedUrl.startsWith("http://")
+    ) {
+      throw new Error(`Only http(s) URLs are allowed: ${trimmedUrl}`)
+    }
+
+    await shell.openExternal(trimmedUrl)
+    return true
+  })
+}
+
 export const registerNativeIpcHandlers = (): void => {
+  registerOpenExternalUrl()
   registerOpenProjectInFileManager()
   registerProjectDirectoryPicker()
 }

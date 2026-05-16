@@ -8,6 +8,7 @@ import { upsertChatSessionMemoryEntry } from "@/main/memory"
 import { getSettings } from "@/main/settings"
 
 const CHAT_TITLE_MAX_LENGTH = 64
+const GENERATED_MESSAGE_ID_PREFIX = "etyon-generated-message"
 const WHITESPACE_PATTERN = /\s+/gu
 
 const parseJson = (value: string): unknown => JSON.parse(value)
@@ -42,6 +43,50 @@ const buildChatSessionTitle = (messages: UIMessage[]): string => {
   }
 
   return `${title.slice(0, CHAT_TITLE_MAX_LENGTH - 3)}...`
+}
+
+const buildGeneratedMessageId = ({
+  index,
+  seenMessageIds
+}: {
+  index: number
+  seenMessageIds: Set<string>
+}): string => {
+  let suffix = 0
+  let messageId = `${GENERATED_MESSAGE_ID_PREFIX}-${index}`
+
+  while (seenMessageIds.has(messageId)) {
+    suffix += 1
+    messageId = `${GENERATED_MESSAGE_ID_PREFIX}-${index}-${suffix}`
+  }
+
+  return messageId
+}
+
+const normalizeMessageIds = (messages: UIMessage[]): UIMessage[] => {
+  const seenMessageIds = new Set<string>()
+
+  return messages.map((message, index) => {
+    const candidateMessageId = message.id.trim()
+    const messageId =
+      candidateMessageId && !seenMessageIds.has(candidateMessageId)
+        ? candidateMessageId
+        : buildGeneratedMessageId({
+            index,
+            seenMessageIds
+          })
+
+    seenMessageIds.add(messageId)
+
+    if (message.id === messageId) {
+      return message
+    }
+
+    return {
+      ...message,
+      id: messageId
+    }
+  })
 }
 
 const toUiMessage = (row: typeof chatMessages.$inferSelect): UIMessage => {
@@ -97,17 +142,18 @@ export const replaceChatMessages = async ({
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  const normalizedMessages = normalizeMessageIds(messages)
   const now = new Date().toISOString()
   const nextTitle = session.title.trim()
     ? session.title
-    : buildChatSessionTitle(messages)
+    : buildChatSessionTitle(normalizedMessages)
 
   await db.transaction(async (tx) => {
     await tx.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId))
 
-    if (messages.length > 0) {
+    if (normalizedMessages.length > 0) {
       await tx.insert(chatMessages).values(
-        messages.map((message, index) => ({
+        normalizedMessages.map((message, index) => ({
           createdAt: now,
           messageId: message.id,
           metadataJson: serializeOptionalJson(message.metadata),
@@ -131,13 +177,13 @@ export const replaceChatMessages = async ({
 
   await upsertChatSessionMemory({
     db,
-    messages,
+    messages: normalizedMessages,
     sessionId
   })
   if (getSettings().memory.enabled) {
     await upsertChatSessionMemoryEntry({
       db,
-      messages,
+      messages: normalizedMessages,
       session
     })
   }

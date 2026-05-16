@@ -114,6 +114,18 @@ export type {
   SidebarUiState
 } from "./schemas/sidebar-state"
 export {
+  ParsedSkillSchema,
+  SkillsListOutputSchema,
+  SkillsSettingsSchema,
+  SkillScopeSchema
+} from "./schemas/skills"
+export type {
+  ParsedSkill,
+  SkillsListOutput,
+  SkillsSettings,
+  SkillScope
+} from "./schemas/skills"
+export {
   AiProviderConfigSchema,
   AiProviderNameSchema,
   AiSettingsSchema,

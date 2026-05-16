@@ -17,7 +17,45 @@ import {
   normalizeTelegramSettingsDraft
 } from "@/renderer/lib/settings-page/telegram-settings"
 
-interface TelegramTabProps {
+const BOT_FATHER_LINK_PLACEHOLDER = "{{LINK}}"
+const BOT_FATHER_URL = "https://t.me/BotFather"
+
+const openExternalUrl = (url: string): void => {
+  window.electron.ipcRenderer.invoke("open-external-url", url)
+}
+
+const BotFatherHint = () => {
+  const { t } = useI18n()
+  const raw = t("settings.telegram.botFatherHint", {
+    link: BOT_FATHER_LINK_PLACEHOLDER
+  })
+  const [before = "", after = ""] = raw.split(BOT_FATHER_LINK_PLACEHOLDER)
+
+  const handleClick = useCallback(
+    (event: React.MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault()
+      openExternalUrl(BOT_FATHER_URL)
+    },
+    []
+  )
+
+  return (
+    <p className="text-xs leading-5 text-muted-foreground">
+      {before}
+      <a
+        className="cursor-pointer text-primary underline underline-offset-2"
+        href={BOT_FATHER_URL}
+        onClick={handleClick}
+        rel="noopener noreferrer"
+      >
+        @BotFather
+      </a>
+      {after}
+    </p>
+  )
+}
+
+interface ChannelsTabProps {
   onChange: (telegram: TelegramSettings) => void
   telegram: Partial<TelegramSettings>
 }
@@ -66,7 +104,7 @@ const TelegramStatusPanel = ({
   )
 }
 
-export const TelegramTab = ({ onChange, telegram }: TelegramTabProps) => {
+export const ChannelsTab = ({ onChange, telegram }: ChannelsTabProps) => {
   const { t } = useI18n()
   const normalizedTelegram = useMemo(
     () => normalizeTelegramSettingsDraft(telegram),
@@ -174,6 +212,7 @@ export const TelegramTab = ({ onChange, telegram }: TelegramTabProps) => {
             <p className="text-xs leading-5 text-muted-foreground">
               {t("settings.telegram.description")}
             </p>
+            <BotFatherHint />
           </div>
 
           <Switch

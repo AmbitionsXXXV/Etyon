@@ -7,6 +7,7 @@ import {
   MoonshotRegionSchema,
   StoredProviderModelSchema
 } from "./providers"
+import { SkillsSettingsSchema } from "./skills"
 
 export const CustomThemeTypeSchema = z.enum(["dark", "light"])
 
@@ -178,6 +179,13 @@ const MEMORY_SETTINGS_DEFAULT = {
   shareAcrossProjects: true
 } as const
 
+const SKILLS_SETTINGS_DEFAULT = {
+  enabled: true,
+  includeGlobal: true,
+  includeProject: true,
+  maxContextSkills: 4
+} as const
+
 export const TelegramSettingsSchema = z.object({
   allowedChatIds: z.string().default(""),
   allowedUserIds: z.string().default(""),
@@ -212,6 +220,7 @@ export const AppSettingsSchema = z.object({
   minimizeToTray: z.boolean().default(false),
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
   sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
+  skills: SkillsSettingsSchema.default(SKILLS_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
   telegram: TelegramSettingsSchema.default(TELEGRAM_SETTINGS_DEFAULT),
   theme: ThemeSchema.default("system")
@@ -232,6 +241,7 @@ export const UpdateSettingsSchema = z.object({
   minimizeToTray: z.boolean().optional(),
   proxy: ProxySettingsSchema.optional(),
   sidebar: SidebarSettingsSchema.optional(),
+  skills: SkillsSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
   telegram: TelegramSettingsSchema.optional(),
   theme: ThemeSchema.optional()
@@ -252,5 +262,6 @@ export type ProxySettings = z.infer<typeof ProxySettingsSchema>
 export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
+export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
 export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>
 export type Theme = z.infer<typeof ThemeSchema>

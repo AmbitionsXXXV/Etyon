@@ -25,6 +25,7 @@ interface MockChatSession {
 const {
   buildMentionContextMock,
   buildMemorySystemPromptMock,
+  buildSkillsSystemPromptMock,
   buildSessionMemorySystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionByIdMock,
@@ -54,6 +55,7 @@ const {
     buildMemorySystemPromptMock: vi.fn(() =>
       Promise.resolve("long-term memory context")
     ),
+    buildSkillsSystemPromptMock: vi.fn(() => "skills context"),
     buildSessionMemorySystemPromptMock: vi.fn(() => "session memory context"),
     convertToModelMessagesMock: vi.fn((messages) => Promise.resolve(messages)),
     getChatSessionByIdMock: vi.fn(() => Promise.resolve(defaultChatSession)),
@@ -157,6 +159,10 @@ vi.mock("@/main/project-snapshot", () => ({
   buildMentionContext: buildMentionContextMock
 }))
 
+vi.mock("@/main/skills", () => ({
+  buildSkillsSystemPrompt: buildSkillsSystemPromptMock
+}))
+
 vi.mock("@/main/settings", () => ({
   getSettings: vi.fn(() => ({
     memory: {
@@ -164,6 +170,12 @@ vi.mock("@/main/settings", () => ({
       includeChatbot: true,
       maxContextEntries: 8,
       shareAcrossProjects: true
+    },
+    skills: {
+      enabled: true,
+      includeGlobal: true,
+      includeProject: true,
+      maxContextSkills: 4
     }
   }))
 }))
@@ -370,10 +382,20 @@ describe("hono app", () => {
         shareAcrossProjects: true
       }
     })
+    expect(buildSkillsSystemPromptMock).toHaveBeenCalledWith({
+      projectPath: "/tmp/project-a",
+      query: "",
+      settings: {
+        enabled: true,
+        includeGlobal: true,
+        includeProject: true,
+        maxContextSkills: 4
+      }
+    })
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         system:
-          "session memory context\n\nlong-term memory context\n\nsnapshot context"
+          "session memory context\n\nlong-term memory context\n\nskills context\n\nsnapshot context"
       })
     )
     expect(replaceChatMessagesMock).toHaveBeenCalledWith({

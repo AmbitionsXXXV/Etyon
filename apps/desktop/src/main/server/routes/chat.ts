@@ -14,6 +14,7 @@ import { buildMemorySystemPrompt } from "@/main/memory"
 import { buildMentionContext } from "@/main/project-snapshot"
 import { resolveModel } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
+import { buildSkillsSystemPrompt } from "@/main/skills"
 
 const chatRoute = new Hono()
 const WHITESPACE_PATTERN = /\s+/gu
@@ -64,15 +65,22 @@ chatRoute.post("/chat", async (c) => {
   })
   const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
   const settings = getSettings()
+  const memoryQuery = buildMemoryQuery(messages)
   const longTermMemorySystem = await buildMemorySystemPrompt({
     db,
     projectPath: session.projectPath,
-    query: buildMemoryQuery(messages),
+    query: memoryQuery,
     settings: settings.memory
+  })
+  const skillsSystem = buildSkillsSystemPrompt({
+    projectPath: session.projectPath,
+    query: memoryQuery,
+    settings: settings.skills
   })
   const systemPrompts = [
     sessionMemorySystem,
     longTermMemorySystem,
+    skillsSystem,
     system
   ].filter(Boolean)
   const model = resolveModel(requestedModelId ?? session.modelId ?? undefined)

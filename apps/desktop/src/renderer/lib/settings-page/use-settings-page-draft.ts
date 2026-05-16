@@ -10,6 +10,7 @@ import type {
   MemorySettings,
   ProxySettings,
   SidebarMode,
+  SkillsSettings,
   TelegramSettings,
   Theme
 } from "@etyon/rpc"
@@ -305,6 +306,10 @@ export const useSettingsPageDraft = () => {
     (v: MemorySettings) => updateDraftRef.current("memory", v),
     []
   )
+  const handleSkillsChange = useCallback(
+    (v: SkillsSettings) => updateDraftRef.current("skills", v),
+    []
+  )
   const handleProxyChange = useCallback(
     (v: ProxySettings) => updateDraftRef.current("proxy", v),
     []
@@ -366,6 +371,7 @@ export const useSettingsPageDraft = () => {
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,
+    handleSkillsChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleTelegramChange,

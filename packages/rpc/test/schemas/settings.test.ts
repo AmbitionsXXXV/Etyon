@@ -82,4 +82,17 @@ describe("AppSettingsSchema", () => {
       shareAcrossProjects: true
     })
   })
+
+  it("adds skills defaults for empty and legacy settings", () => {
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.skills).toEqual({
+      enabled: true,
+      includeGlobal: true,
+      includeProject: true,
+      maxContextSkills: 4
+    })
+  })
 })

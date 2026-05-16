@@ -67,7 +67,6 @@
     "sidebar": {
       "addProject": "プロジェクトを追加",
       "archiveSession": "セッションをアーカイブ",
-      "dragProject": "プロジェクトを並べ替え",
       "empty": "chat session はまだありません。右上の New Chat から開始できます。",
       "emptyProjects": "まだ project entry がありません。追加ボタンから最初の project chat を作成できます。",
       "pinSession": "セッションを固定",
@@ -284,7 +283,8 @@
       "memory": "Memory",
       "network": "ネットワーク",
       "providers": "Providers",
-      "telegram": "Telegram",
+      "skills": "Skills",
+      "channels": "Channels",
       "userInterface": "ユーザーインターフェース"
     },
     "memory": {
@@ -405,6 +405,37 @@
       },
       "title": "Sidebar Settings"
     },
+    "skills": {
+      "description": "グローバルと project レベルの SKILL.md を解析し、関連するリクエストでは一致した instructions をモデルコンテキストに注入します。",
+      "includeGlobal": {
+        "description": "ユーザープロファイル内のグローバル skills から再利用可能な instructions を取得します。",
+        "label": "Global skills"
+      },
+      "includeProject": {
+        "description": "現在の chat session の project から、その project 固有の instructions を取得します。",
+        "label": "Project skills"
+      },
+      "retrieval": {
+        "maxContextSkills": {
+          "description": "モデルリクエストに注入できる一致 skill の最大数を制御します。",
+          "label": "コンテキスト skills"
+        },
+        "title": "検索予算"
+      },
+      "scope": {
+        "global": "Global",
+        "project": "Project"
+      },
+      "status": {
+        "detected": "解析済み skills",
+        "empty": "解析済み skills はまだありません。",
+        "global": "Global",
+        "project": "Project",
+        "title": "Skill ソース",
+        "total": "合計"
+      },
+      "title": "Skills"
+    },
     "startup": {
       "autoStart": "自動起動",
       "description": "システムのログイン項目を利用します。開発ビルドでは、アプリをパッケージ化するまで利用できない場合があります。",
@@ -418,6 +449,7 @@
         "test": "接続をテスト",
         "testing": "テスト中..."
       },
+      "botFatherHint": "Telegram の {{link}} から Bot Token を取得してください。",
       "description": "Telegram bot をローカル Etyon に接続し、許可されたテキストメッセージへ現在の既定モデルで返信します。",
       "fields": {
         "allowedChatIds": {

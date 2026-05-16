@@ -67,7 +67,6 @@
     "sidebar": {
       "addProject": "添加项目",
       "archiveSession": "归档会话",
-      "dragProject": "拖动排序项目",
       "empty": "还没有 chat session。点击右上角的 New Chat 开始。",
       "emptyProjects": "还没有项目入口。使用新增项目按钮创建第一个项目会话。",
       "pinSession": "置顶会话",
@@ -284,7 +283,8 @@
       "memory": "Memory",
       "network": "网络",
       "providers": "Providers",
-      "telegram": "Telegram",
+      "skills": "Skills",
+      "channels": "Channels",
       "userInterface": "用户界面"
     },
     "memory": {
@@ -405,6 +405,37 @@
       },
       "title": "Sidebar Settings"
     },
+    "skills": {
+      "description": "解析全局和 project 级 SKILL.md，在相关请求中把匹配的 instructions 注入模型上下文。",
+      "includeGlobal": {
+        "description": "从用户目录中的全局 skills 中召回可复用 instructions。",
+        "label": "全局 skills"
+      },
+      "includeProject": {
+        "description": "从当前 chat session 的 project 目录中召回本项目专属 instructions。",
+        "label": "Project skills"
+      },
+      "retrieval": {
+        "maxContextSkills": {
+          "description": "控制每次模型请求最多注入多少个匹配的 skill。",
+          "label": "上下文 skills"
+        },
+        "title": "召回预算"
+      },
+      "scope": {
+        "global": "Global",
+        "project": "Project"
+      },
+      "status": {
+        "detected": "已解析 skills",
+        "empty": "还没有解析到 skills。",
+        "global": "Global",
+        "project": "Project",
+        "title": "Skill 来源",
+        "total": "总数"
+      },
+      "title": "Skills"
+    },
     "startup": {
       "autoStart": "开机自动启动",
       "description": "依赖系统登录项。开发构建中，这项能力可能要等应用打包后才可用。",
@@ -418,6 +449,7 @@
         "test": "测试连接",
         "testing": "测试中..."
       },
+      "botFatherHint": "从 Telegram 的 {{link}} 获取 Bot Token。",
       "description": "把 Telegram bot 接入本机 Etyon，会使用当前默认模型回复已授权的文本消息。",
       "fields": {
         "allowedChatIds": {

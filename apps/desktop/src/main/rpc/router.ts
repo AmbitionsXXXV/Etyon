@@ -32,6 +32,7 @@ import {
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
   SidebarUiStateSchema,
+  SkillsListOutputSchema,
   TelegramTestConnectionInputSchema,
   TelegramTestConnectionOutputSchema,
   TestProxyInputSchema,
@@ -76,6 +77,7 @@ import {
   setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
+import { listSkills } from "@/main/skills"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 import { syncTelegramBridge } from "@/main/telegram/bridge"
 import { testTelegramConnection } from "@/main/telegram/test-connection"
@@ -109,6 +111,18 @@ const memoryList = rpc
 const memoryStats = rpc
   .output(MemoryStatsOutputSchema)
   .handler(({ context }) => getMemoryStats(context.db))
+
+const skillsList = rpc
+  .output(SkillsListOutputSchema)
+  .handler(async ({ context }) => {
+    const sessions = await listChatSessions(context.db)
+
+    return {
+      skills: listSkills({
+        projectPaths: sessions.map((session) => session.projectPath)
+      })
+    }
+  })
 
 const chatSessionsCreate = rpc
   .input(CreateChatSessionInputSchema)
@@ -396,6 +410,9 @@ export const router = {
   },
   server: {
     getUrl: serverGetUrl
+  },
+  skills: {
+    list: skillsList
   },
   sidebarState: {
     get: sidebarStateGet,

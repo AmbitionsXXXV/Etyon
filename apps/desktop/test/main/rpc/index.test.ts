@@ -125,6 +125,61 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("exposes parsed skills over the message-port adapter", async () => {
+    const projectPath = path.join(mockedHomeDir, "skills-project")
+    const skillDir = path.join(projectPath, ".agents", "skills", "rpc-skill")
+
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: rpc-skill",
+        "description: Use when testing RPC skill parsing.",
+        "---",
+        "",
+        "Use RPC skill instructions."
+      ].join("\n")
+    )
+
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    await client.chatSessions.create({
+      projectPath
+    })
+
+    const result = await client.skills.list()
+
+    expect(result.skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "rpc-skill",
+          projectPath,
+          scope: "project"
+        })
+      ])
+    )
+
+    await client.projects.remove({
+      projectPath
+    })
+
+    port1.close()
+    port2.close()
+  })
+
   it("creates, lists, opens, and pins chat sessions over the message-port adapter", async () => {
     await ensureDatabaseReady()
 

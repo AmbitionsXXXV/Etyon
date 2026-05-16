@@ -40,6 +40,7 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                         |
 | Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                          |
 | Memory Runtime     | `apps/desktop/src/main/memory.ts`                          | 长期 memory 的写入、检索、prompt 注入与统计                                                                                    |
+| Skills Runtime     | `apps/desktop/src/main/skills.ts`                          | 从全局与 project 级 `SKILL.md` 文件解析 skills，并在 chat 请求时注入匹配 instructions                                          |
 | Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
 | Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
 | Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                           |
@@ -91,6 +92,12 @@ interface AppSettings {
   proxy: ProxySettings // 代理配置
   sidebar: {
     mode: "projects" | "simple" // 默认 "simple"
+  }
+  skills: {
+    enabled: boolean // 默认 true，控制 skills 解析与模型上下文注入
+    includeGlobal: boolean // 默认 true，使用用户目录下的全局 skills
+    includeProject: boolean // 默认 true，使用当前 project 的 skills
+    maxContextSkills: number // 1-12，默认 4
   }
   startMinimizedToTray: boolean // 默认 false，仅在登录项自动启动时生效
   telegram: {
@@ -159,6 +166,25 @@ interface StoredProviderModel {
   - `maxContextEntries`：每次模型请求最多注入的 memory 条数，范围 `1-20`
 - 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
 - 当前实现是本地 SQLite + 关键词 overlap 检索；后续如果引入 embedding 或模型总结，继续保持 runtime 逻辑在 `apps/desktop/src/main/memory.ts`，Settings panel 只负责用户可控开关
+
+## Skills Tab
+
+- Settings 左侧导航包含 `Skills` tab，用于控制 skill instructions 是否参与 chat 模型请求
+- skills 默认不入数据库；运行时从文件系统读取并解析 `SKILL.md`
+- 当前扫描路径：
+  - project 级：`${projectPath}/.agents/skills/*/SKILL.md`
+  - project 级：`${projectPath}/.codex/skills/*/SKILL.md`
+  - 全局：`~/.codex/skills/*/SKILL.md`
+  - 全局：`~/.agents/skills/*/SKILL.md`
+  - 全局：`~/.config/etyon/skills/*/SKILL.md`
+- `SKILL.md` 解析遵循 Codex skill 标准：YAML frontmatter 必须包含 `name` 和 `description`，可选读取 `metadata.short-description`
+- `settings.skills` 只保存开关与预算：
+  - `enabled`：关闭后不再向模型请求注入 skills
+  - `includeProject`：是否允许当前 project skills 参与召回
+  - `includeGlobal`：是否允许全局 skills 参与召回
+  - `maxContextSkills`：每次模型请求最多注入的 skills 数量，范围 `1-12`
+- chat 请求中，skills 注入顺序位于 session memory / long-term memory 之后、project snapshot 之前
+- 当前召回策略是基于用户最近 3 条消息提取关键词，并按 `name`、`description`、`metadata.short-description`、正文的 overlap 排序；当请求没有可提取关键词时，会按 project 优先和名称顺序使用默认 skills 预算
 
 ## Providers Tab
 

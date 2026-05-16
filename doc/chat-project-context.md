@@ -102,7 +102,7 @@ type ChatMention =
 
 聊天页默认不显示 session / snapshot 细节。需要排查项目快照或模型绑定时，可在 renderer 环境中设置 `VITE_ENABLE_CHAT_SESSION_DETAILS=1` 或 `VITE_ENABLE_CHAT_SESSION_DETAILS=true`，再显示右侧调试详情和底部快照 ID。
 
-## 模型选择与会话记忆
+## 模型选择、会话记忆与 Skills
 
 聊天底部工具栏提供模型选择入口。数据来源只取 `settings.ai.providers` 中 `enabled = true` 的 provider。
 
@@ -121,6 +121,23 @@ type ChatMention =
 4. 服务端现有兜底模型
 
 切换模型时会立即调用 `chatSessions.setModel` 持久化到当前 session。新会话初始 `modelId` 为空，仍从 settings 默认模型起步。
+
+发送消息时，服务端会按同一条 `/api/chat` 链路组装额外 system prompt。顺序为：
+
+1. session memory
+2. long-term memory
+3. skills
+4. `@` 文件 / 文件夹引用产生的 project snapshot 上下文
+
+skills 不写入数据库。服务端从当前 session 的 `projectPath` 和用户目录读取 `SKILL.md`：
+
+- project 级：`${projectPath}/.agents/skills/*/SKILL.md`
+- project 级：`${projectPath}/.codex/skills/*/SKILL.md`
+- 全局：`~/.codex/skills/*/SKILL.md`
+- 全局：`~/.agents/skills/*/SKILL.md`
+- 全局：`~/.config/etyon/skills/*/SKILL.md`
+
+解析规则遵循 Codex skill 标准：frontmatter 需要 `name` 与 `description`，可选读取 `metadata.short-description`。召回使用最近 3 条用户消息做关键词 overlap，并受 `settings.skills.enabled`、`includeProject`、`includeGlobal`、`maxContextSkills` 控制。
 
 ## 数据库变更约定
 

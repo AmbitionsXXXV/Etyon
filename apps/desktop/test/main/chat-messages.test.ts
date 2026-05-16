@@ -112,4 +112,76 @@ describe("chat messages", () => {
       sessionId: session.id
     })
   })
+
+  it("normalizes blank and duplicate message ids before persistence", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const messages: UIMessage[] = [
+      {
+        id: "",
+        parts: [
+          {
+            text: "hello",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "",
+        parts: [
+          {
+            text: "Hello! How can I help?",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        id: "assistant-message-1",
+        parts: [
+          {
+            text: "who are you",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "assistant-message-1",
+        parts: [
+          {
+            text: "I am an AI assistant.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ]
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages,
+      sessionId: session.id
+    })
+
+    const listedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const messageIds = listedMessages.map((message) => message.id)
+
+    expect(messageIds.every(Boolean)).toBe(true)
+    expect(new Set(messageIds).size).toBe(messageIds.length)
+    expect(messageIds).toContain("assistant-message-1")
+    expect(
+      messageIds.filter((messageId) =>
+        messageId.startsWith("etyon-generated-message-")
+      )
+    ).toHaveLength(3)
+    expect(listedMessages.map((message) => message.parts)).toEqual(
+      messages.map((message) => message.parts)
+    )
+  })
 })

@@ -26,7 +26,7 @@ const buildAiSettingsFixture = (): AiSettings => ({
       models: []
     },
     moonshot: {
-      apiKey: "",
+      apiKey: "moonshot-key",
       availableModels: [
         {
           capabilities: undefined,
@@ -47,7 +47,7 @@ const buildAiSettingsFixture = (): AiSettings => ({
       models: []
     },
     "zai-coding-plan": {
-      apiKey: "",
+      apiKey: "zai-key",
       availableModels: [
         {
           capabilities: undefined,
@@ -80,6 +80,22 @@ describe("chat model options", () => {
     ])
     expect(groups[0]?.options.map((option) => option.id)).toEqual(["kimi-k2.5"])
     expect(groups[1]?.options.map((option) => option.id)).toEqual(["glm-5"])
+  })
+
+  it("hides providers that have no API key from runtime model options", () => {
+    const aiSettings = buildAiSettingsFixture()
+    const groups = buildChatModelGroups({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        moonshot: {
+          ...aiSettings.providers.moonshot,
+          apiKey: ""
+        }
+      }
+    })
+
+    expect(groups.map((group) => group.providerId)).toEqual(["zai-coding-plan"])
   })
 
   it("prefers the session model, then the default model, then the first option", () => {

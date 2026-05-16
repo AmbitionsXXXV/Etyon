@@ -89,6 +89,7 @@ export const buildChatModelGroups = (
     .filter(
       (group) =>
         aiSettings.providers[group.providerId].enabled &&
+        Boolean(aiSettings.providers[group.providerId].apiKey.trim()) &&
         group.options.length > 0
     )
     .toSorted((left, right) =>

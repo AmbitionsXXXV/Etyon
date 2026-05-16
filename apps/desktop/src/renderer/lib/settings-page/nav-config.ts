@@ -6,25 +6,28 @@ import {
   InternetIcon,
   NoteEditIcon,
   PaintBrush01Icon,
+  PuzzleIcon,
   Settings02Icon
 } from "@hugeicons/core-free-icons"
 
 export type SettingsSectionId =
+  | "channels"
   | "color-schema"
   | "general"
   | "memory"
   | "network"
   | "providers"
-  | "telegram"
+  | "skills"
   | "user-interface"
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
+  channels: "settings.nav.channels",
   "color-schema": "settings.nav.colorSchema",
   general: "settings.nav.general",
   memory: "settings.nav.memory",
   network: "settings.nav.network",
   providers: "settings.nav.providers",
-  telegram: "settings.nav.telegram",
+  skills: "settings.nav.skills",
   "user-interface": "settings.nav.userInterface"
 } as const satisfies Record<SettingsSectionId, TranslationKey>
 
@@ -42,11 +45,15 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   },
   {
     icon: ChatBotIcon,
-    id: "telegram"
+    id: "channels"
   },
   {
     icon: BrainIcon,
     id: "memory"
+  },
+  {
+    icon: PuzzleIcon,
+    id: "skills"
   },
   {
     icon: PaintBrush01Icon,

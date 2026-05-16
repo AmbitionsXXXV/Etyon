@@ -33,7 +33,6 @@ import { cn } from "@etyon/ui/lib/utils"
 import {
   Archive02Icon,
   Delete02Icon,
-  DragDropVerticalIcon,
   FileAddIcon,
   Folder01Icon,
   FolderOpenIcon,
@@ -122,7 +121,6 @@ interface ProjectGroupSectionProps {
   archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
-  dragProjectLabel: string
   draggingProjectPath?: string
   fallbackSessionTitle: string
   group: ChatSessionGroup
@@ -136,7 +134,7 @@ interface ProjectGroupSectionProps {
     projectPath: string
   ) => void
   onProjectDragStart: (
-    event: DragEvent<HTMLButtonElement>,
+    event: DragEvent<HTMLDivElement>,
     projectPath: string
   ) => void
   onProjectDrop: (event: DragEvent<HTMLDivElement>, projectPath: string) => void
@@ -164,7 +162,6 @@ interface ProjectGroupsSectionProps {
   archivingProjectPath?: string
   collapsedProjectPaths: string[]
   currentSessionId?: string
-  dragProjectLabel: string
   emptyProjectsLabel: string
   fallbackSessionTitle: string
   groups: ChatSessionGroup[]
@@ -525,7 +522,6 @@ const ProjectGroupSection = ({
   archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
-  dragProjectLabel,
   draggingProjectPath,
   fallbackSessionTitle,
   group,
@@ -698,26 +694,16 @@ const ProjectGroupSection = ({
         onProjectDrop(event, group.projectPath)
       }}
     >
-      <div className={PROJECT_GROUP_ROW_CLASS_NAME}>
-        <button
-          aria-label={`${dragProjectLabel}: ${group.projectName}`}
-          className={cn(
-            "flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded-lg border-0 bg-transparent p-0 text-sidebar-foreground/40 outline-none transition-[opacity,color] duration-150 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring active:cursor-grabbing",
-            "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 focus-visible:opacity-100"
-          )}
-          draggable
-          onDragStart={(event) => {
-            onProjectDragStart(event, group.projectPath)
-          }}
-          title={`${dragProjectLabel}: ${group.projectName}`}
-          type="button"
-        >
-          <HugeiconsIcon
-            className="size-3.5 shrink-0"
-            icon={DragDropVerticalIcon}
-            strokeWidth={2}
-          />
-        </button>
+      <div
+        className={cn(
+          PROJECT_GROUP_ROW_CLASS_NAME,
+          "cursor-grab active:cursor-grabbing"
+        )}
+        draggable
+        onDragStart={(event) => {
+          onProjectDragStart(event, group.projectPath)
+        }}
+      >
         <button
           aria-label={`${toggleProjectGroupLabel}: ${group.projectName}`}
           className={PROJECT_GROUP_TOGGLE_CLASS_NAME}
@@ -953,7 +939,6 @@ const ProjectGroupsSection = ({
   archivingProjectPath,
   collapsedProjectPaths,
   currentSessionId,
-  dragProjectLabel,
   emptyProjectsLabel,
   fallbackSessionTitle,
   groups,
@@ -1003,7 +988,7 @@ const ProjectGroupsSection = ({
     [draggingProjectPath]
   )
   const handleProjectDragStart = useCallback(
-    (event: DragEvent<HTMLButtonElement>, projectPath: string) => {
+    (event: DragEvent<HTMLDivElement>, projectPath: string) => {
       event.dataTransfer.effectAllowed = "move"
       event.dataTransfer.setData("text/plain", projectPath)
       setDraggingProjectPath(projectPath)
@@ -1042,7 +1027,6 @@ const ProjectGroupsSection = ({
             archivingProjectPath={archivingProjectPath}
             collapsedProjectPaths={collapsedProjectPaths}
             currentSessionId={currentSessionId}
-            dragProjectLabel={dragProjectLabel}
             draggingProjectPath={draggingProjectPath ?? undefined}
             fallbackSessionTitle={fallbackSessionTitle}
             group={group}
@@ -1312,7 +1296,6 @@ export const AppSidebar = () => {
           archivingProjectPath={isArchivingProjectPath}
           collapsedProjectPaths={collapsedProjectPaths}
           currentSessionId={currentSessionId}
-          dragProjectLabel={t("sidebar.dragProject")}
           emptyProjectsLabel={t("sidebar.emptyProjects")}
           fallbackSessionTitle={fallbackSessionTitle}
           groups={chatSessionGroups}

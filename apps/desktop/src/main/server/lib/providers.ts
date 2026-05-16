@@ -1,11 +1,18 @@
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createGateway } from "@ai-sdk/gateway"
 import { createOpenAI } from "@ai-sdk/openai"
-import type { BuiltInProviderId } from "@etyon/rpc"
+import type {
+  AiProviderConfig,
+  AiSettings,
+  BuiltInProviderId
+} from "@etyon/rpc"
 import type { LanguageModel } from "ai"
 
 import { getSettings } from "@/main/settings"
-import { resolveProviderBaseURL } from "@/shared/providers/provider-catalog"
+import {
+  BUILT_IN_PROVIDER_CATALOG,
+  resolveProviderBaseURL
+} from "@/shared/providers/provider-catalog"
 
 type ProviderName = BuiltInProviderId
 
@@ -17,15 +24,28 @@ const PROVIDER_PREFIX_MAP: Record<string, ProviderName> = {
   "zai-coding-plan": "zai-coding-plan"
 }
 
+const getProviderModelId = (
+  providerConfig: AiProviderConfig
+): string | undefined => {
+  const models =
+    providerConfig.models.length > 0
+      ? providerConfig.models
+      : providerConfig.availableModels
+
+  return models[0]?.id
+}
+
+const hasUsableProvider = (providerConfig: AiProviderConfig): boolean =>
+  providerConfig.enabled && Boolean(providerConfig.apiKey.trim())
+
 const parseModelId = (
-  modelId: string
+  modelId: string,
+  defaultProvider: ProviderName
 ): { model: string; provider: ProviderName } => {
   const slashIndex = modelId.indexOf("/")
 
   if (slashIndex === -1) {
-    const { ai } = getSettings()
-
-    return { model: modelId, provider: ai.defaultProvider }
+    return { model: modelId, provider: defaultProvider }
   }
 
   const prefix = modelId.slice(0, slashIndex)
@@ -39,11 +59,61 @@ const parseModelId = (
   return { model, provider }
 }
 
+const resolveFallbackModelId = (aiSettings: AiSettings): string | null => {
+  const providerCandidates = [
+    aiSettings.defaultProvider,
+    ...BUILT_IN_PROVIDER_CATALOG.map((provider) => provider.id).filter(
+      (providerId) => providerId !== aiSettings.defaultProvider
+    )
+  ]
+
+  for (const providerId of providerCandidates) {
+    const providerConfig = aiSettings.providers[providerId]
+
+    if (!hasUsableProvider(providerConfig)) {
+      continue
+    }
+
+    const modelId = getProviderModelId(providerConfig)
+
+    if (modelId) {
+      return `${providerId}/${modelId}`
+    }
+  }
+
+  return null
+}
+
+const resolveImplicitModelId = (aiSettings: AiSettings): string => {
+  if (aiSettings.defaultModel) {
+    const { provider } = parseModelId(
+      aiSettings.defaultModel,
+      aiSettings.defaultProvider
+    )
+
+    if (hasUsableProvider(aiSettings.providers[provider])) {
+      return aiSettings.defaultModel
+    }
+  }
+
+  const fallbackModelId = resolveFallbackModelId(aiSettings)
+
+  if (fallbackModelId) {
+    return fallbackModelId
+  }
+
+  if (aiSettings.defaultModel) {
+    return aiSettings.defaultModel
+  }
+
+  throw new Error("No enabled AI provider with an API Key is configured.")
+}
+
 const createProviderModel = (
   provider: ProviderName,
-  model: string
+  model: string,
+  aiSettings: AiSettings
 ): LanguageModel => {
-  const { ai: aiSettings } = getSettings()
   const providerConfig = aiSettings.providers[provider]
 
   if (!providerConfig.enabled) {
@@ -109,8 +179,11 @@ const createProviderModel = (
 
 export const resolveModel = (modelId?: string): LanguageModel => {
   const { ai: aiSettings } = getSettings()
-  const effectiveModelId = modelId || aiSettings.defaultModel || "openai/gpt-4o"
-  const { model, provider } = parseModelId(effectiveModelId)
+  const effectiveModelId = modelId || resolveImplicitModelId(aiSettings)
+  const { model, provider } = parseModelId(
+    effectiveModelId,
+    aiSettings.defaultProvider
+  )
 
-  return createProviderModel(provider, model)
+  return createProviderModel(provider, model, aiSettings)
 }

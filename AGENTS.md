@@ -131,12 +131,12 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 
 ## Learned User Preferences
 
-- Always respond in Chinese (中文)
-- When Chinese, English, and symbols appear together, add spaces between Latin/numeric characters and Chinese characters
+- Always respond in Chinese (中文); when Chinese, English, and symbols appear together, add spaces between Latin/numeric characters and Chinese characters
 - Use arrow function expressions (`const Foo = () => ...`), not function declarations — oxlint `func-style` enforces this
 - Define variables/components before referencing them — oxlint `no-use-before-define` enforces this
 - Object keys must be sorted alphabetically — oxlint `sort-keys` enforces this
 - File names must be kebab-case — oxlint `filename-case` enforces this; on macOS use two-step rename (temp name first) to change letter case; add auto-generated files (e.g. `routeTree.gen.ts`) to oxlint `ignorePatterns`
+- React 19 typings: `@types/react` deprecates `FormEvent` for submit handlers — prefer `SyntheticEvent<HTMLFormElement>` (or other concrete event types) instead of `FormEvent`
 - Main process builds as ESM (`build.lib.formats: ["es"]`); preload remains CJS (Electron sandbox limitation); `__dirname` replaced by `path.dirname(fileURLToPath(import.meta.url))`
 - `vite.main.config.ts` injects `createRequire` polyfill via `rollupOptions.output.banner` for CJS dependencies bundled into ESM output
 - Preload entry must output a distinct filename (e.g. `preload.js`) to avoid collision with main's `index.js` in `.vite/build/`
@@ -152,7 +152,7 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - IPC: oRPC + Electron MessagePort adapter; shared Zod schemas in `packages/rpc/` (`@etyon/rpc`), router + handlers in `apps/desktop/src/main/rpc/`
 - Logger package (`packages/logger/`, `@etyon/logger`): types + renderer SDK; renderer SDK uses dependency injection `initLogger(emit)`, not window globals
 - Persistent settings via `electron-store` (ESM-only, top-level static import in ESM main); store wrapper in `src/main/settings.ts`; cross-window sync via `BrowserWindow.getAllWindows()` + `webContents.send()`; cross-window preview uses `settings-preview-color-schemas` IPC with granular effect dependencies (not whole draft); settings window accepts `tab` query param for initial section, plus `settings-navigate-tab` IPC for runtime tab switching; `createSettingsWindow(tab?)` in `window.ts`
-- Proxy test: `apps/desktop/src/main/proxy/test-proxy.ts`; HTTP CONNECT tunnel requires `tls.connect({ servername })` for proper TLS SNI — without it Cloudflare returns 421; test target is `ipinfo.io/json` for combined connectivity + exit IP + geo lookup; oRPC `proxy.test` endpoint
+- Proxy test: `apps/desktop/src/main/proxy/test-proxy.ts`; HTTP `CONNECT` then `tls.connect({ servername })` to the target for correct TLS SNI (otherwise Cloudflare may return 421); `proxy.type === "https"` must TLS-wrap the connection to the proxy first, then issue `CONNECT` over that socket (plaintext `CONNECT` to an HTTPS proxy yields TLS errors like `WRONG_VERSION_NUMBER`); reuse sockets with `http.request` / `https.request` via `createConnection`, not a `socket` option; test target `ipinfo.io/json` for connectivity + exit IP + geo; oRPC `proxy.test` endpoint
 - `@electron-toolkit/utils` provides `platform.isMacOS/isWindows/isLinux`, `is.dev`, `optimizer.watchWindowShortcuts` — use instead of raw `process.platform` in main process
 - `@tanstack/react-hotkeys` exports `useHotkey` (singular, not `useHotkeys`); use `"Mod+,"` for cross-platform Cmd/Ctrl
 - CLI app (`apps/cli/`, `@etyon/cli`): TypeScript, compiled to `dist/`

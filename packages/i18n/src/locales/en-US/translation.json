@@ -67,7 +67,6 @@
     "sidebar": {
       "addProject": "Add project",
       "archiveSession": "Archive Session",
-      "dragProject": "Reorder project",
       "empty": "No chat sessions yet. Click New Chat in the top-right to start.",
       "emptyProjects": "No project entries yet. Use the add project button to create your first project chat.",
       "pinSession": "Pin Session",
@@ -284,7 +283,8 @@
       "memory": "Memory",
       "network": "Network",
       "providers": "Providers",
-      "telegram": "Telegram",
+      "skills": "Skills",
+      "channels": "Channels",
       "userInterface": "User Interface"
     },
     "memory": {
@@ -405,6 +405,37 @@
       },
       "title": "Sidebar Settings"
     },
+    "skills": {
+      "description": "Parse global and project-level SKILL.md files and inject matching instructions into model context when relevant.",
+      "includeGlobal": {
+        "description": "Retrieve reusable instructions from global skills in the user profile.",
+        "label": "Global skills"
+      },
+      "includeProject": {
+        "description": "Retrieve project-specific instructions from the current chat session project.",
+        "label": "Project skills"
+      },
+      "retrieval": {
+        "maxContextSkills": {
+          "description": "Controls how many matching skills can be injected into a model request.",
+          "label": "Context skills"
+        },
+        "title": "Retrieval Budget"
+      },
+      "scope": {
+        "global": "Global",
+        "project": "Project"
+      },
+      "status": {
+        "detected": "Parsed Skills",
+        "empty": "No skills parsed yet.",
+        "global": "Global",
+        "project": "Project",
+        "title": "Skill Sources",
+        "total": "Total"
+      },
+      "title": "Skills"
+    },
     "startup": {
       "autoStart": "Auto Start",
       "description": "Uses your system login items. Development builds may not support this until the app is packaged.",
@@ -418,6 +449,7 @@
         "test": "Test Connection",
         "testing": "Testing..."
       },
+      "botFatherHint": "Get your bot token from {{link}} on Telegram.",
       "description": "Connect a Telegram bot to local Etyon. It replies to authorized text messages with the current default model.",
       "fields": {
         "allowedChatIds": {

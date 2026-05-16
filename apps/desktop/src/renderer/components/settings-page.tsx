@@ -31,6 +31,7 @@ import {
 import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
+import { ChannelsTab } from "./settings/channels-tab"
 import { ColorSchemaTab } from "./settings/color-schema"
 import {
   AppIconSelector,
@@ -43,7 +44,7 @@ import {
 import { MemoryTab } from "./settings/memory-tab"
 import { NetworkTab } from "./settings/network-tab"
 import { ProvidersTab } from "./settings/providers-tab"
-import { TelegramTab } from "./settings/telegram-tab"
+import { SkillsTab } from "./settings/skills-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
@@ -64,12 +65,13 @@ interface SettingsNavItem {
 }
 
 const SETTINGS_SECTION_IDS = new Set<string>([
+  "channels",
   "color-schema",
   "general",
   "memory",
   "network",
   "providers",
-  "telegram",
+  "skills",
   "user-interface"
 ])
 
@@ -185,6 +187,7 @@ export const SettingsPage = ({
     handleMinimizeToTrayChange,
     handleProxyChange,
     handleSave,
+    handleSkillsChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleTelegramChange,
@@ -521,8 +524,15 @@ export const SettingsPage = ({
                 />
               )}
 
-              {activeSection === "telegram" && (
-                <TelegramTab
+              {activeSection === "skills" && (
+                <SkillsTab
+                  onChange={handleSkillsChange}
+                  skills={draft.skills}
+                />
+              )}
+
+              {activeSection === "channels" && (
+                <ChannelsTab
                   onChange={handleTelegramChange}
                   telegram={draft.telegram}
                 />

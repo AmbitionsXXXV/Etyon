@@ -152,4 +152,110 @@ describe("resolveModel", () => {
       transport: "responses"
     })
   })
+
+  it("falls back to the first configured provider when no model is requested", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        defaultModel: "",
+        defaultProvider: "moonshot",
+        providers: {
+          ...settings.ai.providers,
+          moonshot: {
+            ...settings.ai.providers.moonshot,
+            models: [
+              {
+                capabilities: undefined,
+                id: "kimi-k2.6",
+                isManual: undefined,
+                name: "kimi-k2.6"
+              }
+            ]
+          },
+          openai: {
+            ...settings.ai.providers.openai,
+            apiKey: ""
+          }
+        }
+      }
+    })
+
+    const model = resolveModel()
+
+    expect(createOpenAIMock).toHaveBeenCalledWith({
+      apiKey: "moonshot-key",
+      baseURL: "https://api.moonshot.cn/v1",
+      name: "moonshot"
+    })
+    expect(openAIProviderMock.chat).toHaveBeenCalledWith("kimi-k2.6")
+    expect(model).toEqual({
+      modelId: "kimi-k2.6",
+      transport: "chat-completions"
+    })
+  })
+
+  it("skips an unavailable saved default model for implicit resolution", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        defaultModel: "openai/gpt-4o",
+        defaultProvider: "openai",
+        providers: {
+          ...settings.ai.providers,
+          moonshot: {
+            ...settings.ai.providers.moonshot,
+            models: [
+              {
+                capabilities: undefined,
+                id: "kimi-k2.6",
+                isManual: undefined,
+                name: "kimi-k2.6"
+              }
+            ]
+          },
+          openai: {
+            ...settings.ai.providers.openai,
+            apiKey: ""
+          }
+        }
+      }
+    })
+
+    const model = resolveModel()
+
+    expect(openAIProviderMock).not.toHaveBeenCalledWith("gpt-4o")
+    expect(openAIProviderMock.chat).toHaveBeenCalledWith("kimi-k2.6")
+    expect(model).toEqual({
+      modelId: "kimi-k2.6",
+      transport: "chat-completions"
+    })
+  })
+
+  it("keeps explicit unavailable models as configuration errors", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          openai: {
+            ...settings.ai.providers.openai,
+            apiKey: ""
+          }
+        }
+      }
+    })
+
+    expect(() => resolveModel("openai/gpt-4o")).toThrow(
+      'Provider "openai" is missing an API Key.'
+    )
+  })
 })
