@@ -286,7 +286,7 @@ const ProjectFileTree = ({
   }, [model, paths, gitStatusEntries])
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-muted-foreground">
           {label}
@@ -452,6 +452,41 @@ const ProjectFilePreview = ({
   )
 }
 
+const ProjectFilesTreePane = ({
+  gitStatusFiles,
+  isTreeLoading,
+  label,
+  onFileSelect,
+  paths
+}: {
+  gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
+  isTreeLoading: boolean
+  label: string
+  onFileSelect: (relativePath: string) => void
+  paths: string[]
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden">
+      {paths.length > 0 ? (
+        <ProjectFileTree
+          gitStatusFiles={gitStatusFiles}
+          label={label}
+          onFileSelect={onFileSelect}
+          paths={paths}
+        />
+      ) : (
+        <div className="flex h-full min-h-48 items-center justify-center px-4 text-center text-xs leading-5 text-muted-foreground">
+          {isTreeLoading
+            ? t("chat.projectPanel.loading")
+            : t("chat.projectPanel.emptyFiles")}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const ProjectFilesPanel = ({
   gitStatusFiles,
   isTreeLoading,
@@ -522,6 +557,18 @@ const ProjectFilesPanel = ({
     }
   }, [paths, selectedFilePath])
 
+  if (!selectedFilePath) {
+    return (
+      <ProjectFilesTreePane
+        gitStatusFiles={gitStatusFiles}
+        isTreeLoading={isTreeLoading}
+        label={label}
+        onFileSelect={handleFileSelect}
+        paths={paths}
+      />
+    )
+  }
+
   return (
     <Resizable
       className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
@@ -535,22 +582,13 @@ const ProjectFilesPanel = ({
         maxSize={PROJECT_FILE_TREE_MAX_SIZE}
         minSize={PROJECT_FILE_TREE_MIN_SIZE}
       >
-        <div className="h-full min-h-0 min-w-0 overflow-hidden">
-          {paths.length > 0 ? (
-            <ProjectFileTree
-              gitStatusFiles={gitStatusFiles}
-              label={label}
-              onFileSelect={handleFileSelect}
-              paths={paths}
-            />
-          ) : (
-            <div className="flex h-full min-h-48 items-center justify-center px-4 text-center text-xs leading-5 text-muted-foreground">
-              {isTreeLoading
-                ? t("chat.projectPanel.loading")
-                : t("chat.projectPanel.emptyFiles")}
-            </div>
-          )}
-        </div>
+        <ProjectFilesTreePane
+          gitStatusFiles={gitStatusFiles}
+          isTreeLoading={isTreeLoading}
+          label={label}
+          onFileSelect={handleFileSelect}
+          paths={paths}
+        />
       </Resizable.Panel>
       <Resizable.Handle
         aria-label={t("chat.projectPanel.resizeHandle")}
@@ -734,7 +772,7 @@ const ProjectCommitPanel = ({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="border-b border-border px-3 py-3">
+        <div className="p-3">
           <p className="text-xs font-semibold text-muted-foreground">
             {t("chat.projectPanel.commitFilesTitle")}
           </p>
@@ -940,7 +978,7 @@ export const ProjectContextPanel = ({
         />
 
         <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
           id={PROJECT_CONTEXT_FILES_TAB_ID}
         >
           <ProjectFilesPanel
@@ -953,7 +991,7 @@ export const ProjectContextPanel = ({
         </Tabs.Panel>
 
         <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
           id={PROJECT_CONTEXT_CHANGES_TAB_ID}
         >
           <ProjectChangesPanel
@@ -966,7 +1004,7 @@ export const ProjectContextPanel = ({
         </Tabs.Panel>
 
         <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
           id={PROJECT_CONTEXT_COMMIT_TAB_ID}
         >
           <ProjectCommitPanel

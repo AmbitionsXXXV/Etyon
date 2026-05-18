@@ -116,9 +116,11 @@ type ChatMention =
 
 聊天页默认不显示 session / snapshot 细节。需要排查项目快照或模型绑定时，可在 renderer 环境中设置 `VITE_ENABLE_CHAT_SESSION_DETAILS=1` 或 `VITE_ENABLE_CHAT_SESSION_DETAILS=true`，再显示右侧调试详情和底部快照 ID。
 
-右侧 Review 面板的 Files tab 直接展示完整项目文件树，不启用 `@pierre/trees` 内置 search。文件树和右侧预览区之间使用 `@heroui-pro/react` 的 `Resizable` 分栏，可拖拽调整宽度；点击文件时通过 `projectSnapshots.readFile` 读取项目内文本文件，并使用 `shiki/bundle/web` 渲染带行号的只读代码视图，文件树本身不被替换。文件树顶部提供“收起所有文件夹”按钮，用于快速恢复到初始折叠层级。
+右侧 Review 面板的 Files tab 直接展示完整项目文件树，不启用 `@pierre/trees` 内置 search。未选择文件时只展示文件树，不挂载空的 File Preview 区域；选择文件后，文件树和右侧预览区之间使用 `@heroui-pro/react` 的 `Resizable` 分栏，可拖拽调整宽度。点击文件时通过 `projectSnapshots.readFile` 读取项目内文本文件，并使用 `shiki/bundle/web` 渲染带行号的只读代码视图，文件树本身不被替换。文件树顶部提供“收起所有文件夹”按钮，用于快速恢复到初始折叠层级。
 
 Chat 组件文件保持只负责 React 渲染和 hook glue：`prompt-input.tsx`、`project-file-code-viewer.tsx` 等 `tsx` 文件不直接定义可复用常量或 helper function；分组、格式化、Shiki token、语言映射等非组件逻辑放在 `apps/desktop/src/renderer/lib/chat/` 下对应 feature 文件中。
+
+`Files` 内部有独立 `Resizable` 分栏，因此 Review 面板的 `Tabs.Panel` 必须通过 `data-[inert=true]:hidden` 隔离 inactive tab，避免 React Aria 保留退出中的 panel 时继续占用 `Changes` / `Commit` 的内容高度。
 
 ## 模型选择、会话记忆与 Skills
 
