@@ -52,6 +52,7 @@ const optimizedDependencies = [
   "react-resizable-panels",
   "react/jsx-dev-runtime",
   "react/jsx-runtime",
+  "shiki/bundle/web",
   "sonner",
   "tailwind-merge",
   "use-sync-external-store/shim",

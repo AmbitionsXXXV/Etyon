@@ -43,3 +43,14 @@ allowBuilds:
   fs-xattr: true
   macos-alias: true
   msw: true
+minimumReleaseAgeExclude:
+  - '@chat-adapter/shared@4.29.0'
+  - '@chat-adapter/state-memory@4.29.0'
+  - '@chat-adapter/telegram@4.29.0'
+  - '@hono/node-server@2.0.3'
+  - chat@4.29.0
+  - date-fns@4.2.1
+  - framer-motion@12.39.0
+  - motion-dom@12.39.0
+  - motion-utils@12.39.0
+  - motion@12.39.0

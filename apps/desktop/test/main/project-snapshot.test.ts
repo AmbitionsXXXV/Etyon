@@ -6,7 +6,8 @@ import { afterAll, describe, expect, it } from "vite-plus/test"
 import {
   buildMentionContext,
   ensureProjectSnapshot,
-  listProjectSnapshotFiles
+  listProjectSnapshotFiles,
+  readProjectFile
 } from "@/main/project-snapshot"
 
 const testProjectPath = `/tmp/etyon-project-snapshot-test-${Date.now()}`
@@ -253,6 +254,22 @@ describe("project snapshot", () => {
         query: ""
       }).files
     ).toHaveLength(50)
+  })
+
+  it("reads large text files for the project file viewer", () => {
+    const projectPath = createTestProjectPath("read-large-file")
+    const content = `${"export const value = 1\n".repeat(28_000)}// end\n`
+
+    writeProjectFile("src/generated.ts", content, projectPath)
+
+    const fileData = readProjectFile({
+      filePath: "src/generated.ts",
+      projectPath
+    })
+
+    expect(fileData.content).toBe(content)
+    expect(fileData.language).toBe("typescript")
+    expect(fileData.relativePath).toBe("src/generated.ts")
   })
 
   it("builds folder mention context from files under the referenced folder only", () => {

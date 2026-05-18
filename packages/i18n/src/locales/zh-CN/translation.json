@@ -71,8 +71,10 @@
       "title": "Chat UI 占位"
     },
     "projectPanel": {
+      "backToFiles": "返回文件列表",
       "changesView": "变更",
       "closePanel": "关闭 Review 面板",
+      "collapseFolders": "收起所有文件夹",
       "commitAction": "Commit",
       "commitFilesTitle": "变更文件",
       "commitMessageLabel": "提交信息",
@@ -89,6 +91,9 @@
       "filesView": "文件",
       "loading": "正在加载...",
       "openPanel": "打开 Review 面板",
+      "previewEmpty": "选择左侧文件后在这里查看文本。",
+      "previewTitle": "文件预览",
+      "readFileError": "无法读取文件内容。",
       "refresh": "刷新项目上下文",
       "resizeHandle": "调整 Review 面板宽度",
       "review": "Review",

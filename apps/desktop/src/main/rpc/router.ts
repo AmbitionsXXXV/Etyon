@@ -16,6 +16,8 @@ import {
   MemoryStatsOutputSchema,
   ListProjectSnapshotFilesInputSchema,
   ListProjectSnapshotFilesOutputSchema,
+  ReadProjectFileInputSchema,
+  ReadProjectFileOutputSchema,
   LogEventSchema,
   OpenChatSessionInputSchema,
   PingInputSchema,
@@ -64,7 +66,8 @@ import { getMemoryStats, listMemoryEntries } from "@/main/memory"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import {
   ensureProjectSnapshot,
-  listProjectSnapshotFiles
+  listProjectSnapshotFiles,
+  readProjectFile
 } from "@/main/project-snapshot"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
@@ -349,6 +352,22 @@ const projectSnapshotsListFiles = rpc
     })
   })
 
+const projectSnapshotsReadFile = rpc
+  .input(ReadProjectFileInputSchema)
+  .output(ReadProjectFileOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return readProjectFile({
+      filePath: input.filePath,
+      projectPath: session.projectPath
+    })
+  })
+
 const sidebarStateGet = rpc
   .output(SidebarUiStateSchema)
   .handler(() => getSidebarUiState())
@@ -413,7 +432,8 @@ export const router = {
   ping,
   projectSnapshots: {
     ensure: projectSnapshotsEnsure,
-    listFiles: projectSnapshotsListFiles
+    listFiles: projectSnapshotsListFiles,
+    readFile: projectSnapshotsReadFile
   },
   providers: {
     fetchModels: providersFetchModels

@@ -71,8 +71,10 @@
       "title": "Chat Placeholder"
     },
     "projectPanel": {
+      "backToFiles": "ファイルツリーに戻る",
       "changesView": "変更",
       "closePanel": "Review パネルを閉じる",
+      "collapseFolders": "すべてのフォルダーを閉じる",
       "commitAction": "Commit",
       "commitFilesTitle": "変更ファイル",
       "commitMessageLabel": "コミットメッセージ",
@@ -89,6 +91,9 @@
       "filesView": "ファイル",
       "loading": "読み込み中...",
       "openPanel": "Review パネルを開く",
+      "previewEmpty": "左側のファイルを選択すると、ここにテキストを表示します。",
+      "previewTitle": "ファイルプレビュー",
+      "readFileError": "このファイルを読み取れません。",
       "refresh": "プロジェクトコンテキストを更新",
       "resizeHandle": "Review パネルの幅を調整",
       "review": "Review",

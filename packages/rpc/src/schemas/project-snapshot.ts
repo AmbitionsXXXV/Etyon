@@ -57,6 +57,17 @@ export const ListProjectSnapshotFilesOutputSchema = z.object({
   snapshotId: z.string()
 })
 
+export const ReadProjectFileInputSchema = z.object({
+  filePath: z.string(),
+  sessionId: z.string()
+})
+
+export const ReadProjectFileOutputSchema = z.object({
+  content: z.string(),
+  language: z.string().nullable(),
+  relativePath: z.string()
+})
+
 export type EnsureProjectSnapshotInput = z.infer<
   typeof EnsureProjectSnapshotInputSchema
 >
@@ -77,3 +88,5 @@ export type ProjectSnapshotFolderItem = z.infer<
 >
 export type ProjectSnapshotItem = z.infer<typeof ProjectSnapshotItemSchema>
 export type ProjectSnapshotState = z.infer<typeof ProjectSnapshotStateSchema>
+export type ReadProjectFileInput = z.infer<typeof ReadProjectFileInputSchema>
+export type ReadProjectFileOutput = z.infer<typeof ReadProjectFileOutputSchema>

@@ -9,7 +9,8 @@ import type {
   ProjectSnapshotFileItem,
   ProjectSnapshotFolderItem,
   ProjectSnapshotItem,
-  ProjectSnapshotState
+  ProjectSnapshotState,
+  ReadProjectFileOutput
 } from "@etyon/rpc"
 
 const AGENT_DOCUMENTS_DIR_NAME = "documents"
@@ -864,6 +865,51 @@ export const listProjectSnapshotFiles = ({
   return {
     files: items,
     snapshotId: snapshotState.snapshotId
+  }
+}
+
+const READ_FILE_MAX_SIZE = 5 * 1024 * 1024
+
+export const readProjectFile = ({
+  filePath,
+  projectPath
+}: {
+  filePath: string
+  projectPath: string
+}): ReadProjectFileOutput => {
+  const resolvedPath = path.resolve(projectPath, filePath)
+  const normalizedProjectPath = path.resolve(projectPath)
+
+  if (!resolvedPath.startsWith(normalizedProjectPath + path.sep)) {
+    throw new Error("File path is outside the project directory.")
+  }
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`File not found: ${filePath}`)
+  }
+
+  const stats = fs.statSync(resolvedPath)
+
+  if (!stats.isFile()) {
+    throw new Error(`Not a file: ${filePath}`)
+  }
+
+  if (stats.size > READ_FILE_MAX_SIZE) {
+    throw new Error(
+      `File too large (${Math.round(stats.size / 1024)}KB). Maximum supported size is ${READ_FILE_MAX_SIZE / 1024}KB.`
+    )
+  }
+
+  const buffer = fs.readFileSync(resolvedPath)
+
+  if (!isTextFile(resolvedPath, buffer)) {
+    throw new Error("Binary files are not supported.")
+  }
+
+  return {
+    content: buffer.toString("utf-8"),
+    language: inferLanguage(resolvedPath),
+    relativePath: normalizeRelativePath(resolvedPath, normalizedProjectPath)
   }
 }
 

@@ -22,6 +22,7 @@ import {
   PanelRightOpenIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, UIMessage } from "ai"
@@ -92,11 +93,12 @@ const getChatSessionMessagesQueryOptions = (sessionId: string) =>
     }
   })
 const MENTION_ITEM_LIMIT = 50
+const MENTION_SEARCH_DEBOUNCE_WAIT_MS = 180
 const MENTION_SKILL_ITEM_LIMIT = 20
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
-const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 32
-const PROJECT_CONTEXT_PANEL_MAX_SIZE = 46
+const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
+const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
@@ -481,17 +483,27 @@ const useChatMentionSuggestions = ({
 }) => {
   const [mentionQueryState, setMentionQueryState] =
     useState<MentionQueryState | null>(null)
-  const mentionQuery = mentionQueryState?.query ?? null
+  const [debouncedMentionQueryState] = useDebouncedValue(mentionQueryState, {
+    key: "chat-mention-suggestions",
+    leading: true,
+    trailing: true,
+    wait: MENTION_SEARCH_DEBOUNCE_WAIT_MS
+  })
   const mentionTrigger = mentionQueryState?.trigger ?? null
+  const mentionQuery =
+    debouncedMentionQueryState?.trigger === mentionTrigger
+      ? debouncedMentionQueryState.query
+      : ""
   const mentionItemsQuery = useQuery({
     ...orpc.projectSnapshots.listFiles.queryOptions({
       input: {
         limit: MENTION_ITEM_LIMIT,
-        query: mentionQuery ?? "",
+        query: mentionQuery,
         sessionId
       }
     }),
-    enabled: sessionExists && mentionTrigger === "project"
+    enabled: sessionExists && mentionTrigger === "project",
+    placeholderData: (previousData) => previousData
   })
   const mentionSkillsQuery = useQuery({
     ...orpc.skills.list.queryOptions({}),
@@ -504,11 +516,13 @@ const useChatMentionSuggestions = ({
       filterPromptSkillMentionItems({
         limit: MENTION_SKILL_ITEM_LIMIT,
         projectPath: selectedSession?.projectPath ?? "",
-        query: mentionQuery ?? "",
+        query: mentionQuery,
+        searchMode: mentionTrigger === "project" ? "title" : "full",
         skills: mentionSkillsQuery.data?.skills ?? []
       }),
     [
       mentionQuery,
+      mentionTrigger,
       mentionSkillsQuery.data?.skills,
       selectedSession?.projectPath
     ]

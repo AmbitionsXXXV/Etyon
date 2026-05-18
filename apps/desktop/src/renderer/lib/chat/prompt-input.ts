@@ -1,4 +1,5 @@
 import type { ChatMention, ParsedSkill, ProjectSnapshotItem } from "@etyon/rpc"
+import { CubeIcon, File01Icon, Folder01Icon } from "@hugeicons/core-free-icons"
 
 export interface ActiveMentionMatch {
   query: string
@@ -7,6 +8,7 @@ export interface ActiveMentionMatch {
 }
 
 export type PromptMentionTrigger = "project" | "skill"
+type PromptSkillMentionSearchMode = "full" | "title"
 
 export interface PromptEditorActiveMentionRange {
   from: number
@@ -28,6 +30,17 @@ export interface PromptSkillMentionItem {
 }
 
 export type PromptMentionItem = ProjectSnapshotItem | PromptSkillMentionItem
+
+export interface PromptMentionItemGroup {
+  id: string
+  items: PromptMentionItem[]
+  label: string
+}
+
+export interface PromptMentionQueryState {
+  query: string
+  trigger: PromptMentionTrigger
+}
 
 export type PromptTextDisplayPart =
   | {
@@ -184,12 +197,133 @@ export const createMentionFromPromptMentionItem = (
 export const getPromptMentionItemKey = (item: PromptMentionItem): string =>
   `${item.kind}:${item.path}`
 
+const formatSkillName = (name: string): string =>
+  name
+    .split(/[-_\s]+/u)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ")
+
+const getPromptPathBaseName = (value: string): string =>
+  value.split(/[\\/]/u).findLast((part) => part.length > 0) ?? value
+
+export const getPromptMentionItemName = (item: ProjectSnapshotItem): string =>
+  item.relativePath.split("/").at(-1) ?? item.relativePath
+
+export const getPromptSkillDescription = (
+  item: PromptSkillMentionItem
+): string => item.description
+
+export const getPromptSkillDisplayName = (
+  item: PromptSkillMentionItem
+): string => formatSkillName(item.name)
+
+export const getPromptSkillSourceLabel = ({
+  globalLabel,
+  item
+}: {
+  globalLabel: string
+  item: PromptSkillMentionItem
+}): string => {
+  if (!item.projectPath) {
+    return globalLabel
+  }
+
+  return getPromptPathBaseName(item.projectPath)
+}
+
+export const getPromptMentionItemIcon = (item: PromptMentionItem) => {
+  if (item.kind === "folder") {
+    return Folder01Icon
+  }
+
+  if (item.kind === "skill") {
+    return CubeIcon
+  }
+
+  return File01Icon
+}
+
+export const buildPromptMentionItemGroups = ({
+  activeTrigger,
+  mentionFileGroupLabel,
+  mentionFolderGroupLabel,
+  mentionItems,
+  mentionSkillGroupLabel,
+  mentionSkillItems
+}: {
+  activeTrigger: PromptMentionTrigger | undefined
+  mentionFileGroupLabel: string
+  mentionFolderGroupLabel: string
+  mentionItems: ProjectSnapshotItem[]
+  mentionSkillGroupLabel: string
+  mentionSkillItems: PromptSkillMentionItem[]
+}): PromptMentionItemGroup[] => {
+  if (activeTrigger === "skill") {
+    return [
+      {
+        id: "skills",
+        items: mentionSkillItems,
+        label: mentionSkillGroupLabel
+      }
+    ].filter((group) => group.items.length > 0)
+  }
+
+  if (activeTrigger !== "project") {
+    return []
+  }
+
+  return [
+    {
+      id: "skills",
+      items: mentionSkillItems,
+      label: mentionSkillGroupLabel
+    },
+    {
+      id: "folders",
+      items: mentionItems.filter((item) => item.kind === "folder"),
+      label: mentionFolderGroupLabel
+    },
+    {
+      id: "files",
+      items: mentionItems.filter((item) => item.kind === "file"),
+      label: mentionFileGroupLabel
+    }
+  ].filter((group) => group.items.length > 0)
+}
+
+export const getPromptMentionSelectionItems = (
+  groups: PromptMentionItemGroup[]
+): PromptMentionItem[] => groups.flatMap((group) => group.items)
+
+export const getActivePromptMentionItemKey = ({
+  activeItemIndex,
+  items
+}: {
+  activeItemIndex: number
+  items: PromptMentionItem[]
+}): string | null =>
+  items[activeItemIndex]
+    ? getPromptMentionItemKey(items[activeItemIndex])
+    : null
+
+export const createPromptMentionItemsByKey = (
+  items: PromptMentionItem[]
+): Map<string, PromptMentionItem> =>
+  new Map(items.map((item) => [getPromptMentionItemKey(item), item]))
+
 const normalizeSkillQuery = (value: string): string =>
   value.trim().toLowerCase()
 
-const getSkillSearchText = (skill: ParsedSkill): string =>
+const getSkillTitleSearchText = (skill: ParsedSkill): string =>
+  [skill.name, skill.name.replaceAll(/[-_\s]+/gu, " ")]
+    .filter(Boolean)
+    .join(SKILL_QUERY_SEPARATOR)
+    .toLowerCase()
+
+const getSkillFullSearchText = (skill: ParsedSkill): string =>
   [
-    skill.name,
+    getSkillTitleSearchText(skill),
     skill.description,
     skill.shortDescription,
     skill.body,
@@ -203,14 +337,18 @@ export const filterPromptSkillMentionItems = ({
   limit,
   projectPath,
   query,
+  searchMode,
   skills
 }: {
   limit: number
   projectPath: string
   query: string
+  searchMode: PromptSkillMentionSearchMode
   skills: ParsedSkill[]
 }): PromptSkillMentionItem[] => {
   const normalizedQuery = normalizeSkillQuery(query)
+  const getSearchText =
+    searchMode === "title" ? getSkillTitleSearchText : getSkillFullSearchText
 
   return skills
     .filter(
@@ -218,8 +356,7 @@ export const filterPromptSkillMentionItems = ({
     )
     .filter(
       (skill) =>
-        normalizedQuery === "" ||
-        getSkillSearchText(skill).includes(normalizedQuery)
+        normalizedQuery === "" || getSearchText(skill).includes(normalizedQuery)
     )
     .slice(0, limit)
     .map(createPromptSkillMentionItem)
@@ -258,13 +395,6 @@ export const getMentionTextValue = (mention: ChatMention): string => {
 
   return mention.relativePath
 }
-
-const formatSkillName = (name: string): string =>
-  name
-    .split(/[-_\s]+/u)
-    .filter(Boolean)
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ")
 
 export const getMentionDisplayName = (mention: ChatMention): string => {
   if (mention.kind === "skill") {

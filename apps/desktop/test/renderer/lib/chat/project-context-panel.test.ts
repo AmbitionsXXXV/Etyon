@@ -3,10 +3,12 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   buildProjectGitStatusSummary,
+  buildProjectTreeDirectoryPaths,
   formatProjectDiffCount,
   getProjectDiffFileStats,
   getProjectDiffSummary
 } from "@/renderer/lib/chat/project-context-panel"
+import { resolveProjectFileViewerLanguage } from "@/renderer/lib/chat/project-file-code-viewer"
 
 describe("project context panel helpers", () => {
   it("builds ordered git status summary items with display prefixes", () => {
@@ -119,5 +121,45 @@ describe("project context panel helpers", () => {
 
   it("formats diff counts with grouping separators", () => {
     expect(formatProjectDiffCount(2937)).toBe("2,937")
+  })
+
+  it("builds deepest-first directory paths for tree collapse actions", () => {
+    expect(
+      buildProjectTreeDirectoryPaths([
+        "README.md",
+        "apps/desktop/src/index.ts",
+        "apps/desktop/src/renderer/index.tsx",
+        "packages/ui/src/button.tsx"
+      ])
+    ).toEqual([
+      "apps/desktop/src/renderer/",
+      "apps/desktop/src/",
+      "packages/ui/src/",
+      "apps/desktop/",
+      "packages/ui/",
+      "apps/",
+      "packages/"
+    ])
+  })
+
+  it("resolves Shiki viewer languages from snapshot language and extension", () => {
+    expect(
+      resolveProjectFileViewerLanguage({
+        language: "typescriptreact",
+        relativePath: "apps/desktop/src/app.tsx"
+      })
+    ).toBe("tsx")
+    expect(
+      resolveProjectFileViewerLanguage({
+        language: null,
+        relativePath: "apps/desktop/src/app.jsx"
+      })
+    ).toBe("jsx")
+    expect(
+      resolveProjectFileViewerLanguage({
+        language: undefined,
+        relativePath: "README"
+      })
+    ).toBe("plaintext")
   })
 })

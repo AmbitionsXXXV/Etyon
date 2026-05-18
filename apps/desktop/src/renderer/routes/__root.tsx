@@ -20,6 +20,7 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 import { FormDevtoolsPanel } from "@tanstack/react-form-devtools"
 import { useHotkey } from "@tanstack/react-hotkeys"
 import { HotkeysDevtoolsPanel } from "@tanstack/react-hotkeys-devtools"
+import { PacerDevtoolsPanel } from "@tanstack/react-pacer-devtools"
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRoute, Outlet, useRouterState } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
@@ -172,6 +173,10 @@ const RootComponent = () => {
           {
             name: "TanStack Form",
             render: <FormDevtoolsPanel />
+          },
+          {
+            name: "TanStack Pacer",
+            render: (_element, props) => <PacerDevtoolsPanel {...props} />
           }
         ]}
       />

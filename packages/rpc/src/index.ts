@@ -102,7 +102,9 @@ export {
   ProjectSnapshotFileItemSchema,
   ProjectSnapshotFolderItemSchema,
   ProjectSnapshotItemSchema,
-  ProjectSnapshotStateSchema
+  ProjectSnapshotStateSchema,
+  ReadProjectFileInputSchema,
+  ReadProjectFileOutputSchema
 } from "./schemas/project-snapshot"
 export type {
   EnsureProjectSnapshotInput,
@@ -112,7 +114,9 @@ export type {
   ProjectSnapshotFileItem,
   ProjectSnapshotFolderItem,
   ProjectSnapshotItem,
-  ProjectSnapshotState
+  ProjectSnapshotState,
+  ReadProjectFileInput,
+  ReadProjectFileOutput
 } from "./schemas/project-snapshot"
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"

@@ -71,8 +71,10 @@
       "title": "Chat Placeholder"
     },
     "projectPanel": {
+      "backToFiles": "Back to file tree",
       "changesView": "Changes",
       "closePanel": "Close Review panel",
+      "collapseFolders": "Collapse all folders",
       "commitAction": "Commit",
       "commitFilesTitle": "Changed files",
       "commitMessageLabel": "Commit message",
@@ -89,6 +91,9 @@
       "filesView": "Files",
       "loading": "Loading...",
       "openPanel": "Open Review panel",
+      "previewEmpty": "Select a file on the left to preview its text.",
+      "previewTitle": "File Preview",
+      "readFileError": "Unable to read this file.",
       "refresh": "Refresh project context",
       "resizeHandle": "Resize Review panel",
       "review": "Review",

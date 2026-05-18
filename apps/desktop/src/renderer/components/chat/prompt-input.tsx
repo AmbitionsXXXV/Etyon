@@ -1,7 +1,6 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { Button } from "@heroui/react"
-import { CubeIcon, File01Icon, Folder01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
@@ -13,70 +12,28 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   PROJECT_MENTION_NODE_TYPE,
+  buildPromptMentionItemGroups,
+  createPromptMentionItemsByKey,
   createMentionFromPromptMentionItem,
   extractPromptEditorPayload,
+  getActivePromptMentionItemKey,
   getPromptEditorActiveMentionRange,
+  getPromptMentionItemIcon,
   getPromptMentionItemKey,
+  getPromptMentionItemName,
+  getPromptMentionSelectionItems,
+  getPromptSkillDescription,
+  getPromptSkillDisplayName,
+  getPromptSkillSourceLabel,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 import type {
+  PromptMentionItemGroup,
+  PromptMentionQueryState,
   PromptMentionItem,
-  PromptMentionTrigger,
-  PromptSkillMentionItem
+  PromptSkillMentionItem,
+  PromptMentionTrigger
 } from "@/renderer/lib/chat/prompt-input"
-
-interface MentionItemGroup {
-  id: string
-  items: PromptMentionItem[]
-  label: string
-}
-
-interface MentionQueryState {
-  query: string
-  trigger: PromptMentionTrigger
-}
-
-const getMentionItemName = (item: ProjectSnapshotItem): string =>
-  item.relativePath.split("/").at(-1) ?? item.relativePath
-
-const getSkillDescription = (item: PromptSkillMentionItem): string =>
-  item.description
-
-const getSkillDisplayName = (item: PromptSkillMentionItem): string =>
-  item.name
-    .split(/[-_\s]+/u)
-    .filter(Boolean)
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ")
-
-const getPathBaseName = (value: string): string =>
-  value.split(/[\\/]/u).findLast((part) => part.length > 0) ?? value
-
-const getSkillSourceLabel = ({
-  globalLabel,
-  item
-}: {
-  globalLabel: string
-  item: PromptSkillMentionItem
-}): string => {
-  if (!item.projectPath) {
-    return globalLabel
-  }
-
-  return getPathBaseName(item.projectPath)
-}
-
-const getMentionItemIcon = (item: PromptMentionItem) => {
-  if (item.kind === "folder") {
-    return Folder01Icon
-  }
-
-  if (item.kind === "skill") {
-    return CubeIcon
-  }
-
-  return File01Icon
-}
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -95,7 +52,7 @@ const MentionSkillRowContent = ({
           isActive ? "text-accent-foreground" : "text-foreground"
         )}
       >
-        {getSkillDisplayName(item)}
+        {getPromptSkillDisplayName(item)}
       </span>
       <span
         className={cn(
@@ -103,7 +60,7 @@ const MentionSkillRowContent = ({
           isActive ? "text-accent-foreground/85" : "text-muted-foreground"
         )}
       >
-        {getSkillDescription(item)}
+        {getPromptSkillDescription(item)}
       </span>
     </span>
     <span
@@ -112,7 +69,7 @@ const MentionSkillRowContent = ({
         isActive ? "text-accent-foreground/80" : "text-muted-foreground"
       )}
     >
-      {getSkillSourceLabel({
+      {getPromptSkillSourceLabel({
         globalLabel: globalSkillSourceLabel,
         item
       })}
@@ -134,7 +91,7 @@ const MentionDefaultRowContent = ({
         isActive ? "text-accent-foreground" : "text-foreground"
       )}
     >
-      {getMentionItemName(item)}
+      {getPromptMentionItemName(item)}
     </span>
     <span
       className={cn(
@@ -166,7 +123,7 @@ const MentionItemRow = ({
   const itemIndex = mentionSelectionItems.findIndex(
     (mentionItem) => getPromptMentionItemKey(mentionItem) === itemKey
   )
-  const itemIcon = getMentionItemIcon(item)
+  const itemIcon = getPromptMentionItemIcon(item)
   const isActive = itemIndex === activeItemIndex
   const isSkillItem = item.kind === "skill"
 
@@ -223,61 +180,61 @@ const MentionSuggestions = ({
   activeItemIndex: number
   currentEmptyLabel: string
   globalSkillSourceLabel: string
-  groups: MentionItemGroup[]
+  groups: PromptMentionItemGroup[]
   isLoading: boolean
   isSkillMentionActive: boolean
   mentionSelectionItems: PromptMentionItem[]
   onItemClick: (event: MouseEvent<HTMLButtonElement>) => void
   onItemRef: (itemKey: string, element: HTMLButtonElement | null) => void
-}) => (
-  <div
-    className={cn(
-      "absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
-      isSkillMentionActive ? "rounded-[1.35rem]" : "rounded-2xl"
-    )}
-  >
+}) => {
+  const hasMentionItems = mentionSelectionItems.length > 0
+  const showLoadingState = isLoading && !hasMentionItems
+  const showEmptyState = !isLoading && !hasMentionItems
+
+  return (
     <div
       className={cn(
-        "overflow-y-auto",
-        isSkillMentionActive ? "max-h-80 p-1.5" : "max-h-72 p-1"
+        "absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
+        isSkillMentionActive ? "rounded-[1.35rem]" : "rounded-2xl"
       )}
     >
-      {isLoading && (
-        <div className="p-3 text-xs text-muted-foreground">
-          {currentEmptyLabel}
-        </div>
-      )}
-
-      {!isLoading && mentionSelectionItems.length === 0 && (
-        <div className="p-3 text-xs text-muted-foreground">
-          {currentEmptyLabel}
-        </div>
-      )}
-
-      {!isLoading &&
-        groups.map((group) => (
-          <div className={cn(!isSkillMentionActive && "py-1")} key={group.id}>
-            {isSkillMentionActive ? null : (
-              <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
-                {group.label}
-              </div>
-            )}
-            {group.items.map((item) => (
-              <MentionItemRow
-                activeItemIndex={activeItemIndex}
-                globalSkillSourceLabel={globalSkillSourceLabel}
-                item={item}
-                key={getPromptMentionItemKey(item)}
-                mentionSelectionItems={mentionSelectionItems}
-                onItemClick={onItemClick}
-                onItemRef={onItemRef}
-              />
-            ))}
+      <div
+        className={cn(
+          "overflow-y-auto",
+          isSkillMentionActive ? "max-h-80 p-1.5" : "max-h-72 p-1"
+        )}
+      >
+        {(showLoadingState || showEmptyState) && (
+          <div className="p-3 text-xs text-muted-foreground">
+            {currentEmptyLabel}
           </div>
-        ))}
+        )}
+
+        {hasMentionItems &&
+          groups.map((group) => (
+            <div className={cn(!isSkillMentionActive && "py-1")} key={group.id}>
+              {isSkillMentionActive ? null : (
+                <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
+                  {group.label}
+                </div>
+              )}
+              {group.items.map((item) => (
+                <MentionItemRow
+                  activeItemIndex={activeItemIndex}
+                  globalSkillSourceLabel={globalSkillSourceLabel}
+                  item={item}
+                  key={getPromptMentionItemKey(item)}
+                  mentionSelectionItems={mentionSelectionItems}
+                  onItemClick={onItemClick}
+                  onItemRef={onItemRef}
+                />
+              ))}
+            </div>
+          ))}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 export const PromptInput = ({
   disabled = false,
@@ -323,67 +280,41 @@ export const PromptInput = ({
 }) => {
   const [activeItemIndex, setActiveItemIndex] = useState(0)
   const [activeMentionRange, setActiveMentionRange] = useState<
-    (MentionQueryState & { from: number; to: number }) | null
+    (PromptMentionQueryState & { from: number; to: number }) | null
   >(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
-  const mentionItemGroups = useMemo<MentionItemGroup[]>(() => {
-    if (activeMentionRange?.trigger === "skill") {
-      return [
-        {
-          id: "skills",
-          items: mentionSkillItems,
-          label: mentionSkillGroupLabel
-        }
-      ].filter((group) => group.items.length > 0)
-    }
-
-    if (activeMentionRange?.trigger !== "project") {
-      return []
-    }
-
-    return [
-      {
-        id: "skills",
-        items: mentionSkillItems,
-        label: mentionSkillGroupLabel
-      },
-      {
-        id: "folders",
-        items: mentionItems.filter((item) => item.kind === "folder"),
-        label: mentionFolderGroupLabel
-      },
-      {
-        id: "files",
-        items: mentionItems.filter((item) => item.kind === "file"),
-        label: mentionFileGroupLabel
-      }
-    ].filter((group) => group.items.length > 0)
-  }, [
-    activeMentionRange?.trigger,
-    mentionFileGroupLabel,
-    mentionFolderGroupLabel,
-    mentionItems,
-    mentionSkillGroupLabel,
-    mentionSkillItems
-  ])
+  const mentionItemGroups = useMemo<PromptMentionItemGroup[]>(
+    () =>
+      buildPromptMentionItemGroups({
+        activeTrigger: activeMentionRange?.trigger,
+        mentionFileGroupLabel,
+        mentionFolderGroupLabel,
+        mentionItems,
+        mentionSkillGroupLabel,
+        mentionSkillItems
+      }),
+    [
+      activeMentionRange?.trigger,
+      mentionFileGroupLabel,
+      mentionFolderGroupLabel,
+      mentionItems,
+      mentionSkillGroupLabel,
+      mentionSkillItems
+    ]
+  )
   const mentionSelectionItems = useMemo<PromptMentionItem[]>(
-    () => mentionItemGroups.flatMap((group) => group.items),
+    () => getPromptMentionSelectionItems(mentionItemGroups),
     [mentionItemGroups]
   )
-  const activeMentionItemKey = mentionSelectionItems[activeItemIndex]
-    ? getPromptMentionItemKey(mentionSelectionItems[activeItemIndex])
-    : null
+  const activeMentionItemKey = getActivePromptMentionItemKey({
+    activeItemIndex,
+    items: mentionSelectionItems
+  })
   const mentionItemsByKey = useMemo(
-    () =>
-      new Map(
-        mentionSelectionItems.map((item) => [
-          getPromptMentionItemKey(item),
-          item
-        ])
-      ),
+    () => createPromptMentionItemsByKey(mentionSelectionItems),
     [mentionSelectionItems]
   )
   const isSkillMentionActive = activeMentionRange?.trigger === "skill"

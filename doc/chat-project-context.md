@@ -108,11 +108,17 @@ type ChatMention =
 
 服务端会优先从最新快照中读取被引用文件的 `preview`，再把这些内容作为额外上下文拼进模型输入。引用文件夹时，服务端按文件夹相对路径前缀从同一快照中提取目录下的文本文件，并按保守上下文预算截断。
 
-文件搜索以 `projectPath` 为根处理相对路径。输入 `@` 会显示前 50 个文件 / 文件夹候选项，文件夹分组固定排在文件分组前。输入 `@src/main`、`@/src/main` 或 `@./src/main` 都会匹配快照中的 `src/main...` 文件或文件夹，避免项目根路径写法导致文件索引查不到。
+文件搜索以 `projectPath` 为根处理相对路径。输入 `@` 会显示最完整的候选项：skills、文件夹和文件，其中 skills 分组固定排在文件夹、文件之前；`@` 下的 skills 只按 skill title 匹配，不搜索 description、正文内容或路径；文件和文件夹候选项最多取前 50 个。输入 `@src/main`、`@/src/main` 或 `@./src/main` 都会匹配快照中的 `src/main...` 文件或文件夹，避免项目根路径写法导致文件索引查不到。
 
-`$` 指示器专门用于筛选和选择 skills。候选项来自 `skills.list` 的 `ParsedSkill`，仅保留当前 project skills 和 global skills；过滤字段包括 skill `name`、`description`、`metadata.short-description`、正文内容和路径。弹层使用紧凑列表布局，展示 skill 名称、描述和来源项目；选择 skill 后，消息 metadata 中会记录 `kind: "skill"`、skill 路径、名称与描述；服务端会按路径重新从当前解析结果中取出对应 skill，并把它排在自动召回 skills 之前注入模型上下文。
+`$` 指示器专门用于筛选和选择 skills。候选项来自 `skills.list` 的 `ParsedSkill`，仅保留当前 project skills 和 global skills；`$` 的过滤字段包括 skill `name`、`description`、`metadata.short-description`、正文内容和路径，最多展示前 20 个匹配项。`@` 和 `$` 中的 skill row 使用同一套紧凑单行布局，展示 skill 名称、描述和来源项目；选择 skill 后，消息 metadata 中会记录 `kind: "skill"`、skill 路径、名称与描述；服务端会按路径重新从当前解析结果中取出对应 skill，并把它排在自动召回 skills 之前注入模型上下文。
+
+`@` / `$` 的 suggestion 搜索触发使用 TanStack Pacer 的 `useDebouncedValue` 做轻量 debounce，等待时间为 180ms，并启用 `leading: true`、`trailing: true`。这样打开指示器时第一批候选即时出现，连续输入时只用稳定后的 query 触发 `projectSnapshots.listFiles` 和 skill 过滤，减少快照文件搜索和本地 skill 全文过滤的重复计算。搜索期间 UI 会保留上一批候选项，只有初次加载且没有任何候选时才显示空状态，避免输入过程中 suggestion 面板闪烁。
 
 聊天页默认不显示 session / snapshot 细节。需要排查项目快照或模型绑定时，可在 renderer 环境中设置 `VITE_ENABLE_CHAT_SESSION_DETAILS=1` 或 `VITE_ENABLE_CHAT_SESSION_DETAILS=true`，再显示右侧调试详情和底部快照 ID。
+
+右侧 Review 面板的 Files tab 直接展示完整项目文件树，不启用 `@pierre/trees` 内置 search。文件树和右侧预览区之间使用 `@heroui-pro/react` 的 `Resizable` 分栏，可拖拽调整宽度；点击文件时通过 `projectSnapshots.readFile` 读取项目内文本文件，并使用 `shiki/bundle/web` 渲染带行号的只读代码视图，文件树本身不被替换。文件树顶部提供“收起所有文件夹”按钮，用于快速恢复到初始折叠层级。
+
+Chat 组件文件保持只负责 React 渲染和 hook glue：`prompt-input.tsx`、`project-file-code-viewer.tsx` 等 `tsx` 文件不直接定义可复用常量或 helper function；分组、格式化、Shiki token、语言映射等非组件逻辑放在 `apps/desktop/src/renderer/lib/chat/` 下对应 feature 文件中。
 
 ## 模型选择、会话记忆与 Skills
 

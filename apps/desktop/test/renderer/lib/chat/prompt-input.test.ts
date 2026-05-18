@@ -4,6 +4,7 @@ import {
   applyMentionSelection,
   createMentionFromProjectSnapshotItem,
   extractPromptEditorPayload,
+  filterPromptSkillMentionItems,
   getActiveMentionMatch,
   getMentionTokenTypeLabel,
   getPromptEditorActiveMentionRange,
@@ -18,7 +19,8 @@ describe("prompt input helpers", () => {
       getActiveMentionMatch("请查看 @src/main", "请查看 @src/main".length)
     ).toEqual({
       query: "src/main",
-      startIndex: 4
+      startIndex: 4,
+      trigger: "project"
     })
     expect(
       getActiveMentionMatch("hello@src/main", "hello@src/main".length)
@@ -28,7 +30,16 @@ describe("prompt input helpers", () => {
   it("detects an empty mention query for a bare @ trigger", () => {
     expect(getActiveMentionMatch("请查看 @", "请查看 @".length)).toEqual({
       query: "",
-      startIndex: 4
+      startIndex: 4,
+      trigger: "project"
+    })
+  })
+
+  it("detects a skill mention query for a $ trigger", () => {
+    expect(getActiveMentionMatch("使用 $rust", "使用 $rust".length)).toEqual({
+      query: "rust",
+      startIndex: 3,
+      trigger: "skill"
     })
   })
 
@@ -171,8 +182,60 @@ describe("prompt input helpers", () => {
     ).toEqual({
       from: 5,
       query: "src",
-      to: 9
+      to: 9,
+      trigger: "project"
     })
+  })
+
+  it("filters skill suggestions by title only when requested", () => {
+    const skills = [
+      {
+        body: "Use when working on Rust ownership and lifetimes.",
+        description: "Rust code style guidance.",
+        name: "coding-guidelines",
+        path: "/project/.agents/skills/coding-guidelines/SKILL.md",
+        projectPath: "/project",
+        scope: "project",
+        shortDescription: "Rust style"
+      },
+      {
+        body: "Drizzle relations and schema examples.",
+        description: "Type-safe SQL ORM.",
+        name: "drizzle-orm",
+        path: "/project/.agents/skills/drizzle-orm/SKILL.md",
+        projectPath: "/project",
+        scope: "project",
+        shortDescription: "Database ORM"
+      }
+    ] as const
+
+    expect(
+      filterPromptSkillMentionItems({
+        limit: 10,
+        projectPath: "/project",
+        query: "rust",
+        searchMode: "title",
+        skills: [...skills]
+      })
+    ).toEqual([])
+    expect(
+      filterPromptSkillMentionItems({
+        limit: 10,
+        projectPath: "/project",
+        query: "coding guidelines",
+        searchMode: "title",
+        skills: [...skills]
+      }).map((skill) => skill.name)
+    ).toEqual(["coding-guidelines"])
+    expect(
+      filterPromptSkillMentionItems({
+        limit: 10,
+        projectPath: "/project",
+        query: "rust",
+        searchMode: "full",
+        skills: [...skills]
+      }).map((skill) => skill.name)
+    ).toEqual(["coding-guidelines"])
   })
 
   it("splits prompt text into ordered inline mention display parts", () => {

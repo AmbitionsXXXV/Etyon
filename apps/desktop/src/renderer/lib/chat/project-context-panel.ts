@@ -28,6 +28,9 @@ const DIFF_COUNT_FORMATTER = new Intl.NumberFormat()
 const comparePath = (left: string, right: string): number =>
   left.localeCompare(right)
 
+const getProjectPathDepth = (path: string): number =>
+  path.split("/").filter(Boolean).length
+
 export const formatProjectDiffCount = (count: number): string =>
   DIFF_COUNT_FORMATTER.format(count)
 
@@ -144,6 +147,27 @@ export const buildProjectTreePaths = (
     .filter((item) => item.kind === "file")
     .map((item) => item.relativePath)
     .toSorted(comparePath)
+
+export const buildProjectTreeDirectoryPaths = (
+  paths: readonly string[]
+): string[] => {
+  const directoryPaths = new Set<string>()
+
+  for (const filePath of paths) {
+    const pathSegments = filePath.split("/").filter(Boolean)
+
+    for (let index = 1; index < pathSegments.length; index += 1) {
+      directoryPaths.add(`${pathSegments.slice(0, index).join("/")}/`)
+    }
+  }
+
+  return [...directoryPaths].toSorted((left, right) => {
+    const depthDifference =
+      getProjectPathDepth(right) - getProjectPathDepth(left)
+
+    return depthDifference === 0 ? comparePath(left, right) : depthDifference
+  })
+}
 
 export const parseProjectDiffFiles = (patch: string): FileDiffMetadata[] => {
   if (!patch.trim()) {
