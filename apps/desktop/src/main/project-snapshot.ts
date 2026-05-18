@@ -928,6 +928,10 @@ export const buildMentionContext = ({
   }
 
   for (const mention of mentions) {
+    if (mention.kind === "skill") {
+      continue
+    }
+
     if (mention.kind === "file") {
       const document = documentsByRelativePath.get(mention.relativePath)
 

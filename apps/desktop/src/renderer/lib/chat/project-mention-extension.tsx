@@ -9,21 +9,21 @@ import type { MouseEvent } from "react"
 
 import {
   PROJECT_MENTION_NODE_TYPE,
+  createMentionFromEditorAttrs,
+  getMentionDisplayName,
+  getMentionTextValue,
+  getMentionTitle,
   getMentionTokenTypeLabel
 } from "@/renderer/lib/chat/prompt-input"
 
-const getMentionName = (mention: Pick<ChatMention, "relativePath">): string =>
-  mention.relativePath.split("/").at(-1) ?? mention.relativePath
-
-const getMentionFromNodeAttrs = (
-  attrs: Record<string, unknown>
-): ChatMention => ({
-  kind: attrs.kind === "folder" ? "folder" : "file",
-  path: typeof attrs.path === "string" ? attrs.path : "",
-  relativePath:
-    typeof attrs.relativePath === "string" ? attrs.relativePath : "",
-  snapshotId: typeof attrs.snapshotId === "string" ? attrs.snapshotId : ""
-})
+const getMentionFromNodeAttrs = (attrs: Record<string, unknown>): ChatMention =>
+  createMentionFromEditorAttrs(attrs) ?? {
+    kind: "file",
+    path: typeof attrs.path === "string" ? attrs.path : "",
+    relativePath:
+      typeof attrs.relativePath === "string" ? attrs.relativePath : "",
+    snapshotId: typeof attrs.snapshotId === "string" ? attrs.snapshotId : ""
+  }
 
 const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
   const mention = getMentionFromNodeAttrs(node.attrs)
@@ -62,14 +62,16 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
     >
       <span
         className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 text-sm font-medium text-foreground ring-1 ring-border/70"
-        title={mention.relativePath}
+        title={getMentionTitle(mention)}
       >
         <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
           {getMentionTokenTypeLabel(mention)}
         </span>
-        <span className="max-w-52 truncate">{getMentionName(mention)}</span>
+        <span className="max-w-52 truncate">
+          {getMentionDisplayName(mention)}
+        </span>
         <button
-          aria-label={`Remove ${mention.relativePath}`}
+          aria-label={`Remove ${getMentionTextValue(mention)}`}
           className="rounded-sm text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100"
           contentEditable={false}
           onClick={handleRemove}
@@ -89,14 +91,29 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
 export const ProjectMentionExtension = Node.create({
   addAttributes() {
     return {
+      description: {
+        default: ""
+      },
       kind: {
         default: "file"
+      },
+      name: {
+        default: ""
       },
       path: {
         default: ""
       },
+      projectPath: {
+        default: null
+      },
       relativePath: {
         default: ""
+      },
+      scope: {
+        default: "project"
+      },
+      shortDescription: {
+        default: null
       },
       snapshotId: {
         default: ""
@@ -118,12 +135,18 @@ export const ProjectMentionExtension = Node.create({
     ]
   },
   renderHTML({ HTMLAttributes }) {
+    const prefix = HTMLAttributes.kind === "skill" ? "$" : "@"
+    const value =
+      HTMLAttributes.kind === "skill"
+        ? (HTMLAttributes.name ?? HTMLAttributes.relativePath ?? "")
+        : (HTMLAttributes.relativePath ?? "")
+
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": PROJECT_MENTION_NODE_TYPE
       }),
-      `@${HTMLAttributes.relativePath ?? ""}`
+      `${prefix}${value}`
     ]
   },
   selectable: true

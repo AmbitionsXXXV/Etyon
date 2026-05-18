@@ -1,60 +1,297 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Input } from "@heroui/react"
-import {
-  File01Icon,
-  Folder01Icon,
-  Search01Icon
-} from "@hugeicons/core-free-icons"
+import { Button } from "@heroui/react"
+import { CubeIcon, File01Icon, Folder01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
-import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from "react"
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   PROJECT_MENTION_NODE_TYPE,
-  createMentionFromProjectSnapshotItem,
+  createMentionFromPromptMentionItem,
   extractPromptEditorPayload,
   getPromptEditorActiveMentionRange,
+  getPromptMentionItemKey,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
+import type {
+  PromptMentionItem,
+  PromptMentionTrigger,
+  PromptSkillMentionItem
+} from "@/renderer/lib/chat/prompt-input"
 
-const formatFileSize = (size: number): string => {
-  if (size >= 1_000_000) {
-    return `${(size / 1_000_000).toFixed(1)} MB`
-  }
-
-  if (size >= 1000) {
-    return `${(size / 1000).toFixed(1)} KB`
-  }
-
-  return `${size} B`
+interface MentionItemGroup {
+  id: string
+  items: PromptMentionItem[]
+  label: string
 }
 
-const formatMentionItemMetadata = (item: ProjectSnapshotItem): string => {
-  if (item.kind === "folder") {
-    return `${item.fileCount} files`
-  }
-
-  return [item.language ?? "text", formatFileSize(item.size)].join(" · ")
+interface MentionQueryState {
+  query: string
+  trigger: PromptMentionTrigger
 }
 
 const getMentionItemName = (item: ProjectSnapshotItem): string =>
   item.relativePath.split("/").at(-1) ?? item.relativePath
 
+const getSkillDescription = (item: PromptSkillMentionItem): string =>
+  item.description
+
+const getSkillDisplayName = (item: PromptSkillMentionItem): string =>
+  item.name
+    .split(/[-_\s]+/u)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ")
+
+const getPathBaseName = (value: string): string =>
+  value.split(/[\\/]/u).findLast((part) => part.length > 0) ?? value
+
+const getSkillSourceLabel = ({
+  globalLabel,
+  item
+}: {
+  globalLabel: string
+  item: PromptSkillMentionItem
+}): string => {
+  if (!item.projectPath) {
+    return globalLabel
+  }
+
+  return getPathBaseName(item.projectPath)
+}
+
+const getMentionItemIcon = (item: PromptMentionItem) => {
+  if (item.kind === "folder") {
+    return Folder01Icon
+  }
+
+  if (item.kind === "skill") {
+    return CubeIcon
+  }
+
+  return File01Icon
+}
+
+const MentionSkillRowContent = ({
+  globalSkillSourceLabel,
+  isActive,
+  item
+}: {
+  globalSkillSourceLabel: string
+  isActive: boolean
+  item: PromptSkillMentionItem
+}) => (
+  <>
+    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+      <span
+        className={cn(
+          "shrink-0 truncate font-medium",
+          isActive ? "text-accent-foreground" : "text-foreground"
+        )}
+      >
+        {getSkillDisplayName(item)}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          isActive ? "text-accent-foreground/85" : "text-muted-foreground"
+        )}
+      >
+        {getSkillDescription(item)}
+      </span>
+    </span>
+    <span
+      className={cn(
+        "ml-3 max-w-24 shrink-0 truncate",
+        isActive ? "text-accent-foreground/80" : "text-muted-foreground"
+      )}
+    >
+      {getSkillSourceLabel({
+        globalLabel: globalSkillSourceLabel,
+        item
+      })}
+    </span>
+  </>
+)
+
+const MentionDefaultRowContent = ({
+  isActive,
+  item
+}: {
+  isActive: boolean
+  item: ProjectSnapshotItem
+}) => (
+  <span className="min-w-0 flex-1">
+    <span
+      className={cn(
+        "block truncate font-medium",
+        isActive ? "text-accent-foreground" : "text-foreground"
+      )}
+    >
+      {getMentionItemName(item)}
+    </span>
+    <span
+      className={cn(
+        "block truncate",
+        isActive ? "text-accent-foreground/85" : "text-muted-foreground"
+      )}
+    >
+      {item.relativePath}
+    </span>
+  </span>
+)
+
+const MentionItemRow = ({
+  activeItemIndex,
+  globalSkillSourceLabel,
+  item,
+  mentionSelectionItems,
+  onItemClick,
+  onItemRef
+}: {
+  activeItemIndex: number
+  globalSkillSourceLabel: string
+  item: PromptMentionItem
+  mentionSelectionItems: PromptMentionItem[]
+  onItemClick: (event: MouseEvent<HTMLButtonElement>) => void
+  onItemRef: (itemKey: string, element: HTMLButtonElement | null) => void
+}) => {
+  const itemKey = getPromptMentionItemKey(item)
+  const itemIndex = mentionSelectionItems.findIndex(
+    (mentionItem) => getPromptMentionItemKey(mentionItem) === itemKey
+  )
+  const itemIcon = getMentionItemIcon(item)
+  const isActive = itemIndex === activeItemIndex
+  const isSkillItem = item.kind === "skill"
+
+  return (
+    <button
+      className={cn(
+        "flex w-full rounded-xl text-left transition-colors",
+        isSkillItem
+          ? "h-11 items-center gap-3 px-3 text-sm"
+          : "items-start gap-3 px-3 py-2 text-xs/relaxed",
+        isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+      )}
+      data-item-key={itemKey}
+      key={itemKey}
+      onClick={onItemClick}
+      ref={(element) => {
+        onItemRef(itemKey, element)
+      }}
+      type="button"
+    >
+      <HugeiconsIcon
+        className={cn(
+          "shrink-0",
+          isActive ? "text-accent-foreground/85" : "text-muted-foreground",
+          isSkillItem ? "size-4" : "mt-0.5 size-3.5"
+        )}
+        icon={itemIcon}
+        strokeWidth={2}
+      />
+      {isSkillItem ? (
+        <MentionSkillRowContent
+          globalSkillSourceLabel={globalSkillSourceLabel}
+          isActive={isActive}
+          item={item}
+        />
+      ) : (
+        <MentionDefaultRowContent isActive={isActive} item={item} />
+      )}
+    </button>
+  )
+}
+
+const MentionSuggestions = ({
+  activeItemIndex,
+  currentEmptyLabel,
+  globalSkillSourceLabel,
+  groups,
+  isLoading,
+  isSkillMentionActive,
+  mentionSelectionItems,
+  onItemClick,
+  onItemRef
+}: {
+  activeItemIndex: number
+  currentEmptyLabel: string
+  globalSkillSourceLabel: string
+  groups: MentionItemGroup[]
+  isLoading: boolean
+  isSkillMentionActive: boolean
+  mentionSelectionItems: PromptMentionItem[]
+  onItemClick: (event: MouseEvent<HTMLButtonElement>) => void
+  onItemRef: (itemKey: string, element: HTMLButtonElement | null) => void
+}) => (
+  <div
+    className={cn(
+      "absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
+      isSkillMentionActive ? "rounded-[1.35rem]" : "rounded-2xl"
+    )}
+  >
+    <div
+      className={cn(
+        "overflow-y-auto",
+        isSkillMentionActive ? "max-h-80 p-1.5" : "max-h-72 p-1"
+      )}
+    >
+      {isLoading && (
+        <div className="p-3 text-xs text-muted-foreground">
+          {currentEmptyLabel}
+        </div>
+      )}
+
+      {!isLoading && mentionSelectionItems.length === 0 && (
+        <div className="p-3 text-xs text-muted-foreground">
+          {currentEmptyLabel}
+        </div>
+      )}
+
+      {!isLoading &&
+        groups.map((group) => (
+          <div className={cn(!isSkillMentionActive && "py-1")} key={group.id}>
+            {isSkillMentionActive ? null : (
+              <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
+                {group.label}
+              </div>
+            )}
+            {group.items.map((item) => (
+              <MentionItemRow
+                activeItemIndex={activeItemIndex}
+                globalSkillSourceLabel={globalSkillSourceLabel}
+                item={item}
+                key={getPromptMentionItemKey(item)}
+                mentionSelectionItems={mentionSelectionItems}
+                onItemClick={onItemClick}
+                onItemRef={onItemRef}
+              />
+            ))}
+          </div>
+        ))}
+    </div>
+  </div>
+)
+
 export const PromptInput = ({
   disabled = false,
   footer,
   isLoadingFileItems = false,
+  isLoadingSkillItems = false,
+  mentionGlobalSkillSourceLabel,
   mentionFileGroupLabel,
   mentionFolderGroupLabel,
   mentionItems,
   mentionEmptyLabel,
-  mentionSearchPlaceholder,
+  mentionSkillEmptyLabel,
+  mentionSkillGroupLabel,
+  mentionSkillItems,
   onMentionQueryChange,
   onSubmit,
   placeholder,
@@ -63,12 +300,20 @@ export const PromptInput = ({
   disabled?: boolean
   footer?: ReactNode
   isLoadingFileItems?: boolean
+  isLoadingSkillItems?: boolean
+  mentionGlobalSkillSourceLabel: string
   mentionFileGroupLabel: string
   mentionFolderGroupLabel: string
   mentionItems: ProjectSnapshotItem[]
   mentionEmptyLabel: string
-  mentionSearchPlaceholder: string
-  onMentionQueryChange: (query: string | null) => void
+  mentionSkillEmptyLabel: string
+  mentionSkillGroupLabel: string
+  mentionSkillItems: PromptSkillMentionItem[]
+  mentionSkillSearchPlaceholder: string
+  onMentionQueryChange: (
+    query: string | null,
+    trigger: PromptMentionTrigger | null
+  ) => void
   onSubmit: (payload: {
     mentions: ChatMention[]
     text: string
@@ -77,36 +322,77 @@ export const PromptInput = ({
   submitLabel: string
 }) => {
   const [activeItemIndex, setActiveItemIndex] = useState(0)
-  const [activeMentionRange, setActiveMentionRange] = useState<{
-    from: number
-    query: string
-    to: number
-  } | null>(null)
+  const [activeMentionRange, setActiveMentionRange] = useState<
+    (MentionQueryState & { from: number; to: number }) | null
+  >(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const mentionItemElementByPathRef = useRef(
+  const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
-  const activeMentionItemPath = mentionItems[activeItemIndex]?.path ?? null
-  const mentionItemsByPath = useMemo(
-    () => new Map(mentionItems.map((item) => [item.path, item])),
-    [mentionItems]
-  )
-  const mentionItemGroups = useMemo(
-    () =>
-      [
+  const mentionItemGroups = useMemo<MentionItemGroup[]>(() => {
+    if (activeMentionRange?.trigger === "skill") {
+      return [
         {
-          id: "folders",
-          items: mentionItems.filter((item) => item.kind === "folder"),
-          label: mentionFolderGroupLabel
-        },
-        {
-          id: "files",
-          items: mentionItems.filter((item) => item.kind === "file"),
-          label: mentionFileGroupLabel
+          id: "skills",
+          items: mentionSkillItems,
+          label: mentionSkillGroupLabel
         }
-      ].filter((group) => group.items.length > 0),
-    [mentionFileGroupLabel, mentionFolderGroupLabel, mentionItems]
+      ].filter((group) => group.items.length > 0)
+    }
+
+    if (activeMentionRange?.trigger !== "project") {
+      return []
+    }
+
+    return [
+      {
+        id: "skills",
+        items: mentionSkillItems,
+        label: mentionSkillGroupLabel
+      },
+      {
+        id: "folders",
+        items: mentionItems.filter((item) => item.kind === "folder"),
+        label: mentionFolderGroupLabel
+      },
+      {
+        id: "files",
+        items: mentionItems.filter((item) => item.kind === "file"),
+        label: mentionFileGroupLabel
+      }
+    ].filter((group) => group.items.length > 0)
+  }, [
+    activeMentionRange?.trigger,
+    mentionFileGroupLabel,
+    mentionFolderGroupLabel,
+    mentionItems,
+    mentionSkillGroupLabel,
+    mentionSkillItems
+  ])
+  const mentionSelectionItems = useMemo<PromptMentionItem[]>(
+    () => mentionItemGroups.flatMap((group) => group.items),
+    [mentionItemGroups]
   )
+  const activeMentionItemKey = mentionSelectionItems[activeItemIndex]
+    ? getPromptMentionItemKey(mentionSelectionItems[activeItemIndex])
+    : null
+  const mentionItemsByKey = useMemo(
+    () =>
+      new Map(
+        mentionSelectionItems.map((item) => [
+          getPromptMentionItemKey(item),
+          item
+        ])
+      ),
+    [mentionSelectionItems]
+  )
+  const isSkillMentionActive = activeMentionRange?.trigger === "skill"
+  const isLoadingMentionItems = isSkillMentionActive
+    ? isLoadingSkillItems
+    : isLoadingFileItems
+  const currentMentionEmptyLabel = isSkillMentionActive
+    ? mentionSkillEmptyLabel
+    : mentionEmptyLabel
 
   const updateActiveMentionRange = useCallback((nextEditor: Editor) => {
     const { selection } = nextEditor.state
@@ -157,7 +443,10 @@ export const PromptInput = ({
   )
 
   useEffect(() => {
-    onMentionQueryChange(activeMentionRange ? activeMentionRange.query : null)
+    onMentionQueryChange(
+      activeMentionRange ? activeMentionRange.query : null,
+      activeMentionRange ? activeMentionRange.trigger : null
+    )
   }, [activeMentionRange, onMentionQueryChange])
 
   useEffect(() => {
@@ -166,25 +455,25 @@ export const PromptInput = ({
 
   useEffect(() => {
     setActiveItemIndex(0)
-  }, [mentionItems])
+  }, [mentionSelectionItems])
 
   useEffect(() => {
-    if (!activeMentionRange || !activeMentionItemPath) {
+    if (!activeMentionRange || !activeMentionItemKey) {
       return
     }
 
     scrollActiveMentionItemIntoView(
-      mentionItemElementByPathRef.current.get(activeMentionItemPath)
+      mentionItemElementByKeyRef.current.get(activeMentionItemKey)
     )
-  }, [activeMentionItemPath, activeMentionRange])
+  }, [activeMentionItemKey, activeMentionRange])
 
   const handleSelectMentionItem = useCallback(
-    (item: ProjectSnapshotItem) => {
+    (item: PromptMentionItem) => {
       if (!activeMentionRange || !editor) {
         return
       }
 
-      const nextMention = createMentionFromProjectSnapshotItem(item)
+      const nextMention = createMentionFromPromptMentionItem(item)
 
       editor
         .chain()
@@ -205,30 +494,6 @@ export const PromptInput = ({
         ])
         .run()
       setActiveMentionRange(null)
-    },
-    [activeMentionRange, editor]
-  )
-
-  const handleEmbeddedSearchChange = useCallback(
-    (nextQuery: string) => {
-      if (!activeMentionRange || !editor) {
-        return
-      }
-
-      const nextCaretPosition = activeMentionRange.from + nextQuery.length + 1
-
-      editor
-        .chain()
-        .focus()
-        .insertContentAt(
-          {
-            from: activeMentionRange.from,
-            to: activeMentionRange.to
-          },
-          `@${nextQuery}`
-        )
-        .setTextSelection(nextCaretPosition)
-        .run()
     },
     [activeMentionRange, editor]
   )
@@ -260,49 +525,42 @@ export const PromptInput = ({
     }
   }, [disabled, editor, onSubmit])
 
-  const handleEmbeddedSearchInputChange = useCallback(
-    (event: ChangeEvent<HTMLInputElement>) => {
-      handleEmbeddedSearchChange(event.currentTarget.value)
-    },
-    [handleEmbeddedSearchChange]
-  )
-
   const handleSelectMentionItemClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
-      const { itemPath } = event.currentTarget.dataset
+      const { itemKey } = event.currentTarget.dataset
 
-      if (!itemPath) {
+      if (!itemKey) {
         return
       }
 
-      const item = mentionItemsByPath.get(itemPath)
+      const item = mentionItemsByKey.get(itemKey)
 
       if (item) {
         handleSelectMentionItem(item)
       }
     },
-    [handleSelectMentionItem, mentionItemsByPath]
+    [handleSelectMentionItem, mentionItemsByKey]
   )
 
   const handleMentionItemRef = useCallback(
-    (itemPath: string, element: HTMLButtonElement | null) => {
+    (itemKey: string, element: HTMLButtonElement | null) => {
       if (!element) {
-        mentionItemElementByPathRef.current.delete(itemPath)
+        mentionItemElementByKeyRef.current.delete(itemKey)
         return
       }
 
-      mentionItemElementByPathRef.current.set(itemPath, element)
+      mentionItemElementByKeyRef.current.set(itemKey, element)
     },
     []
   )
 
   const handleEditorKeyDown = useCallback(
     async (event: KeyboardEvent<HTMLDivElement>) => {
-      if (activeMentionRange && mentionItems.length > 0) {
+      if (activeMentionRange && mentionSelectionItems.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault()
           setActiveItemIndex((previousIndex) =>
-            Math.min(previousIndex + 1, mentionItems.length - 1)
+            Math.min(previousIndex + 1, mentionSelectionItems.length - 1)
           )
           return
         }
@@ -315,7 +573,7 @@ export const PromptInput = ({
 
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault()
-          const selectedItem = mentionItems[activeItemIndex]
+          const selectedItem = mentionSelectionItems[activeItemIndex]
 
           if (selectedItem) {
             handleSelectMentionItem(selectedItem)
@@ -335,7 +593,7 @@ export const PromptInput = ({
       activeMentionRange,
       handleSelectMentionItem,
       handleSubmit,
-      mentionItems
+      mentionSelectionItems
     ]
   )
 
@@ -346,94 +604,17 @@ export const PromptInput = ({
   return (
     <div className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none">
       {activeMentionRange && (
-        <div className="absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden rounded-2xl bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
-          <div className="border-b border-border/60 p-2">
-            <div className="relative">
-              <HugeiconsIcon
-                className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-                icon={Search01Icon}
-                strokeWidth={2}
-              />
-              <Input
-                className="h-8 rounded-xl bg-none pl-8"
-                onChange={handleEmbeddedSearchInputChange}
-                placeholder={mentionSearchPlaceholder}
-                value={activeMentionRange.query}
-              />
-            </div>
-          </div>
-
-          <div
-            aria-label={mentionSearchPlaceholder}
-            className="max-h-72 overflow-y-auto p-1"
-            role="listbox"
-          >
-            {isLoadingFileItems && (
-              <div className="p-3 text-xs text-muted-foreground">
-                {mentionSearchPlaceholder}
-              </div>
-            )}
-
-            {!isLoadingFileItems && mentionItems.length === 0 && (
-              <div className="p-3 text-xs text-muted-foreground">
-                {mentionEmptyLabel}
-              </div>
-            )}
-
-            {!isLoadingFileItems &&
-              mentionItemGroups.map((group) => (
-                <div className="py-1" key={group.id}>
-                  <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
-                    {group.label}
-                  </div>
-                  {group.items.map((item) => {
-                    const itemIndex = mentionItems.findIndex(
-                      (mentionItem) => mentionItem.path === item.path
-                    )
-
-                    return (
-                      <button
-                        aria-selected={itemIndex === activeItemIndex}
-                        className={cn(
-                          "flex w-full items-start gap-3 rounded-xl px-3 py-2 text-left text-xs/relaxed transition-colors",
-                          itemIndex === activeItemIndex
-                            ? "bg-accent text-accent-foreground"
-                            : "hover:bg-accent/50"
-                        )}
-                        data-item-path={item.path}
-                        key={item.path}
-                        onClick={handleSelectMentionItemClick}
-                        ref={(element) => {
-                          handleMentionItemRef(item.path, element)
-                        }}
-                        role="option"
-                        type="button"
-                      >
-                        <HugeiconsIcon
-                          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                          icon={
-                            item.kind === "folder" ? Folder01Icon : File01Icon
-                          }
-                          strokeWidth={2}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {getMentionItemName(item)}
-                          </span>
-                          <span className="block truncate text-muted-foreground">
-                            {item.relativePath}
-                          </span>
-                          <span className="block truncate text-muted-foreground">
-                            {formatMentionItemMetadata(item)}
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-          </div>
-        </div>
+        <MentionSuggestions
+          activeItemIndex={activeItemIndex}
+          currentEmptyLabel={currentMentionEmptyLabel}
+          globalSkillSourceLabel={mentionGlobalSkillSourceLabel}
+          groups={mentionItemGroups}
+          isLoading={isLoadingMentionItems}
+          isSkillMentionActive={isSkillMentionActive}
+          mentionSelectionItems={mentionSelectionItems}
+          onItemClick={handleSelectMentionItemClick}
+          onItemRef={handleMentionItemRef}
+        />
       )}
 
       <div className="p-4">

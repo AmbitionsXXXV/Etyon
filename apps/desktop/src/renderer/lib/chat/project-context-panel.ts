@@ -111,6 +111,21 @@ export const getProjectDiffSummary = ({
   }
 }
 
+export const buildVisibleGitStatusFiles = (
+  files: readonly GitStatusFile[]
+): (Omit<GitStatusFile, "status"> & {
+  status: Exclude<GitFileStatus, "ignored">
+})[] =>
+  files
+    .filter(
+      (
+        file
+      ): file is GitStatusFile & {
+        status: Exclude<GitFileStatus, "ignored">
+      } => file.status !== "ignored"
+    )
+    .toSorted((left, right) => comparePath(left.path, right.path))
+
 export const buildProjectTreeGitStatusEntries = (
   files: readonly GitStatusFile[]
 ): GitStatusEntry[] =>

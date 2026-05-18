@@ -1,6 +1,7 @@
 import * as z from "zod"
 
 import { GitProjectStatusSchema } from "./git"
+import { SkillScopeSchema } from "./skills"
 
 const ChatFileMentionSchema = z.object({
   kind: z.literal("file"),
@@ -16,9 +17,21 @@ const ChatFolderMentionSchema = z.object({
   snapshotId: z.string()
 })
 
+const ChatSkillMentionSchema = z.object({
+  description: z.string(),
+  kind: z.literal("skill"),
+  name: z.string(),
+  path: z.string(),
+  projectPath: z.string().nullable(),
+  relativePath: z.string(),
+  scope: SkillScopeSchema,
+  shortDescription: z.string().nullable()
+})
+
 export const ChatMentionSchema = z.discriminatedUnion("kind", [
   ChatFileMentionSchema,
-  ChatFolderMentionSchema
+  ChatFolderMentionSchema,
+  ChatSkillMentionSchema
 ])
 
 export const ChatSessionSummarySchema = z.object({
@@ -92,6 +105,7 @@ export type ArchiveChatSessionInput = z.infer<
   typeof ArchiveChatSessionInputSchema
 >
 export type ChatMention = z.infer<typeof ChatMentionSchema>
+export type ChatSkillMention = z.infer<typeof ChatSkillMentionSchema>
 export type ChatSessionMemory = z.infer<typeof ChatSessionMemorySchema>
 export type ChatSessionMessagesInput = z.infer<
   typeof ChatSessionMessagesInputSchema

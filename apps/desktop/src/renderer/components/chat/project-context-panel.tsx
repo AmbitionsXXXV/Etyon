@@ -1,8 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import type {
-  GitProjectDiffOutput,
   ChatSessionSummary,
-  GitStatusFile,
+  GitProjectDiffOutput,
   ProjectSnapshotItem
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
@@ -10,7 +9,7 @@ import { Button, Chip, Tabs, TextArea } from "@heroui/react"
 import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { FileDiffMetadata } from "@pierre/diffs"
-import { FileDiff, Virtualizer } from "@pierre/diffs/react"
+import { FileDiff } from "@pierre/diffs/react"
 import { FileTree, useFileTree } from "@pierre/trees/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
@@ -19,6 +18,7 @@ import {
   buildProjectGitStatusSummary,
   buildProjectTreeGitStatusEntries,
   buildProjectTreePaths,
+  buildVisibleGitStatusFiles,
   formatProjectDiffCount,
   getProjectDiffFileStats,
   getProjectDiffSummary,
@@ -26,24 +26,37 @@ import {
 } from "@/renderer/lib/chat/project-context-panel"
 
 const PROJECT_DIFF_UNSAFE_CSS = `
+  :host {
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+  }
+
+  [data-code],
+  [data-content],
+  [data-gutter] {
+    background-color: var(--diffs-bg);
+  }
+
   [data-line-type='change-addition'] {
-    background-color: color-mix(in oklch, var(--success) 14%, transparent);
+    background-color: var(--diffs-bg-addition-override);
   }
 
   [data-line-type='change-deletion'] {
-    background-color: color-mix(in oklch, var(--danger) 14%, transparent);
+    background-color: var(--diffs-bg-deletion-override);
   }
 
   [data-gutter] [data-line-type='change-addition'] {
-    color: var(--success);
+    color: var(--diffs-addition-color-override);
   }
 
   [data-gutter] [data-line-type='change-deletion'] {
-    color: var(--danger);
+    color: var(--diffs-deletion-color-override);
   }
 `
 const DIFF_RENDER_OPTIONS = {
   collapsedContextThreshold: 4,
+  disableFileHeader: true,
   diffStyle: "unified",
   hunkSeparators: "line-info-basic",
   lineDiffType: "word",
@@ -55,6 +68,32 @@ const DIFF_RENDER_OPTIONS = {
   themeType: "system",
   unsafeCSS: PROJECT_DIFF_UNSAFE_CSS
 } as const
+const PROJECT_DIFF_STYLE = {
+  "--diffs-addition-color-override": "var(--success)",
+  "--diffs-bg-addition-emphasis-override":
+    "color-mix(in oklab, var(--success) 22%, transparent)",
+  "--diffs-bg-addition-override":
+    "color-mix(in oklab, var(--success) 12%, var(--card))",
+  "--diffs-bg-context-gutter-override": "var(--surface-tertiary)",
+  "--diffs-bg-context-override": "var(--card)",
+  "--diffs-bg-deletion-emphasis-override":
+    "color-mix(in oklab, var(--danger) 22%, transparent)",
+  "--diffs-bg-deletion-override":
+    "color-mix(in oklab, var(--danger) 12%, var(--card))",
+  "--diffs-bg-hover-override": "var(--foreground)",
+  "--diffs-bg-selection-override": "var(--primary)",
+  "--diffs-bg-separator-override": "var(--surface-tertiary)",
+  "--diffs-dark": "var(--foreground)",
+  "--diffs-dark-bg": "var(--card)",
+  "--diffs-deletion-color-override": "var(--danger)",
+  "--diffs-fg-number-addition-override": "var(--success)",
+  "--diffs-fg-number-deletion-override": "var(--danger)",
+  "--diffs-fg-number-override": "var(--muted-foreground)",
+  "--diffs-light": "var(--foreground)",
+  "--diffs-light-bg": "var(--card)",
+  "--diffs-modified-color-override": "var(--accent)",
+  colorScheme: "inherit"
+} as CSSProperties
 const PROJECT_TREE_UNSAFE_CSS = `
   :host {
     background: transparent;
@@ -68,36 +107,51 @@ const PROJECT_TREE_UNSAFE_CSS = `
   }
 
   button[data-type='item'][data-item-contains-git-change='true'] {
-    color: var(--project-tree-modified-color);
+    color: var(--trees-git-modified-color);
   }
 
   button[data-type='item'][data-item-git-status='added'] {
-    background: color-mix(in oklch, var(--project-tree-added-color) 12%, transparent);
-    color: var(--project-tree-added-color);
+    background: color-mix(in oklch, var(--trees-git-added-color) 12%, transparent);
   }
 
   button[data-type='item'][data-item-git-status='deleted'] {
-    background: color-mix(in oklch, var(--project-tree-deleted-color) 12%, transparent);
-    color: var(--project-tree-deleted-color);
+    background: color-mix(in oklch, var(--trees-git-deleted-color) 12%, transparent);
   }
 
   button[data-type='item'][data-item-git-status='modified'],
   button[data-type='item'][data-item-git-status='renamed'] {
-    color: var(--project-tree-modified-color);
+    color: var(--trees-git-modified-color);
   }
 
   button[data-type='item'][data-item-git-status='untracked'] {
-    color: var(--project-tree-untracked-color);
+    color: var(--trees-git-untracked-color);
   }
 `
 const PROJECT_TREE_STYLE = {
-  "--project-tree-added-color": "var(--success)",
-  "--project-tree-deleted-color": "var(--danger)",
-  "--project-tree-modified-color": "var(--warning)",
-  "--project-tree-untracked-color": "var(--muted-foreground)",
+  "--trees-accent-override": "var(--primary)",
+  "--trees-bg-muted-override": "var(--surface-tertiary)",
   "--trees-bg-override": "transparent",
   "--trees-border-color-override": "transparent",
+  "--trees-fg-muted-override": "var(--muted-foreground)",
   "--trees-fg-override": "currentColor",
+  "--trees-file-icon-color": "var(--muted-foreground)",
+  "--trees-focus-ring-color-override": "var(--ring)",
+  "--trees-git-added-color-override": "var(--success)",
+  "--trees-git-deleted-color-override": "var(--danger)",
+  "--trees-git-modified-color-override": "var(--warning)",
+  "--trees-git-renamed-color-override": "var(--accent)",
+  "--trees-git-untracked-color-override": "var(--muted-foreground)",
+  "--trees-scrollbar-thumb-override": "var(--scrollbar-thumb)",
+  "--trees-selected-bg-override":
+    "color-mix(in oklab, var(--primary) 12%, transparent)",
+  "--trees-selected-fg-override": "var(--foreground)",
+  "--trees-status-added-override": "var(--success)",
+  "--trees-status-deleted-override": "var(--danger)",
+  "--trees-status-modified-override": "var(--warning)",
+  "--trees-status-renamed-override": "var(--accent)",
+  "--trees-status-untracked-override": "var(--muted-foreground)",
+  "--truncate-marker-background-color": "var(--card)",
+  colorScheme: "inherit",
   height: "100%"
 } as CSSProperties
 export const PROJECT_CONTEXT_FILES_TAB_ID = "files"
@@ -129,13 +183,20 @@ const PROJECT_STATUS_LABEL_KEYS = {
   renamed: "chat.projectPanel.statusRenamed",
   untracked: "chat.projectPanel.statusUntracked"
 } as const
-type ProjectVisibleGitStatusFile = Omit<GitStatusFile, "status"> & {
-  status: Exclude<GitStatusFile["status"], "ignored">
-}
-
-const isVisibleGitStatusFile = (
-  file: GitStatusFile
-): file is ProjectVisibleGitStatusFile => file.status !== "ignored"
+const DiffStatsSummary = ({
+  additions,
+  className,
+  deletions
+}: {
+  additions: number
+  className?: string
+  deletions: number
+}) => (
+  <span className={cn("font-semibold tabular-nums", className)}>
+    <span className="text-success">+{formatProjectDiffCount(additions)}</span>{" "}
+    <span className="text-danger">-{formatProjectDiffCount(deletions)}</span>
+  </span>
+)
 
 const isProjectContextPanelView = (
   view: Key
@@ -168,11 +229,8 @@ const ProjectFileTree = ({
 
   useEffect(() => {
     model.resetPaths(paths)
-  }, [model, paths])
-
-  useEffect(() => {
     model.setGitStatus(gitStatusEntries)
-  }, [gitStatusEntries, model])
+  }, [model, paths, gitStatusEntries])
 
   return (
     <FileTree
@@ -186,65 +244,43 @@ const ProjectFileTree = ({
 
 const ProjectPanelStatusStrip = ({
   diffSummary,
-  gitStatusSummaryItems,
-  selectedModelValue,
-  snapshotId
+  gitStatusSummaryItems
 }: {
   diffSummary: ReturnType<typeof getProjectDiffSummary>
   gitStatusSummaryItems: ReturnType<typeof buildProjectGitStatusSummary>
-  selectedModelValue: string
-  snapshotId?: string
 }) => {
   const { t } = useI18n()
 
   return (
-    <div className="shrink-0 border-b border-border px-3 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Chip size="sm" variant="soft">
-          <Chip.Label>
-            {selectedModelValue || t("chat.model.emptyDescription")}
-          </Chip.Label>
-        </Chip>
-        {snapshotId ? (
-          <Chip size="sm" variant="soft">
-            <Chip.Label>
-              {t("chat.snapshot.ready", {
-                snapshotId
-              })}
-            </Chip.Label>
-          </Chip>
-        ) : null}
-        {gitStatusSummaryItems.map((item) => (
-          <Chip
-            color={PROJECT_STATUS_CHIP_COLORS[item.status]}
-            key={item.status}
-            size="sm"
-            title={`${t(PROJECT_STATUS_LABEL_KEYS[item.status])}: ${item.count}`}
-            variant="soft"
-          >
-            <Chip.Label className="tabular-nums">
-              {item.prefix}
-              {item.count}
-            </Chip.Label>
-          </Chip>
-        ))}
-      </div>
-
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3">
       {diffSummary.changedFileCount > 0 ? (
-        <div className="mt-3 flex min-w-0 items-center gap-2 text-sm font-semibold tabular-nums">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
           <span className="truncate text-muted-foreground">
             {t("chat.projectPanel.filesChanged", {
               count: formatProjectDiffCount(diffSummary.changedFileCount)
             })}
           </span>
-          <span className="text-success">
-            +{formatProjectDiffCount(diffSummary.additions)}
-          </span>
-          <span className="text-danger">
-            -{formatProjectDiffCount(diffSummary.deletions)}
-          </span>
+          <DiffStatsSummary
+            additions={diffSummary.additions}
+            deletions={diffSummary.deletions}
+          />
         </div>
       ) : null}
+
+      {gitStatusSummaryItems.map((item) => (
+        <Chip
+          color={PROJECT_STATUS_CHIP_COLORS[item.status]}
+          key={item.status}
+          size="sm"
+          title={`${t(PROJECT_STATUS_LABEL_KEYS[item.status])}: ${item.count}`}
+          variant="soft"
+        >
+          <Chip.Label className="tabular-nums">
+            {item.prefix}
+            {item.count}
+          </Chip.Label>
+        </Chip>
+      ))}
     </div>
   )
 }
@@ -267,7 +303,7 @@ const ProjectFilesPanel = ({
       <div className="shrink-0 border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">
         {label}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-2">
+      <div className="min-h-0 flex-1 overflow-hidden overscroll-contain p-2">
         {paths.length > 0 ? (
           <ProjectFileTree
             gitStatusFiles={gitStatusFiles}
@@ -282,6 +318,77 @@ const ProjectFilesPanel = ({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+const CollapsibleFileDiff = ({
+  fileDiff,
+  index,
+  renderDiffHeaderMetadata
+}: {
+  fileDiff: FileDiffMetadata
+  index: number
+  renderDiffHeaderMetadata: (fileDiff: FileDiffMetadata) => ReactNode
+}) => {
+  const [isCollapsed, setCollapsed] = useState(false)
+
+  const handleToggle = useCallback(() => {
+    setCollapsed((prev) => !prev)
+  }, [])
+
+  const { baseName, parentPath } = useMemo(() => {
+    const lastSlash = fileDiff.name.lastIndexOf("/")
+
+    return lastSlash === -1
+      ? { baseName: fileDiff.name, parentPath: "" }
+      : {
+          baseName: fileDiff.name.slice(lastSlash + 1),
+          parentPath: fileDiff.name.slice(0, lastSlash)
+        }
+  }, [fileDiff.name])
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/70 text-[11px]">
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-b border-border/50 bg-muted/50 px-3 py-2 text-left transition-colors hover:bg-muted/80"
+        onClick={handleToggle}
+        type="button"
+      >
+        <svg
+          className={cn(
+            "size-3 shrink-0 text-muted-foreground transition-transform",
+            !isCollapsed && "rotate-90"
+          )}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M9 18l6-6-6-6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+          {baseName}
+          {parentPath ? (
+            <span className="ml-1.5 text-muted-foreground">{parentPath}</span>
+          ) : null}
+        </span>
+        {renderDiffHeaderMetadata(fileDiff)}
+      </button>
+
+      {isCollapsed ? null : (
+        <FileDiff
+          className="text-[11px]"
+          fileDiff={fileDiff}
+          key={`${fileDiff.name}-${fileDiff.prevName ?? ""}-${index}`}
+          options={DIFF_RENDER_OPTIONS}
+          style={PROJECT_DIFF_STYLE}
+        />
+      )}
     </div>
   )
 }
@@ -313,19 +420,18 @@ const ProjectChangesPanel = ({
           </span>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {diffFiles.length > 0 ? (
-          <Virtualizer className="h-full" contentClassName="space-y-3 p-3">
+          <div className="space-y-3 p-3">
             {diffFiles.map((fileDiff, index) => (
-              <FileDiff
-                className="overflow-hidden rounded-xl border border-border/70 text-[11px]"
+              <CollapsibleFileDiff
                 fileDiff={fileDiff}
+                index={index}
                 key={`${fileDiff.name}-${fileDiff.prevName ?? ""}-${index}`}
-                options={DIFF_RENDER_OPTIONS}
-                renderHeaderMetadata={renderDiffHeaderMetadata}
+                renderDiffHeaderMetadata={renderDiffHeaderMetadata}
               />
             ))}
-          </Virtualizer>
+          </div>
         ) : (
           <div
             className={cn(
@@ -343,42 +449,37 @@ const ProjectChangesPanel = ({
 
 const ProjectCommitPanel = ({
   changedFiles,
-  commitMessage,
-  diffSummary,
-  onCommitMessageChange
+  diffSummary
 }: {
-  changedFiles: ProjectVisibleGitStatusFile[]
-  commitMessage: string
+  changedFiles: ReturnType<typeof buildVisibleGitStatusFiles>
   diffSummary: ReturnType<typeof getProjectDiffSummary>
-  onCommitMessageChange: (value: string) => void
 }) => {
   const { t } = useI18n()
+  const [commitMessage, setCommitMessage] = useState("")
   const hasChangedFiles = changedFiles.length > 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold text-muted-foreground">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+        <span className="min-w-0 text-xs font-semibold text-muted-foreground">
           {t("chat.projectPanel.commitTitle")}
         </span>
         {diffSummary.changedFileCount > 0 ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold tabular-nums">
+          <span className="flex max-w-full min-w-0 items-center gap-1.5 text-[11px]">
             <span className="truncate text-muted-foreground">
               {t("chat.projectPanel.filesChanged", {
                 count: formatProjectDiffCount(diffSummary.changedFileCount)
               })}
             </span>
-            <span className="text-success">
-              +{formatProjectDiffCount(diffSummary.additions)}
-            </span>
-            <span className="text-danger">
-              -{formatProjectDiffCount(diffSummary.deletions)}
-            </span>
+            <DiffStatsSummary
+              additions={diffSummary.additions}
+              deletions={diffSummary.deletions}
+            />
           </span>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="border-b border-border px-3 py-3">
           <p className="text-xs font-semibold text-muted-foreground">
             {t("chat.projectPanel.commitFilesTitle")}
@@ -387,23 +488,25 @@ const ProjectCommitPanel = ({
             <ul className="mt-2 divide-y divide-border/70">
               {changedFiles.map((file) => (
                 <li
-                  className="flex min-h-9 items-center justify-between gap-3 py-2 text-xs"
+                  className="grid min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 py-2 text-xs"
                   key={`${file.status}-${file.path}`}
                 >
                   <span
                     className={cn(
-                      "min-w-0 truncate",
+                      "min-w-0 whitespace-normal leading-5 [overflow-wrap:anywhere]",
                       PROJECT_STATUS_TEXT_CLASS_NAMES[file.status]
                     )}
+                    title={file.path}
                   >
                     {file.path}
                   </span>
                   <Chip
+                    className="shrink-0"
                     color={PROJECT_STATUS_CHIP_COLORS[file.status]}
                     size="sm"
                     variant="soft"
                   >
-                    <Chip.Label>
+                    <Chip.Label className="whitespace-nowrap">
                       {t(PROJECT_STATUS_LABEL_KEYS[file.status])}
                     </Chip.Label>
                   </Chip>
@@ -427,21 +530,21 @@ const ProjectCommitPanel = ({
         </label>
         <TextArea
           aria-label={t("chat.projectPanel.commitMessageLabel")}
-          className="min-h-28 text-sm"
+          className="min-h-28 min-w-0 text-sm"
           fullWidth
           id="project-commit-message"
           maxLength={COMMIT_MESSAGE_MAX_LENGTH}
-          onChange={(event) => onCommitMessageChange(event.target.value)}
+          onChange={(event) => setCommitMessage(event.target.value)}
           placeholder={t("chat.projectPanel.commitMessagePlaceholder")}
           rows={5}
           value={commitMessage}
           variant="secondary"
         />
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {commitMessage.length} / {COMMIT_MESSAGE_MAX_LENGTH}
           </span>
-          <Button isDisabled size="sm" type="button">
+          <Button className="shrink-0" isDisabled size="sm" type="button">
             {t("chat.projectPanel.commitAction")}
           </Button>
         </div>
@@ -457,10 +560,8 @@ export const ProjectContextPanel = ({
   onRefresh,
   onViewChange,
   projectItems,
-  selectedModelValue,
   selectedSession,
-  selectedView,
-  snapshotId
+  selectedView
 }: {
   gitDiff?: GitProjectDiffOutput
   isDiffLoading: boolean
@@ -468,10 +569,8 @@ export const ProjectContextPanel = ({
   onRefresh: () => void
   onViewChange: (view: ProjectContextPanelView) => void
   projectItems: ProjectSnapshotItem[]
-  selectedModelValue: string
   selectedSession: ChatSessionSummary
   selectedView: ProjectContextPanelView
-  snapshotId?: string
 }) => {
   const { t } = useI18n()
   const { gitStatus } = selectedSession
@@ -495,16 +594,12 @@ export const ProjectContextPanel = ({
       }),
     [diffFiles, gitStatus?.changedFileCount]
   )
-  const [commitMessage, setCommitMessage] = useState("")
   const changedFiles = useMemo(
-    () =>
-      (gitStatus?.files ?? [])
-        .filter(isVisibleGitStatusFile)
-        .toSorted((left, right) => left.path.localeCompare(right.path)),
+    () => buildVisibleGitStatusFiles(gitStatus?.files ?? []),
     [gitStatus?.files]
   )
   const hasGitChanges = Boolean(gitStatus?.changedFileCount)
-  const emptyDiffMessage = (() => {
+  const emptyDiffMessage = useMemo(() => {
     if (isDiffLoading) {
       return t("chat.projectPanel.loading")
     }
@@ -514,19 +609,16 @@ export const ProjectContextPanel = ({
     }
 
     return t("chat.projectPanel.emptyDiff")
-  })()
+  }, [isDiffLoading, hasGitChanges, t])
   const renderDiffHeaderMetadata = useCallback((fileDiff: FileDiffMetadata) => {
     const stats = getProjectDiffFileStats(fileDiff)
 
     return (
-      <span className="flex items-center gap-2 text-[11px] leading-none font-semibold tabular-nums">
-        <span className="text-success">
-          +{formatProjectDiffCount(stats.additions)}
-        </span>
-        <span className="text-danger">
-          -{formatProjectDiffCount(stats.deletions)}
-        </span>
-      </span>
+      <DiffStatsSummary
+        additions={stats.additions}
+        className="text-[11px] leading-none"
+        deletions={stats.deletions}
+      />
     )
   }, [])
   const handleViewChange = useCallback(
@@ -539,9 +631,9 @@ export const ProjectContextPanel = ({
   )
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+    <aside className="flex h-full min-h-0 min-w-0 overflow-hidden overscroll-contain border border-border bg-card shadow-sm">
       <Tabs
-        className="flex h-full min-h-0 w-full flex-col"
+        className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden"
         onSelectionChange={handleViewChange}
         selectedKey={selectedView}
         variant="secondary"
@@ -591,12 +683,10 @@ export const ProjectContextPanel = ({
         <ProjectPanelStatusStrip
           diffSummary={diffSummary}
           gitStatusSummaryItems={gitStatusSummaryItems}
-          selectedModelValue={selectedModelValue}
-          snapshotId={snapshotId}
         />
 
         <Tabs.Panel
-          className="min-h-0 flex-1 overflow-hidden"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
           id={PROJECT_CONTEXT_FILES_TAB_ID}
         >
           <ProjectFilesPanel
@@ -608,7 +698,7 @@ export const ProjectContextPanel = ({
         </Tabs.Panel>
 
         <Tabs.Panel
-          className="min-h-0 flex-1 overflow-hidden"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
           id={PROJECT_CONTEXT_CHANGES_TAB_ID}
         >
           <ProjectChangesPanel
@@ -621,14 +711,12 @@ export const ProjectContextPanel = ({
         </Tabs.Panel>
 
         <Tabs.Panel
-          className="min-h-0 flex-1 overflow-hidden"
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0"
           id={PROJECT_CONTEXT_COMMIT_TAB_ID}
         >
           <ProjectCommitPanel
             changedFiles={changedFiles}
-            commitMessage={commitMessage}
             diffSummary={diffSummary}
-            onCommitMessageChange={setCommitMessage}
           />
         </Tabs.Panel>
       </Tabs>

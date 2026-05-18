@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  ChatMentionSchema,
   ChatSessionMemoryOutputSchema,
   ChatSessionMessagesOutputSchema
 } from "../../src/schemas/chat-sessions"
@@ -46,6 +47,25 @@ describe("chat session schemas", () => {
     ).toEqual({
       memory: null,
       sessionId: "session-1"
+    })
+  })
+
+  it("accepts explicit skill mentions", () => {
+    expect(
+      ChatMentionSchema.parse({
+        description: "Use project-specific coding conventions.",
+        kind: "skill",
+        name: "coding-guidelines",
+        path: "/tmp/project/.agents/skills/coding-guidelines/SKILL.md",
+        projectPath: "/tmp/project",
+        relativePath: "coding-guidelines",
+        scope: "project",
+        shortDescription: "Coding conventions"
+      })
+    ).toMatchObject({
+      kind: "skill",
+      name: "coding-guidelines",
+      scope: "project"
     })
   })
 })

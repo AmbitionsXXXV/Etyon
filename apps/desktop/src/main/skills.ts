@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import type { ParsedSkill, SkillsSettings } from "@etyon/rpc"
+import type { ChatSkillMention, ParsedSkill, SkillsSettings } from "@etyon/rpc"
 import { app } from "electron"
 
 import { getAppConfigDir } from "@/main/db/libsql-paths"
@@ -282,10 +282,12 @@ export const listSkills = ({
 export const buildSkillsSystemPrompt = ({
   projectPath,
   query,
+  selectedSkills = [],
   settings
 }: {
   projectPath: string
   query: string
+  selectedSkills?: ChatSkillMention[]
   settings: SkillsSettings
 }): string => {
   if (!settings.enabled) {
@@ -302,7 +304,15 @@ export const buildSkillsSystemPrompt = ({
 
     return settings.includeGlobal
   })
-  const candidates: SkillCandidate[] = skills
+  const selectedSkillPaths = new Set(selectedSkills.map((skill) => skill.path))
+  const selectedCandidates: SkillCandidate[] = skills
+    .filter((skill) => selectedSkillPaths.has(skill.path))
+    .map((skill) => ({
+      score: Number.POSITIVE_INFINITY,
+      skill
+    }))
+  const automaticCandidates: SkillCandidate[] = skills
+    .filter((skill) => !selectedSkillPaths.has(skill.path))
     .map((skill) => ({
       score: scoreSkill(skill, queryTokens),
       skill
@@ -319,7 +329,13 @@ export const buildSkillsSystemPrompt = ({
 
       return left.skill.name.localeCompare(right.skill.name)
     })
-    .slice(0, settings.maxContextSkills)
+  const candidates = [
+    ...selectedCandidates,
+    ...automaticCandidates.slice(
+      0,
+      Math.max(0, settings.maxContextSkills - selectedCandidates.length)
+    )
+  ].slice(0, settings.maxContextSkills)
 
   if (candidates.length === 0) {
     return ""

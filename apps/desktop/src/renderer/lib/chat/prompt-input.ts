@@ -1,15 +1,33 @@
-import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
+import type { ChatMention, ParsedSkill, ProjectSnapshotItem } from "@etyon/rpc"
 
 export interface ActiveMentionMatch {
   query: string
   startIndex: number
+  trigger: PromptMentionTrigger
 }
+
+export type PromptMentionTrigger = "project" | "skill"
 
 export interface PromptEditorActiveMentionRange {
   from: number
   query: string
   to: number
+  trigger: PromptMentionTrigger
 }
+
+export interface PromptSkillMentionItem {
+  body: string
+  description: string
+  kind: "skill"
+  name: string
+  path: string
+  projectPath: string | null
+  relativePath: string
+  scope: ParsedSkill["scope"]
+  shortDescription: string | null
+}
+
+export type PromptMentionItem = ProjectSnapshotItem | PromptSkillMentionItem
 
 export type PromptTextDisplayPart =
   | {
@@ -28,8 +46,23 @@ interface PromptEditorJsonNode {
   type?: string
 }
 
-const MENTION_PREFIX_PATTERN = /(^|[\s.,:;!?()[\]{}])@([^\s@]*)$/u
+const MENTION_PREFIX_PATTERN = /(^|[\s.,:;!?()[\]{}])([@$])([^\s@$]*)$/u
+const SKILL_QUERY_SEPARATOR = "\n"
 export const PROJECT_MENTION_NODE_TYPE = "projectMention"
+
+const getMentionTriggerFromPrefix = (
+  value: string | undefined
+): PromptMentionTrigger | null => {
+  if (value === "$") {
+    return "skill"
+  }
+
+  if (value === "@") {
+    return "project"
+  }
+
+  return null
+}
 
 export const getActiveMentionMatch = (
   text: string,
@@ -42,9 +75,16 @@ export const getActiveMentionMatch = (
     return null
   }
 
+  const trigger = getMentionTriggerFromPrefix(match[2])
+
+  if (!trigger) {
+    return null
+  }
+
   return {
-    query: match[2] ?? "",
-    startIndex: match.index + match[1].length
+    query: match[3] ?? "",
+    startIndex: match.index + match[1].length,
+    trigger
   }
 }
 
@@ -108,6 +148,83 @@ export const createMentionFromProjectSnapshotItem = (
   }
 }
 
+export const createPromptSkillMentionItem = (
+  skill: ParsedSkill
+): PromptSkillMentionItem => ({
+  body: skill.body,
+  description: skill.description,
+  kind: "skill",
+  name: skill.name,
+  path: skill.path,
+  projectPath: skill.projectPath,
+  relativePath: skill.name,
+  scope: skill.scope,
+  shortDescription: skill.shortDescription
+})
+
+export const createMentionFromPromptMentionItem = (
+  item: PromptMentionItem
+): ChatMention => {
+  if (item.kind === "skill") {
+    return {
+      description: item.description,
+      kind: "skill",
+      name: item.name,
+      path: item.path,
+      projectPath: item.projectPath,
+      relativePath: item.relativePath,
+      scope: item.scope,
+      shortDescription: item.shortDescription
+    }
+  }
+
+  return createMentionFromProjectSnapshotItem(item)
+}
+
+export const getPromptMentionItemKey = (item: PromptMentionItem): string =>
+  `${item.kind}:${item.path}`
+
+const normalizeSkillQuery = (value: string): string =>
+  value.trim().toLowerCase()
+
+const getSkillSearchText = (skill: ParsedSkill): string =>
+  [
+    skill.name,
+    skill.description,
+    skill.shortDescription,
+    skill.body,
+    skill.path
+  ]
+    .filter(Boolean)
+    .join(SKILL_QUERY_SEPARATOR)
+    .toLowerCase()
+
+export const filterPromptSkillMentionItems = ({
+  limit,
+  projectPath,
+  query,
+  skills
+}: {
+  limit: number
+  projectPath: string
+  query: string
+  skills: ParsedSkill[]
+}): PromptSkillMentionItem[] => {
+  const normalizedQuery = normalizeSkillQuery(query)
+
+  return skills
+    .filter(
+      (skill) => skill.scope === "global" || skill.projectPath === projectPath
+    )
+    .filter(
+      (skill) =>
+        normalizedQuery === "" ||
+        getSkillSearchText(skill).includes(normalizedQuery)
+    )
+    .slice(0, limit)
+    .map(createPromptSkillMentionItem)
+}
+
 export const scrollActiveMentionItemIntoView = (
   itemElement: Pick<HTMLElement, "scrollIntoView"> | null | undefined
 ): void => {
@@ -120,6 +237,10 @@ export const scrollActiveMentionItemIntoView = (
 export const getMentionTokenTypeLabel = (
   mention: Pick<ChatMention, "kind" | "relativePath">
 ): string => {
+  if (mention.kind === "skill") {
+    return "SKILL"
+  }
+
   if (mention.kind === "folder") {
     return "DIR"
   }
@@ -130,7 +251,44 @@ export const getMentionTokenTypeLabel = (
   return extension ? extension.toUpperCase() : "TXT"
 }
 
-const createMentionFromEditorAttrs = (
+export const getMentionTextValue = (mention: ChatMention): string => {
+  if (mention.kind === "skill") {
+    return mention.name
+  }
+
+  return mention.relativePath
+}
+
+const formatSkillName = (name: string): string =>
+  name
+    .split(/[-_\s]+/u)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ")
+
+export const getMentionDisplayName = (mention: ChatMention): string => {
+  if (mention.kind === "skill") {
+    return formatSkillName(mention.name)
+  }
+
+  return mention.relativePath.split("/").at(-1) ?? mention.relativePath
+}
+
+export const getMentionTextPrefix = (mention: ChatMention): "@" | "$" =>
+  mention.kind === "skill" ? "$" : "@"
+
+const getMentionTextToken = (mention: ChatMention): string =>
+  `${getMentionTextPrefix(mention)}${getMentionTextValue(mention)}`
+
+export const getMentionTitle = (mention: ChatMention): string => {
+  if (mention.kind === "skill") {
+    return mention.shortDescription ?? mention.description
+  }
+
+  return mention.relativePath
+}
+
+export const createMentionFromEditorAttrs = (
   attrs: Record<string, unknown> | undefined
 ): ChatMention | null => {
   if (!attrs) {
@@ -138,6 +296,31 @@ const createMentionFromEditorAttrs = (
   }
 
   const { kind, path, relativePath, snapshotId } = attrs
+
+  if (kind === "skill") {
+    const { description, name, projectPath, scope, shortDescription } = attrs
+
+    if (
+      typeof name !== "string" ||
+      typeof path !== "string" ||
+      (scope !== "global" && scope !== "project")
+    ) {
+      return null
+    }
+
+    return {
+      description: typeof description === "string" ? description : "",
+      kind,
+      name,
+      path,
+      projectPath: typeof projectPath === "string" ? projectPath : null,
+      relativePath: typeof relativePath === "string" ? relativePath : name,
+      scope,
+      shortDescription:
+        typeof shortDescription === "string" ? shortDescription : null
+    }
+  }
+
   const isValidKind = kind === "file" || kind === "folder"
 
   if (
@@ -177,7 +360,7 @@ export const extractPromptEditorPayload = (
 
       if (mention) {
         mentions.push(mention)
-        textParts.push(`@${mention.relativePath}`)
+        textParts.push(getMentionTextToken(mention))
       }
 
       return
@@ -221,7 +404,8 @@ export const getPromptEditorActiveMentionRange = ({
   return {
     from,
     query: activeMentionMatch.query,
-    to: selectionFrom
+    to: selectionFrom,
+    trigger: activeMentionMatch.trigger
   }
 }
 
@@ -244,14 +428,23 @@ export const splitPromptTextByMentions = ({
       | undefined
 
     for (const mention of mentions) {
-      const mentionIndex = text.indexOf(`@${mention.relativePath}`, cursor)
+      const mentionText = getMentionTextToken(mention)
+      const fallbackMentionText =
+        mention.kind === "skill" ? `@${getMentionTextValue(mention)}` : null
+      const mentionIndex = text.indexOf(mentionText, cursor)
+      const fallbackMentionIndex =
+        fallbackMentionText === null
+          ? -1
+          : text.indexOf(fallbackMentionText, cursor)
+      const nextMentionIndex =
+        mentionIndex === -1 ? fallbackMentionIndex : mentionIndex
 
       if (
-        mentionIndex !== -1 &&
-        (!nextMatch || mentionIndex < nextMatch.index)
+        nextMentionIndex !== -1 &&
+        (!nextMatch || nextMentionIndex < nextMatch.index)
       ) {
         nextMatch = {
-          index: mentionIndex,
+          index: nextMentionIndex,
           mention
         }
       }
@@ -276,7 +469,7 @@ export const splitPromptTextByMentions = ({
       mention: nextMatch.mention,
       type: "mention"
     })
-    cursor = nextMatch.index + nextMatch.mention.relativePath.length + 1
+    cursor = nextMatch.index + getMentionTextValue(nextMatch.mention).length + 1
   }
 
   return parts

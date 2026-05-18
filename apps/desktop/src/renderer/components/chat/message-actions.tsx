@@ -10,6 +10,7 @@ import {
   ArrowReloadHorizontalIcon,
   CheckmarkCircle01Icon,
   Copy01Icon,
+  PencilEdit02Icon,
   ThumbsDownIcon,
   ThumbsUpIcon
 } from "@hugeicons/core-free-icons"
@@ -20,6 +21,19 @@ import { useCallback, useEffect, useState } from "react"
 const COPY_FEEDBACK_RESET_MS = 1600
 
 type ResponseAction = "bad" | "good" | null
+type MessageActionKind = "bad" | "copy" | "edit" | "good" | "regenerate"
+
+const ASSISTANT_MESSAGE_ACTIONS = [
+  "copy",
+  "good",
+  "bad",
+  "regenerate"
+] satisfies MessageActionKind[]
+const USER_MESSAGE_ACTIONS = [
+  "copy",
+  "regenerate",
+  "edit"
+] satisfies MessageActionKind[]
 
 const MessageActionButton = ({
   ariaLabel,
@@ -62,11 +76,17 @@ const MessageActionButton = ({
 )
 
 export const MessageActions = ({
+  align = "start",
+  actions = ASSISTANT_MESSAGE_ACTIONS,
   isRegenerating = false,
+  onEdit,
   messageText,
   onRegenerate
 }: {
+  actions?: readonly MessageActionKind[]
+  align?: "end" | "start"
   isRegenerating?: boolean
+  onEdit?: () => void
   messageText: string
   onRegenerate: () => void
 }) => {
@@ -122,36 +142,77 @@ export const MessageActions = ({
   return (
     <div
       aria-label={t("label")}
-      className="mt-1.5 flex items-center gap-0.5 px-1"
+      className={cn(
+        "invisible mt-1.5 flex h-8 items-center gap-0.5 px-1 opacity-0 transition-opacity group-hover/message:visible group-hover/message:opacity-100 group-focus-within/message:visible group-focus-within/message:opacity-100",
+        align === "end" && "justify-end"
+      )}
       role="toolbar"
     >
-      <MessageActionButton
-        ariaLabel={copied ? t("copied") : t("copy")}
-        icon={copied ? CheckmarkCircle01Icon : Copy01Icon}
-        onPress={handleCopy}
-        tooltipLabel={copied ? t("copied") : t("copy")}
-      />
-      <MessageActionButton
-        ariaLabel={t("goodResponse")}
-        icon={ThumbsUpIcon}
-        isPressed={responseAction === "good"}
-        onPress={handleGoodResponse}
-        tooltipLabel={t("goodResponse")}
-      />
-      <MessageActionButton
-        ariaLabel={t("badResponse")}
-        icon={ThumbsDownIcon}
-        isPressed={responseAction === "bad"}
-        onPress={handleBadResponse}
-        tooltipLabel={t("badResponse")}
-      />
-      <MessageActionButton
-        ariaLabel={t("regenerate")}
-        icon={ArrowReloadHorizontalIcon}
-        isDisabled={isRegenerating}
-        onPress={onRegenerate}
-        tooltipLabel={t("regenerate")}
-      />
+      {actions.map((action) => {
+        if (action === "copy") {
+          return (
+            <MessageActionButton
+              ariaLabel={copied ? t("copied") : t("copy")}
+              icon={copied ? CheckmarkCircle01Icon : Copy01Icon}
+              key={action}
+              onPress={handleCopy}
+              tooltipLabel={copied ? t("copied") : t("copy")}
+            />
+          )
+        }
+
+        if (action === "good") {
+          return (
+            <MessageActionButton
+              ariaLabel={t("goodResponse")}
+              icon={ThumbsUpIcon}
+              isPressed={responseAction === "good"}
+              key={action}
+              onPress={handleGoodResponse}
+              tooltipLabel={t("goodResponse")}
+            />
+          )
+        }
+
+        if (action === "bad") {
+          return (
+            <MessageActionButton
+              ariaLabel={t("badResponse")}
+              icon={ThumbsDownIcon}
+              isPressed={responseAction === "bad"}
+              key={action}
+              onPress={handleBadResponse}
+              tooltipLabel={t("badResponse")}
+            />
+          )
+        }
+
+        if (action === "edit") {
+          return (
+            <MessageActionButton
+              ariaLabel={t("edit")}
+              icon={PencilEdit02Icon}
+              isDisabled={!onEdit || isRegenerating}
+              key={action}
+              onPress={() => onEdit?.()}
+              tooltipLabel={t("edit")}
+            />
+          )
+        }
+
+        return (
+          <MessageActionButton
+            ariaLabel={t("regenerate")}
+            icon={ArrowReloadHorizontalIcon}
+            isDisabled={isRegenerating}
+            key={action}
+            onPress={onRegenerate}
+            tooltipLabel={t("regenerate")}
+          />
+        )
+      })}
     </div>
   )
 }
+
+export { ASSISTANT_MESSAGE_ACTIONS, USER_MESSAGE_ACTIONS }

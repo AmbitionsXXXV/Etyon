@@ -16,6 +16,7 @@ export {
 export type {
   ArchiveChatSessionInput,
   ChatMention,
+  ChatSkillMention,
   ChatSessionMemory,
   ChatSessionMessagesInput,
   ChatSessionMessagesOutput,

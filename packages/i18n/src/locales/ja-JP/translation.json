@@ -34,18 +34,27 @@
     },
     "loading": "chat session を読み込み中...",
     "mentions": {
-      "empty": "一致するプロジェクトファイルがありません。",
+      "empty": "一致するファイル、フォルダー、または skills がありません。",
       "filesGroup": "ファイル",
       "foldersGroup": "フォルダー",
-      "searchPlaceholder": "現在のプロジェクトファイルを検索..."
+      "globalSkillSource": "Global",
+      "skillsEmpty": "一致する skills がありません。",
+      "skillsGroup": "Skills",
+      "skillsSearchPlaceholder": "skills を検索..."
     },
     "messageActions": {
       "badResponse": "よくない回答",
+      "cancelEdit": "キャンセル",
       "copied": "コピー済み",
       "copy": "コピー",
+      "edit": "編集",
       "goodResponse": "よい回答",
       "label": "メッセージ操作",
-      "regenerate": "再生成"
+      "regenerate": "再生成",
+      "saveEdit": "送信"
+    },
+    "messageScroll": {
+      "toBottom": "一番下へ戻る"
     },
     "missing": {
       "action": "ホームに戻る",

@@ -78,14 +78,20 @@ Sidebar 采用 **卡片嵌入式侧栏** 设计语言：
 ### Chat 项目上下文面板
 
 - Chat 页面通过顶部 `Review` trigger 展开右侧项目上下文面板，不再依赖 `VITE_ENABLE_CHAT_SESSION_DETAILS` 调试开关。
-- 面板使用 `@heroui-pro/react` 的 `Resizable` 组织为主聊天区 + 可拖拽右侧面板；`Resizable` 占满 chat 路由可用高度，标题和 `Review` trigger 放在左侧 panel 内，右侧 panel 不再被标题区挤压成局部高度。
+- 面板使用 `@heroui-pro/react` 的 `Resizable` 组织为主聊天区 + 可拖拽右侧面板；chat 路由和 `Resizable` 顶层使用 `h-svh` 建立明确视口高度边界，标题和 `Review` trigger 放在左侧 panel 内，左右 `Panel` 只负责横向尺寸，内部 `h-full` 只在已有明确高度的子级继续使用。
+- 主聊天区只保留 header、消息列表和 composer 的全高 flex 布局，不再用 card 容器包裹；外层禁止滚动，只有消息列表在 header 和 composer 的剩余高度内通过 `ScrollShadow` 滚动。
+- 消息列表滚动离开底部超过阈值后，会在 messages 区底部显示一个悬浮回到底部按钮；点击后平滑滚回最新消息，不改变 composer 的固定位置。
+- 消息 actions 行始终预留高度，但默认隐藏；hover 或 focus 到单条 message 时才显示。Assistant message 保留 `copy / good / bad / regenerate`，user message 显示 `copy / regenerate / edit`；编辑或重新生成 user message 时会截掉其后的模型输出再重新请求。
+- Composer 的 `@` 指示器继续按文件夹、文件分组展示项目快照候选项；`$` 指示器专门用于筛选和选择 skills，使用紧凑单行列表展示 skill 名称、描述和来源项目，显式选择后会优先注入对应 skill instructions。
+- 右侧 panel 的间距和高度放在独立内容容器中，面板本体保持完整高度和独立滚动，避免右侧内容高度或 padding 反向影响 main 区布局。
 - app shell 的折叠侧栏控制区改为绝对浮层，不再占用 chat route 高度；chat 标题行和右侧 panel 顶部 tab bar 使用 `title-bar-drag`，交互按钮使用 `title-bar-no-drag`，保证顶部空间可用于内容且仍能拖动窗口。
 - `Review` trigger 使用紧凑 diff stat（例如 `11 +508 -47`）；展开后的面板状态条使用完整文案（例如 `11 files changed +508 -47`）。数字使用千分位分隔，新增为 success，删除为 danger。
-- 右侧 panel 本身是一个完整工作区：顶部全局 `Files` / `Changes` / `Commit` tabs 和刷新按钮，项目路径、当前模型、snapshot id、Git 摘要作为统一状态条展示在 tabs 下方。
+- 右侧 panel 本身是一个完整工作区：顶部全局 `Files` / `Changes` / `Commit` tabs 和刷新按钮固定在面板顶部，Git 摘要作为统一状态条展示在 tabs 下方；各 view 的内容区独立滚动，不带动面板 header。
 - 右侧 panel 收起时保留窄 toolbar rail，提供 `Files` / `Changes` / `Commit` 图标入口；点击任一入口会先切换目标 view 再展开 panel，`Commit` 图标用 badge 显示变更文件数。
-- `Files` view 显示文件树，`Changes` view 显示基于 Git 的 file diff，`Commit` view 显示变更文件列表和提交信息编辑区；当前 `Commit` 按钮仅作为视图入口，不执行 Git 写操作。
-- `Files` view 使用 `@pierre/trees/react`：数据来自 `projectSnapshots.listFiles({ query: "", limit: 5000 })`，传入文件相对路径，并用 `gitStatus.files` 显示变更状态。
-- `Changes` view 使用 `@pierre/diffs/react`：主进程通过 `git diff --cached` 和 `git diff` 返回 patch，renderer 用 `parsePatchFiles` 拆成多个 `FileDiff`，再放入 `Virtualizer` 中渲染；新增行使用 success 颜色，删除行使用 danger 颜色。
+- `Files` view 显示文件树，`Changes` view 显示基于 Git 的 file diff，`Commit` view 显示变更文件列表和提交信息编辑区；Commit 文件路径按右侧 panel 可用宽度换行，状态标签保持固定尺寸；当前 `Commit` 按钮仅作为视图入口，不执行 Git 写操作。
+- `Files` view 使用 `@pierre/trees/react`：数据来自 `projectSnapshots.listFiles({ query: "", limit: 5000 })`，传入文件相对路径，并用 `gitStatus.files` 显示变更状态；文件树颜色通过项目 theme token 覆盖 Pierre 默认色。
+- `Changes` view 使用 `@pierre/diffs/react`：主进程通过 `git diff --cached` 和 `git diff` 返回 patch，renderer 用 `parsePatchFiles` 拆成多个可折叠 `FileDiff`；diff 背景、gutter、选择态和新增 / 删除色都映射到系统 theme token。
+- `Changes` view 的滚动由 view 内容区统一持有，单个 diff 卡片不再整块 sticky，避免滚动条移动但高内容卡片仍停留在视口内。
 - Git 摘要和文件树会区分新增 / 删除 / 修改 / 重命名 / 未跟踪状态，其中新增使用 success，删除使用 danger。
 - 当前 diff 只展示 tracked file patch；untracked 文件会出现在 Git 摘要和文件树状态中，但不会展开为 patch 内容。
 

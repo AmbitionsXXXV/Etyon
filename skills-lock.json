@@ -22,6 +22,12 @@
       "sourceType": "github",
       "computedHash": "76d07c4c0bebc162cc76ca7494bfe7a90e279f35832f7ce6dfc4ce16518fd560"
     },
+    "magicpath": {
+      "source": "magicpathai/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/magicpath/SKILL.md",
+      "computedHash": "bca72e84084be7b0d19bf9cd80fd72cc62da9bfeafce14538d9cf2da0b1ad46f"
+    },
     "migrate-oxlint": {
       "source": "oxc-project/oxc",
       "sourceType": "github",

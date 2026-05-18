@@ -10,8 +10,9 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { Resizable } from "@heroui-pro/react"
 import type { PanelImperativeHandle } from "@heroui-pro/react"
-import { Button, Chip } from "@heroui/react"
+import { Button, Chip, ScrollShadow, TextArea } from "@heroui/react"
 import {
+  ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
   FolderGitIcon,
@@ -25,9 +26,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, UIMessage } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode } from "react"
+import type { ReactNode, UIEvent } from "react"
 
-import { MessageActions } from "@/renderer/components/chat/message-actions"
+import {
+  MessageActions,
+  USER_MESSAGE_ACTIONS
+} from "@/renderer/components/chat/message-actions"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
@@ -50,8 +54,15 @@ import {
   parseProjectDiffFiles
 } from "@/renderer/lib/chat/project-context-panel"
 import {
+  filterPromptSkillMentionItems,
+  getMentionDisplayName,
   getMentionTokenTypeLabel,
+  getMentionTitle,
   splitPromptTextByMentions
+} from "@/renderer/lib/chat/prompt-input"
+import type {
+  PromptMentionTrigger,
+  PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
@@ -62,6 +73,11 @@ import {
 
 interface ChatMessageMetadata {
   mentions?: ChatMention[]
+}
+
+interface MentionQueryState {
+  query: string
+  trigger: PromptMentionTrigger
 }
 
 type ChatUiMessage = UIMessage<ChatMessageMetadata>
@@ -76,12 +92,14 @@ const getChatSessionMessagesQueryOptions = (sessionId: string) =>
     }
   })
 const MENTION_ITEM_LIMIT = 50
+const MENTION_SKILL_ITEM_LIMIT = 20
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
+const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 32
 const PROJECT_CONTEXT_PANEL_MAX_SIZE = 46
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
-const CHAT_LAYOUT_CLASS_NAME = "flex min-h-0 flex-1 overflow-hidden"
+const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
 const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
   {
     icon: FolderGitIcon,
@@ -125,18 +143,15 @@ const toRuntimeChatMessage = (
   }
 }
 
-const getMentionName = (mention: ChatMention): string =>
-  mention.relativePath.split("/").at(-1) ?? mention.relativePath
-
 const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
   <span
     className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 align-baseline text-sm font-medium text-foreground ring-1 ring-border/70"
-    title={mention.relativePath}
+    title={getMentionTitle(mention)}
   >
     <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
       {getMentionTokenTypeLabel(mention)}
     </span>
-    <span className="max-w-52 truncate">{getMentionName(mention)}</span>
+    <span className="max-w-52 truncate">{getMentionDisplayName(mention)}</span>
   </span>
 )
 
@@ -265,9 +280,6 @@ const ChatSessionHeader = ({
   <div className="title-bar-drag flex shrink-0 items-start justify-between gap-4">
     <div className="min-w-0 space-y-2">
       <h1 className="truncate text-2xl font-semibold">{sessionTitle}</h1>
-      <p className="truncate text-sm text-muted-foreground">
-        {selectedSession.projectPath}
-      </p>
     </div>
     <ProjectContextTrigger
       gitDiff={gitDiff}
@@ -290,7 +302,7 @@ const ProjectContextCollapsedToolbar = ({
   const { t } = useI18n()
 
   return (
-    <aside className="flex h-full w-18 shrink-0 items-center justify-center border-l border-border/70 px-3 py-6">
+    <aside className="flex h-full w-18 shrink-0 items-start justify-center px-3 py-6">
       <div className="flex flex-col items-center gap-2 rounded-full border border-border bg-card/70 p-2 shadow-sm">
         {PROJECT_CONTEXT_TOOLBAR_ITEMS.map((item) => {
           const isSelected = selectedView === item.view
@@ -333,10 +345,8 @@ const ChatProjectContextLayout = ({
   onViewChange,
   onRefresh,
   projectItems,
-  selectedModelValue,
   selectedSession,
-  selectedView,
-  snapshotId
+  selectedView
 }: {
   children: ReactNode
   gitDiff?: GitProjectDiffOutput
@@ -347,10 +357,8 @@ const ChatProjectContextLayout = ({
   onViewChange: (view: ProjectContextPanelView) => void
   onRefresh: () => void
   projectItems: ProjectSnapshotItem[]
-  selectedModelValue: string
   selectedSession: ChatSessionSummary
   selectedView: ProjectContextPanelView
-  snapshotId?: string
 }) => {
   const { t } = useI18n()
   const projectContextPanelRef = useRef<PanelImperativeHandle | null>(null)
@@ -389,7 +397,7 @@ const ChatProjectContextLayout = ({
   return (
     <div className={CHAT_LAYOUT_CLASS_NAME}>
       <Resizable
-        className="h-full min-h-0 min-w-0 flex-1"
+        className="h-svh min-h-0 min-w-0 flex-1 overflow-hidden"
         orientation="horizontal"
       >
         <Resizable.Panel
@@ -401,17 +409,14 @@ const ChatProjectContextLayout = ({
         </Resizable.Panel>
         <Resizable.Handle
           aria-label={t("chat.projectPanel.resizeHandle")}
-          className={cn(!isOpen && "hidden")}
+          className={cn("self-stretch", !isOpen && "hidden")}
           disabled={!isOpen}
           type="line"
           variant="secondary"
           withIndicator
         />
         <Resizable.Panel
-          className={cn(
-            "h-full min-w-0 overflow-hidden py-6 pr-6 pl-4",
-            !isOpen && "hidden"
-          )}
+          className={cn("min-w-0 overflow-hidden h-svh", !isOpen && "hidden")}
           collapsedSize={0}
           collapsible
           defaultSize={0}
@@ -429,10 +434,8 @@ const ChatProjectContextLayout = ({
             onRefresh={onRefresh}
             onViewChange={onViewChange}
             projectItems={projectItems}
-            selectedModelValue={selectedModelValue}
             selectedSession={selectedSession}
             selectedView={selectedView}
-            snapshotId={snapshotId}
           />
         </Resizable.Panel>
       </Resizable>
@@ -467,14 +470,84 @@ const upsertChatSession = ({
   ])
 }
 
+const useChatMentionSuggestions = ({
+  selectedSession,
+  sessionExists,
+  sessionId
+}: {
+  selectedSession: ChatSessionSummary | undefined
+  sessionExists: boolean
+  sessionId: string
+}) => {
+  const [mentionQueryState, setMentionQueryState] =
+    useState<MentionQueryState | null>(null)
+  const mentionQuery = mentionQueryState?.query ?? null
+  const mentionTrigger = mentionQueryState?.trigger ?? null
+  const mentionItemsQuery = useQuery({
+    ...orpc.projectSnapshots.listFiles.queryOptions({
+      input: {
+        limit: MENTION_ITEM_LIMIT,
+        query: mentionQuery ?? "",
+        sessionId
+      }
+    }),
+    enabled: sessionExists && mentionTrigger === "project"
+  })
+  const mentionSkillsQuery = useQuery({
+    ...orpc.skills.list.queryOptions({}),
+    enabled:
+      sessionExists &&
+      (mentionTrigger === "project" || mentionTrigger === "skill")
+  })
+  const mentionSkillItems = useMemo(
+    () =>
+      filterPromptSkillMentionItems({
+        limit: MENTION_SKILL_ITEM_LIMIT,
+        projectPath: selectedSession?.projectPath ?? "",
+        query: mentionQuery ?? "",
+        skills: mentionSkillsQuery.data?.skills ?? []
+      }),
+    [
+      mentionQuery,
+      mentionSkillsQuery.data?.skills,
+      selectedSession?.projectPath
+    ]
+  )
+  const handleMentionQueryChange = useCallback(
+    (query: string | null, trigger: PromptMentionTrigger | null) => {
+      setMentionQueryState(
+        query === null || trigger === null
+          ? null
+          : {
+              query,
+              trigger
+            }
+      )
+    },
+    []
+  )
+
+  return {
+    handleMentionQueryChange,
+    isLoadingFileItems:
+      mentionItemsQuery.isFetching ||
+      (mentionTrigger === "project" && mentionSkillsQuery.isFetching),
+    isLoadingSkillItems: mentionSkillsQuery.isFetching,
+    mentionItems: mentionItemsQuery.data?.files ?? [],
+    mentionSkillItems
+  }
+}
+
 const ChatRuntime = ({
   gitDiff,
   isLoadingFileItems,
   isLoadingProjectTreeItems,
+  isLoadingSkillItems,
   isModelUpdating,
   isProjectContextOpen,
   isProjectDiffLoading,
   mentionItems,
+  mentionSkillItems,
   modelGroups,
   initialMessages,
   onChatFinish,
@@ -496,14 +569,19 @@ const ChatRuntime = ({
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingProjectTreeItems: boolean
+  isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
   isProjectDiffLoading: boolean
   isModelUpdating: boolean
   initialMessages: ChatUiMessage[]
   mentionItems: ProjectSnapshotItem[]
+  mentionSkillItems: PromptSkillMentionItem[]
   modelGroups: ChatModelGroup[]
   onChatFinish: () => void
-  onMentionQueryChange: (query: string | null) => void
+  onMentionQueryChange: (
+    query: string | null,
+    trigger: PromptMentionTrigger | null
+  ) => void
   onModelChange: (value: string | null) => void
   onOpenSettings: () => void
   onProjectContextOpenChange: (isOpen: boolean) => void
@@ -520,6 +598,10 @@ const ChatRuntime = ({
 }) => {
   const { t } = useI18n()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageText, setEditingMessageText] = useState("")
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const { clearError, error, messages, regenerate, sendMessage, status } =
     useChat<ChatUiMessage>({
       id: selectedSession.id,
@@ -528,12 +610,76 @@ const ChatRuntime = ({
       transport
     })
 
+  const buildChatRequestOptions = useCallback(
+    (mentions: ChatMention[]) => ({
+      body: {
+        mentions,
+        model: selectedModelValue || undefined,
+        sessionId: selectedSession.id
+      }
+    }),
+    [selectedModelValue, selectedSession.id]
+  )
+
+  const updateScrollToBottomVisibility = useCallback(
+    (scrollElement: HTMLDivElement | null) => {
+      if (!scrollElement) {
+        setShowScrollToBottom(false)
+        return
+      }
+
+      const distanceFromBottom =
+        scrollElement.scrollHeight -
+        scrollElement.scrollTop -
+        scrollElement.clientHeight
+      const canScroll =
+        scrollElement.scrollHeight >
+        scrollElement.clientHeight + MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX
+
+      setShowScrollToBottom(
+        canScroll && distanceFromBottom > MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX
+      )
+    },
+    []
+  )
+
+  const handleMessagesScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      updateScrollToBottomVisibility(event.currentTarget)
+    },
+    [updateScrollToBottomVisibility]
+  )
+
+  const handleScrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end"
+    })
+    setShowScrollToBottom(false)
+  }, [])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end"
     })
-  }, [messages])
+    updateScrollToBottomVisibility(messagesScrollRef.current)
+  }, [messages, updateScrollToBottomVisibility])
+
+  useEffect(() => {
+    if (!editingMessageId) {
+      return
+    }
+
+    const isEditingExistingUserMessage = messages.some(
+      (message) => message.id === editingMessageId && message.role === "user"
+    )
+
+    if (!isEditingExistingUserMessage) {
+      setEditingMessageId(null)
+      setEditingMessageText("")
+    }
+  }, [editingMessageId, messages])
 
   const isComposerDisabled =
     isModelUpdating || status === "streaming" || status === "submitted"
@@ -568,34 +714,95 @@ const ChatRuntime = ({
           metadata,
           text
         },
-        {
-          body: {
-            mentions,
-            model: selectedModelValue || undefined,
-            sessionId: selectedSession.id
-          }
-        }
+        buildChatRequestOptions(mentions)
       )
     },
-    [selectedModelValue, selectedSession.id, sendMessage]
+    [buildChatRequestOptions, sendMessage]
   )
 
-  const handleRegenerate = useCallback(() => {
-    clearError()
-    void regenerate({
-      body: {
-        mentions: latestUserMentions,
-        model: selectedModelValue || undefined,
-        sessionId: selectedSession.id
+  const getMessageRegenerateMentions = useCallback(
+    (messageId?: string): ChatMention[] => {
+      if (!messageId) {
+        return latestUserMentions
       }
-    })
-  }, [
-    clearError,
-    latestUserMentions,
-    regenerate,
-    selectedModelValue,
-    selectedSession.id
-  ])
+
+      const messageIndex = messages.findIndex(
+        (message) => message.id === messageId
+      )
+
+      if (messageIndex === -1) {
+        return latestUserMentions
+      }
+
+      for (let index = messageIndex; index >= 0; index -= 1) {
+        const candidateMessage = messages[index]
+
+        if (candidateMessage?.role === "user") {
+          return candidateMessage.metadata?.mentions ?? []
+        }
+      }
+
+      return []
+    },
+    [latestUserMentions, messages]
+  )
+
+  const handleRegenerate = useCallback(
+    (messageId?: string) => {
+      clearError()
+      setEditingMessageId(null)
+      setEditingMessageText("")
+      void regenerate({
+        messageId,
+        ...buildChatRequestOptions(getMessageRegenerateMentions(messageId))
+      })
+    },
+    [
+      buildChatRequestOptions,
+      clearError,
+      getMessageRegenerateMentions,
+      regenerate
+    ]
+  )
+
+  const handleStartEditMessage = useCallback((message: ChatUiMessage) => {
+    setEditingMessageId(message.id)
+    setEditingMessageText(getMessageText(message))
+  }, [])
+
+  const handleCancelEditMessage = useCallback(() => {
+    setEditingMessageId(null)
+    setEditingMessageText("")
+  }, [])
+
+  const handleSubmitEditedMessage = useCallback(
+    (message: ChatUiMessage) => {
+      const normalizedText = editingMessageText.trim()
+
+      if (message.role !== "user" || !normalizedText || isRequestPending) {
+        return
+      }
+
+      clearError()
+      setEditingMessageId(null)
+      setEditingMessageText("")
+      void sendMessage(
+        {
+          messageId: message.id,
+          metadata: message.metadata,
+          text: normalizedText
+        },
+        buildChatRequestOptions(message.metadata?.mentions ?? [])
+      )
+    },
+    [
+      buildChatRequestOptions,
+      clearError,
+      editingMessageText,
+      isRequestPending,
+      sendMessage
+    ]
+  )
 
   return (
     <ChatProjectContextLayout
@@ -607,12 +814,10 @@ const ChatRuntime = ({
       onRefresh={onRefreshProjectContext}
       onViewChange={onProjectContextViewChange}
       projectItems={projectTreeItems}
-      selectedModelValue={selectedModelValue}
       selectedSession={selectedSession}
       selectedView={projectContextView}
-      snapshotId={snapshotId}
     >
-      <div className="flex h-full min-h-0 flex-col gap-6 p-6">
+      <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
           gitDiff={gitDiff}
           isProjectContextOpen={isProjectContextOpen}
@@ -621,138 +826,227 @@ const ChatRuntime = ({
           sessionTitle={sessionTitle}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col rounded-3xl border border-border bg-card shadow-sm">
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            {messages.length === 0 && !error ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="max-w-md text-center">
-                  <h2 className="text-lg font-semibold">
-                    {t("chat.placeholder.title")}
-                  </h2>
-                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    {t("chat.placeholder.description")}
-                  </p>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="relative min-h-0 flex-1">
+            <ScrollShadow
+              className="h-full py-5 pr-2.5"
+              onScroll={handleMessagesScroll}
+              ref={messagesScrollRef}
+            >
+              {messages.length === 0 && !error ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="max-w-md text-center">
+                    <h2 className="text-lg font-semibold">
+                      {t("chat.placeholder.title")}
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {t("chat.placeholder.description")}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => {
-                  const isAssistant = message.role === "assistant"
-                  const messageMentions = message.metadata?.mentions ?? []
-                  const messageText = getMessageText(message)
-                  const messageParts = splitPromptTextByMentions({
-                    mentions: messageMentions,
-                    text: messageText
-                  })
-                  const hasInlineMentions = messageParts.some(
-                    (part) => part.type === "mention"
-                  )
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((message) => {
+                    const isAssistant = message.role === "assistant"
+                    const isUser = message.role === "user"
+                    const isEditingMessage =
+                      isUser && editingMessageId === message.id
+                    const messageMentions = message.metadata?.mentions ?? []
+                    const messageText = getMessageText(message)
+                    const messageParts = splitPromptTextByMentions({
+                      mentions: messageMentions,
+                      text: messageText
+                    })
+                    const hasInlineMentions = messageParts.some(
+                      (part) => part.type === "mention"
+                    )
 
-                  return (
-                    <div
-                      className={`flex ${isAssistant ? "justify-start" : "justify-end"}`}
-                      key={message.id}
-                    >
-                      <div className="max-w-[78%]">
-                        <div
-                          className={`rounded-3xl px-4 py-3 ${
-                            isAssistant
-                              ? "bg-muted/60 text-foreground"
-                              : "bg-primary text-primary-foreground"
-                          }`}
-                        >
-                          {messageMentions.length > 0 && !hasInlineMentions && (
-                            <div className="mb-2 flex flex-wrap gap-2">
-                              {messageMentions.map((mention) => (
-                                <Chip
-                                  color={isAssistant ? "default" : "accent"}
-                                  className="max-w-full"
-                                  key={`${message.id}-${mention.relativePath}`}
+                    return (
+                      <div
+                        className={cn(
+                          "group/message flex outline-none",
+                          isAssistant ? "justify-start" : "justify-end"
+                        )}
+                        key={message.id}
+                      >
+                        <div>
+                          {isEditingMessage ? (
+                            <div className="rounded-3xl border border-border bg-card/80 p-3 shadow-sm">
+                              <TextArea
+                                aria-label={t("chat.messageActions.edit")}
+                                className="min-h-24 min-w-0 text-sm"
+                                fullWidth
+                                onChange={(event) =>
+                                  setEditingMessageText(event.target.value)
+                                }
+                                rows={3}
+                                value={editingMessageText}
+                                variant="secondary"
+                              />
+                              <div className="mt-2 flex justify-end gap-2">
+                                <Button
+                                  onPress={handleCancelEditMessage}
                                   size="sm"
-                                  variant={isAssistant ? "secondary" : "soft"}
+                                  type="button"
+                                  variant="ghost"
                                 >
-                                  <Chip.Label className="truncate">
-                                    {mention.relativePath}
-                                  </Chip.Label>
-                                </Chip>
-                              ))}
+                                  {t("chat.messageActions.cancelEdit")}
+                                </Button>
+                                <Button
+                                  isDisabled={
+                                    isRequestPending ||
+                                    editingMessageText.trim() === ""
+                                  }
+                                  onPress={() =>
+                                    handleSubmitEditedMessage(message)
+                                  }
+                                  size="sm"
+                                  type="button"
+                                >
+                                  {t("chat.messageActions.saveEdit")}
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              className={cn("rounded-3xl px-4 py-3", {
+                                "bg-muted/60 text-foreground": isAssistant,
+                                "bg-primary text-primary-foreground":
+                                  !isAssistant
+                              })}
+                            >
+                              {messageMentions.length > 0 &&
+                                !hasInlineMentions && (
+                                  <div className="mb-2 flex flex-wrap gap-2">
+                                    {messageMentions.map((mention) => (
+                                      <Chip
+                                        color={
+                                          isAssistant ? "default" : "accent"
+                                        }
+                                        className="max-w-full"
+                                        key={`${message.id}-${mention.kind}-${mention.path}`}
+                                        size="sm"
+                                        variant={
+                                          isAssistant ? "secondary" : "soft"
+                                        }
+                                      >
+                                        <Chip.Label className="truncate">
+                                          {getMentionDisplayName(mention)}
+                                        </Chip.Label>
+                                      </Chip>
+                                    ))}
+                                  </div>
+                                )}
+
+                              <p className="whitespace-pre-wrap">
+                                {messageParts.map((part, index) =>
+                                  part.type === "mention" ? (
+                                    <InlineMentionToken
+                                      key={`${message.id}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
+                                      mention={part.mention}
+                                    />
+                                  ) : (
+                                    <span key={`${message.id}-text-${index}`}>
+                                      {part.text}
+                                    </span>
+                                  )
+                                )}
+                              </p>
                             </div>
                           )}
 
-                          <p className="whitespace-pre-wrap">
-                            {messageParts.map((part, index) =>
-                              part.type === "mention" ? (
-                                <InlineMentionToken
-                                  key={`${message.id}-mention-${part.mention.relativePath}-${index}`}
-                                  mention={part.mention}
-                                />
-                              ) : (
-                                <span key={`${message.id}-text-${index}`}>
-                                  {part.text}
-                                </span>
-                              )
-                            )}
-                          </p>
+                          {isAssistant || isUser ? (
+                            <MessageActions
+                              actions={
+                                isUser ? USER_MESSAGE_ACTIONS : undefined
+                              }
+                              align={isUser ? "end" : "start"}
+                              isRegenerating={isRequestPending}
+                              messageText={messageText}
+                              onEdit={
+                                isUser
+                                  ? () => handleStartEditMessage(message)
+                                  : undefined
+                              }
+                              onRegenerate={() => handleRegenerate(message.id)}
+                            />
+                          ) : null}
                         </div>
-                        {isAssistant && (
-                          <MessageActions
-                            isRegenerating={isRequestPending}
-                            messageText={messageText}
-                            onRegenerate={handleRegenerate}
-                          />
-                        )}
                       </div>
-                    </div>
-                  )
-                })}
-                {error && (
-                  <ChatErrorActionBar
-                    errorMessage={error.message}
-                    isRegenerating={isRequestPending}
-                    onDismiss={clearError}
-                    onRegenerate={handleRegenerate}
-                  />
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
+                    )
+                  })}
+                  {error && (
+                    <ChatErrorActionBar
+                      errorMessage={error.message}
+                      isRegenerating={isRequestPending}
+                      onDismiss={clearError}
+                      onRegenerate={handleRegenerate}
+                    />
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollShadow>
+
+            {showScrollToBottom ? (
+              <Button
+                aria-label={t("chat.messageScroll.toBottom")}
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 shadow-md"
+                isIconOnly
+                onPress={handleScrollToBottom}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <HugeiconsIcon
+                  icon={ArrowDown02Icon}
+                  size={16}
+                  strokeWidth={2}
+                />
+              </Button>
+            ) : null}
           </div>
 
-          <div className="border-t border-border p-4">
-            <PromptInput
-              disabled={isComposerDisabled}
-              footer={
-                <div className="flex items-center gap-3">
-                  <ModelSelector
-                    disabled={isModelUpdating}
-                    emptyActionLabel={t("chat.model.emptyAction")}
-                    emptyLabel={t("chat.model.emptyDescription")}
-                    groups={modelGroups}
-                    onOpenSettings={onOpenSettings}
-                    onValueChange={onModelChange}
-                    value={selectedModelValue}
-                  />
-                  {snapshotId && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {t("chat.snapshot.ready", {
-                        snapshotId
-                      })}
-                    </span>
-                  )}
-                </div>
-              }
-              isLoadingFileItems={isLoadingFileItems}
-              mentionEmptyLabel={t("chat.mentions.empty")}
-              mentionFileGroupLabel={t("chat.mentions.filesGroup")}
-              mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
-              mentionItems={mentionItems}
-              mentionSearchPlaceholder={t("chat.mentions.searchPlaceholder")}
-              onMentionQueryChange={onMentionQueryChange}
-              onSubmit={handleSubmit}
-              placeholder={t("chat.composer.placeholder")}
-              submitLabel={t("chat.composer.send")}
-            />
-          </div>
+          <PromptInput
+            disabled={isComposerDisabled}
+            footer={
+              <div className="flex items-center gap-3">
+                <ModelSelector
+                  disabled={isModelUpdating}
+                  emptyActionLabel={t("chat.model.emptyAction")}
+                  emptyLabel={t("chat.model.emptyDescription")}
+                  groups={modelGroups}
+                  onOpenSettings={onOpenSettings}
+                  onValueChange={onModelChange}
+                  value={selectedModelValue}
+                />
+                {snapshotId && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t("chat.snapshot.ready", {
+                      snapshotId
+                    })}
+                  </span>
+                )}
+              </div>
+            }
+            isLoadingFileItems={isLoadingFileItems}
+            isLoadingSkillItems={isLoadingSkillItems}
+            mentionEmptyLabel={t("chat.mentions.empty")}
+            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+            mentionGlobalSkillSourceLabel={t("chat.mentions.globalSkillSource")}
+            mentionItems={mentionItems}
+            mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
+            mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
+            mentionSkillItems={mentionSkillItems}
+            mentionSkillSearchPlaceholder={t(
+              "chat.mentions.skillsSearchPlaceholder"
+            )}
+            onMentionQueryChange={onMentionQueryChange}
+            onSubmit={handleSubmit}
+            placeholder={t("chat.composer.placeholder")}
+            submitLabel={t("chat.composer.send")}
+          />
         </div>
       </div>
     </ChatProjectContextLayout>
@@ -763,6 +1057,7 @@ const ChatPendingState = ({
   gitDiff,
   isLoadingFileItems,
   isLoadingProjectTreeItems,
+  isLoadingSkillItems,
   isProjectContextOpen,
   isProjectDiffLoading,
   modelGroups,
@@ -783,10 +1078,14 @@ const ChatPendingState = ({
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingProjectTreeItems: boolean
+  isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
   isProjectDiffLoading: boolean
   modelGroups: ChatModelGroup[]
-  onMentionQueryChange: (query: string | null) => void
+  onMentionQueryChange: (
+    query: string | null,
+    trigger: PromptMentionTrigger | null
+  ) => void
   onModelChange: (value: string | null) => void
   onOpenSettings: () => void
   onProjectContextOpenChange: (isOpen: boolean) => void
@@ -812,12 +1111,10 @@ const ChatPendingState = ({
       onRefresh={onRefreshProjectContext}
       onViewChange={onProjectContextViewChange}
       projectItems={projectTreeItems}
-      selectedModelValue={selectedModelValue}
       selectedSession={selectedSession}
       selectedView={projectContextView}
-      snapshotId={snapshotId}
     >
-      <div className="flex h-full min-h-0 flex-col gap-6 p-6">
+      <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
           gitDiff={gitDiff}
           isProjectContextOpen={isProjectContextOpen}
@@ -826,51 +1123,56 @@ const ChatPendingState = ({
           sessionTitle={sessionTitle}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col rounded-3xl border border-border bg-card shadow-sm">
-          <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <ScrollShadow className="flex min-h-0 flex-1 items-center justify-center py-5">
             <div className="max-w-md text-center">
               <h2 className="text-lg font-semibold">{t("chat.loading")}</h2>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {t("chat.placeholder.description")}
               </p>
             </div>
-          </div>
+          </ScrollShadow>
 
-          <div className="border-t border-border p-4">
-            <PromptInput
-              disabled
-              footer={
-                <div className="flex items-center gap-3">
-                  <ModelSelector
-                    disabled
-                    emptyActionLabel={t("chat.model.emptyAction")}
-                    emptyLabel={t("chat.model.emptyDescription")}
-                    groups={modelGroups}
-                    onOpenSettings={onOpenSettings}
-                    onValueChange={onModelChange}
-                    value={selectedModelValue}
-                  />
-                  {snapshotId && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {t("chat.snapshot.ready", {
-                        snapshotId
-                      })}
-                    </span>
-                  )}
-                </div>
-              }
-              isLoadingFileItems={isLoadingFileItems}
-              mentionEmptyLabel={t("chat.mentions.empty")}
-              mentionFileGroupLabel={t("chat.mentions.filesGroup")}
-              mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
-              mentionItems={[]}
-              mentionSearchPlaceholder={t("chat.mentions.searchPlaceholder")}
-              onMentionQueryChange={onMentionQueryChange}
-              onSubmit={NOOP_PROMPT_SUBMIT}
-              placeholder={t("chat.composer.placeholder")}
-              submitLabel={t("chat.composer.send")}
-            />
-          </div>
+          <PromptInput
+            disabled
+            footer={
+              <div className="flex items-center gap-3">
+                <ModelSelector
+                  disabled
+                  emptyActionLabel={t("chat.model.emptyAction")}
+                  emptyLabel={t("chat.model.emptyDescription")}
+                  groups={modelGroups}
+                  onOpenSettings={onOpenSettings}
+                  onValueChange={onModelChange}
+                  value={selectedModelValue}
+                />
+                {snapshotId && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t("chat.snapshot.ready", {
+                      snapshotId
+                    })}
+                  </span>
+                )}
+              </div>
+            }
+            isLoadingFileItems={isLoadingFileItems}
+            isLoadingSkillItems={isLoadingSkillItems}
+            mentionEmptyLabel={t("chat.mentions.empty")}
+            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+            mentionGlobalSkillSourceLabel={t("chat.mentions.globalSkillSource")}
+            mentionItems={[]}
+            mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
+            mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
+            mentionSkillItems={[]}
+            mentionSkillSearchPlaceholder={t(
+              "chat.mentions.skillsSearchPlaceholder"
+            )}
+            onMentionQueryChange={onMentionQueryChange}
+            onSubmit={NOOP_PROMPT_SUBMIT}
+            placeholder={t("chat.composer.placeholder")}
+            submitLabel={t("chat.composer.send")}
+          />
         </div>
       </div>
     </ChatProjectContextLayout>
@@ -885,7 +1187,6 @@ const ChatSessionPage = () => {
   const [isProjectContextOpen, setProjectContextOpen] = useState(false)
   const [projectContextView, setProjectContextView] =
     useState<ProjectContextPanelView>(PROJECT_CONTEXT_FILES_TAB_ID)
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [transport, setTransport] =
     useState<DefaultChatTransport<ChatUiMessage> | null>(null)
   const chatSessionsQuery = useQuery({
@@ -939,15 +1240,16 @@ const ChatSessionPage = () => {
     ...snapshotStateQueryOptions,
     enabled: sessionExists
   })
-  const mentionItemsQuery = useQuery({
-    ...orpc.projectSnapshots.listFiles.queryOptions({
-      input: {
-        limit: MENTION_ITEM_LIMIT,
-        query: mentionQuery ?? "",
-        sessionId
-      }
-    }),
-    enabled: sessionExists && mentionQuery !== null
+  const {
+    handleMentionQueryChange,
+    isLoadingFileItems,
+    isLoadingSkillItems,
+    mentionItems,
+    mentionSkillItems
+  } = useChatMentionSuggestions({
+    selectedSession: session,
+    sessionExists,
+    sessionId
   })
   const gitDiffQuery = useQuery({
     ...gitDiffQueryOptions,
@@ -1167,15 +1469,17 @@ const ChatSessionPage = () => {
         <ChatRuntime
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
-          isLoadingFileItems={mentionItemsQuery.isFetching}
+          isLoadingFileItems={isLoadingFileItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
+          isLoadingSkillItems={isLoadingSkillItems}
           isModelUpdating={setModelMutation.isPending}
           isProjectContextOpen={isProjectContextOpen}
           isProjectDiffLoading={gitDiffQuery.isFetching}
-          mentionItems={mentionItemsQuery.data?.files ?? []}
+          mentionItems={mentionItems}
+          mentionSkillItems={mentionSkillItems}
           modelGroups={modelGroups}
           onChatFinish={handleChatFinish}
-          onMentionQueryChange={setMentionQuery}
+          onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}
           onProjectContextOpenChange={handleProjectContextOpenChange}
@@ -1193,12 +1497,13 @@ const ChatSessionPage = () => {
       ) : (
         <ChatPendingState
           gitDiff={gitDiffQuery.data}
-          isLoadingFileItems={mentionItemsQuery.isFetching}
+          isLoadingFileItems={isLoadingFileItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
+          isLoadingSkillItems={isLoadingSkillItems}
           isProjectContextOpen={isProjectContextOpen}
           isProjectDiffLoading={gitDiffQuery.isFetching}
           modelGroups={modelGroups}
-          onMentionQueryChange={setMentionQuery}
+          onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}
           onProjectContextOpenChange={handleProjectContextOpenChange}

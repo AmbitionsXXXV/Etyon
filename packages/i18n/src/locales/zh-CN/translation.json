@@ -34,18 +34,27 @@
     },
     "loading": "正在加载 chat session...",
     "mentions": {
-      "empty": "没有匹配的项目文件。",
+      "empty": "没有匹配的文件、文件夹或 skills。",
       "filesGroup": "文件",
       "foldersGroup": "文件夹",
-      "searchPlaceholder": "搜索当前项目文件..."
+      "globalSkillSource": "全局",
+      "skillsEmpty": "没有匹配的 skills。",
+      "skillsGroup": "Skills",
+      "skillsSearchPlaceholder": "搜索 skills..."
     },
     "messageActions": {
       "badResponse": "回复不好",
+      "cancelEdit": "取消",
       "copied": "已复制",
       "copy": "复制",
+      "edit": "编辑",
       "goodResponse": "回复很好",
       "label": "消息操作",
-      "regenerate": "重新生成"
+      "regenerate": "重新生成",
+      "saveEdit": "发送"
+    },
+    "messageScroll": {
+      "toBottom": "回到底部"
     },
     "missing": {
       "action": "返回首页",

@@ -71,7 +71,7 @@ ${projectPath}/.alma-snapshots/
 
 ## `mentions` 数据结构
 
-聊天输入框里的 `@` 文件引用不会写成脆弱的纯文本路径，而是以结构化 token 维护。请求 `/api/chat` 时会同时提交普通文本和 `mentions`：
+聊天输入框里的 `@` 文件 / 文件夹引用和 `$` skill 引用不会写成脆弱的纯文本路径，而是以结构化 token 维护。请求 `/api/chat` 时会同时提交普通文本和 `mentions`：
 
 ```ts
 type ChatMention =
@@ -87,6 +87,16 @@ type ChatMention =
       relativePath: string
       snapshotId: string
     }
+  | {
+      description: string
+      kind: "skill"
+      name: string
+      path: string
+      projectPath: string | null
+      relativePath: string
+      scope: "global" | "project"
+      shortDescription: string | null
+    }
 ```
 
 - `path`
@@ -98,7 +108,9 @@ type ChatMention =
 
 服务端会优先从最新快照中读取被引用文件的 `preview`，再把这些内容作为额外上下文拼进模型输入。引用文件夹时，服务端按文件夹相对路径前缀从同一快照中提取目录下的文本文件，并按保守上下文预算截断。
 
-文件搜索以 `projectPath` 为根处理相对路径。输入 `@` 会显示前 50 个候选项，文件夹分组固定排在文件分组前。输入 `@src/main`、`@/src/main` 或 `@./src/main` 都会匹配快照中的 `src/main...` 文件或文件夹，避免项目根路径写法导致文件索引查不到。
+文件搜索以 `projectPath` 为根处理相对路径。输入 `@` 会显示前 50 个文件 / 文件夹候选项，文件夹分组固定排在文件分组前。输入 `@src/main`、`@/src/main` 或 `@./src/main` 都会匹配快照中的 `src/main...` 文件或文件夹，避免项目根路径写法导致文件索引查不到。
+
+`$` 指示器专门用于筛选和选择 skills。候选项来自 `skills.list` 的 `ParsedSkill`，仅保留当前 project skills 和 global skills；过滤字段包括 skill `name`、`description`、`metadata.short-description`、正文内容和路径。弹层使用紧凑列表布局，展示 skill 名称、描述和来源项目；选择 skill 后，消息 metadata 中会记录 `kind: "skill"`、skill 路径、名称与描述；服务端会按路径重新从当前解析结果中取出对应 skill，并把它排在自动召回 skills 之前注入模型上下文。
 
 聊天页默认不显示 session / snapshot 细节。需要排查项目快照或模型绑定时，可在 renderer 环境中设置 `VITE_ENABLE_CHAT_SESSION_DETAILS=1` 或 `VITE_ENABLE_CHAT_SESSION_DETAILS=true`，再显示右侧调试详情和底部快照 ID。
 

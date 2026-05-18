@@ -34,18 +34,27 @@
     },
     "loading": "Loading chat session...",
     "mentions": {
-      "empty": "No matching project files.",
+      "empty": "No matching files, folders, or skills.",
       "filesGroup": "Files",
       "foldersGroup": "Folders",
-      "searchPlaceholder": "Search project files..."
+      "globalSkillSource": "Global",
+      "skillsEmpty": "No matching skills.",
+      "skillsGroup": "Skills",
+      "skillsSearchPlaceholder": "Search skills..."
     },
     "messageActions": {
       "badResponse": "Bad response",
+      "cancelEdit": "Cancel",
       "copied": "Copied",
       "copy": "Copy",
+      "edit": "Edit",
       "goodResponse": "Good response",
       "label": "Message actions",
-      "regenerate": "Regenerate"
+      "regenerate": "Regenerate",
+      "saveEdit": "Send"
+    },
+    "messageScroll": {
+      "toBottom": "Back to bottom"
     },
     "missing": {
       "action": "Back Home",

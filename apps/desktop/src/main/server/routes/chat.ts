@@ -58,6 +58,7 @@ chatRoute.post("/chat", async (c) => {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  const selectedSkills = mentions.filter((mention) => mention.kind === "skill")
   const memory = await getChatSessionMemory(db, sessionId)
   const { system } = buildMentionContext({
     mentions,
@@ -75,6 +76,7 @@ chatRoute.post("/chat", async (c) => {
   const skillsSystem = buildSkillsSystemPrompt({
     projectPath: session.projectPath,
     query: memoryQuery,
+    selectedSkills,
     settings: settings.skills
   })
   const systemPrompts = [
