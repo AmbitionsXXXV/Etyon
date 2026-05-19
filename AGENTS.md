@@ -137,9 +137,8 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Object keys must be sorted alphabetically — oxlint `sort-keys` enforces this
 - File names must be kebab-case — oxlint `filename-case` enforces this; on macOS use two-step rename (temp name first) to change letter case; add auto-generated files (e.g. `routeTree.gen.ts`) to oxlint `ignorePatterns`
 - React 19 typings: `@types/react` deprecates `FormEvent` for submit handlers — prefer `SyntheticEvent<HTMLFormElement>` (or other concrete event types) instead of `FormEvent`
-- Main process builds as ESM (`build.lib.formats: ["es"]`); preload remains CJS (Electron sandbox limitation); `__dirname` replaced by `path.dirname(fileURLToPath(import.meta.url))`
-- `vite.main.config.ts` injects `createRequire` polyfill via `rollupOptions.output.banner` for CJS dependencies bundled into ESM output
-- Preload entry must output a distinct filename (e.g. `preload.js`) to avoid collision with main's `index.js` in `.vite/build/`
+- Main process builds as ESM (`build.lib.formats: ["es"]`); preload remains CJS (Electron sandbox limitation); replace `__dirname` with `path.dirname(fileURLToPath(import.meta.url))`; `vite.main.config.ts` injects `createRequire` via `rollupOptions.output.banner`; preload must output a distinct filename (e.g. `preload.js`) to avoid collision with main `index.js` in `.vite/build/`
+- Open http(s) external links from renderer via `open-external-url` IPC (`native-ipc.ts` → `shell.openExternal`), not in-window navigation
 - This project uses pnpm (not `bun` as a default elsewhere); before implementing features, read the `doc/` directory if it exists; after implementation, write documentation there
 - Prefer feature-level constants and non-presentational logic under `apps/desktop/src/renderer/lib/<feature>/` (kebab-case) instead of growing `components/`-only trees
 - Use `@/main/...`, `@/renderer/...`, `@main/...`, `@renderer/...` path aliases for imports instead of relative `./` or `../` paths within the desktop app
@@ -165,6 +164,8 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change; offcanvas collapse uses pure opacity fade-out (no left slide), action buttons use left-slide animation; settings sidebar is a floating card (`bg-card` + shadow) without liquid-glass, visually integrated with content background
 - Desktop-only sidebar: no mobile responsive breakpoints (`md:` / `useIsMobile`); sidebar is always visible; window min dimensions `minWidth: 732`, `minHeight: 392` for both main and settings windows
 - Liquid glass: `electron-liquid-glass` in main process, `data-liquid-glass` on `<html>` in renderer; `globals.css` sets semi-transparent `--sidebar`, `--background`, `--card`, `--popover` when active; custom color schemas may override these — ensure liquid-glass layer does not conflict with user-defined theme colors
+- Settings Channels tab (`channels-tab.tsx`, nav id `channels`) for messaging integrations; Telegram bridge in `apps/desktop/src/main/telegram/` persists under `settings.telegram`
+- Token Savings: `apps/desktop/src/main/rtk-token-savings.ts` runs `rtk gain --daily --format json` and `rtk gain --history`; oRPC `tokenSavings.get`; settings tab id `token-savings` is read-only (outside draft/save); schemas in `packages/rpc/src/schemas/token-savings.ts`
 
 @RTK.md
 

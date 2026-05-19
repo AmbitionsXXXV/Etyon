@@ -345,6 +345,7 @@
       "network": "Network",
       "providers": "Providers",
       "skills": "Skills",
+      "tokenSavings": "Token Savings",
       "channels": "Channels",
       "userInterface": "User Interface"
     },
@@ -550,6 +551,84 @@
         "savedSettingsOnly": "Save settings to start or restart the Telegram bridge."
       },
       "title": "Telegram Bridge"
+    },
+    "tokenSavings": {
+      "actions": {
+        "refresh": "Refresh"
+      },
+      "agentTools": {
+        "cards": {
+          "approval": {
+            "description": "Route risky bash, cross-directory writes, network downloads, rm, and reset operations through explicit approval.",
+            "status": "Codex / Claude Code permission model",
+            "title": "Approval Gate"
+          },
+          "bash": {
+            "description": "Keep command, cwd, timeout, and reason as the core inputs. Mutating or network commands require approval.",
+            "status": "Server-side execute",
+            "title": "Bash Command"
+          },
+          "fileContext": {
+            "description": "Split file read, rg search, project snapshots, and Git diff into read-only tools with token budgets and summaries.",
+            "status": "Auto-executable first",
+            "title": "Read / Search"
+          },
+          "fileMutation": {
+            "description": "Write through a patch tool with diff preview, visible tool result, and follow-up test guidance.",
+            "status": "User-visible result",
+            "title": "Edit / Patch"
+          },
+          "rtk": {
+            "description": "Send shell work through RTK first, keep a raw-output escape hatch, and feed savings back into this panel.",
+            "status": "Default command entry",
+            "title": "RTK Command Router"
+          },
+          "toolLoop": {
+            "description": "Use AI SDK ToolLoopAgent or streamText with stopWhen for multi-step tool calls and typed results.",
+            "status": "AI SDK v6 based",
+            "title": "ToolLoopAgent"
+          }
+        },
+        "description": "Current tool surface proposal for a local code agent, grounded in AI SDK tool calling and terminal-agent permission models.",
+        "title": "Code Agent Tool Plan"
+      },
+      "byCommand": {
+        "description": "Top RTK command groups by total tokens saved.",
+        "empty": "No command savings are available yet.",
+        "title": "Savings by Command"
+      },
+      "daily": {
+        "description": "Tokens saved per active day from RTK daily statistics.",
+        "empty": "No daily savings are available yet.",
+        "title": "Daily Savings"
+      },
+      "metrics": {
+        "averageSavings": "Avg Savings",
+        "averageTime": "Avg Time",
+        "commands": "Commands",
+        "compressionRate": "compression rate",
+        "inputTokens": "Input Tokens",
+        "outputTokens": "Output Tokens",
+        "tokensSaved": "Tokens Saved"
+      },
+      "overview": {
+        "description": "Global token savings from RTK command output compression.",
+        "title": "RTK Compression Overview"
+      },
+      "recent": {
+        "command": "Command",
+        "description": "Latest RTK-compressed command executions.",
+        "empty": "No recent commands are available yet.",
+        "reduction": "Reduction",
+        "saved": "Saved",
+        "time": "Time",
+        "title": "Recent Commands"
+      },
+      "status": {
+        "error": "Unable to read RTK savings.",
+        "loading": "Loading RTK savings...",
+        "unavailable": "RTK savings unavailable"
+      }
     },
     "theme": {
       "appearance": "Appearance",

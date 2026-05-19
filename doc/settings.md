@@ -27,26 +27,27 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ### 包结构
 
-| 层级               | 路径                                                       | 职责                                                                                                                           |
-| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Schema             | `packages/rpc/src/schemas/settings.ts`                     | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                  |
-| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                        | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                             |
-| Main Store         | `apps/desktop/src/main/settings.ts`                        | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
-| Main Fonts         | `apps/desktop/src/main/fonts.ts`                           | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                    |
-| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                      | `settings.get` / `settings.update` / `fonts.list` 路由                                                                         |
-| Window             | `apps/desktop/src/main/window.ts`                          | `createSettingsWindow()` 单例窗口创建                                                                                          |
-| Menu               | `apps/desktop/src/main/menu.ts`                            | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                |
-| IPC                | `apps/desktop/src/main/index.ts`                           | `open-settings` IPC handler，供 renderer 快捷键触发                                                                            |
-| Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                         |
-| Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                          |
-| Memory Runtime     | `apps/desktop/src/main/memory.ts`                          | 长期 memory 的写入、检索、prompt 注入与统计                                                                                    |
-| Skills Runtime     | `apps/desktop/src/main/skills.ts`                          | 从全局与 project 级 `SKILL.md` 文件解析 skills，并在 chat 请求时注入匹配 instructions                                          |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                   |
-| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                          |
-| Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                           |
-| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                      | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                             |
-| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`                | `applySettings()` DOM 应用函数                                                                                                 |
-| i18n Package       | `packages/i18n/`                                           | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                   |
+| 层级               | 路径                                                       | 职责                                                                                                                                                                                       |
+| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Schema             | `packages/rpc/src/schemas/settings.ts`                     | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                                                                              |
+| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                        | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                                                                                         |
+| Main Store         | `apps/desktop/src/main/settings.ts`                        | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json`                                                             |
+| Main Fonts         | `apps/desktop/src/main/fonts.ts`                           | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                                                                                |
+| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                      | `settings.get` / `settings.update` / `fonts.list` 路由                                                                                                                                     |
+| Window             | `apps/desktop/src/main/window.ts`                          | `createSettingsWindow()` 单例窗口创建                                                                                                                                                      |
+| Menu               | `apps/desktop/src/main/menu.ts`                            | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                                                                            |
+| IPC                | `apps/desktop/src/main/index.ts`                           | `open-settings` IPC handler，供 renderer 快捷键触发                                                                                                                                        |
+| Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                                                                                     |
+| Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                                                                                      |
+| Memory Runtime     | `apps/desktop/src/main/memory.ts`                          | 长期 memory 的写入、检索、prompt 注入与统计                                                                                                                                                |
+| Skills Runtime     | `apps/desktop/src/main/skills.ts`                          | 从全局与 project 级 `SKILL.md` 文件解析 skills，并在 chat 请求时注入匹配 instructions                                                                                                      |
+| Token Savings      | `apps/desktop/src/main/rtk-token-savings.ts`               | 通过 `rtk gain --daily --format json` 与 `rtk gain --history` 读取 RTK token savings、daily graph、command ranking；recent commands 优先从 RTK `history.db` 的 `original_cmd` 读取完整命令 |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                                                                               |
+| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                                                                                      |
+| Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                                                                                       |
+| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                      | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                                                                                         |
+| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`                | `applySettings()` DOM 应用函数                                                                                                                                                             |
+| i18n Package       | `packages/i18n/`                                           | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                                                                               |
 
 ## 数据模型
 
@@ -194,6 +195,20 @@ interface StoredProviderModel {
   - `maxContextSkills`：每次模型请求最多注入的 skills 数量，范围 `1-12`
 - chat 请求中，skills 注入顺序位于 session memory / long-term memory 之后、project snapshot 之前
 - 当前召回策略是基于用户最近 3 条消息提取关键词，并按 `name`、`description`、`metadata.short-description`、正文的 overlap 排序；当请求没有可提取关键词时，会按 project 优先和名称顺序使用默认 skills 预算
+
+## Token Savings Tab
+
+- Settings 左侧导航包含 `Token Savings` tab，用于展示 RTK 的全局 token 压缩收益，不参与 settings draft/save
+- 主进程通过 `apps/desktop/src/main/rtk-token-savings.ts` 执行：
+  - `rtk gain --daily --format json`：读取 summary 与 daily savings
+  - `rtk gain --history`：解析 by-command ranking；recent commands 优先读 `history.db`（`RTK_DB_PATH` 或平台默认路径），回退到 history 文本
+- Renderer 通过 `tokenSavings.get` oRPC 查询数据，页面包含：
+  - `RTK Compression Overview`：tokens saved、commands、input/output tokens、avg savings、avg time 与 compression gauge
+  - `Daily Savings`：最近活跃日期的 saved tokens bar chart
+  - `Savings by Command`：按 saved tokens 排序的命令组
+  - `Recent Commands`：最近 RTK 压缩命令
+  - `Code Agent Tool Plan`：本地 code agent tool surface 的当前设计卡片
+- 若当前环境无法读取 RTK 数据，RPC 返回 `available=false` 与错误信息；UI 展示不可用状态和手动刷新，不阻塞 Settings 其他 tab
 
 ## Providers Tab
 

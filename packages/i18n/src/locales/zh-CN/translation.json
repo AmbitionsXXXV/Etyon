@@ -75,18 +75,18 @@
       "changesView": "变更",
       "closePanel": "关闭 Review 面板",
       "collapseFolders": "收起所有文件夹",
-      "commitAction": "Commit",
+      "commitAction": "提交",
       "commitFilesTitle": "变更文件",
       "commitMessageLabel": "提交信息",
       "commitMessagePlaceholder": "描述本次变更...",
       "commitNoChanges": "当前没有可提交的 Git 变更。",
-      "commitTitle": "Commit",
-      "commitView": "Commit",
+      "commitTitle": "提交",
+      "commitView": "提交",
       "diffTitle": "Git 变更",
       "emptyDiff": "当前没有检测到 Git 变更。",
       "emptyFiles": "当前项目还没有可展示的文件结构。",
       "emptyTrackedDiff": "检测到变更，但当前没有可展示的 tracked diff。",
-      "filesChanged": "{count} files changed",
+      "filesChanged": "{count} 个文件变更",
       "filesTitle": "文件结构",
       "filesView": "文件",
       "loading": "正在加载...",
@@ -96,7 +96,7 @@
       "readFileError": "无法读取文件内容。",
       "refresh": "刷新项目上下文",
       "resizeHandle": "调整 Review 面板宽度",
-      "review": "Review",
+      "review": "审查",
       "statusAdded": "新增",
       "statusDeleted": "删除",
       "statusModified": "修改",
@@ -121,7 +121,7 @@
     "sidebar": {
       "addProject": "添加项目",
       "archiveSession": "归档会话",
-      "empty": "还没有 chat session。点击右上角的 New Chat 开始。",
+      "empty": "还没有聊天会话。点击右上角的 New Chat 开始。",
       "emptyProjects": "还没有项目入口。使用新增项目按钮创建第一个项目会话。",
       "pinSession": "置顶会话",
       "pinnedThreads": "置顶会话",
@@ -142,7 +142,7 @@
         "renameTitle": "重命名项目",
         "unpinProject": "取消置顶项目"
       },
-      "projects": "Projects",
+      "projects": "项目",
       "projectsCount": "{{projectCount}} 个项目 / {{sessionCount}} 个会话",
       "search": "搜索",
       "showLess": "收起",
@@ -341,11 +341,12 @@
     "nav": {
       "colorSchema": "颜色方案",
       "general": "通用",
-      "memory": "Memory",
+      "memory": "长期记忆",
       "network": "网络",
       "providers": "Providers",
       "skills": "Skills",
-      "channels": "Channels",
+      "tokenSavings": "Token 节省",
+      "channels": "频道",
       "userInterface": "用户界面"
     },
     "memory": {
@@ -394,7 +395,7 @@
     },
     "providers": {
       "actions": {
-        "fetch": "Fetch",
+        "fetch": "抓取",
         "fetching": "抓取中...",
         "hideApiKey": "隐藏",
         "showApiKey": "显示"
@@ -427,7 +428,7 @@
         "description": "勾选需要参与运行时解析的模型。",
         "empty": "没有可显示的模型。",
         "search": "搜索模型...",
-        "title": "Models"
+        "title": "模型"
       },
       "provider": {
         "moonshot": {
@@ -437,7 +438,7 @@
           "description": "Z.AI Coding Plan 提供面向 Coding Plan 的 GLM 模型接口。"
         }
       },
-      "search": "搜索 providers...",
+      "search": "搜索供应商...",
       "status": {
         "disabled": "已停用",
         "enabled": "已启用",
@@ -448,23 +449,23 @@
         "needsApiKey": "填写 API Key 后即可抓取模型并参与运行时解析。",
         "ready": "当前配置已准备好抓取模型。"
       },
-      "title": "Providers"
+      "title": "供应商"
     },
     "sidebar": {
       "mode": {
-        "label": "Sidebar Mode",
+        "label": "侧边栏模式",
         "option": {
           "projects": {
             "description": "按真实本地文件夹分组 chat session",
-            "label": "Projects"
+            "label": "项目"
           },
           "simple": {
             "description": "按最近打开时间显示扁平列表",
-            "label": "Simple"
+            "label": "简洁"
           }
         }
       },
-      "title": "Sidebar Settings"
+      "title": "侧边栏设置"
     },
     "skills": {
       "description": "解析全局和 project 级 SKILL.md，在相关请求中把匹配的 instructions 注入模型上下文。",
@@ -474,7 +475,7 @@
       },
       "includeProject": {
         "description": "从当前 chat session 的 project 目录中召回本项目专属 instructions。",
-        "label": "Project skills"
+        "label": "项目 skills"
       },
       "retrieval": {
         "maxContextSkills": {
@@ -484,14 +485,14 @@
         "title": "召回预算"
       },
       "scope": {
-        "global": "Global",
-        "project": "Project"
+        "global": "全局",
+        "project": "项目"
       },
       "status": {
         "detected": "已解析 skills",
         "empty": "还没有解析到 skills。",
-        "global": "Global",
-        "project": "Project",
+        "global": "全局",
+        "project": "项目",
         "title": "Skill 来源",
         "total": "总数"
       },
@@ -524,12 +525,12 @@
           "placeholder": "例如 8734062810"
         },
         "botToken": {
-          "label": "Bot Token",
+          "label": "Bot 令牌",
           "placeholder": "123456:ABC..."
         },
         "botUsername": {
           "description": "群聊里需要先把 {{bot}} 加入目标 chat；Telegram 客户端只有在 bot 已在该 chat 中时才会在 @ 列表提示。",
-          "label": "Bot Username",
+          "label": "Bot 用户名",
           "placeholder": "测试连接后显示 @bot_username"
         },
         "defaultModel": {
@@ -549,7 +550,85 @@
         "failed": "连接失败。",
         "savedSettingsOnly": "保存后，Telegram bridge 才会启动或重启。"
       },
-      "title": "Telegram Bridge"
+      "title": "Telegram 桥接"
+    },
+    "tokenSavings": {
+      "actions": {
+        "refresh": "刷新"
+      },
+      "agentTools": {
+        "cards": {
+          "approval": {
+            "description": "高风险 bash、跨目录写入、网络下载、rm 和 reset 等操作必须进入显式确认。",
+            "status": "Codex / Claude Code 权限模型",
+            "title": "Approval Gate"
+          },
+          "bash": {
+            "description": "核心输入只保留 command、cwd、timeout 和 reason；写操作或网络命令需要 approval。",
+            "status": "Server-side execute",
+            "title": "Bash Command"
+          },
+          "fileContext": {
+            "description": "文件读取、rg 搜索、项目快照和 Git diff 拆成只读 tools，并控制 token 预算和摘要。",
+            "status": "优先自动执行",
+            "title": "Read / Search"
+          },
+          "fileMutation": {
+            "description": "写文件统一走 patch tool，提供 diff preview、可见 tool result 和后续测试建议。",
+            "status": "用户可见结果",
+            "title": "Edit / Patch"
+          },
+          "rtk": {
+            "description": "Shell 工作默认先进入 RTK，保留 raw output 逃逸口，并把 savings 回写到这个面板。",
+            "status": "默认命令入口",
+            "title": "RTK 命令路由"
+          },
+          "toolLoop": {
+            "description": "AI SDK 侧用 ToolLoopAgent 或 streamText + stopWhen 承接多步 tool 调用和类型化结果。",
+            "status": "基于 AI SDK v6",
+            "title": "ToolLoopAgent"
+          }
+        },
+        "description": "当前给本地 code agent 准备的 tool surface，基于 AI SDK tool calling 和终端 agent 权限模型。",
+        "title": "Code Agent 工具计划"
+      },
+      "byCommand": {
+        "description": "按累计节省 tokens 排序的 RTK 命令组。",
+        "empty": "还没有命令节省数据。",
+        "title": "按命令节省"
+      },
+      "daily": {
+        "description": "来自 RTK daily statistics 的活跃日期 token 节省量。",
+        "empty": "还没有 daily savings 数据。",
+        "title": "每日节省"
+      },
+      "metrics": {
+        "averageSavings": "平均节省",
+        "averageTime": "平均耗时",
+        "commands": "命令数",
+        "compressionRate": "压缩率",
+        "inputTokens": "输入 Tokens",
+        "outputTokens": "输出 Tokens",
+        "tokensSaved": "节省 Tokens"
+      },
+      "overview": {
+        "description": "从 RTK 命令输出压缩读取全局 token 节省情况。",
+        "title": "RTK 压缩概览"
+      },
+      "recent": {
+        "command": "命令",
+        "description": "最近经过 RTK 压缩的命令执行记录。",
+        "empty": "还没有 recent commands 数据。",
+        "reduction": "压缩率",
+        "saved": "节省",
+        "time": "时间",
+        "title": "最近命令"
+      },
+      "status": {
+        "error": "无法读取 RTK savings。",
+        "loading": "正在加载 RTK savings...",
+        "unavailable": "RTK savings 不可用"
+      }
     },
     "theme": {
       "appearance": "外观",

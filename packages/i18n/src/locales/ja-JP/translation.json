@@ -345,6 +345,7 @@
       "network": "ネットワーク",
       "providers": "Providers",
       "skills": "Skills",
+      "tokenSavings": "Token Savings",
       "channels": "Channels",
       "userInterface": "ユーザーインターフェース"
     },
@@ -550,6 +551,84 @@
         "savedSettingsOnly": "保存すると Telegram bridge が起動または再起動します。"
       },
       "title": "Telegram Bridge"
+    },
+    "tokenSavings": {
+      "actions": {
+        "refresh": "更新"
+      },
+      "agentTools": {
+        "cards": {
+          "approval": {
+            "description": "高リスクの bash、ディレクトリ外書き込み、ネットワークダウンロード、rm、reset は明示的な承認に回します。",
+            "status": "Codex / Claude Code 権限モデル",
+            "title": "Approval Gate"
+          },
+          "bash": {
+            "description": "中核入力は command、cwd、timeout、reason に絞り、変更系またはネットワーク系コマンドは approval を要求します。",
+            "status": "Server-side execute",
+            "title": "Bash Command"
+          },
+          "fileContext": {
+            "description": "ファイル読み取り、rg 検索、project snapshot、Git diff を読み取り専用 tools に分け、token 予算と要約を付けます。",
+            "status": "自動実行を優先",
+            "title": "Read / Search"
+          },
+          "fileMutation": {
+            "description": "ファイル変更は patch tool に統一し、diff preview、表示可能な tool result、次のテスト案を返します。",
+            "status": "ユーザーに見える結果",
+            "title": "Edit / Patch"
+          },
+          "rtk": {
+            "description": "Shell 作業は既定で RTK を通し、raw output の逃げ道を残し、savings をこの panel に戻します。",
+            "status": "既定の command entry",
+            "title": "RTK Command Router"
+          },
+          "toolLoop": {
+            "description": "AI SDK 側では ToolLoopAgent または streamText + stopWhen で複数 step の tool calls と型付き結果を扱います。",
+            "status": "AI SDK v6 ベース",
+            "title": "ToolLoopAgent"
+          }
+        },
+        "description": "ローカル code agent 向けの現在の tool surface 案です。AI SDK tool calling と terminal agent の権限モデルを前提にしています。",
+        "title": "Code Agent Tool Plan"
+      },
+      "byCommand": {
+        "description": "累計 saved tokens が多い RTK command groups。",
+        "empty": "command savings はまだありません。",
+        "title": "Savings by Command"
+      },
+      "daily": {
+        "description": "RTK daily statistics からの active day ごとの saved tokens。",
+        "empty": "daily savings はまだありません。",
+        "title": "Daily Savings"
+      },
+      "metrics": {
+        "averageSavings": "平均節約",
+        "averageTime": "平均時間",
+        "commands": "Commands",
+        "compressionRate": "compression rate",
+        "inputTokens": "Input Tokens",
+        "outputTokens": "Output Tokens",
+        "tokensSaved": "Tokens Saved"
+      },
+      "overview": {
+        "description": "RTK command output compression から読み取ったグローバル token savings。",
+        "title": "RTK Compression Overview"
+      },
+      "recent": {
+        "command": "Command",
+        "description": "最近 RTK で圧縮された command executions。",
+        "empty": "recent commands はまだありません。",
+        "reduction": "Reduction",
+        "saved": "Saved",
+        "time": "Time",
+        "title": "Recent Commands"
+      },
+      "status": {
+        "error": "RTK savings を読み取れません。",
+        "loading": "RTK savings を読み込み中...",
+        "unavailable": "RTK savings unavailable"
+      }
     },
     "theme": {
       "appearance": "外観",

@@ -7,6 +7,12 @@
   "i18n-ally.enabledFrameworks": ["react-i18next", "i18next"],
   "emmet.showExpandedAbbreviation": "never",
   "typescript.tsdk": "node_modules/typescript/lib",
+  "tailwindCSS.experimental.configFile": "packages/ui/src/styles/globals.css",
+  "editor.quickSuggestions": {
+    "comments": "off",
+    "other": "on",
+    "strings": "on"
+  },
   "[css]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },

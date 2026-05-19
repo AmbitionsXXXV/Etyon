@@ -2,6 +2,7 @@ import type { TranslationKey } from "@etyon/i18n"
 import {
   BrainIcon,
   ChatBotIcon,
+  ChartLineData02Icon,
   ComputerIcon,
   InternetIcon,
   NoteEditIcon,
@@ -18,6 +19,7 @@ export type SettingsSectionId =
   | "network"
   | "providers"
   | "skills"
+  | "token-savings"
   | "user-interface"
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
@@ -28,6 +30,7 @@ export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   network: "settings.nav.network",
   providers: "settings.nav.providers",
   skills: "settings.nav.skills",
+  "token-savings": "settings.nav.tokenSavings",
   "user-interface": "settings.nav.userInterface"
 } as const satisfies Record<SettingsSectionId, TranslationKey>
 
@@ -54,6 +57,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: PuzzleIcon,
     id: "skills"
+  },
+  {
+    icon: ChartLineData02Icon,
+    id: "token-savings"
   },
   {
     icon: PaintBrush01Icon,

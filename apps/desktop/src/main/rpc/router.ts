@@ -41,6 +41,7 @@ import {
   TelegramTestConnectionOutputSchema,
   TestProxyInputSchema,
   TestProxyOutputSchema,
+  RtkTokenSavingsOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
@@ -72,6 +73,7 @@ import {
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
+import { getRtkTokenSavings } from "@/main/rtk-token-savings"
 import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import {
@@ -142,6 +144,10 @@ const skillsList = rpc
       })
     }
   })
+
+const tokenSavingsGet = rpc
+  .output(RtkTokenSavingsOutputSchema)
+  .handler(() => getRtkTokenSavings())
 
 const chatSessionsCreate = rpc
   .input(CreateChatSessionInputSchema)
@@ -465,6 +471,9 @@ export const router = {
   },
   telegram: {
     testConnection: telegramTestConnection
+  },
+  tokenSavings: {
+    get: tokenSavingsGet
   }
 }
 

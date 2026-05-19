@@ -40,12 +40,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.1.3",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "heroui-pro",
-      "@heroui-pro/react",
-      "heroui-native-pro"
-    ]
-  }
+  "packageManager": "pnpm@11.1.3"
 }

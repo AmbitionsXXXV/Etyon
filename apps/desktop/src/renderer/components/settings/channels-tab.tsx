@@ -28,6 +28,12 @@ import {
 const BOT_FATHER_LINK_PLACEHOLDER = "{{LINK}}"
 const BOT_FATHER_URL = "https://t.me/BotFather"
 const TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE = "__global_default_model__"
+const TELEGRAM_FIELD_CLASS_NAME =
+  "border-border/80 bg-background/80 shadow-sm hover:bg-background focus-visible:border-primary/60"
+const TELEGRAM_TEXTAREA_CLASS_NAME = cn(
+  "mx-0.5 min-h-24 resize-none",
+  TELEGRAM_FIELD_CLASS_NAME
+)
 
 const openExternalUrl = (url: string): void => {
   window.electron.ipcRenderer.invoke("open-external-url", url)
@@ -172,15 +178,16 @@ const TelegramDefaultModelSelect = ({
         onChange={handleChange}
         placeholder={t("settings.telegram.fields.defaultModel.placeholder")}
         value={selectedValue}
+        variant="primary"
       >
         <Label className="text-xs font-medium">
           {t("settings.telegram.fields.defaultModel.label")}
         </Label>
-        <Select.Trigger>
+        <Select.Trigger className={TELEGRAM_FIELD_CLASS_NAME}>
           <Select.Value />
           <Select.Indicator />
         </Select.Trigger>
-        <Select.Popover>
+        <Select.Popover className="border border-border/80 bg-popover shadow-overlay">
           <ListBox>
             <ListBox.Item
               id={TELEGRAM_DEFAULT_MODEL_INHERIT_VALUE}
@@ -381,10 +388,11 @@ export const ChannelsTab = ({
           </div>
           <Input
             autoComplete="off"
-            className="mx-0.5"
+            className={cn("mx-0.5 w-full", TELEGRAM_FIELD_CLASS_NAME)}
             onChange={handleBotTokenChange}
             placeholder={t("settings.telegram.fields.botToken.placeholder")}
             type={isBotTokenVisible ? "text" : "password"}
+            variant="primary"
             value={normalizedTelegram.botToken}
           />
         </div>
@@ -394,9 +402,10 @@ export const ChannelsTab = ({
             {t("settings.telegram.fields.botUsername.label")}
           </label>
           <Input
-            className="mx-0.5"
+            className={cn("mx-0.5", TELEGRAM_FIELD_CLASS_NAME)}
             placeholder={t("settings.telegram.fields.botUsername.placeholder")}
             readOnly
+            variant="primary"
             value={botMention}
           />
           <p className="text-[0.6875rem] leading-5 text-muted-foreground">
@@ -418,7 +427,7 @@ export const ChannelsTab = ({
               {t("settings.telegram.fields.allowedUserIds.label")}
             </label>
             <TextArea
-              className="mx-0.5 min-h-24"
+              className={TELEGRAM_TEXTAREA_CLASS_NAME}
               onChange={handleAllowedUserIdsChange}
               placeholder={t(
                 "settings.telegram.fields.allowedUserIds.placeholder"
@@ -436,7 +445,7 @@ export const ChannelsTab = ({
               {t("settings.telegram.fields.allowedChatIds.label")}
             </label>
             <TextArea
-              className="mx-0.5 min-h-24"
+              className={TELEGRAM_TEXTAREA_CLASS_NAME}
               onChange={handleAllowedChatIdsChange}
               placeholder={t(
                 "settings.telegram.fields.allowedChatIds.placeholder"

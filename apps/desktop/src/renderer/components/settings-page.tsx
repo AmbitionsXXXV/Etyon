@@ -47,6 +47,7 @@ import { MemoryTab } from "./settings/memory-tab"
 import { NetworkTab } from "./settings/network-tab"
 import { ProvidersTab } from "./settings/providers-tab"
 import { SkillsTab } from "./settings/skills-tab"
+import { TokenSavingsTab } from "./settings/token-savings-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
@@ -74,6 +75,7 @@ const SETTINGS_SECTION_IDS = new Set<string>([
   "network",
   "providers",
   "skills",
+  "token-savings",
   "user-interface"
 ])
 
@@ -545,6 +547,8 @@ export const SettingsPage = ({
                   skills={draft.skills}
                 />
               )}
+
+              {activeSection === "token-savings" && <TokenSavingsTab />}
 
               {activeSection === "channels" && (
                 <ChannelsTab

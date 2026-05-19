@@ -242,12 +242,12 @@ export const ColorSchemaTab = ({
 
           <div className="mt-6">
             {themes.length === 0 ? (
-              <Empty className="min-h-56 rounded-2xl border border-dashed border-border bg-background/40">
+              <Empty className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background/40 text-center">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <HugeiconsIcon icon={PaintBrush01Icon} />
                   </EmptyMedia>
-                  <EmptyTitle>
+                  <EmptyTitle className="text-accent">
                     {t("settings.customThemes.empty.title")}
                   </EmptyTitle>
                   <EmptyDescription>
