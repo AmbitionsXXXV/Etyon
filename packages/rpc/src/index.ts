@@ -61,6 +61,7 @@ export type {
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export {
   ListMemoryEntriesInputSchema,
+  MEMORY_TOOL_MODEL_AUTO_VALUE,
   MemoryEntriesOutputSchema,
   MemoryEntrySchema,
   MemoryKindSchema,
