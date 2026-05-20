@@ -93,6 +93,20 @@ export const createMemoryEmbeddingProvider = (
   return createOpenAiEmbeddingProvider(settings, modelId)
 }
 
+export const embedMemoryQuery = ({
+  input,
+  settings
+}: {
+  input: string
+  settings: AppSettings
+}): Promise<number[]> => {
+  try {
+    return createMemoryEmbeddingProvider(settings).embed(input)
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
 export const upsertMemoryEmbedding = async ({
   db,
   entry,

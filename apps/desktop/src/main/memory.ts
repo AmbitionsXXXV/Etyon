@@ -8,7 +8,14 @@ import { and, count, desc, eq, isNull, max } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import { memoryEntries } from "@/main/db/schema"
-import { upsertMemoryEmbedding } from "@/main/memory/embeddings"
+import {
+  embedMemoryQuery,
+  upsertMemoryEmbedding
+} from "@/main/memory/embeddings"
+import {
+  formatMemoryPromptEntry,
+  retrieveMemoryEntries
+} from "@/main/memory/retrieval"
 import {
   rewriteMemoryQuery,
   summarizeMemoryContent
@@ -17,9 +24,6 @@ import { getSettings } from "@/main/settings"
 
 const MEMORY_ENTRY_MAX_CHARS = 6000
 const MEMORY_ENTRY_MAX_MESSAGES = 20
-const MEMORY_PROMPT_ENTRY_MAX_CHARS = 1200
-const MEMORY_RETRIEVAL_CANDIDATE_LIMIT = 200
-const TOKEN_PATTERN = /[\p{L}\p{N}_-]+/gu
 const WHITESPACE_PATTERN = /\s+/gu
 
 const ROLE_LABELS: Record<string, string> = {
@@ -46,14 +50,6 @@ const truncateEnd = (content: string, maxChars: number): string => {
   }
 
   return content.slice(content.length - maxChars).trim()
-}
-
-const truncateStart = (content: string, maxChars: number): string => {
-  if (content.length <= maxChars) {
-    return content
-  }
-
-  return `${content.slice(0, maxChars - 3).trim()}...`
 }
 
 const readTextValues = (value: unknown): string[] => {
@@ -143,88 +139,6 @@ const buildMemoryEntryContent = ({
     projectPath: projectPath ?? null,
     settings: appSettings
   })
-}
-
-const tokenize = (value: string): Set<string> =>
-  new Set(
-    Array.from(value.toLowerCase().matchAll(TOKEN_PATTERN), ([token]) => token)
-  )
-
-const scoreMemoryEntry = ({
-  entry,
-  queryTokens
-}: {
-  entry: MemoryEntry
-  queryTokens: Set<string>
-}): number => {
-  if (queryTokens.size === 0) {
-    return 0
-  }
-
-  const contentTokens = tokenize(entry.content)
-  let overlap = 0
-
-  for (const token of queryTokens) {
-    if (contentTokens.has(token)) {
-      overlap += 1
-    }
-  }
-
-  return overlap * 10 + Math.min(entry.accessCount, 10)
-}
-
-const canUseEntryForScope = ({
-  entry,
-  projectPath,
-  settings
-}: {
-  entry: MemoryEntry
-  projectPath: string | null
-  settings: MemorySettings
-}): boolean => {
-  if (entry.source === "chatbot" && !settings.includeChatbot) {
-    return false
-  }
-
-  if (settings.shareAcrossProjects) {
-    return true
-  }
-
-  if (!entry.projectPath) {
-    return projectPath === null || entry.scope !== "project"
-  }
-
-  return entry.projectPath === projectPath
-}
-
-const formatMemoryPromptEntry = (entry: MemoryEntry, index: number): string =>
-  [
-    `[${index + 1}] scope=${entry.scope} source=${entry.source}`,
-    entry.projectPath ? `project=${entry.projectPath}` : "",
-    `updated=${entry.updatedAt}`,
-    truncateStart(entry.content, MEMORY_PROMPT_ENTRY_MAX_CHARS)
-  ]
-    .filter(Boolean)
-    .join("\n")
-
-const markMemoryEntriesAccessed = async ({
-  db,
-  entries
-}: {
-  db: AppDatabase
-  entries: MemoryEntry[]
-}): Promise<void> => {
-  const now = new Date().toISOString()
-
-  for (const entry of entries) {
-    await db
-      .update(memoryEntries)
-      .set({
-        accessCount: entry.accessCount + 1,
-        lastAccessedAt: now
-      })
-      .where(eq(memoryEntries.id, entry.id))
-  }
 }
 
 const upsertMemoryEntry = async ({
@@ -361,48 +275,6 @@ export const getMemoryStats = async (
   }
 }
 
-export const retrieveMemoryEntries = async ({
-  db,
-  projectPath,
-  query,
-  settings
-}: {
-  db: AppDatabase
-  projectPath: string | null
-  query: string
-  settings: MemorySettings
-}): Promise<MemoryEntry[]> => {
-  if (!settings.enabled || !settings.autoRetrieve) {
-    return []
-  }
-
-  const queryTokens = tokenize(query)
-  const entries = await listMemoryEntries(db, MEMORY_RETRIEVAL_CANDIDATE_LIMIT)
-  const rankedEntries = entries
-    .filter((entry) => canUseEntryForScope({ entry, projectPath, settings }))
-    .map((entry) => ({
-      entry,
-      score: scoreMemoryEntry({ entry, queryTokens })
-    }))
-    .filter(({ score }) => queryTokens.size === 0 || score > 0)
-    .toSorted((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score
-      }
-
-      return right.entry.updatedAt.localeCompare(left.entry.updatedAt)
-    })
-    .slice(0, settings.maxRetrievedMemories)
-    .map(({ entry }) => entry)
-
-  await markMemoryEntriesAccessed({
-    db,
-    entries: rankedEntries
-  })
-
-  return rankedEntries
-}
-
 export const buildMemorySystemPrompt = async ({
   db,
   projectPath,
@@ -422,10 +294,16 @@ export const buildMemorySystemPrompt = async ({
     query,
     settings: appSettings
   })
+  const queryEmbedding = await embedMemoryQuery({
+    input: effectiveQuery,
+    settings: appSettings
+  }).catch(() => null)
   const entries = await retrieveMemoryEntries({
     db,
+    embeddingModel: appSettings.memory.embeddingModel,
     projectPath,
     query: effectiveQuery,
+    queryEmbedding,
     settings
   })
 
