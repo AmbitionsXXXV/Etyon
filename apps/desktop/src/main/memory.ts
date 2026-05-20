@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   ChatSessionSummary,
   MemoryEntry,
   MemorySettings
@@ -7,6 +8,11 @@ import { and, count, desc, eq, isNull, max } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import { memoryEntries } from "@/main/db/schema"
+import {
+  rewriteMemoryQuery,
+  summarizeMemoryContent
+} from "@/main/memory/summarization"
+import { getSettings } from "@/main/settings"
 
 const MEMORY_ENTRY_MAX_CHARS = 6000
 const MEMORY_ENTRY_MAX_MESSAGES = 20
@@ -82,7 +88,7 @@ const getMessageText = (message: MemoryMessageLike): string =>
 
 const getRoleLabel = (role: string): string => ROLE_LABELS[role] ?? role
 
-const buildMemoryEntryContent = ({
+const buildDeterministicMemoryEntryContent = ({
   heading,
   messages,
   projectPath
@@ -111,6 +117,31 @@ const buildMemoryEntryContent = ({
       .join("\n"),
     MEMORY_ENTRY_MAX_CHARS
   )
+}
+
+const buildMemoryEntryContent = ({
+  appSettings,
+  heading,
+  messages,
+  projectPath
+}: {
+  appSettings: AppSettings
+  heading: string
+  messages: MemoryMessageLike[]
+  projectPath?: null | string
+}): Promise<string> => {
+  const fallbackContent = buildDeterministicMemoryEntryContent({
+    heading,
+    messages,
+    projectPath
+  })
+
+  return summarizeMemoryContent({
+    fallbackContent,
+    heading,
+    projectPath: projectPath ?? null,
+    settings: appSettings
+  })
 }
 
 const tokenize = (value: string): Set<string> =>
@@ -362,10 +393,18 @@ export const buildMemorySystemPrompt = async ({
   query: string
   settings: MemorySettings
 }): Promise<string> => {
+  const appSettings = {
+    ...getSettings(),
+    memory: settings
+  }
+  const effectiveQuery = await rewriteMemoryQuery({
+    query,
+    settings: appSettings
+  })
   const entries = await retrieveMemoryEntries({
     db,
     projectPath,
-    query,
+    query: effectiveQuery,
     settings
   })
 
@@ -380,7 +419,7 @@ export const buildMemorySystemPrompt = async ({
   ].join("\n\n")
 }
 
-export const upsertChatSessionMemoryEntry = ({
+export const upsertChatSessionMemoryEntry = async ({
   db,
   messages,
   session
@@ -388,9 +427,12 @@ export const upsertChatSessionMemoryEntry = ({
   db: AppDatabase
   messages: MemoryMessageLike[]
   session: ChatSessionSummary
-}): Promise<MemoryEntry | undefined> =>
-  upsertMemoryEntry({
-    content: buildMemoryEntryContent({
+}): Promise<MemoryEntry | undefined> => {
+  const appSettings = getSettings()
+
+  return upsertMemoryEntry({
+    content: await buildMemoryEntryContent({
+      appSettings,
       heading: "Chat session memory",
       messages,
       projectPath: session.projectPath
@@ -403,8 +445,9 @@ export const upsertChatSessionMemoryEntry = ({
     source: "chat-session",
     sourceId: session.id
   })
+}
 
-export const upsertChatbotMemoryEntry = ({
+export const upsertChatbotMemoryEntry = async ({
   chatbotId,
   db,
   messages
@@ -414,7 +457,8 @@ export const upsertChatbotMemoryEntry = ({
   messages: MemoryMessageLike[]
 }): Promise<MemoryEntry | undefined> =>
   upsertMemoryEntry({
-    content: buildMemoryEntryContent({
+    content: await buildMemoryEntryContent({
+      appSettings: getSettings(),
       heading: `Chatbot memory: ${chatbotId}`,
       messages
     }),
