@@ -8,6 +8,7 @@ import { and, count, desc, eq, isNull, max } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import { memoryEntries } from "@/main/db/schema"
+import { upsertMemoryEmbedding } from "@/main/memory/embeddings"
 import {
   rewriteMemoryQuery,
   summarizeMemoryContent
@@ -312,6 +313,26 @@ const upsertMemoryEntry = async ({
   return createdEntry
 }
 
+const upsertMemoryEntryEmbedding = async ({
+  db,
+  entry,
+  settings
+}: {
+  db: AppDatabase
+  entry: MemoryEntry
+  settings: AppSettings
+}): Promise<void> => {
+  try {
+    await upsertMemoryEmbedding({
+      db,
+      entry,
+      settings
+    })
+  } catch {
+    // Embeddings are best-effort until local model downloads and diagnostics land.
+  }
+}
+
 export const listMemoryEntries = (
   db: AppDatabase,
   limit = 50
@@ -430,7 +451,7 @@ export const upsertChatSessionMemoryEntry = async ({
 }): Promise<MemoryEntry | undefined> => {
   const appSettings = getSettings()
 
-  return upsertMemoryEntry({
+  const entry = await upsertMemoryEntry({
     content: await buildMemoryEntryContent({
       appSettings,
       heading: "Chat session memory",
@@ -445,6 +466,16 @@ export const upsertChatSessionMemoryEntry = async ({
     source: "chat-session",
     sourceId: session.id
   })
+
+  if (entry) {
+    await upsertMemoryEntryEmbedding({
+      db,
+      entry,
+      settings: appSettings
+    })
+  }
+
+  return entry
 }
 
 export const upsertChatbotMemoryEntry = async ({
@@ -455,10 +486,11 @@ export const upsertChatbotMemoryEntry = async ({
   chatbotId: string
   db: AppDatabase
   messages: MemoryMessageLike[]
-}): Promise<MemoryEntry | undefined> =>
-  upsertMemoryEntry({
+}): Promise<MemoryEntry | undefined> => {
+  const appSettings = getSettings()
+  const entry = await upsertMemoryEntry({
     content: await buildMemoryEntryContent({
-      appSettings: getSettings(),
+      appSettings,
       heading: `Chatbot memory: ${chatbotId}`,
       messages
     }),
@@ -470,3 +502,14 @@ export const upsertChatbotMemoryEntry = async ({
     source: "chatbot",
     sourceId: chatbotId
   })
+
+  if (entry) {
+    await upsertMemoryEntryEmbedding({
+      db,
+      entry,
+      settings: appSettings
+    })
+  }
+
+  return entry
+}

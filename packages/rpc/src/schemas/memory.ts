@@ -57,11 +57,42 @@ export const MemoryStatsOutputSchema = z.object({
   totalEntries: z.number().int().nonnegative()
 })
 
+export const MemoryEmbeddingModelSourceSchema = z.enum(["default", "local"])
+
+export const MemoryEmbeddingModelStatusSchema = z.enum([
+  "available",
+  "downloading",
+  "missing"
+])
+
+export const MemoryEmbeddingModelSchema = z.object({
+  downloadSize: z.string().nullable(),
+  id: z.string(),
+  isDefault: z.boolean(),
+  label: z.string(),
+  source: MemoryEmbeddingModelSourceSchema,
+  status: MemoryEmbeddingModelStatusSchema
+})
+
+export const MemoryEmbeddingModelsOutputSchema = z.object({
+  models: z.array(MemoryEmbeddingModelSchema)
+})
+
 export type ListMemoryEntriesInput = z.infer<
   typeof ListMemoryEntriesInputSchema
 >
 export type MemoryEntriesOutput = z.infer<typeof MemoryEntriesOutputSchema>
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>
+export type MemoryEmbeddingModel = z.infer<typeof MemoryEmbeddingModelSchema>
+export type MemoryEmbeddingModelSource = z.infer<
+  typeof MemoryEmbeddingModelSourceSchema
+>
+export type MemoryEmbeddingModelStatus = z.infer<
+  typeof MemoryEmbeddingModelStatusSchema
+>
+export type MemoryEmbeddingModelsOutput = z.infer<
+  typeof MemoryEmbeddingModelsOutputSchema
+>
 export type MemoryKind = z.infer<typeof MemoryKindSchema>
 export type MemoryScope = z.infer<typeof MemoryScopeSchema>
 export type MemorySettings = z.infer<typeof MemorySettingsSchema>

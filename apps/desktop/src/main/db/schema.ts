@@ -105,9 +105,31 @@ export const memoryEntries = sqliteTable(
   })
 )
 
+export const memoryEmbeddings = sqliteTable(
+  "memory_embeddings",
+  {
+    contentHash: text("content_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+    dimensions: integer("dimensions").notNull(),
+    memoryId: text("memory_id")
+      .notNull()
+      .references(() => memoryEntries.id, { onDelete: "cascade" }),
+    model: text("model").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    vectorJson: text("vector_json").notNull()
+  },
+  (table) => ({
+    modelIdx: index("memory_embeddings_model_idx").on(table.model),
+    pk: primaryKey({
+      columns: [table.memoryId, table.model]
+    })
+  })
+)
+
 export const schema = {
   chatMessages,
   chatSessionMemories,
   chatSessions,
+  memoryEmbeddings,
   memoryEntries
 } as const

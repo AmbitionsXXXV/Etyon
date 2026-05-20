@@ -62,6 +62,10 @@ export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export {
   ListMemoryEntriesInputSchema,
   MEMORY_TOOL_MODEL_AUTO_VALUE,
+  MemoryEmbeddingModelSchema,
+  MemoryEmbeddingModelSourceSchema,
+  MemoryEmbeddingModelStatusSchema,
+  MemoryEmbeddingModelsOutputSchema,
   MemoryEntriesOutputSchema,
   MemoryEntrySchema,
   MemoryKindSchema,
@@ -72,6 +76,10 @@ export {
 } from "./schemas/memory"
 export type {
   ListMemoryEntriesInput,
+  MemoryEmbeddingModel,
+  MemoryEmbeddingModelSource,
+  MemoryEmbeddingModelStatus,
+  MemoryEmbeddingModelsOutput,
   MemoryEntriesOutput,
   MemoryEntry,
   MemoryKind,

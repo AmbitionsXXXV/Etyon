@@ -17,6 +17,7 @@ import {
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
   ListMemoryEntriesInputSchema,
+  MemoryEmbeddingModelsOutputSchema,
   MemoryEntriesOutputSchema,
   MemoryStatsOutputSchema,
   ListProjectSnapshotFilesInputSchema,
@@ -79,6 +80,7 @@ import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { getMemoryStats, listMemoryEntries } from "@/main/memory"
+import { listMemoryEmbeddingModels } from "@/main/memory/embedding-models"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import {
   listBuiltInPlugins,
@@ -172,6 +174,10 @@ const memoryList = rpc
 const memoryStats = rpc
   .output(MemoryStatsOutputSchema)
   .handler(({ context }) => getMemoryStats(context.db))
+
+const memoryEmbeddingModelsList = rpc
+  .output(MemoryEmbeddingModelsOutputSchema)
+  .handler(() => listMemoryEmbeddingModels())
 
 const skillsList = rpc
   .output(SkillsListOutputSchema)
@@ -490,6 +496,9 @@ export const router = {
     emit: loggerEmit
   },
   memory: {
+    embeddingModels: {
+      list: memoryEmbeddingModelsList
+    },
     list: memoryList,
     stats: memoryStats
   },
