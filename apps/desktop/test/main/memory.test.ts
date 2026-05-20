@@ -166,4 +166,36 @@ describe("memory", () => {
     expect(sharedPrompt).toContain("lifecycle retrieval")
     expect(projectOnlyPrompt).not.toContain("lifecycle retrieval")
   })
+
+  it("skips retrieval when auto retrieve is disabled", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: "/tmp/etyon-memory-auto-retrieve"
+    })
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages: [
+        createUserMessage(
+          "auto-retrieve-message",
+          "Remember that the autoskip marker should not be injected when automatic retrieval is disabled."
+        )
+      ],
+      sessionId: session.id
+    })
+
+    const prompt = await buildMemorySystemPrompt({
+      db: getDb(),
+      projectPath: session.projectPath,
+      query: "autoskip marker",
+      settings: {
+        ...enabledMemorySettings,
+        autoRetrieve: false
+      }
+    })
+
+    expect(prompt).toBe("")
+  })
 })

@@ -320,7 +320,7 @@ export const retrieveMemoryEntries = async ({
   query: string
   settings: MemorySettings
 }): Promise<MemoryEntry[]> => {
-  if (!settings.enabled) {
+  if (!settings.enabled || !settings.autoRetrieve) {
     return []
   }
 
