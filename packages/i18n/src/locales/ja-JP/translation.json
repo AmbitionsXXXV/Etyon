@@ -354,16 +354,46 @@
     },
     "memory": {
       "description": "圧縮された長期 memory をモデルのコンテキスト外に保存し、chat sessions、projects、Telegram chatbot が関連する記憶を共有できるようにします。",
+      "embedding": {
+        "change": "変更",
+        "defaultDescription": "空欄の場合は既定の embedding model を使用します。",
+        "defaultLabel": "既定モデル",
+        "description": "セマンティック検索に使う embedding model です。空欄の場合は既定の text-embedding-3-small を使用します。",
+        "installed": "インストール済み",
+        "localDescription": "ローカル embedding model でセマンティック検索を行います。",
+        "localModels": "ローカルモデル",
+        "missing": "ダウンロードが必要",
+        "searchPlaceholder": "embedding models を検索...",
+        "title": "Embedding Model"
+      },
       "includeChatbot": {
         "description": "chatbot の会話が同じ長期 memory を読み書きできるようにします。",
         "label": "chatbot memory を接続"
       },
       "retrieval": {
+        "autoRetrieve": {
+          "description": "各会話の前に関連 memories を自動検索して注入します。",
+          "label": "Auto Retrieve Memories"
+        },
         "maxContextEntries": {
           "description": "モデルリクエストに注入できる一致 memory の最大件数を制御します。",
           "label": "コンテキスト件数"
         },
-        "title": "検索予算"
+        "maxRetrievedMemories": {
+          "description": "会話コンテキストへ注入する関連 memories の最大件数です（1-20）。",
+          "label": "Max Retrieved Memories: {{count}}"
+        },
+        "queryRewriting": {
+          "description": "Memory Tool Model を使い、memories 検索前にユーザーメッセージを最適化します。",
+          "label": "Query Rewriting"
+        },
+        "similarityThreshold": {
+          "description": "Memory を検索結果に含めるための最小類似度です。値が高いほど厳密に一致します。",
+          "label": "Similarity Threshold: {{value}}",
+          "loose": "ゆるい (0%)",
+          "strict": "厳密 (100%)"
+        },
+        "title": "Memory Retrieval"
       },
       "shareAcrossProjects": {
         "description": "リクエストに一致する場合、ある project で作成された memory を別の project でも使えるようにします。",
@@ -376,7 +406,22 @@
         "title": "Memory ストア",
         "totalEntries": "エントリ総数"
       },
-      "title": "長期 Memory"
+      "summarization": {
+        "autoSummarize": {
+          "description": "Memory へ書き込む前に、会話を長期的に有効な決定、事実、手順へ要約します。",
+          "label": "Memory Summarization"
+        },
+        "description": "Memory Tool Model を使って、長期的に有効な要約、決定、事実を抽出します。",
+        "title": "Memory Summarization"
+      },
+      "title": "長期 Memory",
+      "toolModel": {
+        "auto": "Auto",
+        "autoDescription": "有効な providers から、性能が高く低コストなモデルを選びます。",
+        "description": "memory summarization、query rewriting、今後の auto compact summary に使用します。",
+        "label": "Memory Tool Model",
+        "unavailable": "選択したモデルは利用できません"
+      }
     },
     "network": {
       "proxy": {

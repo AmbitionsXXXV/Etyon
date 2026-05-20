@@ -354,16 +354,46 @@
     },
     "memory": {
       "description": "把精简后的长期记忆保存在模型上下文之外，让 chat sessions、projects 和 Telegram chatbot 能共享相关记忆。",
+      "embedding": {
+        "change": "更换",
+        "defaultDescription": "留空时使用默认 embedding model。",
+        "defaultLabel": "默认模型",
+        "description": "用于语义搜索的 embedding model。留空时使用默认的 text-embedding-3-small。",
+        "installed": "已安装",
+        "localDescription": "使用本地 embedding model 进行语义搜索。",
+        "localModels": "本地模型",
+        "missing": "需要下载",
+        "searchPlaceholder": "搜索 embedding models...",
+        "title": "Embedding Model"
+      },
       "includeChatbot": {
         "description": "允许 chatbot 对话读取并写入同一套长期记忆。",
         "label": "联通 chatbot memory"
       },
       "retrieval": {
+        "autoRetrieve": {
+          "description": "每次对话前自动搜索并注入相关 memories。",
+          "label": "Auto Retrieve Memories"
+        },
         "maxContextEntries": {
           "description": "控制每次模型请求最多注入多少条匹配的 memory。",
           "label": "上下文条数"
         },
-        "title": "检索预算"
+        "maxRetrievedMemories": {
+          "description": "每次对话上下文最多注入多少条相关 memories（1-20）。",
+          "label": "Max Retrieved Memories: {{count}}"
+        },
+        "queryRewriting": {
+          "description": "使用 Memory Tool Model 在搜索 memories 前优化用户消息。",
+          "label": "Query Rewriting"
+        },
+        "similarityThreshold": {
+          "description": "Memory 被检索出来所需的最低相似度。数值越高，匹配越严格。",
+          "label": "Similarity Threshold: {{value}}",
+          "loose": "宽松 (0%)",
+          "strict": "严格 (100%)"
+        },
+        "title": "Memory Retrieval"
       },
       "shareAcrossProjects": {
         "description": "当请求匹配时，允许一个 project 中生成的 memory 被另一个 project 使用。",
@@ -376,7 +406,22 @@
         "title": "Memory 存储",
         "totalEntries": "条目总数"
       },
-      "title": "长期 Memory"
+      "summarization": {
+        "autoSummarize": {
+          "description": "写入 memory 前，把对话总结为长期有效的决策、事实和流程。",
+          "label": "Memory Summarization"
+        },
+        "description": "使用 Memory Tool Model 提取长期有效的总结、决策和事实。",
+        "title": "Memory Summarization"
+      },
+      "title": "长期 Memory",
+      "toolModel": {
+        "auto": "Auto",
+        "autoDescription": "从已启用的 providers 中选择能力较强、成本较低的模型。",
+        "description": "用于 memory summarization、query rewriting，以及后续 auto compact summary。",
+        "label": "Memory Tool Model",
+        "unavailable": "所选模型不可用"
+      }
     },
     "network": {
       "proxy": {

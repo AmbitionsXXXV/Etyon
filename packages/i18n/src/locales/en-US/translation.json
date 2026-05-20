@@ -354,16 +354,46 @@
     },
     "memory": {
       "description": "Store compact long-term memory outside the model context so chat sessions, projects, and the Telegram bridge can share relevant recall.",
+      "embedding": {
+        "change": "Change",
+        "defaultDescription": "Leave empty to use the default embedding model.",
+        "defaultLabel": "Default model",
+        "description": "The embedding model used for semantic search. Leave empty to use the default (text-embedding-3-small).",
+        "installed": "Installed",
+        "localDescription": "Use a local embedding model for semantic search.",
+        "localModels": "Local Models",
+        "missing": "Download required",
+        "searchPlaceholder": "Search embedding models...",
+        "title": "Embedding Model"
+      },
       "includeChatbot": {
         "description": "Let chatbot conversations read from and write to the same long-term memory store.",
         "label": "Connect chatbot memory"
       },
       "retrieval": {
+        "autoRetrieve": {
+          "description": "Automatically search and inject relevant memories before each conversation.",
+          "label": "Auto Retrieve Memories"
+        },
         "maxContextEntries": {
           "description": "Controls how many matching memory entries can be injected into a model request.",
           "label": "Context entries"
         },
-        "title": "Retrieval Budget"
+        "maxRetrievedMemories": {
+          "description": "Maximum number of relevant memories to inject into the conversation context (1-20).",
+          "label": "Max Retrieved Memories: {{count}}"
+        },
+        "queryRewriting": {
+          "description": "Use the Memory Tool Model to optimize your message before searching memories.",
+          "label": "Query Rewriting"
+        },
+        "similarityThreshold": {
+          "description": "Minimum similarity score required for a memory to be retrieved. Higher values mean stricter matching.",
+          "label": "Similarity Threshold: {{value}}",
+          "loose": "Loose (0%)",
+          "strict": "Strict (100%)"
+        },
+        "title": "Memory Retrieval"
       },
       "shareAcrossProjects": {
         "description": "Allow memory created in one project to be retrieved from another project when it matches the current request.",
@@ -376,7 +406,22 @@
         "title": "Memory Store",
         "totalEntries": "Total Entries"
       },
-      "title": "Long-Term Memory"
+      "summarization": {
+        "autoSummarize": {
+          "description": "Summarize conversations into durable decisions, facts, and procedures before writing memory.",
+          "label": "Memory Summarization"
+        },
+        "description": "Use the Memory Tool Model to extract durable summaries, decisions, and facts.",
+        "title": "Memory Summarization"
+      },
+      "title": "Long-Term Memory",
+      "toolModel": {
+        "auto": "Auto",
+        "autoDescription": "Choose a capable low-cost model from your enabled providers.",
+        "description": "Used for memory summarization, query rewriting, and future auto compact summaries.",
+        "label": "Memory Tool Model",
+        "unavailable": "Selected model is unavailable"
+      }
     },
     "network": {
       "proxy": {
