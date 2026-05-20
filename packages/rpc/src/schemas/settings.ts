@@ -194,10 +194,17 @@ const TELEGRAM_SETTINGS_DEFAULT = {
 } as const
 
 const MEMORY_SETTINGS_DEFAULT = {
+  autoRetrieve: true,
+  autoSummarize: false,
+  embeddingModel: "",
   enabled: true,
   includeChatbot: true,
   maxContextEntries: 8,
-  shareAcrossProjects: true
+  maxRetrievedMemories: 8,
+  memoryToolModel: "__auto__",
+  queryRewriting: true,
+  shareAcrossProjects: true,
+  similarityThreshold: 0.1
 } as const
 
 const SKILLS_SETTINGS_DEFAULT = {

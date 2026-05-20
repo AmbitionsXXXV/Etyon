@@ -6,12 +6,27 @@ export const MemorySourceSchema = z.enum(["chat-session", "chatbot"])
 
 export const MemoryKindSchema = z.enum(["episodic", "semantic", "working"])
 
-export const MemorySettingsSchema = z.object({
-  enabled: z.boolean().default(true),
-  includeChatbot: z.boolean().default(true),
-  maxContextEntries: z.number().int().min(1).max(20).default(8),
-  shareAcrossProjects: z.boolean().default(true)
-})
+export const MEMORY_TOOL_MODEL_AUTO_VALUE = "__auto__"
+
+export const MemorySettingsSchema = z
+  .object({
+    autoRetrieve: z.boolean().default(true),
+    autoSummarize: z.boolean().default(false),
+    embeddingModel: z.string().default(""),
+    enabled: z.boolean().default(true),
+    includeChatbot: z.boolean().default(true),
+    maxContextEntries: z.number().int().min(1).max(20).default(8),
+    maxRetrievedMemories: z.number().int().min(1).max(20).optional(),
+    memoryToolModel: z.string().default(MEMORY_TOOL_MODEL_AUTO_VALUE),
+    queryRewriting: z.boolean().default(true),
+    shareAcrossProjects: z.boolean().default(true),
+    similarityThreshold: z.number().min(0).max(1).default(0.1)
+  })
+  .transform((settings) => ({
+    ...settings,
+    maxRetrievedMemories:
+      settings.maxRetrievedMemories ?? settings.maxContextEntries
+  }))
 
 export const MemoryEntrySchema = z.object({
   accessCount: z.number().int().nonnegative(),
