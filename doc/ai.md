@@ -193,7 +193,7 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 - 存储层：`memory_entries` 保存压缩后的长期 memory 条目
 - 写入层：`replaceChatMessages()` 在长期 memory 开启时，把当前 chat session 的最近文本消息 upsert 为 `source=chat-session`、`scope=project`
 - chatbot 写入：Telegram bridge 在 `settings.memory.includeChatbot` 开启时，把每个 Telegram chat 的最近消息 upsert 为 `source=chatbot`、`scope=chatbot`
-- embedding 层：`settings.memory.embeddingModel` 为空时使用默认 `text-embedding-3-small`；`local:*` 先走本地 catalog 与诊断边界，缺少本地 runtime 时返回明确失败
+- embedding 层：`settings.memory.embeddingModel` 为空时使用默认 `text-embedding-3-small`；`local:*` 状态从本地模型目录实时推导，Settings 可触发模型文件安装，缺少本地 inference runtime 时仍返回明确失败
 - 检索层：`buildMemorySystemPrompt()` 结合 lexical score、embedding similarity、recency、scope 与 access count 做 hybrid ranking，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
 - 控制层：`settings.memory.enabled` 关闭长期 memory；`autoRetrieve` 控制是否自动检索与注入；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
 - 注入层：`/api/chat` 会把 long-term memory 放在 session memory 与 project snapshot context 之间；Telegram bridge 会把 long-term memory 追加到 Telegram system prompt 后

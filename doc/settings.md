@@ -208,7 +208,8 @@ interface StoredProviderModel {
 - `Embedding Model` 区块：
   - 空字符串表示默认 `text-embedding-3-small`
   - 本地 catalog 先展示 `MiniLM L6 v2`、`BGE Small EN v1.5`、`Multilingual E5 Small`、`Paraphrase Multilingual MiniLM`
-  - 未安装的本地模型在 UI 中展示下载状态；真实下载仍属于后续 runtime 阶段
+  - 本地模型状态由 main process 根据 `~/.config/etyon/embedding-models` 下的实际文件实时返回，不再使用 renderer hardcoded `installed`
+  - 未安装的本地模型在 UI 中展示 `Install` action；点击后调用 `memory.embeddingModels.install` 下载模型文件并刷新列表
 - 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
 - 当前实现是本地 SQLite + hybrid retrieval；embedding、query rewriting、模型总结与 lifecycle diagnostics 均放在 main process runtime，Settings panel 只负责用户可控配置
 

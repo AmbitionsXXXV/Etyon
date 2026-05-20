@@ -382,6 +382,8 @@
         "defaultDescription": "留空时使用默认 embedding model。",
         "defaultLabel": "默认模型",
         "description": "用于语义搜索的 embedding model。留空时使用默认的 text-embedding-3-small。",
+        "install": "安装",
+        "installing": "安装中...",
         "installed": "已安装",
         "localDescription": "使用本地 embedding model 进行语义搜索。",
         "localModels": "本地模型",

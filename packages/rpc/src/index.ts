@@ -60,6 +60,7 @@ export type {
 } from "./schemas/git"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export {
+  InstallMemoryEmbeddingModelInputSchema,
   ListMemoryEntriesInputSchema,
   MEMORY_TOOL_MODEL_AUTO_VALUE,
   MemoryEmbeddingModelSchema,
@@ -75,6 +76,7 @@ export {
   MemoryStatsOutputSchema
 } from "./schemas/memory"
 export type {
+  InstallMemoryEmbeddingModelInput,
   ListMemoryEntriesInput,
   MemoryEmbeddingModel,
   MemoryEmbeddingModelSource,

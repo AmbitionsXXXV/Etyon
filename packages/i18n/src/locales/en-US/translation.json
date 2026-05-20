@@ -382,6 +382,8 @@
         "defaultDescription": "Leave empty to use the default embedding model.",
         "defaultLabel": "Default model",
         "description": "The embedding model used for semantic search. Leave empty to use the default (text-embedding-3-small).",
+        "install": "Install",
+        "installing": "Installing...",
         "installed": "Installed",
         "localDescription": "Use a local embedding model for semantic search.",
         "localModels": "Local Models",

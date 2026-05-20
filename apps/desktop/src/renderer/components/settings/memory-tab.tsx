@@ -1,5 +1,9 @@
 import { useI18n } from "@etyon/i18n/react"
-import type { MemoryEntry, MemorySettings } from "@etyon/rpc"
+import type {
+  MemoryEmbeddingModel,
+  MemoryEntry,
+  MemorySettings
+} from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import {
   Button,
@@ -15,7 +19,7 @@ import {
 import type { Key } from "@heroui/react"
 import { Download01Icon, Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
 import { useCallback, useMemo, useState } from "react"
@@ -23,8 +27,7 @@ import { useCallback, useMemo, useState } from "react"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
   DEFAULT_EMBEDDING_MODEL_ID,
-  DEFAULT_EMBEDDING_MODEL_LABEL,
-  LOCAL_EMBEDDING_MODEL_OPTIONS
+  DEFAULT_EMBEDDING_MODEL_LABEL
 } from "@/renderer/lib/memory/embedding-model-catalog"
 import {
   MEMORY_MAX_RETRIEVED_MEMORIES_MAX,
@@ -39,7 +42,7 @@ import {
   getMemoryToolModelSelectedValue,
   normalizeMemoryToolModelValue
 } from "@/renderer/lib/memory/memory-tool-model-options"
-import { orpc } from "@/renderer/lib/rpc"
+import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 
 interface MemoryTabProps {
@@ -60,6 +63,7 @@ interface MemorySwitchRowProps {
 const EMBEDDING_DEFAULT_OPTION_KEY = "__default_embedding_model__"
 const MEMORY_FIELD_CLASS_NAME =
   "border-border/80 bg-background/80 shadow-sm hover:bg-background focus-visible:border-primary/60"
+const EMPTY_EMBEDDING_MODELS: MemoryEmbeddingModel[] = []
 
 const formatMemoryDate = (value: null | string): string => {
   if (!value) {
@@ -72,15 +76,15 @@ const formatMemoryDate = (value: null | string): string => {
 const getMemoryEntryTitle = (entry: MemoryEntry): string =>
   entry.projectPath ?? entry.sourceId
 
-const getEmbeddingModelLabel = (value: string): string => {
+const getEmbeddingModelLabel = (
+  models: MemoryEmbeddingModel[],
+  value: string
+): string => {
   if (value === DEFAULT_EMBEDDING_MODEL_ID) {
     return DEFAULT_EMBEDDING_MODEL_LABEL
   }
 
-  return (
-    LOCAL_EMBEDDING_MODEL_OPTIONS.find((option) => option.id === value)
-      ?.label ?? value
-  )
+  return models.find((option) => option.id === value)?.label ?? value
 }
 
 const MemorySwitch = ({
@@ -286,23 +290,44 @@ const EmbeddingModelPicker = ({
   value: string
 }) => {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
+  const embeddingModelsQueryOptions =
+    orpc.memory.embeddingModels.list.queryOptions({})
+  const embeddingModelsQuery = useQuery(embeddingModelsQueryOptions)
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
+  const embeddingModels =
+    embeddingModelsQuery.data?.models ?? EMPTY_EMBEDDING_MODELS
+  const localEmbeddingModels = useMemo(
+    () => embeddingModels.filter((model) => model.source === "local"),
+    [embeddingModels]
+  )
 
   const filteredLocalModels = useMemo(() => {
     const normalizedSearchTerm = searchTerm.trim().toLowerCase()
 
     if (!normalizedSearchTerm) {
-      return LOCAL_EMBEDDING_MODEL_OPTIONS
+      return localEmbeddingModels
     }
 
-    return LOCAL_EMBEDDING_MODEL_OPTIONS.filter((option) =>
+    return localEmbeddingModels.filter((option) =>
       option.label.toLowerCase().includes(normalizedSearchTerm)
     )
-  }, [searchTerm])
+  }, [localEmbeddingModels, searchTerm])
 
   const selectedKey = value || EMBEDDING_DEFAULT_OPTION_KEY
-  const selectedLabel = getEmbeddingModelLabel(value)
+  const selectedLabel = getEmbeddingModelLabel(embeddingModels, value)
+  const selectedModel = embeddingModels.find((model) => model.id === value)
+  const installMutation = useMutation({
+    mutationFn: (modelId: string) =>
+      rpcClient.memory.embeddingModels.install({ modelId }),
+    onSuccess: (data, modelId) => {
+      queryClient.setQueryData(embeddingModelsQueryOptions.queryKey, data)
+      onChange(modelId)
+      setIsOpen(false)
+    }
+  })
+  const installingModelId = installMutation.variables
 
   const handleSearchChange = useCallback<ChangeEventHandler<HTMLInputElement>>(
     (event) => {
@@ -313,18 +338,59 @@ const EmbeddingModelPicker = ({
 
   const handleModelAction = useCallback(
     (key: Key) => {
+      const modelId = String(key)
+
       const nextValue =
         key === EMBEDDING_DEFAULT_OPTION_KEY
           ? DEFAULT_EMBEDDING_MODEL_ID
-          : String(key)
+          : modelId
+
+      if (key !== EMBEDDING_DEFAULT_OPTION_KEY) {
+        const model = embeddingModels.find((item) => item.id === modelId)
+
+        if (model?.source === "local" && model.status === "missing") {
+          if (!installMutation.isPending) {
+            installMutation.mutate(model.id)
+          }
+          return
+        }
+
+        if (model?.source === "local" && model.status === "downloading") {
+          return
+        }
+      }
 
       onChange(nextValue)
       setIsOpen(false)
     },
-    [onChange]
+    [embeddingModels, installMutation, onChange]
   )
 
   const handleOpen = useCallback(() => setIsOpen(true), [])
+  const handleInstallModel = useCallback(
+    (modelId: string) => {
+      if (installMutation.isPending) {
+        return
+      }
+
+      installMutation.mutate(modelId)
+    },
+    [installMutation]
+  )
+  const getLocalModelStatusLabel = useCallback(
+    (model: MemoryEmbeddingModel): string => {
+      if (model.status === "available") {
+        return t("settings.memory.embedding.installed")
+      }
+
+      if (model.status === "downloading" || installingModelId === model.id) {
+        return t("settings.memory.embedding.installing")
+      }
+
+      return t("settings.memory.embedding.missing")
+    },
+    [installingModelId, t]
+  )
 
   return (
     <div className="space-y-3">
@@ -332,7 +398,7 @@ const EmbeddingModelPicker = ({
         <div className="min-w-0 space-y-1">
           <div className="truncate text-sm font-medium">{selectedLabel}</div>
           <p className="text-xs leading-5 text-muted-foreground">
-            {value
+            {selectedModel?.source === "local"
               ? t("settings.memory.embedding.localDescription")
               : t("settings.memory.embedding.defaultDescription")}
           </p>
@@ -375,7 +441,7 @@ const EmbeddingModelPicker = ({
                   textValue={DEFAULT_EMBEDDING_MODEL_LABEL}
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
+                    <div className="truncate text-sm font-medium text-foreground">
                       {DEFAULT_EMBEDDING_MODEL_LABEL}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
@@ -386,7 +452,9 @@ const EmbeddingModelPicker = ({
                 </ListBox.Item>
 
                 <ListBox.Section>
-                  <Header>{t("settings.memory.embedding.localModels")}</Header>
+                  <Header className="text-foreground">
+                    {t("settings.memory.embedding.localModels")}
+                  </Header>
                   {filteredLocalModels.map((option) => (
                     <ListBox.Item
                       id={option.id}
@@ -395,24 +463,31 @@ const EmbeddingModelPicker = ({
                     >
                       <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">
+                          <div className="truncate text-sm font-medium text-foreground">
                             {option.label}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {option.installed
-                              ? t("settings.memory.embedding.installed")
-                              : t("settings.memory.embedding.missing")}
+                            {getLocalModelStatusLabel(option)}
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                           <span>{option.downloadSize}</span>
-                          {!option.installed && (
-                            <HugeiconsIcon
-                              aria-hidden
-                              icon={Download01Icon}
-                              size={15}
-                              strokeWidth={2}
-                            />
+                          {option.status === "missing" && (
+                            <Button
+                              isDisabled={installMutation.isPending}
+                              isPending={installingModelId === option.id}
+                              onPress={() => handleInstallModel(option.id)}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden
+                                icon={Download01Icon}
+                                size={14}
+                                strokeWidth={2}
+                              />
+                              {t("settings.memory.embedding.install")}
+                            </Button>
                           )}
                         </div>
                       </div>

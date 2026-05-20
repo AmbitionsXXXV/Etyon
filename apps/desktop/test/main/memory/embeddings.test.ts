@@ -1,15 +1,21 @@
 import fs from "node:fs"
+import path from "node:path"
 
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { UIMessage } from "ai"
-import { afterAll, describe, expect, it, vi } from "vite-plus/test"
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { memoryEmbeddings } from "@/main/db/schema"
 import { upsertChatSessionMemoryEntry } from "@/main/memory"
-import { listMemoryEmbeddingModels } from "@/main/memory/embedding-models"
+import {
+  getLocalEmbeddingModelDirectory,
+  getLocalEmbeddingModelOption,
+  installMemoryEmbeddingModel,
+  listMemoryEmbeddingModels
+} from "@/main/memory/embedding-models"
 import { upsertMemoryEmbedding } from "@/main/memory/embeddings"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
@@ -66,7 +72,25 @@ describe("memory embeddings", () => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
   })
 
-  it("lists default and local embedding model status", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("lists actual local embedding model status from installed files", () => {
+    const minilm = getLocalEmbeddingModelOption("local:minilm-l6-v2")
+
+    if (!minilm) {
+      throw new Error("Expected MiniLM embedding model metadata")
+    }
+
+    const modelDir = getLocalEmbeddingModelDirectory(minilm.id)
+
+    for (const file of minilm.files) {
+      const targetPath = path.join(modelDir, file)
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true })
+      fs.writeFileSync(targetPath, "test-model-file")
+    }
+
     const { models } = listMemoryEmbeddingModels()
 
     expect(models[0]).toMatchObject({
@@ -88,6 +112,31 @@ describe("memory embeddings", () => {
         })
       ])
     )
+  })
+
+  it("installs local embedding model files and refreshes status", async () => {
+    const bge = getLocalEmbeddingModelOption("local:bge-small-en-v1.5")
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response("test-model-file"))
+    )
+
+    if (!bge) {
+      throw new Error("Expected BGE embedding model metadata")
+    }
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { models } = await installMemoryEmbeddingModel(bge.id)
+    const installedModel = models.find((model) => model.id === bge.id)
+
+    expect(fetchMock).toHaveBeenCalledTimes(bge.files.length)
+    expect(installedModel?.status).toBe("available")
+
+    for (const file of bge.files) {
+      expect(
+        fs.existsSync(path.join(getLocalEmbeddingModelDirectory(bge.id), file))
+      ).toBe(true)
+    }
   })
 
   it("persists memory embeddings and skips unchanged content", async () => {

@@ -78,8 +78,15 @@ export const MemoryEmbeddingModelsOutputSchema = z.object({
   models: z.array(MemoryEmbeddingModelSchema)
 })
 
+export const InstallMemoryEmbeddingModelInputSchema = z.object({
+  modelId: z.string()
+})
+
 export type ListMemoryEntriesInput = z.infer<
   typeof ListMemoryEntriesInputSchema
+>
+export type InstallMemoryEmbeddingModelInput = z.infer<
+  typeof InstallMemoryEmbeddingModelInputSchema
 >
 export type MemoryEntriesOutput = z.infer<typeof MemoryEntriesOutputSchema>
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>

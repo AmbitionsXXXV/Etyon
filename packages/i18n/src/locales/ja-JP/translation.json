@@ -382,6 +382,8 @@
         "defaultDescription": "空欄の場合は既定の embedding model を使用します。",
         "defaultLabel": "既定モデル",
         "description": "セマンティック検索に使う embedding model です。空欄の場合は既定の text-embedding-3-small を使用します。",
+        "install": "インストール",
+        "installing": "インストール中...",
         "installed": "インストール済み",
         "localDescription": "ローカル embedding model でセマンティック検索を行います。",
         "localModels": "ローカルモデル",

@@ -16,6 +16,7 @@ import {
   FontListOutputSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
+  InstallMemoryEmbeddingModelInputSchema,
   ListMemoryEntriesInputSchema,
   MemoryEmbeddingModelsOutputSchema,
   MemoryEntriesOutputSchema,
@@ -80,7 +81,10 @@ import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { getMemoryStats, listMemoryEntries } from "@/main/memory"
-import { listMemoryEmbeddingModels } from "@/main/memory/embedding-models"
+import {
+  installMemoryEmbeddingModel,
+  listMemoryEmbeddingModels
+} from "@/main/memory/embedding-models"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
 import {
   listBuiltInPlugins,
@@ -178,6 +182,11 @@ const memoryStats = rpc
 const memoryEmbeddingModelsList = rpc
   .output(MemoryEmbeddingModelsOutputSchema)
   .handler(() => listMemoryEmbeddingModels())
+
+const memoryEmbeddingModelsInstall = rpc
+  .input(InstallMemoryEmbeddingModelInputSchema)
+  .output(MemoryEmbeddingModelsOutputSchema)
+  .handler(({ input }) => installMemoryEmbeddingModel(input.modelId))
 
 const skillsList = rpc
   .output(SkillsListOutputSchema)
@@ -497,6 +506,7 @@ export const router = {
   },
   memory: {
     embeddingModels: {
+      install: memoryEmbeddingModelsInstall,
       list: memoryEmbeddingModelsList
     },
     list: memoryList,

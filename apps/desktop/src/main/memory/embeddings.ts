@@ -7,7 +7,10 @@ import { and, eq } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import { memoryEmbeddings } from "@/main/db/schema"
-import { getLocalEmbeddingModelOption } from "@/main/memory/embedding-models"
+import {
+  getLocalEmbeddingModelOption,
+  getLocalEmbeddingModelStatus
+} from "@/main/memory/embedding-models"
 import { DEFAULT_EMBEDDING_MODEL_LABEL } from "@/shared/memory/embedding-model-catalog"
 
 export interface MemoryEmbeddingProvider {
@@ -72,7 +75,7 @@ export const createMemoryEmbeddingProvider = (
       throw new Error(`Unknown local memory embedding model: ${modelId}`)
     }
 
-    if (!localModel.installed) {
+    if (getLocalEmbeddingModelStatus(modelId) !== "available") {
       throw new Error(
         `Local memory embedding model is not installed: ${modelId}`
       )
