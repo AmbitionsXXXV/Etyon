@@ -93,10 +93,17 @@ interface AppSettings {
     | "paper" // 默认 "default"
   locale: "system" | "en-US" | "zh-CN" | "ja-JP" // 默认 "system"
   memory: {
+    autoRetrieve: boolean // 默认 true，控制是否自动检索并注入长期 memory
+    autoSummarize: boolean // 默认 false，控制写入前是否使用 Memory Tool Model 总结
+    embeddingModel: string // 默认 ""，空值表示 text-embedding-3-small；local:* 表示本地 embedding model
     enabled: boolean // 默认 true，控制长期 memory 读写与注入
     includeChatbot: boolean // 默认 true，Telegram chatbot 使用同一套 memory
-    maxContextEntries: number // 1-20，默认 8
+    maxContextEntries: number // 1-20，默认 8，兼容旧设置
+    maxRetrievedMemories: number // 1-20，默认 8，当前检索注入预算
+    memoryToolModel: string // 默认 "__auto__"，用于 summarization / query rewriting / future auto compact
+    queryRewriting: boolean // 默认 true，后续用于检索前查询改写
     shareAcrossProjects: boolean // 默认 true，允许 project memory 跨项目检索
+    similarityThreshold: number // 0-1，默认 0.1，后续 semantic retrieval 最低相似度
   }
   minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
   proxy: ProxySettings // 代理配置
@@ -169,13 +176,25 @@ interface StoredProviderModel {
 ## Memory Tab
 
 - Settings 左侧导航包含 `Memory` tab，用于控制长期 memory 行为
-- 当前字段：
+- `Long-Term Memory` 区块：
   - `enabled`：关闭后不再写入或检索 `memory_entries`
   - `shareAcrossProjects`：开启时，一个 project 中产生的 memory 可被其他 project 检索；关闭时只使用当前 project 或非 project memory
   - `includeChatbot`：开启时，Telegram chatbot 会读取并写入同一套长期 memory
-  - `maxContextEntries`：每次模型请求最多注入的 memory 条数，范围 `1-20`
+- `Memory Summarization` 区块：
+  - `autoSummarize`：开启后，后续 runtime 会在写入长期 memory 前提取 summary、decision、fact 与 procedure；当前仍保留确定性压缩 fallback
+  - `memoryToolModel`：默认 `__auto__`，从已启用 providers 中选择能力较强且成本较低的模型；同一字段也会服务 query rewriting 和后续 auto compact summary
+- `Memory Retrieval` 区块：
+  - `autoRetrieve`：关闭后 main process 不再自动检索并注入长期 memory
+  - `queryRewriting`：后续 semantic retrieval 前使用 Memory Tool Model 优化查询
+  - `maxRetrievedMemories`：每次模型请求最多注入的 memory 条数，范围 `1-20`；保存时同步旧字段 `maxContextEntries` 以保持兼容
+  - `similarityThreshold`：后续 embedding / hybrid retrieval 的最低相似度，范围 `0-1`
+- `Embedding Model` 区块：
+  - 空字符串表示默认 `text-embedding-3-small`
+  - 本地 catalog 先展示 `MiniLM L6 v2`、`BGE Small EN v1.5`、`Multilingual E5 Small`、`Paraphrase Multilingual MiniLM`
+  - 未安装的本地模型在 UI 中展示下载状态，真实下载 / status RPC 属于后续 runtime 阶段
 - 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
-- 当前实现是本地 SQLite + 关键词 overlap 检索；后续如果引入 embedding 或模型总结，继续保持 runtime 逻辑在 `apps/desktop/src/main/memory.ts`，Settings panel 只负责用户可控开关
+- 当前实现是本地 SQLite + 关键词 overlap 检索；embedding、query rewriting、模型总结、lifecycle maintenance 会继续放在 main process runtime，Settings panel 只负责用户可控配置
+- `Auto Compact` 不放在 `Memory` tab；后续新增 `Chat` settings tab，单独配置 compaction threshold 和 keep recent messages，并复用 `memoryToolModel` 生成 compact summary
 
 ## Skills Tab
 

@@ -443,15 +443,17 @@ interface AppSettings {
   }
 
   memory: {
+    autoRetrieve: boolean // default true
+    autoSummarize: boolean // default false
+    embeddingModel: string // "" means default text-embedding-3-small; local:* means local embedding model
     enabled: boolean
-    autoSummarize: boolean
-    autoRetrieve: boolean
+    includeChatbot: boolean
+    maxContextEntries: number // 1-20, legacy compatibility
     maxRetrievedMemories: number // 1-20
+    memoryToolModel: string // "__auto__" or concrete chat model id
+    queryRewriting: boolean
+    shareAcrossProjects: boolean
     similarityThreshold: number // 0-1
-    queryRewriting?: boolean
-    summarizationModel?: string // Format: "providerId:modelId"
-    toolModel?: string // Format: "providerId:modelId"
-    embeddingModel?: string // Format: "providerId:modelId"
   }
 
   toolModel: {

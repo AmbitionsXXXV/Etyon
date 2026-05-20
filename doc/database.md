@@ -123,6 +123,24 @@
 - Telegram bridge 在 `settings.memory.includeChatbot` 开启时会读取并 upsert chatbot memory
 - `memory.stats` 与 `memory.list` RPC 为 Settings `Memory` tab 提供状态与最近条目预览
 
+### Planned memory_embeddings
+
+后续 semantic retrieval 会新增 `memory_embeddings`，继续保持本地 SQLite 边界：
+
+| 字段           | 类型    | 说明                                                                    |
+| -------------- | ------- | ----------------------------------------------------------------------- |
+| `memory_id`    | text    | 关联 `memory_entries.id`，级联删除                                      |
+| `model`        | text    | embedding model id，如 `text-embedding-3-small` 或 `local:minilm-l6-v2` |
+| `vector_json`  | text    | embedding vector JSON                                                   |
+| `content_hash` | text    | 生成 embedding 时的 content hash                                        |
+| `dimensions`   | integer | vector 维度                                                             |
+| `created_at`   | text    | ISO 时间戳                                                              |
+| `updated_at`   | text    | ISO 时间戳                                                              |
+
+- 唯一索引建议为 `(memory_id, model)`，同一 memory 在同一 embedding model 下只保留一个最新 vector
+- `content_hash` 用于识别 stale embedding，runtime 可据此重建
+- 本地模型下载状态不直接写入 `memory_embeddings`，应由 main process 的 embedding model catalog/status RPC 提供
+
 ## 命令
 
 在 `@etyon/desktop` 包内提供以下脚本：

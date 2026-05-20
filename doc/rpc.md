@@ -141,6 +141,12 @@ Logger SDK 在 `index.tsx` 中通过 `initLogger()` 初始化，注入 RPC emit 
 
 memory 的写入和检索由 main process runtime 直接调用 `apps/desktop/src/main/memory.ts`，不通过 renderer 触发。
 
+后续 embedding runtime 需要继续遵循这个边界：
+
+- `memory.embeddingModels.list`（planned）：返回默认远端 embedding model 与本地 embedding model catalog 的 installed / missing / downloading 状态
+- `memory.embeddingModels.download`（planned）：由 main process 负责下载本地 embedding model，renderer 只触发 action 与展示状态
+- `memory.embeddings.rebuild`（planned）：按 model 与 stale embedding 诊断触发重建，不由 renderer 直接写 SQLite
+
 ### 新增本地 HTTP RPC 入口
 
 同一个 `router` 可以同时被 MessagePort adapter 和 Hono / Fetch adapter 消费：

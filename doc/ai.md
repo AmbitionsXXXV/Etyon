@@ -174,13 +174,26 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 
 长期 memory 用于跨 session、跨 project，并可联通 Telegram chatbot。实现参考 [Awesome-AI-Memory](https://github.com/IAAR-Shanghai/Awesome-AI-Memory) 对外部显式记忆、短期 / 长期记忆、检索、压缩、生命周期与共享范围的分类，但当前不引入外部向量数据库，先落成本地 SQLite 可验证版本。
 
+### Memory Enhancement Pipeline
+
+目标架构是 `Capture -> Summarize -> Embed -> Retrieve -> Inject -> Maintain`：
+
+- `Capture`：chat session 与 Telegram chatbot 在 main process 捕获可持久化的文本上下文
+- `Summarize`：`settings.memory.autoSummarize` 开启后，使用 `settings.memory.memoryToolModel` 抽取长期有效的 summary、decision、fact 与 procedure；模型失败时回退到当前确定性压缩
+- `Embed`：`settings.memory.embeddingModel` 控制 semantic search 使用的 embedding model；空字符串表示默认 `text-embedding-3-small`，`local:*` 表示本地 embedding catalog
+- `Retrieve`：`settings.memory.autoRetrieve` 控制是否自动检索；`queryRewriting` 使用同一个 Memory Tool Model 改写用户消息；`maxRetrievedMemories` 与 `similarityThreshold` 控制注入预算和匹配严格度
+- `Inject`：chat route 与 Telegram bridge 在构造 system prompt 时注入 long-term memory；位置保持在 session memory 之后、project snapshot / skills 之前
+- `Maintain`：后续 runtime 会补 dedupe、decay、archive、stale embedding rebuild 与 diagnostics
+
+当前阶段已经落地 settings schema、Settings `Memory` tab 控件、`maxRetrievedMemories` 检索预算，以及 `autoRetrieve=false` 时跳过检索；模型总结、embedding 生成、query rewriting、hybrid scoring 与 lifecycle maintenance 仍是后续 main process runtime 模块。
+
 当前实现：
 
 - 存储层：`memory_entries` 保存压缩后的长期 memory 条目
 - 写入层：`replaceChatMessages()` 在长期 memory 开启时，把当前 chat session 的最近文本消息 upsert 为 `source=chat-session`、`scope=project`
 - chatbot 写入：Telegram bridge 在 `settings.memory.includeChatbot` 开启时，把每个 Telegram chat 的最近消息 upsert 为 `source=chatbot`、`scope=chatbot`
-- 检索层：`buildMemorySystemPrompt()` 根据当前请求文本做关键词 overlap 排序，并按 `settings.memory.maxContextEntries` 控制注入条数
-- 控制层：`settings.memory.enabled` 关闭长期 memory；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
+- 检索层：`buildMemorySystemPrompt()` 根据当前请求文本做关键词 overlap 排序，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
+- 控制层：`settings.memory.enabled` 关闭长期 memory；`autoRetrieve` 控制是否自动检索与注入；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
 - 注入层：`/api/chat` 会把 long-term memory 放在 session memory 与 project snapshot context 之间；Telegram bridge 会把 long-term memory 追加到 Telegram system prompt 后
 
 模块边界：
