@@ -18,6 +18,105 @@ const MOONSHOT_SEED_MODELS: StoredProviderModel[] = [
   }
 ]
 
+export const CURSOR_PROVIDER_SEED_MODELS: StoredProviderModel[] = [
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "auto",
+    isManual: undefined,
+    name: "Auto"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "composer-2",
+    isManual: undefined,
+    name: "Composer 2"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "claude-4.5-sonnet",
+    isManual: undefined,
+    name: "Claude 4.5 Sonnet"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "claude-4-sonnet",
+    isManual: undefined,
+    name: "Claude 4 Sonnet"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-5",
+    isManual: undefined,
+    name: "GPT-5"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-5-codex",
+    isManual: undefined,
+    name: "GPT-5 Codex"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-4.1",
+    isManual: undefined,
+    name: "GPT-4.1"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gemini-2.5-pro",
+    isManual: undefined,
+    name: "Gemini 2.5 Pro"
+  },
+  {
+    capabilities: {
+      functionCalling: true,
+      streaming: true
+    },
+    id: "cursor-small",
+    isManual: undefined,
+    name: "Cursor Small"
+  }
+]
+
 const ZAI_CODING_PLAN_SEED_MODELS: StoredProviderModel[] = [
   {
     capabilities: {
@@ -71,6 +170,7 @@ export const BUILT_IN_PROVIDER_SEED_MODELS: Record<
   StoredProviderModel[]
 > = {
   anthropic: [],
+  cursor: CURSOR_PROVIDER_SEED_MODELS,
   gateway: [],
   moonshot: MOONSHOT_SEED_MODELS,
   openai: [],

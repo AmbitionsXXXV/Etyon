@@ -7,6 +7,11 @@ import {
   ChatSessionMessagesOutputSchema,
   ChatSessionsListOutputSchema,
   CreateChatSessionInputSchema,
+  CursorAuthPollLoginInputSchema,
+  CursorAuthPollLoginOutputSchema,
+  CursorAuthStartLoginOutputSchema,
+  CursorAuthStatusOutputSchema,
+  CursorModelsOutputSchema,
   EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
   GitProjectDiffInputSchema,
@@ -22,6 +27,9 @@ import {
   OpenChatSessionInputSchema,
   PingInputSchema,
   PingOutputSchema,
+  PluginsListOutputSchema,
+  PluginsSetEnabledInputSchema,
+  PluginsSetEnabledOutputSchema,
   ProjectSnapshotStateSchema,
   ProviderFetchModelsInputSchema,
   ProviderFetchModelsOutputSchema,
@@ -59,12 +67,23 @@ import {
   setChatSessionModel,
   setChatSessionPinned
 } from "@/main/chat-sessions"
+import {
+  fetchCursorModels,
+  getCursorAuthStatus,
+  logoutCursorAuth,
+  pollCursorAuthLogin,
+  startCursorAuthLogin
+} from "@/main/cursor-auth/service"
 import { listSystemFonts } from "@/main/fonts"
 import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
 import { getMemoryStats, listMemoryEntries } from "@/main/memory"
 import { refreshLocalizedAppShell } from "@/main/native-ui"
+import {
+  listBuiltInPlugins,
+  setBuiltInPluginEnabledState
+} from "@/main/plugins/registry"
 import {
   ensureProjectSnapshot,
   listProjectSnapshotFiles,
@@ -108,6 +127,27 @@ const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
 const fontsList = rpc
   .output(FontListOutputSchema)
   .handler(() => listSystemFonts())
+
+const cursorAuthFetchModels = rpc
+  .output(CursorModelsOutputSchema)
+  .handler(() => fetchCursorModels())
+
+const cursorAuthLogout = rpc
+  .output(CursorAuthStatusOutputSchema)
+  .handler(() => logoutCursorAuth())
+
+const cursorAuthPollLogin = rpc
+  .input(CursorAuthPollLoginInputSchema)
+  .output(CursorAuthPollLoginOutputSchema)
+  .handler(({ input }) => pollCursorAuthLogin(input))
+
+const cursorAuthStartLogin = rpc
+  .output(CursorAuthStartLoginOutputSchema)
+  .handler(() => startCursorAuthLogin())
+
+const cursorAuthStatus = rpc
+  .output(CursorAuthStatusOutputSchema)
+  .handler(() => getCursorAuthStatus())
 
 const gitProjectDiff = rpc
   .input(GitProjectDiffInputSchema)
@@ -238,6 +278,17 @@ const providersFetchModels = rpc
   .input(ProviderFetchModelsInputSchema)
   .output(ProviderFetchModelsOutputSchema)
   .handler(({ input }) => fetchProviderModels(input))
+
+const pluginsList = rpc
+  .output(PluginsListOutputSchema)
+  .handler(() => ({ plugins: listBuiltInPlugins() }))
+
+const pluginsSetEnabled = rpc
+  .input(PluginsSetEnabledInputSchema)
+  .output(PluginsSetEnabledOutputSchema)
+  .handler(({ input }) => ({
+    plugins: setBuiltInPluginEnabledState(input.pluginId, input.enabled)
+  }))
 
 const projectsArchiveChats = rpc
   .input(ArchiveProjectChatsInputSchema)
@@ -422,6 +473,13 @@ export const router = {
     setModel: chatSessionsSetModel,
     setPinned: chatSessionsSetPinned
   },
+  cursorAuth: {
+    fetchModels: cursorAuthFetchModels,
+    logout: cursorAuthLogout,
+    pollLogin: cursorAuthPollLogin,
+    startLogin: cursorAuthStartLogin,
+    status: cursorAuthStatus
+  },
   fonts: {
     list: fontsList
   },
@@ -436,6 +494,10 @@ export const router = {
     stats: memoryStats
   },
   ping,
+  plugins: {
+    list: pluginsList,
+    setEnabled: pluginsSetEnabled
+  },
   projectSnapshots: {
     ensure: projectSnapshotsEnsure,
     listFiles: projectSnapshotsListFiles,

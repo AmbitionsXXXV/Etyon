@@ -18,6 +18,20 @@ const buildAiSettingsFixture = (): AiSettings => ({
       enabled: false,
       models: []
     },
+    cursor: {
+      apiKey: "",
+      availableModels: [
+        {
+          capabilities: undefined,
+          id: "composer-2",
+          isManual: undefined,
+          name: "Composer 2"
+        }
+      ],
+      baseURL: "",
+      enabled: true,
+      models: []
+    },
     gateway: {
       apiKey: "",
       availableModels: [],

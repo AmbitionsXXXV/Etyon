@@ -6,6 +6,7 @@ import {
   ComputerIcon,
   InternetIcon,
   NoteEditIcon,
+  PackageOpenIcon,
   PaintBrush01Icon,
   PuzzleIcon,
   Settings02Icon
@@ -17,6 +18,7 @@ export type SettingsSectionId =
   | "general"
   | "memory"
   | "network"
+  | "plugins"
   | "providers"
   | "skills"
   | "token-savings"
@@ -28,6 +30,7 @@ export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   general: "settings.nav.general",
   memory: "settings.nav.memory",
   network: "settings.nav.network",
+  plugins: "settings.nav.plugins",
   providers: "settings.nav.providers",
   skills: "settings.nav.skills",
   "token-savings": "settings.nav.tokenSavings",
@@ -53,6 +56,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: BrainIcon,
     id: "memory"
+  },
+  {
+    icon: PackageOpenIcon,
+    id: "plugins"
   },
   {
     icon: PuzzleIcon,

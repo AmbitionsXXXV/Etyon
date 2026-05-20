@@ -90,6 +90,14 @@ const ANTHROPIC_PROVIDER_CONFIG_DEFAULT = {
   models: EMPTY_PROVIDER_MODELS
 }
 
+const CURSOR_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "",
+  enabled: false,
+  models: EMPTY_PROVIDER_MODELS
+}
+
 const GATEWAY_PROVIDER_CONFIG_DEFAULT = {
   apiKey: "",
   availableModels: EMPTY_PROVIDER_MODELS,
@@ -131,6 +139,7 @@ export const AiSettingsSchema = z.object({
       anthropic: AiProviderConfigSchema.default(
         ANTHROPIC_PROVIDER_CONFIG_DEFAULT
       ),
+      cursor: AiProviderConfigSchema.default(CURSOR_PROVIDER_CONFIG_DEFAULT),
       gateway: AiProviderConfigSchema.default(GATEWAY_PROVIDER_CONFIG_DEFAULT),
       moonshot: AiProviderConfigSchema.default(
         MOONSHOT_PROVIDER_CONFIG_DEFAULT
@@ -142,6 +151,7 @@ export const AiSettingsSchema = z.object({
     })
     .default({
       anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
+      cursor: CURSOR_PROVIDER_CONFIG_DEFAULT,
       gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,
       moonshot: MOONSHOT_PROVIDER_CONFIG_DEFAULT,
       openai: OPENAI_PROVIDER_CONFIG_DEFAULT,
@@ -213,6 +223,7 @@ export const AppSettingsSchema = z.object({
     defaultProvider: "openai",
     providers: {
       anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
+      cursor: CURSOR_PROVIDER_CONFIG_DEFAULT,
       gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,
       moonshot: MOONSHOT_PROVIDER_CONFIG_DEFAULT,
       openai: OPENAI_PROVIDER_CONFIG_DEFAULT,

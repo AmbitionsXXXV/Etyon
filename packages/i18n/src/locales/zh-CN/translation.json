@@ -205,6 +205,8 @@
     },
     "common": {
       "cancel": "取消",
+      "disabled": "未启用",
+      "enabled": "已启用",
       "save": "保存",
       "saving": "保存中..."
     },
@@ -343,6 +345,7 @@
       "general": "通用",
       "memory": "长期记忆",
       "network": "网络",
+      "plugins": "Plugins",
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token 节省",
@@ -393,6 +396,46 @@
         "usernamePlaceholder": "用户名（可选）"
       }
     },
+    "plugins": {
+      "enable": {
+        "description": "启用后，在 Providers 页面完成 Cursor 登录与模型同步。",
+        "label": "启用 {{name}}"
+      },
+      "cursor": {
+        "actions": {
+          "login": "登录 Cursor",
+          "logout": "退出登录",
+          "polling": "等待授权",
+          "syncingModels": "同步中...",
+          "syncModels": "同步模型"
+        },
+        "meta": {
+          "encrypted": "系统加密",
+          "expiresAt": "Access token 过期",
+          "refreshToken": "Refresh token",
+          "secretStorage": "密钥存储",
+          "unencrypted": "明文回退"
+        },
+        "models": {
+          "description": "当前先同步内置 Cursor 模型清单，后续 proxy runtime 会复用同一认证服务。",
+          "empty": "登录后同步模型。",
+          "title": "Cursor 模型"
+        },
+        "status": {
+          "authenticated": "已认证",
+          "loading": "正在读取 Cursor 认证状态...",
+          "loggedOut": "Cursor 登录状态已清除。",
+          "loginFailed": "Cursor 登录失败。",
+          "loginSuccess": "Cursor 登录已完成。",
+          "loginTimeout": "Cursor 登录等待超时。",
+          "modelsFailed": "同步 Cursor 模型失败。",
+          "modelsSynced": "已同步 {{count}} 个 Cursor 模型。",
+          "notAuthenticated": "未认证",
+          "waiting": "请在浏览器中完成 Cursor 授权。"
+        },
+        "title": "Cursor Auth"
+      }
+    },
     "providers": {
       "actions": {
         "fetch": "抓取",
@@ -410,6 +453,10 @@
         "baseUrl": {
           "description": "默认地址：{{defaultBaseURL}} · 上游 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "cursorAuth": {
+          "description": "使用 Cursor 浏览器登录授权。Token 由主进程密钥存储保存，不写入普通 settings。",
+          "label": "Cursor 登录"
         },
         "region": {
           "description": "切换 Moonshot 官方域名时，会同步更新默认 Base URL。",
@@ -431,6 +478,9 @@
         "title": "模型"
       },
       "provider": {
+        "cursor": {
+          "description": "Cursor provider 来自内置 cursor-auth 插件，使用 Cursor 订阅授权并提供模型选择。"
+        },
         "moonshot": {
           "description": "Moonshot 提供兼容 OpenAI 的 Kimi 模型接口。"
         },
@@ -442,6 +492,9 @@
       "status": {
         "disabled": "已停用",
         "enabled": "已启用",
+        "cursorNeedsLogin": "需要先登录 Cursor，登录后即可同步模型。",
+        "cursorPluginDisabled": "请先在 Plugins 页面启用 Cursor Auth 插件。",
+        "cursorReady": "Cursor 已认证，可以同步模型并选择启用的模型。",
         "fetchFailed": "抓取模型失败。",
         "fetching": "正在从上游 Models API 抓取模型...",
         "fetchSuccess": "已抓取 {{count}} 个模型。",

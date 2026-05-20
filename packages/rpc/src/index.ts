@@ -29,6 +29,22 @@ export type {
 } from "./schemas/chat-sessions"
 export { FontListOutputSchema } from "./schemas/fonts"
 export {
+  CursorAuthLoginStatusSchema,
+  CursorAuthPollLoginInputSchema,
+  CursorAuthPollLoginOutputSchema,
+  CursorAuthStartLoginOutputSchema,
+  CursorAuthStatusOutputSchema,
+  CursorModelsOutputSchema
+} from "./schemas/cursor-auth"
+export type {
+  CursorAuthLoginStatus,
+  CursorAuthPollLoginInput,
+  CursorAuthPollLoginOutput,
+  CursorAuthStartLoginOutput,
+  CursorAuthStatusOutput,
+  CursorModelsOutput
+} from "./schemas/cursor-auth"
+export {
   GitFileStatusSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
@@ -64,6 +80,24 @@ export type {
   MemoryStatsOutput
 } from "./schemas/memory"
 export { PingInputSchema, PingOutputSchema } from "./schemas/ping"
+export {
+  BuiltInPluginIdSchema,
+  BuiltInPluginSchema,
+  PluginCapabilitySchema,
+  PluginPermissionSchema,
+  PluginsListOutputSchema,
+  PluginsSetEnabledInputSchema,
+  PluginsSetEnabledOutputSchema
+} from "./schemas/plugins"
+export type {
+  BuiltInPlugin,
+  BuiltInPluginId,
+  PluginCapability,
+  PluginPermission,
+  PluginsListOutput,
+  PluginsSetEnabledInput,
+  PluginsSetEnabledOutput
+} from "./schemas/plugins"
 export {
   BuiltInProviderIdSchema,
   MoonshotRegionSchema,

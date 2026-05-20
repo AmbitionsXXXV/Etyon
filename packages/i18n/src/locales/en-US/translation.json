@@ -205,6 +205,8 @@
     },
     "common": {
       "cancel": "Cancel",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
       "save": "Save",
       "saving": "Saving..."
     },
@@ -343,6 +345,7 @@
       "general": "General",
       "memory": "Memory",
       "network": "Network",
+      "plugins": "Plugins",
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
@@ -393,6 +396,46 @@
         "usernamePlaceholder": "Username (Optional)"
       }
     },
+    "plugins": {
+      "enable": {
+        "description": "After enabling, complete Cursor login and model sync on the Providers page.",
+        "label": "Enable {{name}}"
+      },
+      "cursor": {
+        "actions": {
+          "login": "Login to Cursor",
+          "logout": "Logout",
+          "polling": "Waiting",
+          "syncingModels": "Syncing...",
+          "syncModels": "Sync Models"
+        },
+        "meta": {
+          "encrypted": "System encrypted",
+          "expiresAt": "Access token expiry",
+          "refreshToken": "Refresh token",
+          "secretStorage": "Secret storage",
+          "unencrypted": "Plaintext fallback"
+        },
+        "models": {
+          "description": "This first pass syncs the built-in Cursor model list. The proxy runtime will reuse the same auth service.",
+          "empty": "Login before syncing models.",
+          "title": "Cursor Models"
+        },
+        "status": {
+          "authenticated": "Authenticated",
+          "loading": "Reading Cursor auth status...",
+          "loggedOut": "Cursor login state was cleared.",
+          "loginFailed": "Cursor login failed.",
+          "loginSuccess": "Cursor login completed.",
+          "loginTimeout": "Cursor login timed out.",
+          "modelsFailed": "Failed to sync Cursor models.",
+          "modelsSynced": "Synced {{count}} Cursor models.",
+          "notAuthenticated": "Not Authenticated",
+          "waiting": "Complete Cursor authorization in the browser."
+        },
+        "title": "Cursor Auth"
+      }
+    },
     "providers": {
       "actions": {
         "fetch": "Fetch",
@@ -410,6 +453,10 @@
         "baseUrl": {
           "description": "Default: {{defaultBaseURL}} · Upstream Models API: {{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "cursorAuth": {
+          "description": "Authorize through Cursor browser login. Tokens stay in main-process secret storage and are not written into regular settings.",
+          "label": "Cursor Login"
         },
         "region": {
           "description": "Switch the official Moonshot domain used by the default Base URL.",
@@ -431,6 +478,9 @@
         "title": "Models"
       },
       "provider": {
+        "cursor": {
+          "description": "The Cursor provider is supplied by the built-in cursor-auth plugin, using Cursor subscription auth with model selection."
+        },
         "moonshot": {
           "description": "Moonshot exposes Kimi models through an OpenAI-compatible API."
         },
@@ -442,6 +492,9 @@
       "status": {
         "disabled": "Disabled",
         "enabled": "Enabled",
+        "cursorNeedsLogin": "Login to Cursor before syncing models.",
+        "cursorPluginDisabled": "Enable the Cursor Auth plugin on the Plugins page first.",
+        "cursorReady": "Cursor is authenticated and ready to sync selectable models.",
         "fetchFailed": "Failed to fetch models.",
         "fetching": "Fetching models from the upstream Models API...",
         "fetchSuccess": "Fetched {{count}} models.",

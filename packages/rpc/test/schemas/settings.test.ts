@@ -3,9 +3,16 @@ import { describe, expect, it } from "vite-plus/test"
 import { AppSettingsSchema } from "../../src/schemas/settings"
 
 describe("AppSettingsSchema", () => {
-  it("adds moonshot and z.ai provider defaults for empty settings", () => {
+  it("adds cursor, moonshot and z.ai provider defaults for empty settings", () => {
     const settings = AppSettingsSchema.parse({})
 
+    expect(settings.ai.providers.cursor).toMatchObject({
+      apiKey: "",
+      baseURL: "",
+      enabled: false
+    })
+    expect(settings.ai.providers.cursor.availableModels).toEqual([])
+    expect(settings.ai.providers.cursor.models).toEqual([])
     expect(settings.ai.providers.moonshot).toMatchObject({
       apiKey: "",
       baseURL: "https://api.moonshot.cn/v1",
@@ -36,6 +43,7 @@ describe("AppSettingsSchema", () => {
     })
 
     expect(settings.ai.providers.openai.apiKey).toBe("sk-openai")
+    expect(settings.ai.providers.cursor.enabled).toBe(false)
     expect(settings.ai.providers.moonshot.baseURL).toBe(
       "https://api.moonshot.cn/v1"
     )

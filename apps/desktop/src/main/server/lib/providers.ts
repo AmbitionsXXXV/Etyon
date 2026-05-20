@@ -18,6 +18,7 @@ type ProviderName = BuiltInProviderId
 
 const PROVIDER_PREFIX_MAP: Record<string, ProviderName> = {
   anthropic: "anthropic",
+  cursor: "cursor",
   gateway: "gateway",
   moonshot: "moonshot",
   openai: "openai",
@@ -120,13 +121,13 @@ const createProviderModel = (
     throw new Error(`Provider "${provider}" is disabled.`)
   }
 
-  const apiKey = providerConfig.apiKey.trim()
-
-  if (!apiKey) {
-    throw new Error(`Provider "${provider}" is missing an API Key.`)
-  }
-
   const createOpenAICompatibleChatModel = (baseURL?: string): LanguageModel => {
+    const apiKey = providerConfig.apiKey.trim()
+
+    if (!apiKey) {
+      throw new Error(`Provider "${provider}" is missing an API Key.`)
+    }
+
     const openai = createOpenAI({
       apiKey,
       name: provider,
@@ -137,6 +138,12 @@ const createProviderModel = (
   }
 
   const createOpenAIResponsesModel = (baseURL?: string): LanguageModel => {
+    const apiKey = providerConfig.apiKey.trim()
+
+    if (!apiKey) {
+      throw new Error(`Provider "${provider}" is missing an API Key.`)
+    }
+
     const openai = createOpenAI({
       apiKey,
       ...(baseURL ? { baseURL } : {})
@@ -147,11 +154,26 @@ const createProviderModel = (
 
   switch (provider) {
     case "anthropic": {
+      const apiKey = providerConfig.apiKey.trim()
+
+      if (!apiKey) {
+        throw new Error(`Provider "${provider}" is missing an API Key.`)
+      }
+
       const anthropic = createAnthropic({ apiKey })
 
       return anthropic(model)
     }
+    case "cursor": {
+      throw new Error("Cursor provider runtime proxy is not configured yet.")
+    }
     case "gateway": {
+      const apiKey = providerConfig.apiKey.trim()
+
+      if (!apiKey) {
+        throw new Error(`Provider "${provider}" is missing an API Key.`)
+      }
+
       const gateway = createGateway({ apiKey })
 
       return gateway(model)

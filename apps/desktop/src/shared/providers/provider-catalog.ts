@@ -26,7 +26,11 @@ interface SettingsTabProviderCatalogEntry extends ProviderCatalogEntry {
   id: SettingsTabProviderId
 }
 
-export const SETTINGS_PROVIDER_IDS = ["moonshot", "zai-coding-plan"] as const
+export const SETTINGS_PROVIDER_IDS = [
+  "cursor",
+  "moonshot",
+  "zai-coding-plan"
+] as const
 
 export type SettingsTabProviderId = (typeof SETTINGS_PROVIDER_IDS)[number]
 
@@ -56,6 +60,16 @@ const ANTHROPIC_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
   seedModels: BUILT_IN_PROVIDER_SEED_MODELS.anthropic,
   settingsTab: false,
   upstreamModelsApi: "GET /models"
+}
+
+const CURSOR_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
+  baseURL: "",
+  id: "cursor",
+  modelsApiPath: "",
+  name: "Cursor",
+  seedModels: BUILT_IN_PROVIDER_SEED_MODELS.cursor,
+  settingsTab: true,
+  upstreamModelsApi: "Cursor OAuth"
 }
 
 const GATEWAY_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
@@ -100,6 +114,7 @@ const ZAI_CODING_PLAN_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
 
 export const BUILT_IN_PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
   ANTHROPIC_PROVIDER_CATALOG_ENTRY,
+  CURSOR_PROVIDER_CATALOG_ENTRY,
   GATEWAY_PROVIDER_CATALOG_ENTRY,
   MOONSHOT_PROVIDER_CATALOG_ENTRY,
   OPENAI_PROVIDER_CATALOG_ENTRY,
@@ -111,6 +126,7 @@ export const BUILT_IN_PROVIDER_CATALOG_BY_ID: Record<
   ProviderCatalogEntry
 > = {
   anthropic: ANTHROPIC_PROVIDER_CATALOG_ENTRY,
+  cursor: CURSOR_PROVIDER_CATALOG_ENTRY,
   gateway: GATEWAY_PROVIDER_CATALOG_ENTRY,
   moonshot: MOONSHOT_PROVIDER_CATALOG_ENTRY,
   openai: OPENAI_PROVIDER_CATALOG_ENTRY,
@@ -202,6 +218,11 @@ export const hydrateAiSettingsProviders = (
         aiSettings.providers.anthropic,
         "anthropic",
         hasOwn("anthropic", rawProviders) ? rawProviders.anthropic : undefined
+      ),
+      cursor: hydrateProviderConfig(
+        aiSettings.providers.cursor,
+        "cursor",
+        hasOwn("cursor", rawProviders) ? rawProviders.cursor : undefined
       ),
       gateway: hydrateProviderConfig(
         aiSettings.providers.gateway,

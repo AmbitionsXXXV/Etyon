@@ -45,6 +45,7 @@ import {
 } from "./settings/general-tab"
 import { MemoryTab } from "./settings/memory-tab"
 import { NetworkTab } from "./settings/network-tab"
+import { PluginsTab } from "./settings/plugins-tab"
 import { ProvidersTab } from "./settings/providers-tab"
 import { SkillsTab } from "./settings/skills-tab"
 import { TokenSavingsTab } from "./settings/token-savings-tab"
@@ -73,6 +74,7 @@ const SETTINGS_SECTION_IDS = new Set<string>([
   "general",
   "memory",
   "network",
+  "plugins",
   "providers",
   "skills",
   "token-savings",
@@ -239,7 +241,8 @@ export const SettingsPage = ({
     () => buildLightColorSchemaOptions(t),
     [t]
   )
-  const isProvidersSection = activeSection === "providers"
+  const isFullHeightSection =
+    activeSection === "providers" || activeSection === "plugins"
   const layoutStyle = useMemo(
     () => getSettingsPageLayoutStyle(isStandaloneWindow),
     [isStandaloneWindow]
@@ -312,13 +315,13 @@ export const SettingsPage = ({
           <div
             className={cn(
               "min-h-0 flex-1",
-              isProvidersSection ? "overflow-hidden" : "overflow-y-auto"
+              isFullHeightSection ? "overflow-hidden" : "overflow-y-auto"
             )}
           >
             <div
               className={cn(
                 "mx-auto p-6",
-                isProvidersSection && "flex h-full min-h-0 flex-col"
+                isFullHeightSection && "flex h-full min-h-0 flex-col"
               )}
             >
               <motion.h1
@@ -547,6 +550,8 @@ export const SettingsPage = ({
                   skills={draft.skills}
                 />
               )}
+
+              {activeSection === "plugins" && <PluginsTab />}
 
               {activeSection === "token-savings" && <TokenSavingsTab />}
 

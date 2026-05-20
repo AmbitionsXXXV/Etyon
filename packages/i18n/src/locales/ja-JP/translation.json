@@ -205,6 +205,8 @@
     },
     "common": {
       "cancel": "キャンセル",
+      "disabled": "無効",
+      "enabled": "有効",
       "save": "保存",
       "saving": "保存中..."
     },
@@ -343,6 +345,7 @@
       "general": "一般",
       "memory": "Memory",
       "network": "ネットワーク",
+      "plugins": "Plugins",
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
@@ -393,6 +396,46 @@
         "usernamePlaceholder": "ユーザー名（任意）"
       }
     },
+    "plugins": {
+      "enable": {
+        "description": "有効化後は Providers ページで Cursor ログインとモデル同期を行います。",
+        "label": "{{name}} を有効化"
+      },
+      "cursor": {
+        "actions": {
+          "login": "Cursor にログイン",
+          "logout": "ログアウト",
+          "polling": "認証待ち",
+          "syncingModels": "同期中...",
+          "syncModels": "モデルを同期"
+        },
+        "meta": {
+          "encrypted": "システム暗号化",
+          "expiresAt": "Access token の期限",
+          "refreshToken": "Refresh token",
+          "secretStorage": "Secret storage",
+          "unencrypted": "平文フォールバック"
+        },
+        "models": {
+          "description": "この初期版では組み込み Cursor モデル一覧を同期します。proxy runtime は同じ認証サービスを再利用します。",
+          "empty": "ログイン後にモデルを同期できます。",
+          "title": "Cursor Models"
+        },
+        "status": {
+          "authenticated": "認証済み",
+          "loading": "Cursor 認証状態を読み込んでいます...",
+          "loggedOut": "Cursor のログイン状態を削除しました。",
+          "loginFailed": "Cursor ログインに失敗しました。",
+          "loginSuccess": "Cursor ログインが完了しました。",
+          "loginTimeout": "Cursor ログイン待機がタイムアウトしました。",
+          "modelsFailed": "Cursor モデルの同期に失敗しました。",
+          "modelsSynced": "{{count}} 件の Cursor モデルを同期しました。",
+          "notAuthenticated": "未認証",
+          "waiting": "ブラウザで Cursor 認証を完了してください。"
+        },
+        "title": "Cursor Auth"
+      }
+    },
     "providers": {
       "actions": {
         "fetch": "Fetch",
@@ -410,6 +453,10 @@
         "baseUrl": {
           "description": "既定値：{{defaultBaseURL}} · 上流 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
+        },
+        "cursorAuth": {
+          "description": "Cursor のブラウザログインで認証します。token は main process の secret storage に保存し、通常の settings には書き込みません。",
+          "label": "Cursor Login"
         },
         "region": {
           "description": "既定の Base URL で使う Moonshot 公式ドメインを切り替えます。",
@@ -431,6 +478,9 @@
         "title": "Models"
       },
       "provider": {
+        "cursor": {
+          "description": "Cursor provider は組み込み cursor-auth plugin から提供され、Cursor subscription 認証とモデル選択を使います。"
+        },
         "moonshot": {
           "description": "Moonshot は OpenAI 互換 API で Kimi モデルを提供します。"
         },
@@ -442,6 +492,9 @@
       "status": {
         "disabled": "無効",
         "enabled": "有効",
+        "cursorNeedsLogin": "モデル同期の前に Cursor にログインしてください。",
+        "cursorPluginDisabled": "先に Plugins ページで Cursor Auth plugin を有効化してください。",
+        "cursorReady": "Cursor は認証済みで、選択可能なモデルを同期できます。",
         "fetchFailed": "モデルの取得に失敗しました。",
         "fetching": "上流 Models API からモデルを取得しています...",
         "fetchSuccess": "{{count}} 件のモデルを取得しました。",

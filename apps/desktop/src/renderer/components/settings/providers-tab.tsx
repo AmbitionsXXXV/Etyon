@@ -20,7 +20,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import { Button, Checkbox, Input, Switch } from "@heroui/react"
 import { Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -39,10 +39,14 @@ interface ProviderFetchState {
   message: string
 }
 
+const CURSOR_LOGIN_POLL_INTERVAL_MS = 2000
+const CURSOR_LOGIN_TIMEOUT_MS = 3 * 60 * 1000
+
 const PROVIDER_DESCRIPTION_KEY_BY_ID: Record<
   SettingsTabProviderId,
   TranslationKey
 > = {
+  cursor: "settings.providers.provider.cursor.description",
   moonshot: "settings.providers.provider.moonshot.description",
   "zai-coding-plan": "settings.providers.provider.zaiCodingPlan.description"
 }
@@ -56,6 +60,7 @@ const createFetchStateMap = (): Record<
   SettingsTabProviderId,
   ProviderFetchState
 > => ({
+  cursor: { kind: "idle", message: "" },
   moonshot: { kind: "idle", message: "" },
   "zai-coding-plan": { kind: "idle", message: "" }
 })
@@ -72,6 +77,28 @@ const formatContextWindow = (contextWindow?: number) => {
   return `${contextWindow} ctx`
 }
 
+const getProviderCredentialStatusKey = (
+  hasProviderCredential: boolean,
+  isCursorProvider: boolean,
+  isCursorAuthPluginEnabled: boolean
+): TranslationKey => {
+  if (hasProviderCredential) {
+    return isCursorProvider
+      ? "settings.providers.status.cursorReady"
+      : "settings.providers.status.ready"
+  }
+
+  if (isCursorProvider) {
+    if (isCursorAuthPluginEnabled) {
+      return "settings.providers.status.cursorNeedsLogin"
+    }
+
+    return "settings.providers.status.cursorPluginDisabled"
+  }
+
+  return "settings.providers.status.needsApiKey"
+}
+
 const buildModelSummary = (model: StoredProviderModel) => {
   const tags = [
     model.capabilities?.vision ? "Vision" : null,
@@ -85,6 +112,63 @@ const buildModelSummary = (model: StoredProviderModel) => {
   return tags.join(" · ")
 }
 
+const CursorProviderAuthActions = ({
+  cursorLoginRequestId,
+  isCursorAuthPluginEnabled,
+  isCursorAuthenticated,
+  logoutCursorMutationIsPending,
+  onLogin,
+  onLogout,
+  startCursorLoginMutationIsPending,
+  t
+}: {
+  cursorLoginRequestId: string | null
+  isCursorAuthPluginEnabled: boolean
+  isCursorAuthenticated: boolean
+  logoutCursorMutationIsPending: boolean
+  onLogin: () => void
+  onLogout: () => void
+  startCursorLoginMutationIsPending: boolean
+  t: ReturnType<typeof useI18n>["t"]
+}) => {
+  if (!isCursorAuthPluginEnabled) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t("settings.providers.status.cursorPluginDisabled")}
+      </p>
+    )
+  }
+
+  if (isCursorAuthenticated) {
+    return (
+      <Button
+        isDisabled={logoutCursorMutationIsPending}
+        onPress={onLogout}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {t("settings.plugins.cursor.actions.logout")}
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      isDisabled={
+        startCursorLoginMutationIsPending || Boolean(cursorLoginRequestId)
+      }
+      onPress={onLogin}
+      size="sm"
+      type="button"
+    >
+      {cursorLoginRequestId
+        ? t("settings.plugins.cursor.actions.polling")
+        : t("settings.plugins.cursor.actions.login")}
+    </Button>
+  )
+}
+
 const SearchInput = ({
   onChange,
   placeholder,
@@ -94,14 +178,14 @@ const SearchInput = ({
   placeholder: string
   value: string
 }) => (
-  <div className="relative">
+  <div className="relative max-w-full min-w-0">
     <HugeiconsIcon
       className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
       icon={Search01Icon}
       strokeWidth={2}
     />
     <Input
-      className="h-8 rounded-lg pl-8"
+      className="h-8 w-full min-w-0 rounded-lg pl-8"
       onChange={onChange}
       placeholder={placeholder}
       value={value}
@@ -231,6 +315,7 @@ const ProviderModelItem = ({
   )
 }
 
+// eslint-disable-next-line complexity -- The settings provider page coordinates shared draft state with provider-specific auth controls.
 export const ProvidersTab = ({
   aiSettings,
   onProviderConfigChange,
@@ -249,13 +334,28 @@ export const ProvidersTab = ({
   ) => void
 }) => {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const [activeProviderId, setActiveProviderId] =
-    useState<SettingsTabProviderId>("moonshot")
+    useState<SettingsTabProviderId>("cursor")
   const [fetchStates, setFetchStates] = useState(createFetchStateMap)
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false)
+  const [cursorLoginRequestId, setCursorLoginRequestId] = useState<
+    string | null
+  >(null)
+  const [cursorLoginStartedAt, setCursorLoginStartedAt] = useState<
+    number | null
+  >(null)
   const [modelSearchValue, setModelSearchValue] = useState("")
   const [providerSearchValue, setProviderSearchValue] = useState("")
   const providers = useMemo(() => getSettingsTabProviders(), [])
+  const pluginsQuery = useQuery({
+    queryFn: () => rpcClient.plugins.list(),
+    queryKey: ["plugins", "list"]
+  })
+  const cursorStatusQuery = useQuery({
+    queryFn: () => rpcClient.cursorAuth.status(),
+    queryKey: ["cursor-auth", "status"]
+  })
 
   const filteredProviders = useMemo(() => {
     const normalizedSearchValue = providerSearchValue.trim().toLowerCase()
@@ -282,6 +382,12 @@ export const ProvidersTab = ({
     providers.find((provider) => provider.id === activeProviderId) ??
     providers[0]
   const activeProviderConfig = aiSettings.providers[activeProvider.id]
+  const isCursorProvider = activeProvider.id === "cursor"
+  const isCursorAuthPluginEnabled = Boolean(
+    pluginsQuery.data?.plugins.find((plugin) => plugin.id === "cursor-auth")
+      ?.enabled
+  )
+  const isCursorAuthenticated = Boolean(cursorStatusQuery.data?.authenticated)
 
   const filteredModels = useMemo(() => {
     const normalizedSearchValue = modelSearchValue.trim().toLowerCase()
@@ -360,6 +466,107 @@ export const ProvidersTab = ({
                   count: models.length
                 })
               : t("settings.providers.status.fetchSuccessEmpty")
+        }
+      }))
+    }
+  })
+
+  const logoutCursorMutation = useMutation({
+    mutationFn: () => rpcClient.cursorAuth.logout(),
+    onError: (error) => {
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : t("settings.plugins.cursor.status.loginFailed")
+        }
+      }))
+    },
+    onSuccess: async () => {
+      setCursorLoginRequestId(null)
+      setCursorLoginStartedAt(null)
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "idle",
+          message: t("settings.plugins.cursor.status.loggedOut")
+        }
+      }))
+      await queryClient.invalidateQueries({
+        queryKey: ["cursor-auth", "status"]
+      })
+    }
+  })
+
+  const pollCursorLoginMutation = useMutation({
+    mutationFn: (requestId: string) =>
+      rpcClient.cursorAuth.pollLogin({ requestId }),
+    onError: (error) => {
+      setCursorLoginRequestId(null)
+      setCursorLoginStartedAt(null)
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : t("settings.plugins.cursor.status.loginFailed")
+        }
+      }))
+    },
+    onSuccess: async (result) => {
+      if (!result.authenticated) {
+        setFetchStates((previousStates) => ({
+          ...previousStates,
+          cursor: {
+            kind: "loading",
+            message: t("settings.plugins.cursor.status.waiting")
+          }
+        }))
+        return
+      }
+
+      setCursorLoginRequestId(null)
+      setCursorLoginStartedAt(null)
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "success",
+          message: t("settings.plugins.cursor.status.loginSuccess")
+        }
+      }))
+      await queryClient.invalidateQueries({
+        queryKey: ["cursor-auth", "status"]
+      })
+    }
+  })
+
+  const startCursorLoginMutation = useMutation({
+    mutationFn: () => rpcClient.cursorAuth.startLogin(),
+    onError: (error) => {
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : t("settings.plugins.cursor.status.loginFailed")
+        }
+      }))
+    },
+    onSuccess: ({ requestId }) => {
+      setCursorLoginRequestId(requestId)
+      setCursorLoginStartedAt(Date.now())
+      setFetchStates((previousStates) => ({
+        ...previousStates,
+        cursor: {
+          kind: "loading",
+          message: t("settings.plugins.cursor.status.waiting")
         }
       }))
     }
@@ -467,12 +674,54 @@ export const ProvidersTab = ({
     fetchModelsMutation.mutate(activeProvider.id)
   }, [activeProvider.id, fetchModelsMutation])
 
+  const handleCursorLogin = useCallback(() => {
+    startCursorLoginMutation.mutate()
+  }, [startCursorLoginMutation])
+
+  const handleCursorLogout = useCallback(() => {
+    logoutCursorMutation.mutate()
+  }, [logoutCursorMutation])
+
+  useEffect(() => {
+    if (!cursorLoginRequestId || !cursorLoginStartedAt) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (Date.now() - cursorLoginStartedAt > CURSOR_LOGIN_TIMEOUT_MS) {
+        setCursorLoginRequestId(null)
+        setCursorLoginStartedAt(null)
+        setFetchStates((previousStates) => ({
+          ...previousStates,
+          cursor: {
+            kind: "error",
+            message: t("settings.plugins.cursor.status.loginTimeout")
+          }
+        }))
+        return
+      }
+
+      if (!pollCursorLoginMutation.isPending) {
+        pollCursorLoginMutation.mutate(cursorLoginRequestId)
+      }
+    }, CURSOR_LOGIN_POLL_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [cursorLoginRequestId, cursorLoginStartedAt, pollCursorLoginMutation, t])
+
   const providerFetchState = fetchStates[activeProvider.id]
+  const hasProviderCredential = isCursorProvider
+    ? isCursorAuthPluginEnabled && isCursorAuthenticated
+    : Boolean(activeProviderConfig.apiKey.trim())
   const providerStatusMessage =
     providerFetchState.message ||
-    (activeProviderConfig.apiKey.trim()
-      ? t("settings.providers.status.ready")
-      : t("settings.providers.status.needsApiKey"))
+    t(
+      getProviderCredentialStatusKey(
+        hasProviderCredential,
+        isCursorProvider,
+        isCursorAuthPluginEnabled
+      )
+    )
 
   let statusPanelClassName = "border-border bg-muted/30 text-muted-foreground"
 
@@ -529,6 +778,13 @@ export const ProvidersTab = ({
                 let statusClassName = "bg-muted-foreground/40"
 
                 if (providerConfig.enabled && providerConfig.apiKey.trim()) {
+                  statusClassName = "bg-primary"
+                } else if (
+                  provider.id === "cursor" &&
+                  providerConfig.enabled &&
+                  isCursorAuthPluginEnabled &&
+                  isCursorAuthenticated
+                ) {
                   statusClassName = "bg-primary"
                 } else if (providerConfig.enabled) {
                   statusClassName = "bg-amber-400"
@@ -606,74 +862,104 @@ export const ProvidersTab = ({
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-medium">
-                      {t("settings.providers.fields.apiKey.label")}
-                    </label>
-                    <Button
-                      onPress={handleToggleApiKeyVisibility}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {apiKeyVisibilityLabel}
-                    </Button>
-                  </div>
-                  <Input
-                    onChange={handleApiKeyInputChange}
-                    placeholder={t(
-                      "settings.providers.fields.apiKey.placeholder"
-                    )}
-                    type={isApiKeyVisible ? "text" : "password"}
-                    value={activeProviderConfig.apiKey}
-                    className="mx-0.5"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  {activeProvider.id === "moonshot" && (
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium">
-                        {t("settings.providers.fields.region.label")}
-                      </label>
-                      <Select
-                        onValueChange={handleMoonshotRegionChange}
-                        value={activeProviderConfig.region ?? "china"}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue>
-                            {t(
-                              `settings.providers.fields.region.option.${activeProviderConfig.region ?? "china"}` as TranslationKey
-                            )}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {MOONSHOT_REGION_OPTIONS.map((region) => (
-                              <SelectItem key={region} value={region}>
-                                {t(
-                                  `settings.providers.fields.region.option.${region}` as TranslationKey
-                                )}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                {isCursorProvider ? (
+                  <div className="space-y-3 rounded-xl border border-border bg-background/50 p-3">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold">
+                        {t("settings.providers.fields.cursorAuth.label")}
+                      </h4>
                       <p className="text-[0.6875rem] leading-5 text-muted-foreground">
-                        {t("settings.providers.fields.region.description")}
+                        {t("settings.providers.fields.cursorAuth.description")}
                       </p>
                     </div>
-                  )}
 
+                    <CursorProviderAuthActions
+                      cursorLoginRequestId={cursorLoginRequestId}
+                      isCursorAuthPluginEnabled={isCursorAuthPluginEnabled}
+                      isCursorAuthenticated={isCursorAuthenticated}
+                      logoutCursorMutationIsPending={
+                        logoutCursorMutation.isPending
+                      }
+                      onLogin={handleCursorLogin}
+                      onLogout={handleCursorLogout}
+                      startCursorLoginMutationIsPending={
+                        startCursorLoginMutation.isPending
+                      }
+                      t={t}
+                    />
+                  </div>
+                ) : (
                   <div className="space-y-2">
-                    <label className="text-xs font-medium">
-                      {t("settings.providers.fields.baseUrl.label")}
-                    </label>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium">
+                        {t("settings.providers.fields.apiKey.label")}
+                      </label>
+                      <Button
+                        onPress={handleToggleApiKeyVisibility}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        {apiKeyVisibilityLabel}
+                      </Button>
+                    </div>
                     <Input
+                      className="mx-0.5"
+                      onChange={handleApiKeyInputChange}
+                      placeholder={t(
+                        "settings.providers.fields.apiKey.placeholder"
+                      )}
+                      type={isApiKeyVisible ? "text" : "password"}
+                      value={activeProviderConfig.apiKey}
+                    />
+                  </div>
+                )}
+
+                {!isCursorProvider && (
+                  <div className="space-y-2">
+                    {activeProvider.id === "moonshot" && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">
+                          {t("settings.providers.fields.region.label")}
+                        </label>
+                        <Select
+                          onValueChange={handleMoonshotRegionChange}
+                          value={activeProviderConfig.region ?? "china"}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {t(
+                                `settings.providers.fields.region.option.${activeProviderConfig.region ?? "china"}` as TranslationKey
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {MOONSHOT_REGION_OPTIONS.map((region) => (
+                                <SelectItem key={region} value={region}>
+                                  {t(
+                                    `settings.providers.fields.region.option.${region}` as TranslationKey
+                                  )}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[0.6875rem] leading-5 text-muted-foreground">
+                          {t("settings.providers.fields.region.description")}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium">
+                        {t("settings.providers.fields.baseUrl.label")}
+                      </label>
+                    </div>
+                    <Input
+                      className="mx-0.5"
                       onChange={handleBaseURLInputChange}
                       value={activeProviderConfig.baseURL}
-                      className="mx-0.5"
                     />
                     <p className="text-[0.6875rem] leading-5 text-muted-foreground">
                       {t("settings.providers.fields.baseUrl.description", {
@@ -682,7 +968,7 @@ export const ProvidersTab = ({
                       })}
                     </p>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="flex min-h-48 flex-col rounded-2xl border border-border bg-background/50 p-3">
@@ -698,8 +984,7 @@ export const ProvidersTab = ({
                     </div>
                     <Button
                       isDisabled={
-                        fetchModelsMutation.isPending ||
-                        !activeProviderConfig.apiKey
+                        fetchModelsMutation.isPending || !hasProviderCredential
                       }
                       onPress={handleFetchClick}
                       type="button"

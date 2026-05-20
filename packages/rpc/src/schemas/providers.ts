@@ -2,6 +2,7 @@ import * as z from "zod"
 
 export const BuiltInProviderIdSchema = z.enum([
   "anthropic",
+  "cursor",
   "gateway",
   "moonshot",
   "openai",

@@ -80,7 +80,8 @@ export default defineConfig({
       "**/.vite/**",
       "**/dist/**",
       "**/out/**",
-      "**/routeTree.gen.ts"
+      "**/routeTree.gen.ts",
+      "**/cursor-auth/proto/**"
     ],
     overrides: ultraciteCoreConfig.overrides,
     plugins: lintPlugins,
