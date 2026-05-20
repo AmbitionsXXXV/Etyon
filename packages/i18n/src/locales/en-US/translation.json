@@ -203,6 +203,28 @@
       "description": "Choose your preferred app icon for the dock, taskbar, and tray.",
       "title": "App Icon"
     },
+    "chat": {
+      "autoCompact": {
+        "description": "Automatically compress older conversation history when the chat approaches the context window limit.",
+        "enabled": {
+          "description": "Compress older messages before they crowd out new context.",
+          "label": "Enable Auto Compact"
+        },
+        "keepRecentMessages": {
+          "description": "Recent messages to always keep in full. These messages are not compressed into the summary (2-20).",
+          "label": "Keep Recent Messages"
+        },
+        "threshold": {
+          "description": "When estimated context usage exceeds this percentage, older messages are compacted. Lower values leave more buffer, while higher values preserve more original content.",
+          "early": "Early (5%)",
+          "label": "Compaction Threshold: {{value}}%",
+          "late": "Late (95%)"
+        },
+        "title": "Auto Compact"
+      },
+      "description": "Configure chat history compression and context preservation.",
+      "title": "Chat"
+    },
     "common": {
       "cancel": "Cancel",
       "disabled": "Disabled",
@@ -341,6 +363,8 @@
       "title": "Language"
     },
     "nav": {
+      "channels": "Channels",
+      "chat": "Chat",
       "colorSchema": "Color Schema",
       "general": "General",
       "memory": "Memory",
@@ -349,7 +373,6 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
-      "channels": "Channels",
       "userInterface": "User Interface"
     },
     "memory": {
@@ -418,7 +441,7 @@
       "toolModel": {
         "auto": "Auto",
         "autoDescription": "Choose a capable low-cost model from your enabled providers.",
-        "description": "Used for memory summarization, query rewriting, and future auto compact summaries.",
+        "description": "Used for memory summarization, query rewriting, and auto compact summaries.",
         "label": "Memory Tool Model",
         "unavailable": "Selected model is unavailable"
       }

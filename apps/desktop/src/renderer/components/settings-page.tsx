@@ -34,6 +34,7 @@ import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
 import { ChannelsTab } from "./settings/channels-tab"
+import { ChatTab } from "./settings/chat-tab"
 import { ColorSchemaTab } from "./settings/color-schema"
 import {
   AppIconSelector,
@@ -70,6 +71,7 @@ interface SettingsNavItem {
 
 const SETTINGS_SECTION_IDS = new Set<string>([
   "channels",
+  "chat",
   "color-schema",
   "general",
   "memory",
@@ -181,6 +183,7 @@ export const SettingsPage = ({
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
+    handleChatChange,
     handleCloseToTrayChange,
     handleColorSchemaPairChange,
     handleCustomThemeCreate,
@@ -535,6 +538,10 @@ export const SettingsPage = ({
 
               {activeSection === "network" && (
                 <NetworkTab onChange={handleProxyChange} proxy={draft.proxy} />
+              )}
+
+              {activeSection === "chat" && (
+                <ChatTab chat={draft.chat} onChange={handleChatChange} />
               )}
 
               {activeSection === "memory" && (

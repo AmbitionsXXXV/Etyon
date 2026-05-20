@@ -4,6 +4,7 @@ import type {
   AiProviderName,
   AppIcon,
   AppSettings,
+  ChatSettings,
   CustomTheme,
   DarkColorSchema,
   LightColorSchema,
@@ -185,6 +186,10 @@ export const useSettingsPageDraft = () => {
   )
   const handleAutoStartChange = useCallback(
     (v: boolean) => updateDraftRef.current("autoStart", v),
+    []
+  )
+  const handleChatChange = useCallback(
+    (v: ChatSettings) => updateDraftRef.current("chat", v),
     []
   )
   const handleCloseToTrayChange = useCallback(
@@ -371,6 +376,7 @@ export const useSettingsPageDraft = () => {
     handleAppIconChange,
     handleAutoStartChange,
     handleCancel,
+    handleChatChange,
     handleCloseToTrayChange,
     handleColorSchemaPairChange,
     handleCustomThemeCreate,

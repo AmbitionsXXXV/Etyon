@@ -203,6 +203,28 @@
       "description": "选择用于 Dock、任务栏和托盘的应用图标。",
       "title": "应用图标"
     },
+    "chat": {
+      "autoCompact": {
+        "description": "当 chat 接近模型上下文窗口上限时，自动压缩较早的对话历史。",
+        "enabled": {
+          "description": "在较早消息挤占新上下文之前自动压缩。",
+          "label": "启用 Auto Compact"
+        },
+        "keepRecentMessages": {
+          "description": "始终完整保留的最近消息数量。这些消息不会被压缩进 summary（2-20）。",
+          "label": "保留最近消息"
+        },
+        "threshold": {
+          "description": "当预估上下文用量超过该百分比时触发压缩。较低值会保留更多缓冲区，较高值会保留更多原始内容。",
+          "early": "较早（5%）",
+          "label": "压缩阈值：{{value}}%",
+          "late": "较晚（95%）"
+        },
+        "title": "Auto Compact"
+      },
+      "description": "配置 chat 历史压缩与上下文保留策略。",
+      "title": "Chat"
+    },
     "common": {
       "cancel": "取消",
       "disabled": "未启用",
@@ -341,6 +363,8 @@
       "title": "语言"
     },
     "nav": {
+      "channels": "频道",
+      "chat": "Chat",
       "colorSchema": "颜色方案",
       "general": "通用",
       "memory": "长期记忆",
@@ -349,7 +373,6 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token 节省",
-      "channels": "频道",
       "userInterface": "用户界面"
     },
     "memory": {
@@ -418,7 +441,7 @@
       "toolModel": {
         "auto": "Auto",
         "autoDescription": "从已启用的 providers 中选择能力较强、成本较低的模型。",
-        "description": "用于 memory summarization、query rewriting，以及后续 auto compact summary。",
+        "description": "用于 memory summarization、query rewriting 和 auto compact summary。",
         "label": "Memory Tool Model",
         "unavailable": "所选模型不可用"
       }

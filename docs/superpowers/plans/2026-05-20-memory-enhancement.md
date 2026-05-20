@@ -395,7 +395,7 @@ Add keys under `settings.memory`:
   },
   "toolModel": {
     "auto": "Auto",
-    "description": "Used for memory summarization, query rewriting, and future auto compact summaries.",
+    "description": "Used for memory summarization, query rewriting, and auto compact summaries.",
     "label": "Memory Tool Model"
   }
 }

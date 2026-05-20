@@ -138,12 +138,12 @@ Logger SDK 在 `index.tsx` 中通过 `initLogger()` 初始化，注入 RPC emit 
 
 - `memory.stats`：返回当前 active memory 条目数与最近更新时间
 - `memory.list({ limit })`：返回最近更新的 memory 条目，用于 Settings `Memory` tab 预览
+- `memory.embeddingModels.list`：返回默认远端 embedding model 与本地 embedding model catalog 的 installed / missing 状态
 
 memory 的写入和检索由 main process runtime 直接调用 `apps/desktop/src/main/memory.ts`，不通过 renderer 触发。
 
-后续 embedding runtime 需要继续遵循这个边界：
+后续 embedding 下载与维护入口需要继续遵循这个边界：
 
-- `memory.embeddingModels.list`（planned）：返回默认远端 embedding model 与本地 embedding model catalog 的 installed / missing / downloading 状态
 - `memory.embeddingModels.download`（planned）：由 main process 负责下载本地 embedding model，renderer 只触发 action 与展示状态
 - `memory.embeddings.rebuild`（planned）：按 model 与 stale embedding 诊断触发重建，不由 renderer 直接写 SQLite
 

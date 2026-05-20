@@ -174,6 +174,16 @@ const SIDEBAR_SETTINGS_DEFAULT = {
   mode: "simple" as const
 } as const
 
+const AUTO_COMPACT_SETTINGS_DEFAULT = {
+  enabled: true,
+  keepRecentMessages: 4,
+  threshold: 80
+} as const
+
+const CHAT_SETTINGS_DEFAULT = {
+  autoCompact: AUTO_COMPACT_SETTINGS_DEFAULT
+} as const
+
 export const ProxySettingsSchema = z.object({
   enabled: z.boolean().default(false),
   host: z.string().default(""),
@@ -224,6 +234,16 @@ export const TelegramSettingsSchema = z.object({
   requireMentionInGroups: z.boolean().default(true)
 })
 
+export const AutoCompactSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  keepRecentMessages: z.number().int().min(2).max(20).default(4),
+  threshold: z.number().min(5).max(95).default(80)
+})
+
+export const ChatSettingsSchema = z.object({
+  autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT)
+})
+
 export const AppSettingsSchema = z.object({
   ai: AiSettingsSchema.default({
     defaultModel: "",
@@ -239,6 +259,7 @@ export const AppSettingsSchema = z.object({
   }),
   appIcon: AppIconSchema.default("default"),
   autoStart: z.boolean().default(false),
+  chat: ChatSettingsSchema.default(CHAT_SETTINGS_DEFAULT),
   closeToTray: z.boolean().default(false),
   customThemes: z.array(CustomThemeSchema).default([]),
   darkColorSchema: DarkColorSchemaSchema.default("default"),
@@ -260,6 +281,7 @@ export const UpdateSettingsSchema = z.object({
   ai: AiSettingsSchema.optional(),
   appIcon: AppIconSchema.optional(),
   autoStart: z.boolean().optional(),
+  chat: ChatSettingsSchema.optional(),
   closeToTray: z.boolean().optional(),
   customThemes: z.array(CustomThemeSchema).optional(),
   darkColorSchema: DarkColorSchemaSchema.optional(),
@@ -282,6 +304,8 @@ export type AiProviderName = z.infer<typeof AiProviderNameSchema>
 export type AiSettings = z.infer<typeof AiSettingsSchema>
 export type AppIcon = z.infer<typeof AppIconSchema>
 export type AppSettings = z.infer<typeof AppSettingsSchema>
+export type AutoCompactSettings = z.infer<typeof AutoCompactSettingsSchema>
+export type ChatSettings = z.infer<typeof ChatSettingsSchema>
 export type CustomTheme = z.infer<typeof CustomThemeSchema>
 export type CustomThemePreset = z.infer<typeof CustomThemePresetSchema>
 export type CustomThemeType = z.infer<typeof CustomThemeTypeSchema>

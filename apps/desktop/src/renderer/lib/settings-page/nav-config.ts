@@ -14,6 +14,7 @@ import {
 
 export type SettingsSectionId =
   | "channels"
+  | "chat"
   | "color-schema"
   | "general"
   | "memory"
@@ -26,6 +27,7 @@ export type SettingsSectionId =
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   channels: "settings.nav.channels",
+  chat: "settings.nav.chat",
   "color-schema": "settings.nav.colorSchema",
   general: "settings.nav.general",
   memory: "settings.nav.memory",
@@ -48,6 +50,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: NoteEditIcon,
     id: "providers"
+  },
+  {
+    icon: ChatBotIcon,
+    id: "chat"
   },
   {
     icon: ChatBotIcon,

@@ -150,6 +150,7 @@ const ChatComponent = () => {
 - renderer 进入 `/chat/$sessionId` 后，通过 `chatSessions.listMessages` 拉取该 session 的 `UIMessage[]`
 - `ChatRuntime` 把这些消息作为 `useChat({ id, messages })` 的初始状态
 - 每次 `/api/chat` 的 UI stream 完成后，server 端 `onFinish` 调用 `replaceChatMessages()`，整体替换当前 session 的消息快照
+- 当 `settings.chat.autoCompact.enabled` 开启且预估上下文用量超过阈值时，`replaceChatMessages()` 会先把较早消息压缩为一条 system summary message，再尝试用 Memory Tool Model 重写 summary，最后保留配置数量的最近消息
 - 持久化消息时会同步更新 session `updatedAt`；如果 title 为空，会从第一条 user 文本生成 session 标题
 - renderer 的 `onFinish` 只负责失效 `chatSessions.list` 与 `chatSessions.listMessages` 缓存，让 sidebar title 与下次进入页面的历史保持一致
 
@@ -183,26 +184,32 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 - `Embed`：`settings.memory.embeddingModel` 控制 semantic search 使用的 embedding model；空字符串表示默认 `text-embedding-3-small`，`local:*` 表示本地 embedding catalog
 - `Retrieve`：`settings.memory.autoRetrieve` 控制是否自动检索；`queryRewriting` 使用同一个 Memory Tool Model 改写用户消息；`maxRetrievedMemories` 与 `similarityThreshold` 控制注入预算和匹配严格度
 - `Inject`：chat route 与 Telegram bridge 在构造 system prompt 时注入 long-term memory；位置保持在 session memory 之后、project snapshot / skills 之前
-- `Maintain`：后续 runtime 会补 dedupe、decay、archive、stale embedding rebuild 与 diagnostics
+- `Maintain`：main process 提供 dedupe、decay、archive 与 stale embedding diagnostics，后续可接入定时维护入口
 
-当前阶段已经落地 settings schema、Settings `Memory` tab 控件、`maxRetrievedMemories` 检索预算，以及 `autoRetrieve=false` 时跳过检索；模型总结、embedding 生成、query rewriting、hybrid scoring 与 lifecycle maintenance 仍是后续 main process runtime 模块。
+当前阶段已经落地 settings schema、Settings `Memory` / `Chat` tab 控件、模型总结、query rewriting、embedding 存储、hybrid scoring、lifecycle diagnostics，以及 `autoRetrieve=false` 时跳过检索。
 
 当前实现：
 
 - 存储层：`memory_entries` 保存压缩后的长期 memory 条目
 - 写入层：`replaceChatMessages()` 在长期 memory 开启时，把当前 chat session 的最近文本消息 upsert 为 `source=chat-session`、`scope=project`
 - chatbot 写入：Telegram bridge 在 `settings.memory.includeChatbot` 开启时，把每个 Telegram chat 的最近消息 upsert 为 `source=chatbot`、`scope=chatbot`
-- 检索层：`buildMemorySystemPrompt()` 根据当前请求文本做关键词 overlap 排序，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
+- embedding 层：`settings.memory.embeddingModel` 为空时使用默认 `text-embedding-3-small`；`local:*` 先走本地 catalog 与诊断边界，缺少本地 runtime 时返回明确失败
+- 检索层：`buildMemorySystemPrompt()` 结合 lexical score、embedding similarity、recency、scope 与 access count 做 hybrid ranking，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
 - 控制层：`settings.memory.enabled` 关闭长期 memory；`autoRetrieve` 控制是否自动检索与注入；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
 - 注入层：`/api/chat` 会把 long-term memory 放在 session memory 与 project snapshot context 之间；Telegram bridge 会把 long-term memory 追加到 Telegram system prompt 后
 
 模块边界：
 
-| 文件                                                           | 职责                                      |
-| -------------------------------------------------------------- | ----------------------------------------- |
-| `apps/desktop/src/main/memory.ts`                              | 长期 memory 写入、检索、prompt 构建、统计 |
-| `packages/rpc/src/schemas/memory.ts`                           | memory settings / entry / stats schema    |
-| `apps/desktop/src/renderer/components/settings/memory-tab.tsx` | Settings `Memory` panel                   |
+| 文件                                                           | 职责                                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------ |
+| 文件                                                           | 职责                                                   |
+| -------------------------------------------------------------- | ---------------------------------------------------    |
+| `apps/desktop/src/main/chat-auto-compact.ts`                   | Chat history auto compact 触发与确定性 summary         |
+| `apps/desktop/src/main/memory.ts`                              | 长期 memory 写入、检索、prompt 构建、统计 facade       |
+| `apps/desktop/src/main/memory/`                                | tool model、summarization、embedding、retrieval 等模块 |
+| `packages/rpc/src/schemas/memory.ts`                           | memory settings / entry / stats schema                 |
+| `apps/desktop/src/renderer/components/settings/chat-tab.tsx`   | Settings `Chat` panel                                  |
+| `apps/desktop/src/renderer/components/settings/memory-tab.tsx` | Settings `Memory` panel                                |
 
 ## Provider 工厂
 

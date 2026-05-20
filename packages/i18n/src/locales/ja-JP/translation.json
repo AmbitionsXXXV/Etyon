@@ -203,6 +203,28 @@
       "description": "Dock、タスクバー、トレイに表示するアプリアイコンを選択します。",
       "title": "アプリアイコン"
     },
+    "chat": {
+      "autoCompact": {
+        "description": "chat がモデルのコンテキストウィンドウ上限に近づいたとき、古い会話履歴を自動的に圧縮します。",
+        "enabled": {
+          "description": "古いメッセージが新しいコンテキストを圧迫する前に圧縮します。",
+          "label": "Auto Compact を有効化"
+        },
+        "keepRecentMessages": {
+          "description": "常に完全な形で保持する直近メッセージ数です。これらは summary に圧縮されません（2-20）。",
+          "label": "直近メッセージを保持"
+        },
+        "threshold": {
+          "description": "推定コンテキスト使用量がこの割合を超えると圧縮します。低い値ほど余白を多く残し、高い値ほど元の内容を多く保持します。",
+          "early": "早め（5%）",
+          "label": "圧縮しきい値: {{value}}%",
+          "late": "遅め（95%）"
+        },
+        "title": "Auto Compact"
+      },
+      "description": "chat 履歴の圧縮とコンテキスト保持を設定します。",
+      "title": "Chat"
+    },
     "common": {
       "cancel": "キャンセル",
       "disabled": "無効",
@@ -341,6 +363,8 @@
       "title": "言語"
     },
     "nav": {
+      "channels": "Channels",
+      "chat": "Chat",
       "colorSchema": "カラースキーマ",
       "general": "一般",
       "memory": "Memory",
@@ -349,7 +373,6 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
-      "channels": "Channels",
       "userInterface": "ユーザーインターフェース"
     },
     "memory": {
@@ -418,7 +441,7 @@
       "toolModel": {
         "auto": "Auto",
         "autoDescription": "有効な providers から、性能が高く低コストなモデルを選びます。",
-        "description": "memory summarization、query rewriting、今後の auto compact summary に使用します。",
+        "description": "memory summarization、query rewriting、auto compact summary に使用します。",
         "label": "Memory Tool Model",
         "unavailable": "選択したモデルは利用できません"
       }

@@ -99,6 +99,20 @@ describe("AppSettingsSchema", () => {
     })
   })
 
+  it("adds chat auto compact defaults for empty and legacy settings", () => {
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.chat).toEqual({
+      autoCompact: {
+        enabled: true,
+        keepRecentMessages: 4,
+        threshold: 80
+      }
+    })
+  })
+
   it("adds skills defaults for empty and legacy settings", () => {
     const settings = AppSettingsSchema.parse({
       theme: "dark"

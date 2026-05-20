@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   rewriteMemoryQuery,
+  summarizeChatCompaction,
   summarizeMemoryContent
 } from "@/main/memory/summarization"
 
@@ -96,6 +97,30 @@ describe("memory summarization runtime", () => {
     )
     expect(result).toContain("- Keep memory helpers under renderer/lib/memory.")
     expect(result).toContain("Confidence: 0.82")
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "resolved-model"
+      })
+    )
+  })
+
+  it("summarizes chat compaction through the memory tool model", async () => {
+    generateTextMock.mockResolvedValue({
+      text: JSON.stringify({
+        carryForward: ["Keep Auto Compact in Chat settings."],
+        summary: "Older chat history was compacted."
+      })
+    })
+
+    const result = await summarizeChatCompaction({
+      fallbackContent: "Auto compacted conversation summary:\nraw",
+      settings: createSettings({
+        autoSummarize: false
+      })
+    })
+
+    expect(result).toContain("Summary: Older chat history was compacted.")
+    expect(result).toContain("- Keep Auto Compact in Chat settings.")
     expect(generateTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "resolved-model"

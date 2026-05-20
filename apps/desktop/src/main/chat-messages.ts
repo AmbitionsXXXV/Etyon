@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai"
 import { and, asc, eq, isNull } from "drizzle-orm"
 
+import { compactChatMessages } from "@/main/chat-auto-compact"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
 import { chatMessages, chatSessions } from "@/main/db/schema"
@@ -142,11 +143,16 @@ export const replaceChatMessages = async ({
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
-  const normalizedMessages = normalizeMessageIds(messages)
+  const settings = getSettings()
+  const compactedMessages = await compactChatMessages({
+    messages,
+    settings
+  })
+  const normalizedMessages = normalizeMessageIds(compactedMessages)
   const now = new Date().toISOString()
   const nextTitle = session.title.trim()
     ? session.title
-    : buildChatSessionTitle(normalizedMessages)
+    : buildChatSessionTitle(messages)
 
   await db.transaction(async (tx) => {
     await tx.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId))
@@ -180,7 +186,7 @@ export const replaceChatMessages = async ({
     messages: normalizedMessages,
     sessionId
   })
-  if (getSettings().memory.enabled) {
+  if (settings.memory.enabled) {
     await upsertChatSessionMemoryEntry({
       db,
       messages: normalizedMessages,

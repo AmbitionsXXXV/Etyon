@@ -343,9 +343,8 @@ interface AppSettings {
     }
     autoCompact: {
       enabled: boolean
-      threshold: number // 60-95 (percentage)
+      threshold: number // 5-95 (percentage)
       keepRecentMessages: number // 2-20
-      summaryModel?: string // Format: "providerId:modelId"
     }
   }
 

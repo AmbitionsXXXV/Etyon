@@ -2,13 +2,14 @@ import type { AppSettings } from "@etyon/rpc"
 import { generateText } from "ai"
 
 import {
+  buildChatCompactionPrompt,
   buildMemoryQueryRewritePrompt,
   buildMemorySummarizationPrompt,
+  CHAT_COMPACTION_SYSTEM_PROMPT,
   MEMORY_QUERY_REWRITE_SYSTEM_PROMPT,
   MEMORY_SUMMARIZATION_SYSTEM_PROMPT
 } from "@/main/memory/prompts"
 import { resolveMemoryToolModel } from "@/main/memory/tool-model"
-import { resolveModel } from "@/main/server/lib/providers"
 
 interface MemorySummarizationInput {
   fallbackContent: string
@@ -20,6 +21,16 @@ interface MemorySummarizationInput {
 interface MemoryQueryRewriteInput {
   query: string
   settings: AppSettings
+}
+
+interface ChatCompactionInput {
+  fallbackContent: string
+  settings: AppSettings
+}
+
+interface StructuredChatCompactionSummary {
+  carryForward?: string[]
+  summary?: string
 }
 
 interface StructuredMemorySummary {
@@ -72,8 +83,43 @@ const parseStructuredMemorySummary = (
   }
 }
 
+const parseStructuredChatCompactionSummary = (
+  value: string
+): StructuredChatCompactionSummary => {
+  const parsed = parseGeneratedJsonObject(value)
+  const summary =
+    typeof parsed.summary === "string" ? parsed.summary.trim() : ""
+
+  return {
+    carryForward: readStringArray(parsed.carryForward),
+    ...(summary ? { summary } : {})
+  }
+}
+
 const formatStringList = (items: string[]): string[] =>
   items.map((item) => `- ${item}`)
+
+const formatStructuredChatCompactionSummary = ({
+  fallbackContent,
+  summary
+}: {
+  fallbackContent: string
+  summary: StructuredChatCompactionSummary
+}): string => {
+  const sections = [
+    "Auto compacted conversation summary:",
+    summary.summary ? `Summary: ${summary.summary}` : "",
+    summary.carryForward?.length
+      ? ["Carry forward:", ...formatStringList(summary.carryForward)].join("\n")
+      : ""
+  ].filter(Boolean)
+
+  if (sections.length <= 1) {
+    return fallbackContent
+  }
+
+  return sections.join("\n")
+}
 
 const formatStructuredMemorySummary = ({
   fallbackContent,
@@ -123,6 +169,7 @@ const generateMemoryToolText = async ({
     return null
   }
 
+  const { resolveModel } = await import("@/main/server/lib/providers")
   const result = await generateText({
     model: resolveModel(resolution.modelId),
     prompt,
@@ -130,6 +177,30 @@ const generateMemoryToolText = async ({
   })
 
   return result.text
+}
+
+export const summarizeChatCompaction = async ({
+  fallbackContent,
+  settings
+}: ChatCompactionInput): Promise<string> => {
+  try {
+    const text = await generateMemoryToolText({
+      prompt: buildChatCompactionPrompt(fallbackContent),
+      settings,
+      system: CHAT_COMPACTION_SYSTEM_PROMPT
+    })
+
+    if (!text) {
+      return fallbackContent
+    }
+
+    return formatStructuredChatCompactionSummary({
+      fallbackContent,
+      summary: parseStructuredChatCompactionSummary(text)
+    })
+  } catch {
+    return fallbackContent
+  }
 }
 
 export const summarizeMemoryContent = async ({

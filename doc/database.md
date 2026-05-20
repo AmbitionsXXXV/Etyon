@@ -96,7 +96,7 @@
 
 ## memory_entries
 
-`memory_entries` 是长期 memory 存储层。它借鉴 Awesome-AI-Memory 中关于显式外部记忆、生命周期管理、检索与共享范围的工程拆分，但当前实现保持本地 SQLite + 确定性文本检索，不引入向量库。
+`memory_entries` 是长期 memory 存储层。它借鉴 Awesome-AI-Memory 中关于显式外部记忆、生命周期管理、检索与共享范围的工程拆分，当前实现保持本地 SQLite 边界，并通过 `memory_embeddings` 支持 hybrid retrieval。
 
 | 字段               | 类型    | 说明                                                    |
 | ------------------ | ------- | ------------------------------------------------------- |
@@ -123,9 +123,9 @@
 - Telegram bridge 在 `settings.memory.includeChatbot` 开启时会读取并 upsert chatbot memory
 - `memory.stats` 与 `memory.list` RPC 为 Settings `Memory` tab 提供状态与最近条目预览
 
-### Planned memory_embeddings
+## memory_embeddings
 
-后续 semantic retrieval 会新增 `memory_embeddings`，继续保持本地 SQLite 边界：
+`memory_embeddings` 保存长期 memory 的 embedding vector，继续保持本地 SQLite 边界：
 
 | 字段           | 类型    | 说明                                                                    |
 | -------------- | ------- | ----------------------------------------------------------------------- |
@@ -137,9 +137,10 @@
 | `created_at`   | text    | ISO 时间戳                                                              |
 | `updated_at`   | text    | ISO 时间戳                                                              |
 
-- 唯一索引建议为 `(memory_id, model)`，同一 memory 在同一 embedding model 下只保留一个最新 vector
-- `content_hash` 用于识别 stale embedding，runtime 可据此重建
-- 本地模型下载状态不直接写入 `memory_embeddings`，应由 main process 的 embedding model catalog/status RPC 提供
+- 唯一索引：`memory_embeddings_memory_model_idx`，同一 memory 在同一 embedding model 下只保留一个最新 vector
+- 普通索引：`memory_embeddings_memory_id_idx`
+- `content_hash` 用于识别 stale embedding，runtime 可据此跳过未变化内容或重建 stale vector
+- 本地模型下载状态不直接写入 `memory_embeddings`，由 main process 的 embedding model catalog/status RPC 提供
 
 ## 命令
 

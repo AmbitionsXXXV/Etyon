@@ -11,6 +11,29 @@ export const MEMORY_QUERY_REWRITE_SYSTEM_PROMPT = [
   "Preserve project names, tool names, file paths, concrete identifiers, and user preferences."
 ].join("\n")
 
+export const CHAT_COMPACTION_SYSTEM_PROMPT = [
+  "You compact older chat history for a local desktop AI assistant.",
+  "Return strict JSON only. Do not include markdown.",
+  "Preserve durable decisions, user preferences, unresolved tasks, project names, file paths, and constraints.",
+  "Remove greetings, repetition, and transient wording."
+].join("\n")
+
+export const buildChatCompactionPrompt = (fallbackContent: string): string =>
+  [
+    "Deterministic compact summary:",
+    fallbackContent,
+    "",
+    "Return JSON with this shape:",
+    JSON.stringify(
+      {
+        carryForward: ["important decision, task, preference, or constraint"],
+        summary: "compact conversation summary"
+      },
+      null,
+      2
+    )
+  ].join("\n")
+
 export const buildMemorySummarizationPrompt = ({
   fallbackContent,
   heading,

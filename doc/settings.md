@@ -71,6 +71,13 @@ interface AppSettings {
   }
   appIcon: "default" | "alt" // 默认 "default"
   autoStart: boolean // 默认 false
+  chat: {
+    autoCompact: {
+      enabled: boolean // 默认 true，控制是否自动压缩较早 chat history
+      keepRecentMessages: number // 2-20，默认 4，始终完整保留的最近消息数
+      threshold: number // 5-95，默认 80，预估上下文用量触发阈值
+    }
+  }
   closeToTray: boolean // 默认 false，关闭主窗口时隐藏到托盘而不是退出
   customThemes: CustomTheme[] // 默认 []
   darkColorSchema:
@@ -100,10 +107,10 @@ interface AppSettings {
     includeChatbot: boolean // 默认 true，Telegram chatbot 使用同一套 memory
     maxContextEntries: number // 1-20，默认 8，兼容旧设置
     maxRetrievedMemories: number // 1-20，默认 8，当前检索注入预算
-    memoryToolModel: string // 默认 "__auto__"，用于 summarization / query rewriting / future auto compact
-    queryRewriting: boolean // 默认 true，后续用于检索前查询改写
+    memoryToolModel: string // 默认 "__auto__"，用于 summarization / query rewriting / auto compact
+    queryRewriting: boolean // 默认 true，用于检索前查询改写
     shareAcrossProjects: boolean // 默认 true，允许 project memory 跨项目检索
-    similarityThreshold: number // 0-1，默认 0.1，后续 semantic retrieval 最低相似度
+    similarityThreshold: number // 0-1，默认 0.1，hybrid retrieval 最低相似度
   }
   minimizeToTray: boolean // 默认 false，最小化主窗口时隐藏到托盘
   proxy: ProxySettings // 代理配置
@@ -173,6 +180,16 @@ interface StoredProviderModel {
 }
 ```
 
+## Chat Tab
+
+- Settings 左侧导航包含 `Chat` tab，用于配置 chat history 与 context 保留策略
+- `Auto Compact` 区块：
+  - `enabled`：开启后，`replaceChatMessages()` 会在预估上下文用量超过阈值时压缩较早消息
+  - `threshold`：范围 `5-95`，默认 `80`；值越低越早压缩，值越高越保留原始内容
+  - `keepRecentMessages`：范围 `2-20`，默认 `4`；最近这些消息始终完整保留，不写入 compact summary
+- 当前 compact summary 会先生成确定性降级内容，再尝试使用 Memory Tool Model 压缩；模型不可用或失败时保留确定性 summary
+- `Auto Compact` 不放在 `Memory` tab；Memory tab 继续只控制长期 memory、检索与 embedding
+
 ## Memory Tab
 
 - Settings 左侧导航包含 `Memory` tab，用于控制长期 memory 行为
@@ -181,20 +198,19 @@ interface StoredProviderModel {
   - `shareAcrossProjects`：开启时，一个 project 中产生的 memory 可被其他 project 检索；关闭时只使用当前 project 或非 project memory
   - `includeChatbot`：开启时，Telegram chatbot 会读取并写入同一套长期 memory
 - `Memory Summarization` 区块：
-  - `autoSummarize`：开启后，后续 runtime 会在写入长期 memory 前提取 summary、decision、fact 与 procedure；当前仍保留确定性压缩 fallback
-  - `memoryToolModel`：默认 `__auto__`，从已启用 providers 中选择能力较强且成本较低的模型；同一字段也会服务 query rewriting 和后续 auto compact summary
+  - `autoSummarize`：开启后，main process 会在写入长期 memory 前提取 summary、decision、fact 与 procedure；模型失败时保留确定性压缩 fallback
+  - `memoryToolModel`：默认 `__auto__`，从已启用 providers 中选择能力较强且成本较低的模型；同一字段也服务 query rewriting 和 auto compact summary
 - `Memory Retrieval` 区块：
   - `autoRetrieve`：关闭后 main process 不再自动检索并注入长期 memory
-  - `queryRewriting`：后续 semantic retrieval 前使用 Memory Tool Model 优化查询
+  - `queryRewriting`：semantic retrieval 前使用 Memory Tool Model 优化查询
   - `maxRetrievedMemories`：每次模型请求最多注入的 memory 条数，范围 `1-20`；保存时同步旧字段 `maxContextEntries` 以保持兼容
-  - `similarityThreshold`：后续 embedding / hybrid retrieval 的最低相似度，范围 `0-1`
+  - `similarityThreshold`：embedding / hybrid retrieval 的最低相似度，范围 `0-1`
 - `Embedding Model` 区块：
   - 空字符串表示默认 `text-embedding-3-small`
   - 本地 catalog 先展示 `MiniLM L6 v2`、`BGE Small EN v1.5`、`Multilingual E5 Small`、`Paraphrase Multilingual MiniLM`
-  - 未安装的本地模型在 UI 中展示下载状态，真实下载 / status RPC 属于后续 runtime 阶段
+  - 未安装的本地模型在 UI 中展示下载状态；真实下载仍属于后续 runtime 阶段
 - 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
-- 当前实现是本地 SQLite + 关键词 overlap 检索；embedding、query rewriting、模型总结、lifecycle maintenance 会继续放在 main process runtime，Settings panel 只负责用户可控配置
-- `Auto Compact` 不放在 `Memory` tab；后续新增 `Chat` settings tab，单独配置 compaction threshold 和 keep recent messages，并复用 `memoryToolModel` 生成 compact summary
+- 当前实现是本地 SQLite + hybrid retrieval；embedding、query rewriting、模型总结与 lifecycle diagnostics 均放在 main process runtime，Settings panel 只负责用户可控配置
 
 ## Skills Tab
 
