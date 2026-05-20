@@ -53,10 +53,17 @@ vi.mock("electron", () => ({
 }))
 
 const enabledMemorySettings: MemorySettings = {
+  autoRetrieve: true,
+  autoSummarize: false,
+  embeddingModel: "",
   enabled: true,
   includeChatbot: true,
   maxContextEntries: 6,
-  shareAcrossProjects: true
+  maxRetrievedMemories: 6,
+  memoryToolModel: "__auto__",
+  queryRewriting: true,
+  shareAcrossProjects: true,
+  similarityThreshold: 0.1
 }
 
 const projectOnlyMemorySettings: MemorySettings = {

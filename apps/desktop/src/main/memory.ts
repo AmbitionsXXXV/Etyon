@@ -340,7 +340,7 @@ export const retrieveMemoryEntries = async ({
 
       return right.entry.updatedAt.localeCompare(left.entry.updatedAt)
     })
-    .slice(0, settings.maxContextEntries)
+    .slice(0, settings.maxRetrievedMemories)
     .map(({ entry }) => entry)
 
   await markMemoryEntriesAccessed({

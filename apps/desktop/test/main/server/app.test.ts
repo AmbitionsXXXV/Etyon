@@ -166,10 +166,17 @@ vi.mock("@/main/skills", () => ({
 vi.mock("@/main/settings", () => ({
   getSettings: vi.fn(() => ({
     memory: {
+      autoRetrieve: true,
+      autoSummarize: false,
+      embeddingModel: "",
       enabled: true,
       includeChatbot: true,
       maxContextEntries: 8,
-      shareAcrossProjects: true
+      maxRetrievedMemories: 8,
+      memoryToolModel: "__auto__",
+      queryRewriting: true,
+      shareAcrossProjects: true,
+      similarityThreshold: 0.1
     },
     skills: {
       enabled: true,
@@ -376,10 +383,17 @@ describe("hono app", () => {
       projectPath: "/tmp/project-a",
       query: "",
       settings: {
+        autoRetrieve: true,
+        autoSummarize: false,
+        embeddingModel: "",
         enabled: true,
         includeChatbot: true,
         maxContextEntries: 8,
-        shareAcrossProjects: true
+        maxRetrievedMemories: 8,
+        memoryToolModel: "__auto__",
+        queryRewriting: true,
+        shareAcrossProjects: true,
+        similarityThreshold: 0.1
       }
     })
     expect(buildSkillsSystemPromptMock).toHaveBeenCalledWith({
