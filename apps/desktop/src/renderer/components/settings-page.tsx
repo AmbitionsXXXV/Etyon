@@ -540,6 +540,7 @@ export const SettingsPage = ({
               {activeSection === "memory" && (
                 <MemoryTab
                   memory={draft.memory}
+                  modelGroups={channelModelGroups}
                   onChange={handleMemoryChange}
                 />
               )}

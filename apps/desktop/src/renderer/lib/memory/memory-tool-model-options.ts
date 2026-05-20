@@ -16,4 +16,6 @@ export const getMemoryToolModelSelectedValue = (value: string): string =>
 export const normalizeMemoryToolModelValue = (
   value: null | number | string
 ): string =>
-  value === null || value === MEMORY_TOOL_MODEL_AUTO_VALUE ? "" : String(value)
+  value === null || value === MEMORY_TOOL_MODEL_AUTO_VALUE
+    ? MEMORY_TOOL_MODEL_AUTO_VALUE
+    : String(value)
