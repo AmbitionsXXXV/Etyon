@@ -67,10 +67,7 @@
       "indexes": {
         "chat_messages_session_sequence_idx": {
           "name": "chat_messages_session_sequence_idx",
-          "columns": [
-            "session_id",
-            "sequence"
-          ],
+          "columns": ["session_id", "sequence"],
           "isUnique": false
         }
       },
@@ -79,22 +76,15 @@
           "name": "chat_messages_session_id_chat_sessions_id_fk",
           "tableFrom": "chat_messages",
           "tableTo": "chat_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "chat_messages_session_id_message_id_pk": {
-          "columns": [
-            "session_id",
-            "message_id"
-          ],
+          "columns": ["session_id", "message_id"],
           "name": "chat_messages_session_id_message_id_pk"
         }
       },
@@ -146,12 +136,8 @@
           "name": "chat_session_memories_session_id_chat_sessions_id_fk",
           "tableFrom": "chat_session_memories",
           "tableTo": "chat_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -230,16 +216,12 @@
       "indexes": {
         "chat_sessions_last_opened_at_idx": {
           "name": "chat_sessions_last_opened_at_idx",
-          "columns": [
-            "last_opened_at"
-          ],
+          "columns": ["last_opened_at"],
           "isUnique": false
         },
         "chat_sessions_project_path_idx": {
           "name": "chat_sessions_project_path_idx",
-          "columns": [
-            "project_path"
-          ],
+          "columns": ["project_path"],
           "isUnique": false
         }
       },
@@ -304,9 +286,7 @@
       "indexes": {
         "memory_embeddings_model_idx": {
           "name": "memory_embeddings_model_idx",
-          "columns": [
-            "model"
-          ],
+          "columns": ["model"],
           "isUnique": false
         }
       },
@@ -315,22 +295,15 @@
           "name": "memory_embeddings_memory_id_memory_entries_id_fk",
           "tableFrom": "memory_embeddings",
           "tableTo": "memory_entries",
-          "columnsFrom": [
-            "memory_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["memory_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "memory_embeddings_memory_id_model_pk": {
-          "columns": [
-            "memory_id",
-            "model"
-          ],
+          "columns": ["memory_id", "model"],
           "name": "memory_embeddings_memory_id_model_pk"
         }
       },
@@ -436,31 +409,22 @@
       "indexes": {
         "memory_entries_project_path_idx": {
           "name": "memory_entries_project_path_idx",
-          "columns": [
-            "project_path"
-          ],
+          "columns": ["project_path"],
           "isUnique": false
         },
         "memory_entries_session_id_idx": {
           "name": "memory_entries_session_id_idx",
-          "columns": [
-            "session_id"
-          ],
+          "columns": ["session_id"],
           "isUnique": false
         },
         "memory_entries_source_id_idx": {
           "name": "memory_entries_source_id_idx",
-          "columns": [
-            "source",
-            "source_id"
-          ],
+          "columns": ["source", "source_id"],
           "isUnique": true
         },
         "memory_entries_updated_at_idx": {
           "name": "memory_entries_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         }
       },
@@ -469,12 +433,8 @@
           "name": "memory_entries_session_id_chat_sessions_id_fk",
           "tableFrom": "memory_entries",
           "tableTo": "chat_sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

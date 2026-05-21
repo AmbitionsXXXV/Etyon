@@ -55,7 +55,9 @@ export default defineConfig({
       "**/.vite/**",
       "**/dist/**",
       "**/out/**",
-      "**/routeTree.gen.ts"
+      "**/routeTree.gen.ts",
+      "**/.agents/**/*",
+      "**/.claude/**/*"
     ],
     jsxSingleQuote: false,
     printWidth: 80,

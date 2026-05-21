@@ -75,10 +75,13 @@
     "ipinfo",
     "jscoverage",
     "libsql",
+    "minilm",
     "mouve",
     "oklab",
+    "onnx",
     "pids",
     "poimandres",
+    "sentencepiece",
     "Subdeps",
     "togglefullscreen",
     "tombi",
@@ -86,6 +89,7 @@
     "winstaller",
     "wscript",
     "xattr",
+    "Xenova",
     "zowe"
   ],
   "cSpell.ignorePaths": [

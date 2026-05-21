@@ -17,6 +17,7 @@
     "dev:desktop": "turbo run dev --filter=@etyon/desktop",
     "fix": "turbo run fix",
     "lint": "turbo run lint",
+    "fmt": "vp fmt . --write",
     "prepare": "vp config",
     "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check bans licenses sources",
     "rust:clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
