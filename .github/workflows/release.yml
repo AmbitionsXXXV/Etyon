@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+concurrency:
+  cancel-in-progress: true
+  group: release-${{ github.ref }}
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  make-arm:
+    name: Make macOS ARM64
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          cache: true
+          node-version: "22"
+          run-install: false
+
+      - name: Validate HeroUI auth token
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: |
+          if [ -z "$HEROUI_AUTH_TOKEN" ]; then
+            echo "HEROUI_AUTH_TOKEN secret is required to install @heroui-pro/react."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+        run: vp install --frozen-lockfile
+
+      - name: Make ARM build
+        working-directory: apps/desktop
+        env:
+          ELECTRON_FORGE_BUILD_IDENTIFIER: release
+          ETYON_RELEASE: "true"
+        run: |
+          pnpm_version=$(node -p "require('../../package.json').packageManager.split('@')[1]")
+          export PATH="$HOME/.vite-plus/package_manager/pnpm/$pnpm_version/pnpm/bin:$PATH"
+          ../../node_modules/.bin/electron-forge make
+
+      - name: Prepare Release artifacts
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          artifact_dir="$PWD/out/release/artifacts/macos-arm64"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir"
+
+          if [ -d out/release/make ]; then
+            /usr/bin/find out/release/make -maxdepth 6 -type f \( -name '*.dmg' -o -name '*.zip' \) -exec cp {} "$artifact_dir"/ \;
+          fi
+
+          zip_count=$(/usr/bin/find "$artifact_dir" -maxdepth 1 -type f -name '*.zip' | /usr/bin/wc -l | /usr/bin/tr -d ' ')
+          dmg_count=$(/usr/bin/find "$artifact_dir" -maxdepth 1 -type f -name '*.dmg' | /usr/bin/wc -l | /usr/bin/tr -d ' ')
+
+          if [ "$zip_count" = "0" ] || [ "$dmg_count" = "0" ]; then
+            app_path=$(/usr/bin/find "$PWD/out/release" -maxdepth 4 -type d -name '*.app' -print -quit 2>/dev/null || true)
+            if [ -z "$app_path" ]; then
+              echo "::error::No packaged .app found under apps/desktop/out/release, and both .dmg and .zip are required."
+              /usr/bin/find "$PWD/out/release" -maxdepth 5 -print 2>/dev/null || true
+              if [ -n "${GITHUB_WORKSPACE:-}" ]; then
+                echo "Workspace build outputs:"
+                /usr/bin/find "$GITHUB_WORKSPACE" -maxdepth 6 \( -type d -name '*.app' -o -type f -name '*.dmg' -o -type f -name '*.zip' \) -print 2>/dev/null || true
+              fi
+              exit 1
+            fi
+
+            app_name=$(/usr/bin/basename "$app_path")
+            app_parent=$(/usr/bin/dirname "$app_path")
+
+            if [ "$zip_count" = "0" ]; then
+              zip_name="${app_name%.app}-macos-arm64.zip"
+              (
+                cd "$app_parent"
+                /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app_name" "$artifact_dir/$zip_name"
+              )
+            fi
+
+            if [ "$dmg_count" = "0" ]; then
+              dmg_name="${app_name%.app}-macos-arm64.dmg"
+              /usr/bin/hdiutil create -volname "${app_name%.app}" -srcfolder "$app_path" -ov -format UDZO "$artifact_dir/$dmg_name"
+            fi
+          fi
+
+          echo "Release artifacts:"
+          /usr/bin/find "$artifact_dir" -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) -print | /usr/bin/sort
+          zip_count=$(/usr/bin/find "$artifact_dir" -maxdepth 1 -type f -name '*.zip' | /usr/bin/wc -l | /usr/bin/tr -d ' ')
+          dmg_count=$(/usr/bin/find "$artifact_dir" -maxdepth 1 -type f -name '*.dmg' | /usr/bin/wc -l | /usr/bin/tr -d ' ')
+          if [ "$zip_count" = "0" ] || [ "$dmg_count" = "0" ]; then
+            echo "::error::Release artifacts must include both .dmg and .zip files."
+            exit 1
+          fi
+
+      - name: Upload ARM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          name: etyon-macos-arm64-${{ github.sha }}
+          path: apps/desktop/out/release/artifacts/macos-arm64/*
+          retention-days: 14
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          fail_on_unmatched_files: true
+          files: apps/desktop/out/release/artifacts/macos-arm64/*

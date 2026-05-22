@@ -6,11 +6,48 @@ This project uses **Vite+** as the unified toolchain, while still extending **Ul
 
 ## Quick Reference
 
-- **Format code**: `pnpm exec vp fmt . --write`
-- **Check for issues**: `pnpm exec vp check`
-- **Run tests**: `pnpm exec vp test run`
+- **Format code**: `vp fmt . --write`
+- **Check for issues**: `vp check`
+- **Run tests**: `vp test run`
 
 Oxlint + Oxfmt (through `Vite+`) provides robust linting and formatting. Most issues are automatically fixable.
+
+---
+
+## Agent Execution Guidelines
+
+These guidelines reduce common coding-agent mistakes. They bias toward caution over speed; use judgment for trivial tasks.
+
+### Think Before Coding
+
+- State assumptions explicitly before implementing.
+- If multiple interpretations exist, surface them instead of picking silently.
+- Call out simpler approaches and tradeoffs when relevant; push back when warranted.
+- If something is unclear, stop, name what is confusing, and ask.
+
+### Simplicity First
+
+- Implement only what was requested.
+- Avoid single-use abstractions and speculative flexibility.
+- Do not add configurability or error handling for scenarios that cannot happen.
+- If the solution is much larger than it needs to be, simplify it.
+
+### Surgical Changes
+
+- Touch only the files and lines required by the request.
+- Do not improve adjacent code, comments, or formatting unless needed for the task.
+- Match the existing style, even when another style would also work.
+- Mention unrelated dead code instead of deleting it.
+- Remove only unused imports, variables, or functions introduced by your change.
+- Every changed line should trace directly to the user's request.
+
+### Goal-Driven Execution
+
+- Define success criteria for tasks that are not trivial.
+- For bugs, prefer a focused reproduction before fixing when practical.
+- For refactors, verify behavior before and after the change.
+- For multi-step tasks, state a brief plan with verification steps.
+- Keep looping until the criteria are verified or a concrete blocker is identified.
 
 ---
 
@@ -125,7 +162,7 @@ Oxlint + Oxfmt's linter will catch most issues automatically. Focus your attenti
 
 ---
 
-Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run `pnpm exec vp check --fix` before committing to ensure compliance.
+Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run `vp check --fix` before committing to ensure compliance.
 
 ---
 
@@ -161,8 +198,8 @@ Most formatting and common issues are automatically fixed by Oxlint + Oxfmt. Run
 - Local HTTP server: Hono + `@hono/node-server` in `src/main/server/`; `port: 0` for OS-assigned port, must `await once(server, "listening")` before reading `server.address()`; URL exposed to renderer via oRPC `server.getUrl` procedure
 - AI SDK v6: `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/gateway`; type is `LanguageModel` (not `LanguageModelV1`); use `convertToModelMessages()` for UIMessage→ModelMessage; `DefaultChatTransport<UIMessage>` requires explicit generic; `streamText` + `toUIMessageStreamResponse()`; AI settings stored in `electron-store` under `settings.ai`
 - Zod v4: nested `.default({})` on objects with inner defaults requires complete default values — use `as const` constants; simple schemas in `packages/rpc/` may import from `zod/mini`
-- Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change; offcanvas collapse uses pure opacity fade-out (no left slide), action buttons use left-slide animation; settings sidebar is a floating card (`bg-card` + shadow) without liquid-glass, visually integrated with content background
-- Desktop-only sidebar: no mobile responsive breakpoints (`md:` / `useIsMobile`); sidebar is always visible; window min dimensions `minWidth: 732`, `minHeight: 392` for both main and settings windows
+- Sidebar: `@etyon/ui` Sidebar component; main window uses `collapsible="offcanvas"`, settings uses `collapsible="none"`; macOS traffic light at `{ x: 12, y: 18 }`, collapsed sidebar needs `pl-[76px]` offset; sidebar width fixed with `min-w-[17rem] w-[17rem]` to prevent layout shift on locale change; offcanvas collapse uses pure opacity fade-out (no left slide), action buttons use left-slide animation; settings sidebar is a floating card (`bg-card` + shadow) without liquid-glass; desktop-only — no mobile breakpoints, always visible; window min dimensions `minWidth: 732`, `minHeight: 392` for both main and settings windows
+- Desktop packaging (Electron Forge): release builds need `ELECTRON_FORGE_BUILD_IDENTIFIER=release` + `ETYON_RELEASE=true`; artifacts at `apps/desktop/out/release/make/` (`.dmg`, `zip/darwin/arm64/*.zip`), not `out/development/make`; `AutoUnpackNativesPlugin` in `forge.config.ts` for `@libsql/darwin-arm64` and `electron-liquid-glass`; CI runs `node node_modules/electron/install.js` then `pnpm --filter @etyon/desktop exec electron-forge make` from repo root (avoid `cd apps/desktop && vp run make` — GHA may stop at `Finalizing package` with exit 0); Make step validates log contains `Artifacts available at:` and `.dmg`/`.zip` exist; root `vp run make` uses `turbo run make` — see `doc/packaging.md`
 - Liquid glass: `electron-liquid-glass` in main process, `data-liquid-glass` on `<html>` in renderer; `globals.css` sets semi-transparent `--sidebar`, `--background`, `--card`, `--popover` when active; custom color schemas may override these — ensure liquid-glass layer does not conflict with user-defined theme colors
 - Settings Channels tab (`channels-tab.tsx`, nav id `channels`) for messaging integrations; Telegram bridge in `apps/desktop/src/main/telegram/` persists under `settings.telegram`
 - Token Savings: `apps/desktop/src/main/rtk-token-savings.ts` runs `rtk gain --daily --format json` and `rtk gain --history`; recent commands also read from RTK `history.db` via `rtk-history-db.ts` (override with `RTK_DB_PATH`); charts group by CLI name (`getCliNameFromCommand`); oRPC `tokenSavings.get`; settings tab id `token-savings` is read-only (outside draft/save); schemas in `packages/rpc/src/schemas/token-savings.ts`
