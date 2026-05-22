@@ -19,7 +19,8 @@
   "chat": {
     "composer": {
       "placeholder": "メッセージを入力するか、@ でプロジェクトファイルを参照します",
-      "send": "送信"
+      "send": "送信",
+      "stop": "出力を停止"
     },
     "details": {
       "model": "モデル",
@@ -112,7 +113,19 @@
     },
     "toolTrace": {
       "approve": "承認",
+      "copied": "コピー済み",
+      "copyOutput": "出力をコピー",
+      "cwd": "作業ディレクトリ",
       "deny": "拒否",
+      "duration": "所要時間",
+      "executedCommand": "コマンド",
+      "exitCode": "終了コード",
+      "input": "入力",
+      "noOutput": "出力なし",
+      "output": "出力",
+      "rawOutput": "生の結果",
+      "repeated": "{count} 回繰り返し",
+      "shell": "Shell",
       "state": {
         "approvalRequested": "approval が必要",
         "approvalResponded": "approval 対応済み",
@@ -121,7 +134,13 @@
         "outputAvailable": "完了",
         "outputDenied": "拒否",
         "outputError": "失敗"
-      }
+      },
+      "status": "状態",
+      "stderr": "stderr",
+      "stdout": "stdout",
+      "thinking": "思考プロセス",
+      "title": "ツール実行",
+      "truncated": "切り詰め済み"
     }
   },
   "home": {

@@ -19,7 +19,8 @@
   "chat": {
     "composer": {
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
-      "send": "发送"
+      "send": "发送",
+      "stop": "停止输出"
     },
     "details": {
       "model": "当前模型",
@@ -112,7 +113,19 @@
     },
     "toolTrace": {
       "approve": "批准",
+      "copied": "已复制",
+      "copyOutput": "复制输出",
+      "cwd": "工作目录",
       "deny": "拒绝",
+      "duration": "耗时",
+      "executedCommand": "命令",
+      "exitCode": "退出码",
+      "input": "输入",
+      "noOutput": "无输出",
+      "output": "输出",
+      "rawOutput": "原始结果",
+      "repeated": "重复 {count} 次",
+      "shell": "Shell",
       "state": {
         "approvalRequested": "需要 approval",
         "approvalResponded": "已处理 approval",
@@ -121,7 +134,13 @@
         "outputAvailable": "已完成",
         "outputDenied": "已拒绝",
         "outputError": "失败"
-      }
+      },
+      "status": "状态",
+      "stderr": "stderr",
+      "stdout": "stdout",
+      "thinking": "思考过程",
+      "title": "工具执行",
+      "truncated": "已截断"
     }
   },
   "home": {

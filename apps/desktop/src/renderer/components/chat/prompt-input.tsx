@@ -1,6 +1,7 @@
 import type { ChatMention, ProjectSnapshotItem } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { Button } from "@heroui/react"
+import { SentIcon, StopIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
@@ -241,6 +242,7 @@ export const PromptInput = ({
   footer,
   isLoadingFileItems = false,
   isLoadingSkillItems = false,
+  isOutputActive = false,
   mentionGlobalSkillSourceLabel,
   mentionFileGroupLabel,
   mentionFolderGroupLabel,
@@ -250,14 +252,17 @@ export const PromptInput = ({
   mentionSkillGroupLabel,
   mentionSkillItems,
   onMentionQueryChange,
+  onStop,
   onSubmit,
   placeholder,
+  stopLabel,
   submitLabel
 }: {
   disabled?: boolean
   footer?: ReactNode
   isLoadingFileItems?: boolean
   isLoadingSkillItems?: boolean
+  isOutputActive?: boolean
   mentionGlobalSkillSourceLabel: string
   mentionFileGroupLabel: string
   mentionFolderGroupLabel: string
@@ -271,11 +276,13 @@ export const PromptInput = ({
     query: string | null,
     trigger: PromptMentionTrigger | null
   ) => void
+  onStop?: () => void
   onSubmit: (payload: {
     mentions: ChatMention[]
     text: string
   }) => Promise<void>
   placeholder: string
+  stopLabel: string
   submitLabel: string
 }) => {
   const [activeItemIndex, setActiveItemIndex] = useState(0)
@@ -529,8 +536,16 @@ export const PromptInput = ({
   )
 
   const handleSubmitClick = useCallback(() => {
+    if (isOutputActive) {
+      onStop?.()
+      return
+    }
+
     void handleSubmit()
-  }, [handleSubmit])
+  }, [handleSubmit, isOutputActive, onStop])
+
+  const actionLabel = isOutputActive ? stopLabel : submitLabel
+  const actionIcon = isOutputActive ? StopIcon : SentIcon
 
   return (
     <div className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none">
@@ -571,12 +586,15 @@ export const PromptInput = ({
       <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
         <div className="min-w-0 flex-1">{footer}</div>
         <Button
-          isDisabled={disabled || isSubmitting}
+          aria-label={actionLabel}
+          isDisabled={isOutputActive ? false : disabled || isSubmitting}
+          isIconOnly
           onPress={handleSubmitClick}
           size="sm"
           type="button"
+          variant={isOutputActive ? "danger" : "primary"}
         >
-          {submitLabel}
+          <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
         </Button>
       </div>
     </div>

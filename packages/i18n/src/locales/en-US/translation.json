@@ -19,7 +19,8 @@
   "chat": {
     "composer": {
       "placeholder": "Type a message or use @ to reference project files",
-      "send": "Send"
+      "send": "Send",
+      "stop": "Stop output"
     },
     "details": {
       "model": "Model",
@@ -112,7 +113,19 @@
     },
     "toolTrace": {
       "approve": "Approve",
+      "copied": "Copied",
+      "copyOutput": "Copy output",
+      "cwd": "Working directory",
       "deny": "Deny",
+      "duration": "Duration",
+      "executedCommand": "Command",
+      "exitCode": "Exit code",
+      "input": "Input",
+      "noOutput": "No output",
+      "output": "Output",
+      "rawOutput": "Raw result",
+      "repeated": "Repeated {count}x",
+      "shell": "Shell",
       "state": {
         "approvalRequested": "Approval needed",
         "approvalResponded": "Approval handled",
@@ -121,7 +134,13 @@
         "outputAvailable": "Done",
         "outputDenied": "Denied",
         "outputError": "Failed"
-      }
+      },
+      "status": "Status",
+      "stderr": "stderr",
+      "stdout": "stdout",
+      "thinking": "Thinking",
+      "title": "Tool activity",
+      "truncated": "Truncated"
     }
   },
   "home": {

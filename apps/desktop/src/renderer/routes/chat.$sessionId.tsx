@@ -15,7 +15,6 @@ import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
-  CheckmarkCircle01Icon,
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
@@ -32,7 +31,7 @@ import type {
   ToolUIPart,
   UIMessage
 } from "ai"
-import { getToolName, isToolUIPart } from "ai"
+import { isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
@@ -40,6 +39,10 @@ import {
   MessageActions,
   USER_MESSAGE_ACTIONS
 } from "@/renderer/components/chat/message-actions"
+import {
+  AssistantThinkingTrace,
+  MessageToolTrace
+} from "@/renderer/components/chat/message-tool-trace"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
@@ -72,6 +75,14 @@ import type {
   PromptMentionTrigger,
   PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  hasNonTextAssistantSegments,
+  splitAssistantTextSegments
+} from "@/renderer/lib/chat/tool-ui"
+import type {
+  AssistantCommandTextSegment,
+  AssistantTextSegment
+} from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
@@ -91,7 +102,6 @@ interface MentionQueryState {
 type ChatUiMessage = UIMessage<ChatMessageMetadata>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
-type ChatToolState = ChatToolPart["state"]
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
 const settingsQueryOptions = orpc.settings.get.queryOptions({})
@@ -111,16 +121,6 @@ const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
-const TOOL_TRACE_PREVIEW_MAX_LENGTH = 220
-const TOOL_TRACE_STATE_LABEL_KEY_BY_STATE = {
-  "approval-requested": "chat.toolTrace.state.approvalRequested",
-  "approval-responded": "chat.toolTrace.state.approvalResponded",
-  "input-available": "chat.toolTrace.state.inputAvailable",
-  "input-streaming": "chat.toolTrace.state.inputStreaming",
-  "output-available": "chat.toolTrace.state.outputAvailable",
-  "output-denied": "chat.toolTrace.state.outputDenied",
-  "output-error": "chat.toolTrace.state.outputError"
-} as const
 const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
   {
     icon: FolderGitIcon,
@@ -179,126 +179,41 @@ const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
 const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
   message.parts.filter(isToolUIPart)
 
-const formatToolTracePreview = (value: unknown): string => {
-  if (value === undefined || value === null) {
-    return ""
-  }
+const isCommandTextSegment = (
+  segment: AssistantTextSegment
+): segment is AssistantCommandTextSegment => segment.type === "executed-command"
 
-  if (typeof value === "string") {
-    return value.slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
-  }
-
-  try {
-    return JSON.stringify(value).slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
-  } catch {
-    return String(value).slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
-  }
-}
-
-const getToolTracePreview = (part: ChatToolPart): string => {
-  switch (part.state) {
-    case "approval-responded":
-    case "output-denied": {
-      return part.approval.reason ?? ""
-    }
-    case "output-available": {
-      return formatToolTracePreview(part.output)
-    }
-    case "output-error": {
-      return part.errorText
-    }
-    default: {
-      return ""
-    }
-  }
-}
-
-const getToolTraceStateClassName = (state: ChatToolState): string => {
-  switch (state) {
-    case "output-available": {
-      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-    }
-    case "output-denied":
-    case "output-error": {
-      return "bg-destructive/10 text-destructive"
-    }
-    default: {
-      return "bg-muted text-muted-foreground"
-    }
-  }
-}
-
-const MessageToolTrace = ({
-  isApprovalActionDisabled,
-  onApprovalResponse,
-  parts
+const MessageTextContent = ({
+  mentions,
+  messageId,
+  text
 }: {
-  isApprovalActionDisabled: boolean
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
-  parts: ChatToolPart[]
+  mentions: ChatMention[]
+  messageId: string
+  text: string
 }) => {
-  const { t } = useI18n()
-
-  if (parts.length === 0) {
+  if (!text.trim()) {
     return null
   }
 
-  return (
-    <div className="mt-3 space-y-1.5">
-      {parts.map((part) => {
-        const preview = getToolTracePreview(part)
+  const messageParts = splitPromptTextByMentions({
+    mentions,
+    text
+  })
 
-        return (
-          <div
-            className="rounded-lg border border-border/70 bg-background/60 px-2.5 py-2 text-xs"
-            key={part.toolCallId}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="min-w-0 truncate font-medium">
-                {getToolName(part)}
-              </span>
-              <span
-                className={cn(
-                  "shrink-0 rounded-md px-1.5 py-0.5 text-[0.625rem] font-medium",
-                  getToolTraceStateClassName(part.state)
-                )}
-              >
-                {t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])}
-              </span>
-            </div>
-            {preview ? (
-              <p className="mt-1 line-clamp-2 break-all text-muted-foreground">
-                {preview}
-              </p>
-            ) : null}
-            {part.state === "approval-requested" ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  isDisabled={isApprovalActionDisabled}
-                  onPress={() => onApprovalResponse(part, true)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
-                  {t("chat.toolTrace.approve")}
-                </Button>
-                <Button
-                  isDisabled={isApprovalActionDisabled}
-                  onPress={() => onApprovalResponse(part, false)}
-                  size="sm"
-                  type="button"
-                  variant="danger-soft"
-                >
-                  <HugeiconsIcon icon={Cancel01Icon} size={13} />
-                  {t("chat.toolTrace.deny")}
-                </Button>
-              </div>
-            ) : null}
-          </div>
+  return (
+    <p className="whitespace-pre-wrap">
+      {messageParts.map((part, index) =>
+        part.type === "mention" ? (
+          <InlineMentionToken
+            key={`${messageId}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
+            mention={part.mention}
+          />
+        ) : (
+          <span key={`${messageId}-text-${index}`}>{part.text}</span>
         )
-      })}
-    </div>
+      )}
+    </p>
   )
 }
 
@@ -697,6 +612,279 @@ const useChatMentionSuggestions = ({
   }
 }
 
+const MessageMentionChips = ({
+  isAssistant,
+  mentions,
+  messageId
+}: {
+  isAssistant: boolean
+  mentions: ChatMention[]
+  messageId: string
+}) => {
+  if (mentions.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mb-2 flex flex-wrap gap-2">
+      {mentions.map((mention) => (
+        <Chip
+          className="max-w-full"
+          color={isAssistant ? "default" : "accent"}
+          key={`${messageId}-${mention.kind}-${mention.path}`}
+          size="sm"
+          variant={isAssistant ? "secondary" : "soft"}
+        >
+          <Chip.Label className="truncate">
+            {getMentionDisplayName(mention)}
+          </Chip.Label>
+        </Chip>
+      ))}
+    </div>
+  )
+}
+
+const MessageSegmentContent = ({
+  mentions,
+  messageId,
+  segments,
+  text,
+  usesStructuredSegments
+}: {
+  mentions: ChatMention[]
+  messageId: string
+  segments: AssistantTextSegment[]
+  text: string
+  usesStructuredSegments: boolean
+}) => {
+  if (!usesStructuredSegments) {
+    return (
+      <MessageTextContent
+        mentions={mentions}
+        messageId={messageId}
+        text={text}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {segments.map((segment, index) => {
+        if (segment.type === "thinking") {
+          return (
+            <AssistantThinkingTrace
+              key={`${messageId}-thinking-${index}`}
+              text={segment.text}
+            />
+          )
+        }
+
+        if (segment.type === "text") {
+          return (
+            <MessageTextContent
+              key={`${messageId}-text-segment-${index}`}
+              mentions={mentions}
+              messageId={`${messageId}-${index}`}
+              text={segment.text}
+            />
+          )
+        }
+
+        return null
+      })}
+    </div>
+  )
+}
+
+const EditingMessageBubble = ({
+  editingMessageText,
+  isRequestPending,
+  onCancelEditMessage,
+  onEditingMessageTextChange,
+  onSubmitEditedMessage,
+  message
+}: {
+  editingMessageText: string
+  isRequestPending: boolean
+  message: ChatUiMessage
+  onCancelEditMessage: () => void
+  onEditingMessageTextChange: (value: string) => void
+  onSubmitEditedMessage: (message: ChatUiMessage) => void
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <div className="rounded-3xl border border-border bg-card/80 p-3 shadow-sm">
+      <TextArea
+        aria-label={t("chat.messageActions.edit")}
+        className="min-h-24 min-w-0 text-sm"
+        fullWidth
+        onChange={(event) => onEditingMessageTextChange(event.target.value)}
+        rows={3}
+        value={editingMessageText}
+        variant="secondary"
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <Button
+          onPress={onCancelEditMessage}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {t("chat.messageActions.cancelEdit")}
+        </Button>
+        <Button
+          isDisabled={isRequestPending || editingMessageText.trim() === ""}
+          onPress={() => onSubmitEditedMessage(message)}
+          size="sm"
+          type="button"
+        >
+          {t("chat.messageActions.saveEdit")}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const ChatMessageBubble = ({
+  isAssistant,
+  isRequestPending,
+  message,
+  onApprovalResponse,
+  showToolTraces
+}: {
+  isAssistant: boolean
+  isRequestPending: boolean
+  message: ChatUiMessage
+  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  showToolTraces: boolean
+}) => {
+  const mentions = message.metadata?.mentions ?? []
+  const messageText = getMessageText(message)
+  const toolParts =
+    showToolTraces && isAssistant ? getMessageToolParts(message) : []
+  const segments =
+    showToolTraces && isAssistant
+      ? splitAssistantTextSegments(messageText)
+      : ([
+          {
+            text: messageText,
+            type: "text"
+          }
+        ] satisfies AssistantTextSegment[])
+  const commandSegments = segments.filter(isCommandTextSegment)
+  const usesStructuredSegments =
+    showToolTraces && isAssistant && hasNonTextAssistantSegments(segments)
+  const hasInlineMentions = splitPromptTextByMentions({
+    mentions,
+    text: messageText
+  }).some((part) => part.type === "mention")
+
+  return (
+    <div
+      className={cn("rounded-3xl px-4 py-3", {
+        "bg-muted/60 text-foreground": isAssistant,
+        "bg-primary text-primary-foreground": !isAssistant
+      })}
+    >
+      {mentions.length > 0 && !hasInlineMentions ? (
+        <MessageMentionChips
+          isAssistant={isAssistant}
+          mentions={mentions}
+          messageId={message.id}
+        />
+      ) : null}
+
+      <MessageSegmentContent
+        mentions={mentions}
+        messageId={message.id}
+        segments={segments}
+        text={messageText}
+        usesStructuredSegments={usesStructuredSegments}
+      />
+
+      <MessageToolTrace
+        commandSegments={commandSegments}
+        isApprovalActionDisabled={isRequestPending}
+        onApprovalResponse={onApprovalResponse}
+        parts={toolParts}
+      />
+    </div>
+  )
+}
+
+const ChatMessageItem = ({
+  editingMessageId,
+  editingMessageText,
+  isRequestPending,
+  message,
+  onApprovalResponse,
+  onCancelEditMessage,
+  onEditingMessageTextChange,
+  onRegenerate,
+  onStartEditMessage,
+  onSubmitEditedMessage,
+  showToolTraces
+}: {
+  editingMessageId: string | null
+  editingMessageText: string
+  isRequestPending: boolean
+  message: ChatUiMessage
+  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onCancelEditMessage: () => void
+  onEditingMessageTextChange: (value: string) => void
+  onRegenerate: (messageId?: string) => void
+  onStartEditMessage: (message: ChatUiMessage) => void
+  onSubmitEditedMessage: (message: ChatUiMessage) => void
+  showToolTraces: boolean
+}) => {
+  const isAssistant = message.role === "assistant"
+  const isUser = message.role === "user"
+  const isEditingMessage = isUser && editingMessageId === message.id
+  const messageText = getMessageText(message)
+
+  return (
+    <div
+      className={cn(
+        "group/message flex outline-none",
+        isAssistant ? "justify-start" : "justify-end"
+      )}
+    >
+      <div>
+        {isEditingMessage ? (
+          <EditingMessageBubble
+            editingMessageText={editingMessageText}
+            isRequestPending={isRequestPending}
+            message={message}
+            onCancelEditMessage={onCancelEditMessage}
+            onEditingMessageTextChange={onEditingMessageTextChange}
+            onSubmitEditedMessage={onSubmitEditedMessage}
+          />
+        ) : (
+          <ChatMessageBubble
+            isAssistant={isAssistant}
+            isRequestPending={isRequestPending}
+            message={message}
+            onApprovalResponse={onApprovalResponse}
+            showToolTraces={showToolTraces}
+          />
+        )}
+
+        {isAssistant || isUser ? (
+          <MessageActions
+            actions={isUser ? USER_MESSAGE_ACTIONS : undefined}
+            align={isUser ? "end" : "start"}
+            isRegenerating={isRequestPending}
+            messageText={messageText}
+            onEdit={isUser ? () => onStartEditMessage(message) : undefined}
+            onRegenerate={() => onRegenerate(message.id)}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 const ChatRuntime = ({
   gitDiff,
   isLoadingFileItems,
@@ -770,6 +958,7 @@ const ChatRuntime = ({
     messages,
     regenerate,
     sendMessage,
+    stop,
     status
   } = useChat<ChatUiMessage>({
     id: selectedSession.id,
@@ -864,9 +1053,13 @@ const ChatRuntime = ({
 
   const handleToolApprovalResponse = useCallback(
     (part: ChatToolPart, approved: boolean) => {
+      if (part.state !== "approval-requested") {
+        return
+      }
+
       void addToolApprovalResponse({
         approved,
-        id: part.toolCallId,
+        id: part.approval.id,
         options: buildChatRequestOptions(latestUserMentions),
         reason: approved ? undefined : "Denied in chat UI."
       })
@@ -955,6 +1148,10 @@ const ChatRuntime = ({
     setEditingMessageText("")
   }, [])
 
+  const handleStop = useCallback(() => {
+    void stop()
+  }, [stop])
+
   const handleSubmitEditedMessage = useCallback(
     (message: ChatUiMessage) => {
       const normalizedText = editingMessageText.trim()
@@ -1026,147 +1223,22 @@ const ChatRuntime = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((message) => {
-                    const isAssistant = message.role === "assistant"
-                    const isUser = message.role === "user"
-                    const isEditingMessage =
-                      isUser && editingMessageId === message.id
-                    const messageMentions = message.metadata?.mentions ?? []
-                    const messageText = getMessageText(message)
-                    const toolParts =
-                      showToolTraces && isAssistant
-                        ? getMessageToolParts(message)
-                        : []
-                    const messageParts = splitPromptTextByMentions({
-                      mentions: messageMentions,
-                      text: messageText
-                    })
-                    const hasInlineMentions = messageParts.some(
-                      (part) => part.type === "mention"
-                    )
-
-                    return (
-                      <div
-                        className={cn(
-                          "group/message flex outline-none",
-                          isAssistant ? "justify-start" : "justify-end"
-                        )}
-                        key={message.id}
-                      >
-                        <div>
-                          {isEditingMessage ? (
-                            <div className="rounded-3xl border border-border bg-card/80 p-3 shadow-sm">
-                              <TextArea
-                                aria-label={t("chat.messageActions.edit")}
-                                className="min-h-24 min-w-0 text-sm"
-                                fullWidth
-                                onChange={(event) =>
-                                  setEditingMessageText(event.target.value)
-                                }
-                                rows={3}
-                                value={editingMessageText}
-                                variant="secondary"
-                              />
-                              <div className="mt-2 flex justify-end gap-2">
-                                <Button
-                                  onPress={handleCancelEditMessage}
-                                  size="sm"
-                                  type="button"
-                                  variant="ghost"
-                                >
-                                  {t("chat.messageActions.cancelEdit")}
-                                </Button>
-                                <Button
-                                  isDisabled={
-                                    isRequestPending ||
-                                    editingMessageText.trim() === ""
-                                  }
-                                  onPress={() =>
-                                    handleSubmitEditedMessage(message)
-                                  }
-                                  size="sm"
-                                  type="button"
-                                >
-                                  {t("chat.messageActions.saveEdit")}
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div
-                              className={cn("rounded-3xl px-4 py-3", {
-                                "bg-muted/60 text-foreground": isAssistant,
-                                "bg-primary text-primary-foreground":
-                                  !isAssistant
-                              })}
-                            >
-                              {messageMentions.length > 0 &&
-                                !hasInlineMentions && (
-                                  <div className="mb-2 flex flex-wrap gap-2">
-                                    {messageMentions.map((mention) => (
-                                      <Chip
-                                        color={
-                                          isAssistant ? "default" : "accent"
-                                        }
-                                        className="max-w-full"
-                                        key={`${message.id}-${mention.kind}-${mention.path}`}
-                                        size="sm"
-                                        variant={
-                                          isAssistant ? "secondary" : "soft"
-                                        }
-                                      >
-                                        <Chip.Label className="truncate">
-                                          {getMentionDisplayName(mention)}
-                                        </Chip.Label>
-                                      </Chip>
-                                    ))}
-                                  </div>
-                                )}
-
-                              {messageText ? (
-                                <p className="whitespace-pre-wrap">
-                                  {messageParts.map((part, index) =>
-                                    part.type === "mention" ? (
-                                      <InlineMentionToken
-                                        key={`${message.id}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
-                                        mention={part.mention}
-                                      />
-                                    ) : (
-                                      <span key={`${message.id}-text-${index}`}>
-                                        {part.text}
-                                      </span>
-                                    )
-                                  )}
-                                </p>
-                              ) : null}
-
-                              <MessageToolTrace
-                                isApprovalActionDisabled={isRequestPending}
-                                onApprovalResponse={handleToolApprovalResponse}
-                                parts={toolParts}
-                              />
-                            </div>
-                          )}
-
-                          {isAssistant || isUser ? (
-                            <MessageActions
-                              actions={
-                                isUser ? USER_MESSAGE_ACTIONS : undefined
-                              }
-                              align={isUser ? "end" : "start"}
-                              isRegenerating={isRequestPending}
-                              messageText={messageText}
-                              onEdit={
-                                isUser
-                                  ? () => handleStartEditMessage(message)
-                                  : undefined
-                              }
-                              onRegenerate={() => handleRegenerate(message.id)}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {messages.map((message) => (
+                    <ChatMessageItem
+                      editingMessageId={editingMessageId}
+                      editingMessageText={editingMessageText}
+                      isRequestPending={isRequestPending}
+                      key={message.id}
+                      message={message}
+                      onApprovalResponse={handleToolApprovalResponse}
+                      onCancelEditMessage={handleCancelEditMessage}
+                      onEditingMessageTextChange={setEditingMessageText}
+                      onRegenerate={handleRegenerate}
+                      onStartEditMessage={handleStartEditMessage}
+                      onSubmitEditedMessage={handleSubmitEditedMessage}
+                      showToolTraces={showToolTraces}
+                    />
+                  ))}
                   {error && (
                     <ChatErrorActionBar
                       errorMessage={error.message}
@@ -1234,9 +1306,12 @@ const ChatRuntime = ({
             mentionSkillSearchPlaceholder={t(
               "chat.mentions.skillsSearchPlaceholder"
             )}
+            isOutputActive={isRequestPending}
             onMentionQueryChange={onMentionQueryChange}
+            onStop={handleStop}
             onSubmit={handleSubmit}
             placeholder={t("chat.composer.placeholder")}
+            stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
         </div>
@@ -1363,6 +1438,7 @@ const ChatPendingState = ({
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={NOOP_PROMPT_SUBMIT}
             placeholder={t("chat.composer.placeholder")}
+            stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
         </div>
