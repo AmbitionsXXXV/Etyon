@@ -542,8 +542,8 @@
         "noEnabledModels": "未启用模型"
       },
       "models": {
-        "description": "勾选需要参与运行时解析的模型。",
-        "empty": "没有可显示的模型。",
+        "description": "勾选需要参与运行时解析的模型",
+        "empty": "没有可显示的模型",
         "search": "搜索模型...",
         "title": "模型"
       },
