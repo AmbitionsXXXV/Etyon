@@ -166,6 +166,8 @@ const ChatComponent = () => {
 ## Chat Timeline 布局
 
 - assistant 消息按 `message.parts` 顺序渲染（`AssistantMessageTimeline`），不再把 tool trace 汇总到底部暂存区。
+- assistant `text` part 使用 `streamdown` 解析 Markdown，支持流式未闭合 Markdown 的补全、GFM 表格 / 列表 / code fence 渲染，以及响应期间的 caret / 动画。
+- `settings.chat.streamdown.animation` 控制 `streamdown` 的 `animated` 配置：默认 `fade-in`，可选 `blur-in`、`slide-up`、`typewriter` 或 `none`。动画只在最新 assistant 消息仍处于 streaming / submitted 状态时启用。
 - `text` part 内的 `<antThinking>`、`Executed in ...`、`<function_calls>` 会在该 text part 内按出现顺序拆成 timeline 条目。
 - AI SDK `tool-*` parts 与 `reasoning` parts 在各自 stream 位置内联展示；`MessageToolTrace` 仅保留复用卡片组件，不再作为聚合容器。
 
@@ -276,20 +278,21 @@ Renderer draft.availableModels / draft.models
 
 ## 涉及文件
 
-| 文件                                                        | 说明                                     |
-| ----------------------------------------------------------- | ---------------------------------------- |
-| `apps/desktop/src/main/chat-messages.ts`                    | Chat UIMessage 持久化                    |
-| `apps/desktop/src/main/chat-session-memory.ts`              | Session memory 构建、读取与 prompt 注入  |
-| `apps/desktop/src/main/server/routes/build-chat-stream-response.ts` | Chat UI stream（memory phase + model merge） |
-| `apps/desktop/src/main/server/routes/chat.ts`               | Chat 流式对话端点                        |
-| `apps/desktop/src/renderer/components/chat/assistant-message-timeline.tsx` | assistant 消息 timeline 渲染 |
-| `apps/desktop/src/shared/chat/stream-data.ts`               | Chat stream transient data 类型          |
-| `apps/desktop/src/main/server/lib/providers.ts`             | AI Provider 工厂                         |
-| `apps/desktop/src/main/telegram/bridge.ts`                  | Chat SDK Telegram adapter 与 AI 回复桥接 |
-| `apps/desktop/src/main/telegram/client.ts`                  | Telegram `getMe` 连接测试 client         |
-| `apps/desktop/src/main/providers/fetch-provider-models.ts`  | provider models 抓取与归一化             |
-| `apps/desktop/src/shared/providers/provider-catalog.ts`     | 内建 provider catalog 与 seed 挂载       |
-| `apps/desktop/src/shared/providers/provider-seed-models.ts` | 内建 provider seed 模型静态定义          |
-| `apps/desktop/src/renderer/lib/ai/transport.ts`             | Renderer 端 Chat Transport               |
-| `packages/rpc/src/schemas/settings.ts`                      | AI Settings Schema（`AiSettingsSchema`） |
-| `packages/rpc/src/schemas/providers.ts`                     | Provider / Model 共享 schema             |
+| 文件                                                                       | 说明                                         |
+| -------------------------------------------------------------------------- | -------------------------------------------- |
+| `apps/desktop/src/main/chat-messages.ts`                                   | Chat UIMessage 持久化                        |
+| `apps/desktop/src/main/chat-session-memory.ts`                             | Session memory 构建、读取与 prompt 注入      |
+| `apps/desktop/src/main/server/routes/build-chat-stream-response.ts`        | Chat UI stream（memory phase + model merge） |
+| `apps/desktop/src/main/server/routes/chat.ts`                              | Chat 流式对话端点                            |
+| `apps/desktop/src/renderer/components/chat/assistant-message-timeline.tsx` | assistant 消息 timeline 渲染                 |
+| `apps/desktop/src/renderer/lib/chat/streamdown-settings.ts`                | Streamdown 动画 preset 与渲染配置映射        |
+| `apps/desktop/src/shared/chat/stream-data.ts`                              | Chat stream transient data 类型              |
+| `apps/desktop/src/main/server/lib/providers.ts`                            | AI Provider 工厂                             |
+| `apps/desktop/src/main/telegram/bridge.ts`                                 | Chat SDK Telegram adapter 与 AI 回复桥接     |
+| `apps/desktop/src/main/telegram/client.ts`                                 | Telegram `getMe` 连接测试 client             |
+| `apps/desktop/src/main/providers/fetch-provider-models.ts`                 | provider models 抓取与归一化                 |
+| `apps/desktop/src/shared/providers/provider-catalog.ts`                    | 内建 provider catalog 与 seed 挂载           |
+| `apps/desktop/src/shared/providers/provider-seed-models.ts`                | 内建 provider seed 模型静态定义              |
+| `apps/desktop/src/renderer/lib/ai/transport.ts`                            | Renderer 端 Chat Transport                   |
+| `packages/rpc/src/schemas/settings.ts`                                     | AI Settings Schema（`AiSettingsSchema`）     |
+| `packages/rpc/src/schemas/providers.ts`                                    | Provider / Model 共享 schema                 |

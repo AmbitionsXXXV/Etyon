@@ -390,7 +390,37 @@
         },
         "title": "Auto Compact"
       },
-      "description": "Configure chat history compression and context preservation.",
+      "description": "Configure chat response rendering, history compression, and context preservation.",
+      "streamdown": {
+        "animation": {
+          "description": "Animation only runs while an assistant response is streaming. Completed responses drop the extra animation nodes.",
+          "label": "Streaming Animation",
+          "option": {
+            "blurIn": {
+              "description": "Better for fast models because it softens batched token arrivals.",
+              "label": "Blur In"
+            },
+            "fadeIn": {
+              "description": "A light fade close to Streamdown's default behavior.",
+              "label": "Fade In"
+            },
+            "none": {
+              "description": "Disable text motion and keep stable Markdown rendering only.",
+              "label": "No Animation"
+            },
+            "slideUp": {
+              "description": "A subtle upward entrance that emphasizes new content.",
+              "label": "Slide Up"
+            },
+            "typewriter": {
+              "description": "Character-level fade for a stronger streaming feel.",
+              "label": "Typewriter"
+            }
+          }
+        },
+        "description": "Render assistant Markdown with Streamdown and tune the streaming response motion.",
+        "title": "Markdown Rendering"
+      },
       "title": "Chat"
     },
     "common": {

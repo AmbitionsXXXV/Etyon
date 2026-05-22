@@ -112,6 +112,30 @@ describe("AppSettingsSchema", () => {
         enabled: true,
         keepRecentMessages: 4,
         threshold: 80
+      },
+      streamdown: {
+        animation: "fade-in"
+      }
+    })
+  })
+
+  it("accepts partial chat streamdown settings updates", () => {
+    const update = UpdateSettingsSchema.parse({
+      chat: {
+        streamdown: {
+          animation: "blur-in"
+        }
+      }
+    })
+
+    expect(update.chat).toEqual({
+      autoCompact: {
+        enabled: true,
+        keepRecentMessages: 4,
+        threshold: 80
+      },
+      streamdown: {
+        animation: "blur-in"
       }
     })
   })

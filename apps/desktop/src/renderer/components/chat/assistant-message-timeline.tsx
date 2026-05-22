@@ -1,7 +1,8 @@
-import type { ChatMention } from "@etyon/rpc"
+import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
 import { isToolUIPart } from "ai"
+import { Streamdown } from "streamdown"
 
 import {
   AssistantThinkingTrace,
@@ -10,12 +11,7 @@ import {
   StructuredToolTraceCard
 } from "@/renderer/components/chat/message-tool-trace"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
-import {
-  getMentionDisplayName,
-  getMentionTitle,
-  getMentionTokenTypeLabel,
-  splitPromptTextByMentions
-} from "@/renderer/lib/chat/prompt-input"
+import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
 import { splitAssistantTextSegments } from "@/renderer/lib/chat/tool-ui"
 import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
 import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
@@ -28,49 +24,52 @@ type ReasoningChatPart = Extract<
 >
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 
-const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
-  <span
-    className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 align-baseline text-sm font-medium text-foreground ring-1 ring-border/70"
-    title={getMentionTitle(mention)}
-  >
-    <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
-      {getMentionTokenTypeLabel(mention)}
-    </span>
-    <span className="max-w-52 truncate">{getMentionDisplayName(mention)}</span>
-  </span>
+const STREAMDOWN_MARKDOWN_CLASS_NAME = cn(
+  "min-w-0 text-sm leading-6 text-foreground",
+  "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+  "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4",
+  "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
+  "[&_code]:rounded-md [&_code]:bg-muted/80 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+  "[&_h1]:mt-5 [&_h1]:mb-2 [&_h1]:text-lg [&_h1]:font-semibold",
+  "[&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold",
+  "[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold",
+  "[&_li]:my-1",
+  "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
+  "[&_p]:my-2",
+  "[&_pre]:my-3 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:bg-muted/80 [&_pre]:p-3",
+  "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
+  "[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm",
+  "[&_td]:border [&_td]:border-border [&_td]:px-3 [&_td]:py-2",
+  "[&_th]:border [&_th]:border-border [&_th]:bg-muted/70 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left",
+  "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
 )
 
-const MessageTextContent = ({
-  mentions,
-  messageId,
+const AssistantMarkdownContent = ({
+  isAnimating,
+  streamdownAnimation,
   text
 }: {
-  mentions: ChatMention[]
-  messageId: string
+  isAnimating: boolean
+  streamdownAnimation: StreamdownAnimation
   text: string
 }) => {
   if (!text.trim()) {
     return null
   }
 
-  const messageParts = splitPromptTextByMentions({
-    mentions,
-    text
-  })
+  const animated = getStreamdownAnimateOptions(streamdownAnimation)
+  const shouldAnimate = isAnimating && animated !== false
 
   return (
-    <p className="whitespace-pre-wrap">
-      {messageParts.map((part, index) =>
-        part.type === "mention" ? (
-          <InlineMentionToken
-            key={`${messageId}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
-            mention={part.mention}
-          />
-        ) : (
-          <span key={`${messageId}-text-${index}`}>{part.text}</span>
-        )
-      )}
-    </p>
+    <Streamdown
+      animated={animated}
+      caret={shouldAnimate ? "block" : undefined}
+      className={STREAMDOWN_MARKDOWN_CLASS_NAME}
+      isAnimating={shouldAnimate}
+      skipHtml
+    >
+      {text}
+    </Streamdown>
   )
 }
 
@@ -95,23 +94,25 @@ const getTimelinePartKey = (
 }
 
 const AssistantTextPartTimeline = ({
-  mentions,
+  isStreamdownAnimating,
   messageId,
   partIndex,
   showToolTraces,
+  streamdownAnimation,
   text
 }: {
-  mentions: ChatMention[]
+  isStreamdownAnimating: boolean
   messageId: string
   partIndex: number
   showToolTraces: boolean
+  streamdownAnimation: StreamdownAnimation
   text: string
 }) => {
   if (!showToolTraces) {
     return (
-      <MessageTextContent
-        mentions={mentions}
-        messageId={`${messageId}-${partIndex}`}
+      <AssistantMarkdownContent
+        isAnimating={isStreamdownAnimating}
+        streamdownAnimation={streamdownAnimation}
         text={text}
       />
     )
@@ -124,9 +125,9 @@ const AssistantTextPartTimeline = ({
       {segments.map((segment, segmentIndex) => (
         <AssistantTextSegmentTimelineItem
           key={`${messageId}-${partIndex}-segment-${segmentIndex}`}
-          mentions={mentions}
-          messageId={`${messageId}-${partIndex}-${segmentIndex}`}
+          isStreamdownAnimating={isStreamdownAnimating}
           segment={segment}
+          streamdownAnimation={streamdownAnimation}
         />
       ))}
     </>
@@ -134,13 +135,13 @@ const AssistantTextPartTimeline = ({
 }
 
 const AssistantTextSegmentTimelineItem = ({
-  mentions,
-  messageId,
-  segment
+  isStreamdownAnimating,
+  segment,
+  streamdownAnimation
 }: {
-  mentions: ChatMention[]
-  messageId: string
+  isStreamdownAnimating: boolean
   segment: AssistantTextSegment
+  streamdownAnimation: StreamdownAnimation
 }) => {
   switch (segment.type) {
     case "executed-command": {
@@ -154,9 +155,9 @@ const AssistantTextSegmentTimelineItem = ({
     }
     case "text": {
       return (
-        <MessageTextContent
-          mentions={mentions}
-          messageId={messageId}
+        <AssistantMarkdownContent
+          isAnimating={isStreamdownAnimating}
+          streamdownAnimation={streamdownAnimation}
           text={segment.text}
         />
       )
@@ -168,21 +169,23 @@ const AssistantTextSegmentTimelineItem = ({
 }
 
 const AssistantTimelinePart = ({
+  isStreamdownAnimating,
   isApprovalActionDisabled,
-  mentions,
   messageId,
   onApprovalResponse,
   part,
   partIndex,
-  showToolTraces
+  showToolTraces,
+  streamdownAnimation
 }: {
+  isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
-  mentions: ChatMention[]
   messageId: string
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   part: ChatUiMessage["parts"][number]
   partIndex: number
   showToolTraces: boolean
+  streamdownAnimation: StreamdownAnimation
 }) => {
   if (part.type === "reasoning") {
     const reasoningPart = part as ReasoningChatPart
@@ -199,10 +202,11 @@ const AssistantTimelinePart = ({
 
     return (
       <AssistantTextPartTimeline
-        mentions={mentions}
+        isStreamdownAnimating={isStreamdownAnimating}
         messageId={messageId}
         partIndex={partIndex}
         showToolTraces={showToolTraces}
+        streamdownAnimation={streamdownAnimation}
         text={textPart.text}
       />
     )
@@ -223,30 +227,33 @@ const AssistantTimelinePart = ({
 
 export const AssistantMessageTimeline = ({
   className,
+  isStreamdownAnimating,
   isApprovalActionDisabled,
-  mentions,
   message,
   onApprovalResponse,
-  showToolTraces
+  showToolTraces,
+  streamdownAnimation
 }: {
   className?: string
+  isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
-  mentions: ChatMention[]
   message: ChatUiMessage
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   showToolTraces: boolean
+  streamdownAnimation: StreamdownAnimation
 }) => (
   <div className={cn("space-y-2", className)}>
     {message.parts.map((part, index) => (
       <AssistantTimelinePart
+        isStreamdownAnimating={isStreamdownAnimating}
         isApprovalActionDisabled={isApprovalActionDisabled}
         key={getTimelinePartKey(message.id, part, index)}
-        mentions={mentions}
         messageId={message.id}
         onApprovalResponse={onApprovalResponse}
         part={part}
         partIndex={index}
         showToolTraces={showToolTraces}
+        streamdownAnimation={streamdownAnimation}
       />
     ))}
   </div>

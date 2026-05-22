@@ -390,7 +390,37 @@
         },
         "title": "Auto Compact"
       },
-      "description": "chat 履歴の圧縮とコンテキスト保持を設定します。",
+      "description": "chat の応答レンダリング、履歴圧縮、コンテキスト保持を設定します。",
+      "streamdown": {
+        "animation": {
+          "description": "アニメーションは assistant 応答のストリーミング中だけ有効です。完了後は追加のアニメーションノードを外します。",
+          "label": "ストリーミングアニメーション",
+          "option": {
+            "blurIn": {
+              "description": "高速モデル向けに、まとまって届く token の見え方を和らげます。",
+              "label": "Blur In"
+            },
+            "fadeIn": {
+              "description": "Streamdown の既定動作に近い軽いフェードです。",
+              "label": "Fade In"
+            },
+            "none": {
+              "description": "テキストの動きを無効化し、安定した Markdown レンダリングだけを使います。",
+              "label": "アニメーションなし"
+            },
+            "slideUp": {
+              "description": "新しい内容を控えめに上方向へ表示します。",
+              "label": "Slide Up"
+            },
+            "typewriter": {
+              "description": "より強いストリーミング感を出す文字単位のフェードです。",
+              "label": "Typewriter"
+            }
+          }
+        },
+        "description": "Streamdown で assistant Markdown をレンダリングし、ストリーミング応答の動きを調整します。",
+        "title": "Markdown レンダリング"
+      },
       "title": "Chat"
     },
     "common": {

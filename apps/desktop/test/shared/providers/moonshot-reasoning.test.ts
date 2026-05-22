@@ -116,6 +116,8 @@ describe("moonshot-reasoning", () => {
         expect(assistantMessage?.reasoning_content).toBe(
           "Let me inspect the repo first."
         )
+
+        return Promise.resolve()
       }
     )
   })

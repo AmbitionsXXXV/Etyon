@@ -1,7 +1,19 @@
 import { useI18n } from "@etyon/i18n/react"
-import type { AutoCompactSettings, ChatSettings } from "@etyon/rpc"
+import type {
+  AutoCompactSettings,
+  ChatSettings,
+  StreamdownSettings
+} from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Label, NumberField, Slider, Switch } from "@heroui/react"
+import {
+  Label,
+  ListBox,
+  NumberField,
+  Select,
+  Slider,
+  Switch
+} from "@heroui/react"
+import type { Key } from "@heroui/react"
 import { motion } from "motion/react"
 import { useCallback } from "react"
 
@@ -13,6 +25,10 @@ import {
   clampAutoCompactKeepRecentMessages,
   clampAutoCompactThreshold
 } from "@/renderer/lib/chat/auto-compact-settings"
+import {
+  STREAMDOWN_ANIMATION_OPTIONS,
+  getStreamdownAnimationValue
+} from "@/renderer/lib/chat/streamdown-settings"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 
 interface ChatTabProps {
@@ -78,6 +94,9 @@ const ChatSwitchRow = ({
   </div>
 )
 
+const CHAT_FIELD_CLASS_NAME =
+  "border-border/80 bg-background/80 shadow-sm hover:bg-background focus-visible:border-primary/60"
+
 export const ChatTab = ({ chat, onChange }: ChatTabProps) => {
   const { t } = useI18n()
 
@@ -94,9 +113,39 @@ export const ChatTab = ({ chat, onChange }: ChatTabProps) => {
     [chat, onChange]
   )
 
+  const updateStreamdown = useCallback(
+    (patch: Partial<StreamdownSettings>) => {
+      onChange({
+        ...chat,
+        streamdown: {
+          ...chat.streamdown,
+          ...patch
+        }
+      })
+    },
+    [chat, onChange]
+  )
+
   const handleAutoCompactEnabledChange = useCallback(
     (checked: boolean) => updateAutoCompact({ enabled: checked }),
     [updateAutoCompact]
+  )
+
+  const handleStreamdownAnimationChange = useCallback(
+    (nextValue: Key | Key[] | null) => {
+      if (Array.isArray(nextValue) || nextValue === null) {
+        return
+      }
+
+      const animation = getStreamdownAnimationValue(String(nextValue))
+
+      if (!animation) {
+        return
+      }
+
+      updateStreamdown({ animation })
+    },
+    [updateStreamdown]
   )
 
   const handleKeepRecentMessagesChange = useCallback(
@@ -137,6 +186,61 @@ export const ChatTab = ({ chat, onChange }: ChatTabProps) => {
 
       <motion.section
         {...settingsPageSectionMotion(0.25)}
+        className="space-y-5 rounded-lg border border-border bg-card p-5"
+      >
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold">
+            {t("settings.chat.streamdown.title")}
+          </h2>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("settings.chat.streamdown.description")}
+          </p>
+        </div>
+
+        <Select
+          className="mx-0.5 max-w-xl"
+          fullWidth
+          onChange={handleStreamdownAnimationChange}
+          value={chat.streamdown.animation}
+          variant="primary"
+        >
+          <Label className="text-xs font-medium text-muted-foreground">
+            {t("settings.chat.streamdown.animation.label")}
+          </Label>
+          <Select.Trigger className={CHAT_FIELD_CLASS_NAME}>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover className="border border-border/80 bg-popover shadow-overlay">
+            <ListBox>
+              {STREAMDOWN_ANIMATION_OPTIONS.map((option) => (
+                <ListBox.Item
+                  id={option.value}
+                  key={option.value}
+                  textValue={t(option.labelKey)}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {t(option.labelKey)}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {t(option.descriptionKey)}
+                    </div>
+                  </div>
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+
+        <p className="text-xs leading-5 text-muted-foreground">
+          {t("settings.chat.streamdown.animation.description")}
+        </p>
+      </motion.section>
+
+      <motion.section
+        {...settingsPageSectionMotion(0.35)}
         className="space-y-5 rounded-lg border border-border bg-card p-5"
       >
         <div className="space-y-1">

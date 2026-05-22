@@ -60,7 +60,8 @@
     "font-list": "^2.0.4",
     "hono": "^4.12.21",
     "motion": "^12.39.0",
-    "shiki": "4.1.0"
+    "shiki": "4.1.0",
+    "streamdown": "^2.5.0"
   },
   "devDependencies": {
     "@ai-sdk/react": "^3.0.187",

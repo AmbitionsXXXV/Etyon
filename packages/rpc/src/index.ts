@@ -210,6 +210,9 @@ export {
   ProxyTypeSchema,
   SidebarModeSchema,
   SidebarSettingsSchema,
+  STREAMDOWN_ANIMATION_DEFAULT,
+  StreamdownAnimationSchema,
+  StreamdownSettingsSchema,
   TelegramSettingsSchema,
   ThemeSchema,
   UpdateSettingsSchema
@@ -234,6 +237,8 @@ export type {
   ProxyType,
   SidebarMode,
   SidebarSettings,
+  StreamdownAnimation,
+  StreamdownSettings,
   TelegramSettings,
   Theme
 } from "./schemas/settings"

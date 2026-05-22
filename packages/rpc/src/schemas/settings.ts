@@ -211,8 +211,15 @@ const AUTO_COMPACT_SETTINGS_DEFAULT = {
   threshold: 80
 } as const
 
+export const STREAMDOWN_ANIMATION_DEFAULT = "fade-in" as const
+
+const STREAMDOWN_SETTINGS_DEFAULT = {
+  animation: STREAMDOWN_ANIMATION_DEFAULT
+} as const
+
 const CHAT_SETTINGS_DEFAULT = {
-  autoCompact: AUTO_COMPACT_SETTINGS_DEFAULT
+  autoCompact: AUTO_COMPACT_SETTINGS_DEFAULT,
+  streamdown: STREAMDOWN_SETTINGS_DEFAULT
 } as const
 
 export const ProxySettingsSchema = z.object({
@@ -271,8 +278,21 @@ export const AutoCompactSettingsSchema = z.object({
   threshold: z.number().min(5).max(95).default(80)
 })
 
+export const StreamdownAnimationSchema = z.enum([
+  "blur-in",
+  "fade-in",
+  "none",
+  "slide-up",
+  "typewriter"
+])
+
+export const StreamdownSettingsSchema = z.object({
+  animation: StreamdownAnimationSchema.default(STREAMDOWN_ANIMATION_DEFAULT)
+})
+
 export const ChatSettingsSchema = z.object({
-  autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT)
+  autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT),
+  streamdown: StreamdownSettingsSchema.default(STREAMDOWN_SETTINGS_DEFAULT)
 })
 
 export const AgentSettingsSchema = z.object({
@@ -364,5 +384,7 @@ export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
 export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
+export type StreamdownAnimation = z.infer<typeof StreamdownAnimationSchema>
+export type StreamdownSettings = z.infer<typeof StreamdownSettingsSchema>
 export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>
 export type Theme = z.infer<typeof ThemeSchema>

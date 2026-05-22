@@ -5,7 +5,8 @@ import type {
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
   GitProjectDiffOutput,
-  ProjectSnapshotItem
+  ProjectSnapshotItem,
+  StreamdownAnimation
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { Resizable } from "@heroui-pro/react"
@@ -82,6 +83,7 @@ import type {
   PromptMentionTrigger,
   PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
+import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
 import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
@@ -846,7 +848,8 @@ const ChatMessageBubble = ({
   liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
-  showToolTraces
+  showToolTraces,
+  streamdownAnimation
 }: {
   isAssistant: boolean
   isLatestAssistantMessage: boolean
@@ -855,6 +858,7 @@ const ChatMessageBubble = ({
   message: ChatUiMessage
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   showToolTraces: boolean
+  streamdownAnimation: StreamdownAnimation
 }) => {
   const metadata = parseChatMessageMetadata(message.metadata)
   const mentions = metadata?.mentions ?? []
@@ -868,10 +872,12 @@ const ChatMessageBubble = ({
       ] satisfies AssistantTextSegment[])
     : []
   const usesStructuredSegments = false
-  const hasInlineMentions = splitPromptTextByMentions({
-    mentions,
-    text: messageText
-  }).some((part) => part.type === "mention")
+  const hasInlineMentions =
+    !isAssistant &&
+    splitPromptTextByMentions({
+      mentions,
+      text: messageText
+    }).some((part) => part.type === "mention")
 
   if (isAssistant) {
     return (
@@ -894,11 +900,12 @@ const ChatMessageBubble = ({
         ) : null}
 
         <AssistantMessageTimeline
+          isStreamdownAnimating={isLatestAssistantMessage && isRequestPending}
           isApprovalActionDisabled={isRequestPending}
-          mentions={mentions}
           message={message}
           onApprovalResponse={onApprovalResponse}
           showToolTraces={showToolTraces}
+          streamdownAnimation={streamdownAnimation}
         />
       </div>
     )
@@ -938,7 +945,8 @@ const ChatMessageItem = ({
   onRegenerate,
   onStartEditMessage,
   onSubmitEditedMessage,
-  showToolTraces
+  showToolTraces,
+  streamdownAnimation
 }: {
   editingMessageId: string | null
   editingMessageText: string
@@ -953,6 +961,7 @@ const ChatMessageItem = ({
   onStartEditMessage: (message: ChatUiMessage) => void
   onSubmitEditedMessage: (message: ChatUiMessage) => void
   showToolTraces: boolean
+  streamdownAnimation: StreamdownAnimation
 }) => {
   const isAssistant = message.role === "assistant"
   const isUser = message.role === "user"
@@ -990,6 +999,7 @@ const ChatMessageItem = ({
             message={message}
             onApprovalResponse={onApprovalResponse}
             showToolTraces={showToolTraces}
+            streamdownAnimation={streamdownAnimation}
           />
         )}
 
@@ -1035,6 +1045,7 @@ const ChatRuntime = ({
   showToolTraces,
   sessionTitle,
   snapshotId,
+  streamdownAnimation,
   transport
 }: {
   gitDiff?: GitProjectDiffOutput
@@ -1066,6 +1077,7 @@ const ChatRuntime = ({
   showToolTraces: boolean
   sessionTitle: string
   snapshotId?: string
+  streamdownAnimation: StreamdownAnimation
   transport: DefaultChatTransport<ChatUiMessage>
 }) => {
   const { t } = useI18n()
@@ -1394,6 +1406,7 @@ const ChatRuntime = ({
                       onStartEditMessage={handleStartEditMessage}
                       onSubmitEditedMessage={handleSubmitEditedMessage}
                       showToolTraces={showToolTraces}
+                      streamdownAnimation={streamdownAnimation}
                     />
                   ))}
                   {shouldShowAssistantLiveStatus ? (
@@ -1928,6 +1941,9 @@ const ChatSessionPage = () => {
           showToolTraces={settingsQuery.data?.agents.showToolTraces ?? true}
           sessionTitle={sessionTitle}
           snapshotId={snapshotStateQuery.data?.snapshotId}
+          streamdownAnimation={getChatStreamdownAnimation(
+            settingsQuery.data?.chat
+          )}
           transport={transport}
         />
       ) : (

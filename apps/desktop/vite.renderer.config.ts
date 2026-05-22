@@ -55,6 +55,7 @@ const optimizedDependencies = [
   "react/jsx-runtime",
   "shiki/bundle/web",
   "sonner",
+  "streamdown",
   "tailwind-merge",
   "use-sync-external-store/shim",
   "use-sync-external-store/shim/index.js",

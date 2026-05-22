@@ -77,6 +77,9 @@ interface AppSettings {
       keepRecentMessages: number // 2-20，默认 4，始终完整保留的最近消息数
       threshold: number // 5-95，默认 80，预估上下文用量触发阈值
     }
+    streamdown: {
+      animation: "blur-in" | "fade-in" | "none" | "slide-up" | "typewriter" // 默认 "fade-in"，控制 assistant Markdown 流式动画
+    }
   }
   closeToTray: boolean // 默认 false，关闭主窗口时隐藏到托盘而不是退出
   customThemes: CustomTheme[] // 默认 []
@@ -183,6 +186,10 @@ interface StoredProviderModel {
 ## Chat Tab
 
 - Settings 左侧导航包含 `Chat` tab，用于配置 chat history 与 context 保留策略
+- `Markdown Rendering` 区块：
+  - assistant 响应正文使用 `streamdown` 渲染 Markdown；完成后的消息不保留动画 DOM 包装
+  - `streamdown.animation` 控制流式输出动画，支持 `fade-in`、`blur-in`、`slide-up`、`typewriter` 和 `none`
+  - `typewriter` 使用字符级动画，DOM 节点更多；较长回复默认更建议使用 `fade-in` 或 `blur-in`
 - `Auto Compact` 区块：
   - `enabled`：开启后，`replaceChatMessages()` 会在预估上下文用量超过阈值时压缩较早消息
   - `threshold`：范围 `5-95`，默认 `80`；值越低越早压缩，值越高越保留原始内容

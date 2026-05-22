@@ -390,7 +390,37 @@
         },
         "title": "Auto Compact"
       },
-      "description": "配置 chat 历史压缩与上下文保留策略。",
+      "description": "配置 Chat 响应渲染、历史压缩与上下文保留策略。",
+      "streamdown": {
+        "animation": {
+          "description": "动画只在 assistant 流式输出期间启用；响应完成后会移除额外动画节点。",
+          "label": "流式动画",
+          "option": {
+            "blurIn": {
+              "description": "更适合高速模型，弱化批量 token 到达的生硬感。",
+              "label": "Blur In"
+            },
+            "fadeIn": {
+              "description": "轻量淡入，接近 Streamdown 默认效果。",
+              "label": "Fade In"
+            },
+            "none": {
+              "description": "关闭文本动效，只保留稳定的 Markdown 渲染。",
+              "label": "无动画"
+            },
+            "slideUp": {
+              "description": "轻微上移动画，强调新内容进入。",
+              "label": "Slide Up"
+            },
+            "typewriter": {
+              "description": "按字符淡入，适合更明显的流式感。",
+              "label": "Typewriter"
+            }
+          }
+        },
+        "description": "使用 Streamdown 渲染 assistant Markdown，并控制流式输出的动效。",
+        "title": "Markdown 渲染"
+      },
       "title": "Chat"
     },
     "common": {
