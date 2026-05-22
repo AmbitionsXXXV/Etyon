@@ -15,6 +15,7 @@ import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
+  CheckmarkCircle01Icon,
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
@@ -25,7 +26,13 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import type { DefaultChatTransport, UIMessage } from "ai"
+import type {
+  DefaultChatTransport,
+  DynamicToolUIPart,
+  ToolUIPart,
+  UIMessage
+} from "ai"
+import { getToolName, isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
@@ -83,6 +90,8 @@ interface MentionQueryState {
 
 type ChatUiMessage = UIMessage<ChatMessageMetadata>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
+type ChatToolPart = DynamicToolUIPart | ToolUIPart
+type ChatToolState = ChatToolPart["state"]
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
 const settingsQueryOptions = orpc.settings.get.queryOptions({})
@@ -102,6 +111,16 @@ const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
+const TOOL_TRACE_PREVIEW_MAX_LENGTH = 220
+const TOOL_TRACE_STATE_LABEL_KEY_BY_STATE = {
+  "approval-requested": "chat.toolTrace.state.approvalRequested",
+  "approval-responded": "chat.toolTrace.state.approvalResponded",
+  "input-available": "chat.toolTrace.state.inputAvailable",
+  "input-streaming": "chat.toolTrace.state.inputStreaming",
+  "output-available": "chat.toolTrace.state.outputAvailable",
+  "output-denied": "chat.toolTrace.state.outputDenied",
+  "output-error": "chat.toolTrace.state.outputError"
+} as const
 const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
   {
     icon: FolderGitIcon,
@@ -156,6 +175,132 @@ const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
     <span className="max-w-52 truncate">{getMentionDisplayName(mention)}</span>
   </span>
 )
+
+const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
+  message.parts.filter(isToolUIPart)
+
+const formatToolTracePreview = (value: unknown): string => {
+  if (value === undefined || value === null) {
+    return ""
+  }
+
+  if (typeof value === "string") {
+    return value.slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
+  }
+
+  try {
+    return JSON.stringify(value).slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
+  } catch {
+    return String(value).slice(0, TOOL_TRACE_PREVIEW_MAX_LENGTH)
+  }
+}
+
+const getToolTracePreview = (part: ChatToolPart): string => {
+  switch (part.state) {
+    case "approval-responded":
+    case "output-denied": {
+      return part.approval.reason ?? ""
+    }
+    case "output-available": {
+      return formatToolTracePreview(part.output)
+    }
+    case "output-error": {
+      return part.errorText
+    }
+    default: {
+      return ""
+    }
+  }
+}
+
+const getToolTraceStateClassName = (state: ChatToolState): string => {
+  switch (state) {
+    case "output-available": {
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+    }
+    case "output-denied":
+    case "output-error": {
+      return "bg-destructive/10 text-destructive"
+    }
+    default: {
+      return "bg-muted text-muted-foreground"
+    }
+  }
+}
+
+const MessageToolTrace = ({
+  isApprovalActionDisabled,
+  onApprovalResponse,
+  parts
+}: {
+  isApprovalActionDisabled: boolean
+  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  parts: ChatToolPart[]
+}) => {
+  const { t } = useI18n()
+
+  if (parts.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      {parts.map((part) => {
+        const preview = getToolTracePreview(part)
+
+        return (
+          <div
+            className="rounded-lg border border-border/70 bg-background/60 px-2.5 py-2 text-xs"
+            key={part.toolCallId}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate font-medium">
+                {getToolName(part)}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-md px-1.5 py-0.5 text-[0.625rem] font-medium",
+                  getToolTraceStateClassName(part.state)
+                )}
+              >
+                {t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])}
+              </span>
+            </div>
+            {preview ? (
+              <p className="mt-1 line-clamp-2 break-all text-muted-foreground">
+                {preview}
+              </p>
+            ) : null}
+            {part.state === "approval-requested" ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  isDisabled={isApprovalActionDisabled}
+                  onPress={() => onApprovalResponse(part, true)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
+                  {t("chat.toolTrace.approve")}
+                </Button>
+                <Button
+                  isDisabled={isApprovalActionDisabled}
+                  onPress={() => onApprovalResponse(part, false)}
+                  size="sm"
+                  type="button"
+                  variant="danger-soft"
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={13} />
+                  {t("chat.toolTrace.deny")}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 const ChatErrorActionBar = ({
   errorMessage,
@@ -576,6 +721,7 @@ const ChatRuntime = ({
   projectContextView,
   selectedModelValue,
   selectedSession,
+  showToolTraces,
   sessionTitle,
   snapshotId,
   transport
@@ -606,6 +752,7 @@ const ChatRuntime = ({
   projectContextView: ProjectContextPanelView
   selectedModelValue: string
   selectedSession: ChatSessionSummary
+  showToolTraces: boolean
   sessionTitle: string
   snapshotId?: string
   transport: DefaultChatTransport<ChatUiMessage>
@@ -616,13 +763,20 @@ const ChatRuntime = ({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState("")
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
-  const { clearError, error, messages, regenerate, sendMessage, status } =
-    useChat<ChatUiMessage>({
-      id: selectedSession.id,
-      messages: initialMessages,
-      onFinish: onChatFinish,
-      transport
-    })
+  const {
+    addToolApprovalResponse,
+    clearError,
+    error,
+    messages,
+    regenerate,
+    sendMessage,
+    status
+  } = useChat<ChatUiMessage>({
+    id: selectedSession.id,
+    messages: initialMessages,
+    onFinish: onChatFinish,
+    transport
+  })
 
   const buildChatRequestOptions = useCallback(
     (mentions: ChatMention[]) => ({
@@ -707,6 +861,18 @@ const ChatRuntime = ({
 
     return []
   }, [messages])
+
+  const handleToolApprovalResponse = useCallback(
+    (part: ChatToolPart, approved: boolean) => {
+      void addToolApprovalResponse({
+        approved,
+        id: part.toolCallId,
+        options: buildChatRequestOptions(latestUserMentions),
+        reason: approved ? undefined : "Denied in chat UI."
+      })
+    },
+    [addToolApprovalResponse, buildChatRequestOptions, latestUserMentions]
+  )
 
   const handleSubmit = useCallback(
     async ({
@@ -867,6 +1033,10 @@ const ChatRuntime = ({
                       isUser && editingMessageId === message.id
                     const messageMentions = message.metadata?.mentions ?? []
                     const messageText = getMessageText(message)
+                    const toolParts =
+                      showToolTraces && isAssistant
+                        ? getMessageToolParts(message)
+                        : []
                     const messageParts = splitPromptTextByMentions({
                       mentions: messageMentions,
                       text: messageText
@@ -952,20 +1122,28 @@ const ChatRuntime = ({
                                   </div>
                                 )}
 
-                              <p className="whitespace-pre-wrap">
-                                {messageParts.map((part, index) =>
-                                  part.type === "mention" ? (
-                                    <InlineMentionToken
-                                      key={`${message.id}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
-                                      mention={part.mention}
-                                    />
-                                  ) : (
-                                    <span key={`${message.id}-text-${index}`}>
-                                      {part.text}
-                                    </span>
-                                  )
-                                )}
-                              </p>
+                              {messageText ? (
+                                <p className="whitespace-pre-wrap">
+                                  {messageParts.map((part, index) =>
+                                    part.type === "mention" ? (
+                                      <InlineMentionToken
+                                        key={`${message.id}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
+                                        mention={part.mention}
+                                      />
+                                    ) : (
+                                      <span key={`${message.id}-text-${index}`}>
+                                        {part.text}
+                                      </span>
+                                    )
+                                  )}
+                                </p>
+                              ) : null}
+
+                              <MessageToolTrace
+                                isApprovalActionDisabled={isRequestPending}
+                                onApprovalResponse={handleToolApprovalResponse}
+                                parts={toolParts}
+                              />
                             </div>
                           )}
 
@@ -1504,6 +1682,7 @@ const ChatSessionPage = () => {
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
+          showToolTraces={settingsQuery.data?.agents.showToolTraces ?? true}
           sessionTitle={sessionTitle}
           snapshotId={snapshotStateQuery.data?.snapshotId}
           transport={transport}

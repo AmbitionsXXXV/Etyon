@@ -13,6 +13,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 export type SettingsSectionId =
+  | "agents"
   | "channels"
   | "chat"
   | "color-schema"
@@ -26,6 +27,7 @@ export type SettingsSectionId =
   | "user-interface"
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
+  agents: "settings.nav.agents",
   channels: "settings.nav.channels",
   chat: "settings.nav.chat",
   "color-schema": "settings.nav.colorSchema",
@@ -50,6 +52,10 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: NoteEditIcon,
     id: "providers"
+  },
+  {
+    icon: BrainIcon,
+    id: "agents"
   },
   {
     icon: ChatBotIcon,

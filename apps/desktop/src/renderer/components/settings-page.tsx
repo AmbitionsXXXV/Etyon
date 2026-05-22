@@ -33,6 +33,7 @@ import {
 import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
+import { AgentsTab } from "./settings/agents-tab"
 import { ChannelsTab } from "./settings/channels-tab"
 import { ChatTab } from "./settings/chat-tab"
 import { ColorSchemaTab } from "./settings/color-schema"
@@ -70,6 +71,7 @@ interface SettingsNavItem {
 }
 
 const SETTINGS_SECTION_IDS = new Set<string>([
+  "agents",
   "channels",
   "chat",
   "color-schema",
@@ -178,6 +180,7 @@ export const SettingsPage = ({
 
   const {
     draft,
+    handleAgentsChange,
     handleAiProviderConfigChange,
     handleAiProviderEnabledChange,
     handleAppIconChange,
@@ -458,6 +461,13 @@ export const SettingsPage = ({
                     onProviderEnabledChange={handleAiProviderEnabledChange}
                   />
                 </div>
+              )}
+
+              {activeSection === "agents" && (
+                <AgentsTab
+                  agents={draft.agents}
+                  onChange={handleAgentsChange}
+                />
               )}
 
               {activeSection === "user-interface" && (

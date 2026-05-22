@@ -67,6 +67,26 @@ export const SidebarSettingsSchema = z.object({
   mode: SidebarModeSchema.default("simple")
 })
 
+export const AgentExecutionModeSchema = z.enum([
+  "coder",
+  "generalist",
+  "operator",
+  "plan"
+])
+
+export const AgentProfileSchema = z.object({
+  allowedDelegateProfileIds: z.array(z.string()).default([]),
+  available: z.boolean().default(true),
+  description: z.string().default(""),
+  executionMode: AgentExecutionModeSchema.default("generalist"),
+  focusAreas: z.array(z.string()).default([]),
+  id: z.string().min(1),
+  instructions: z.string().default(""),
+  name: z.string().min(1),
+  preferredModel: z.string().default(""),
+  readonly: z.boolean().default(false)
+})
+
 export const AiProviderNameSchema = BuiltInProviderIdSchema
 
 const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
@@ -174,6 +194,17 @@ const SIDEBAR_SETTINGS_DEFAULT = {
   mode: "simple" as const
 } as const
 
+const AGENT_SETTINGS_DEFAULT = {
+  allowSubagentDelegation: false,
+  defaultProfileId: "general-purpose",
+  enabled: false,
+  maxConcurrentSubagents: 2,
+  maxSteps: 8,
+  profiles: [],
+  requireApprovalForWrites: true,
+  showToolTraces: true
+}
+
 const AUTO_COMPACT_SETTINGS_DEFAULT = {
   enabled: true,
   keepRecentMessages: 4,
@@ -244,7 +275,19 @@ export const ChatSettingsSchema = z.object({
   autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT)
 })
 
+export const AgentSettingsSchema = z.object({
+  allowSubagentDelegation: z.boolean().default(false),
+  defaultProfileId: z.string().default("general-purpose"),
+  enabled: z.boolean().default(false),
+  maxConcurrentSubagents: z.number().int().min(1).max(4).default(2),
+  maxSteps: z.number().int().min(1).max(20).default(8),
+  profiles: z.array(AgentProfileSchema).default([]),
+  requireApprovalForWrites: z.boolean().default(true),
+  showToolTraces: z.boolean().default(true)
+})
+
 export const AppSettingsSchema = z.object({
+  agents: AgentSettingsSchema.default(AGENT_SETTINGS_DEFAULT),
   ai: AiSettingsSchema.default({
     defaultModel: "",
     defaultProvider: "openai",
@@ -278,6 +321,7 @@ export const AppSettingsSchema = z.object({
 })
 
 export const UpdateSettingsSchema = z.object({
+  agents: AgentSettingsSchema.optional(),
   ai: AiSettingsSchema.optional(),
   appIcon: AppIconSchema.optional(),
   autoStart: z.boolean().optional(),
@@ -302,6 +346,9 @@ export const UpdateSettingsSchema = z.object({
 export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>
 export type AiProviderName = z.infer<typeof AiProviderNameSchema>
 export type AiSettings = z.infer<typeof AiSettingsSchema>
+export type AgentExecutionMode = z.infer<typeof AgentExecutionModeSchema>
+export type AgentProfile = z.infer<typeof AgentProfileSchema>
+export type AgentSettings = z.infer<typeof AgentSettingsSchema>
 export type AppIcon = z.infer<typeof AppIconSchema>
 export type AppSettings = z.infer<typeof AppSettingsSchema>
 export type AutoCompactSettings = z.infer<typeof AutoCompactSettingsSchema>

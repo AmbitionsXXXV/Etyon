@@ -1,8 +1,9 @@
 import type { ChatMention } from "@etyon/rpc"
 import type { UIMessage } from "ai"
-import { convertToModelMessages, streamText } from "ai"
+import { convertToModelMessages } from "ai"
 import { Hono } from "hono"
 
+import { streamAgentChat } from "@/main/agents/agent-runtime"
 import { replaceChatMessages } from "@/main/chat-messages"
 import {
   buildSessionMemorySystemPrompt,
@@ -37,6 +38,9 @@ const buildMemoryQuery = (messages: UIMessage[]): string =>
     .filter(Boolean)
     .slice(-3)
     .join("\n")
+
+const isSystemPrompt = (prompt: string | undefined): prompt is string =>
+  typeof prompt === "string" && prompt.length > 0
 
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
@@ -84,13 +88,18 @@ chatRoute.post("/chat", async (c) => {
     longTermMemorySystem,
     skillsSystem,
     system
-  ].filter(Boolean)
+  ].filter(isSystemPrompt)
   const model = resolveModel(requestedModelId ?? session.modelId ?? undefined)
   const modelMessages = await convertToModelMessages(messages)
-  const result = streamText({
-    ...(systemPrompts.length > 0 ? { system: systemPrompts.join("\n\n") } : {}),
+  const result = await streamAgentChat({
+    db,
     messages: modelMessages,
-    model
+    model,
+    modelId: requestedModelId ?? session.modelId ?? null,
+    projectPath: session.projectPath,
+    sessionId,
+    settings,
+    systemPrompts
   })
 
   return result.toUIMessageStreamResponse({

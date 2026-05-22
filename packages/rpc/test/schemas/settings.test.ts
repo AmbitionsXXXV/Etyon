@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { AppSettingsSchema } from "../../src/schemas/settings"
+import {
+  AppSettingsSchema,
+  UpdateSettingsSchema
+} from "../../src/schemas/settings"
 
 describe("AppSettingsSchema", () => {
   it("adds cursor, moonshot and z.ai provider defaults for empty settings", () => {
@@ -123,6 +126,44 @@ describe("AppSettingsSchema", () => {
       includeGlobal: true,
       includeProject: true,
       maxContextSkills: 4
+    })
+  })
+
+  it("adds disabled agents defaults for empty and legacy settings", () => {
+    const settings = AppSettingsSchema.parse({
+      theme: "dark"
+    })
+
+    expect(settings.agents).toEqual({
+      allowSubagentDelegation: false,
+      defaultProfileId: "general-purpose",
+      enabled: false,
+      maxConcurrentSubagents: 2,
+      maxSteps: 8,
+      profiles: [],
+      requireApprovalForWrites: true,
+      showToolTraces: true
+    })
+  })
+
+  it("accepts partial agents settings updates", () => {
+    const update = UpdateSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        maxSteps: 12
+      }
+    })
+
+    expect(update.agents).toEqual({
+      allowSubagentDelegation: false,
+      defaultProfileId: "coder",
+      enabled: true,
+      maxConcurrentSubagents: 2,
+      maxSteps: 12,
+      profiles: [],
+      requireApprovalForWrites: true,
+      showToolTraces: true
     })
   })
 

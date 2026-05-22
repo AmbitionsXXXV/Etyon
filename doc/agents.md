@@ -10,18 +10,31 @@
 - 支持 multi-agent：主 agent 可以把独立任务委派给子 agent，但子 agent 的上下文、工具、预算和输出要受控。
 - 支持 Harness Engineering：把模型调用、上下文构建、工具执行、权限、事件、持久化、压缩与恢复拆成明确层级。
 
-## 当前约束
+## 设计起点与约束
 
-当前实现已经具备 chat 基础设施，但还没有 agent runtime：
+本设计从既有 chat 基础设施出发，首版不能破坏这些约束：
 
 - Renderer 使用 `useChat<ChatUiMessage>()` 和 `DefaultChatTransport` 请求本地 Hono `/api/chat`。
 - `/api/chat` 负责读取 session memory、long-term memory、skills 与 `@` 项目上下文，然后调用 `streamText({ model, messages })`。
 - `chat_messages` 目前保存的是完整 `UIMessage[]` 快照，适合恢复 UI，但不适合作为 agent run 的审计日志。
-- Renderer 当前主要渲染 `text` part，尚未提供 tool part、approval、sub-agent trace 的 UI。
-- `settings.ai`、`settings.chat`、`settings.memory`、`settings.skills` 已存在，但真实 schema 里还没有 `settings.agents`。
+- Renderer 仍以 chat viewport 为主要交互载体；tool trace 只做紧凑投影，完整 sub-agent trace 留在 event store。
+- `settings.ai`、`settings.chat`、`settings.memory`、`settings.skills` 已存在，`settings.agents` 需要以默认关闭的方式向后补齐。
 - `doc/code-agent-tools.md` 已经定义了首版 code agent tool surface；本设计在其基础上补齐 runtime、multi-agent 和 harness 层。
 
 因此首版不迁移 transport，不引入全新 chat 协议，不破坏现有 session / memory / mention 行为。
+
+## 当前落地状态
+
+截至当前实现，Etyon 已经完成首版 chat 内 agent runtime 接入：
+
+- `packages/rpc/src/schemas/settings.ts` 已新增 `settings.agents`，默认 `enabled=false`，旧 settings 会自动补齐 disabled 默认值。
+- `/api/chat` 在 agents 关闭时继续走原有 `streamText` 路径；开启后通过 `apps/desktop/src/main/agents/agent-runtime.ts` 注入 profile instructions、tools 与 `stopWhen` 预算。
+- `apps/desktop/src/main/agents/` 已包含 built-in profiles、tool registry、permission engine、event store 与 runtime facade。
+- 数据库已新增 `agent_runs`、`agent_events`、`agent_tool_calls`，用于记录 run lifecycle、tool call lifecycle 和 harness inspection。
+- 首版工具包含只读的 `searchFiles`、`readFile`、`listProjectTree`、`gitDiff`，写入/检查类 `applyPatch`、`runCheck`、`rtkCommand` 进入权限判断；`harness-operator` 可用 `agentEventsSearch` 与 `agentRunInspect` 做只读诊断。
+- `coder` / `plan` profiles 在开启 `allowSubagentDelegation` 后会暴露受控 delegation tools，例如 `agentExplore` 和 `agentReview`；子 agent 使用独立 child run、独立 tool trace、受限 context，并且不会拿到需要 approval 的工具。
+- Chat viewport 会渲染 tool trace；当 AI SDK tool part 进入 `approval-requested` 状态时，可直接在 trace 行内批准或拒绝，并继续同一条 chat stream。
+- Settings 新增 `Agents` tab，用于控制 global enable、default profile、tool step budget、delegation 开关、write approval 与 trace visibility；profile 编辑、approval inbox 和完整 run graph 仍保留在后续阶段。
 
 ## 激进架构进步方向
 
@@ -29,15 +42,15 @@
 
 ### 需要推翻的现有假设
 
-| 现有假设 | 激进路线 |
-| -------- | -------- |
-| `chat_messages` 是会话事实来源 | append-only `agent_events` / `agent_messages` 是事实来源，chat 只是投影 |
-| `/api/chat` 负责 prompt、memory、model、stream | `AgentKernel` 负责 run orchestration，HTTP route 只是入口 adapter |
-| 一个 session 选一个 model | 每个 step / sub-agent / tool summary 都可由 model router 决定 |
-| `@` 文件 snapshot 是主要项目上下文 | 项目上下文升级为 workspace substrate：文件、symbols、git、diagnostics、memory、artifacts 都是 context providers |
-| skills 主要是 system prompt 文本 | skills 升级为可声明 capabilities、tools、processors、context loaders 的 agent package |
-| tool call 是一次请求内的临时过程 | tool call 是可持久化、可审批、可恢复、可审计的 state machine |
-| UI 以 chat transcript 为中心 | UI 以 run graph / timeline / artifacts / approvals 为中心，chat 是其中一个视图 |
+| 现有假设                                       | 激进路线                                                                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `chat_messages` 是会话事实来源                 | append-only `agent_events` / `agent_messages` 是事实来源，chat 只是投影                                         |
+| `/api/chat` 负责 prompt、memory、model、stream | `AgentKernel` 负责 run orchestration，HTTP route 只是入口 adapter                                               |
+| 一个 session 选一个 model                      | 每个 step / sub-agent / tool summary 都可由 model router 决定                                                   |
+| `@` 文件 snapshot 是主要项目上下文             | 项目上下文升级为 workspace substrate：文件、symbols、git、diagnostics、memory、artifacts 都是 context providers |
+| skills 主要是 system prompt 文本               | skills 升级为可声明 capabilities、tools、processors、context loaders 的 agent package                           |
+| tool call 是一次请求内的临时过程               | tool call 是可持久化、可审批、可恢复、可审计的 state machine                                                    |
+| UI 以 chat transcript 为中心                   | UI 以 run graph / timeline / artifacts / approvals 为中心，chat 是其中一个视图                                  |
 
 ### `AgentKernel` 成为主架构
 
@@ -180,12 +193,12 @@ Parent Run
 
 首批可内置这些 graph template：
 
-| Template | 结构 | 用途 |
-| -------- | ---- | ---- |
-| `solo-coder` | `coder -> review` | 小范围实现 |
-| `plan-execute-review` | `plan -> explore* -> coder -> review -> final` | 中等复杂度任务 |
-| `investigation` | `plan -> explore* -> synthesize` | 只读排查 |
-| `harness-debug` | `inspect-run -> inspect-events -> propose-fix` | 调试 agent 自身 |
+| Template              | 结构                                           | 用途            |
+| --------------------- | ---------------------------------------------- | --------------- |
+| `solo-coder`          | `coder -> review`                              | 小范围实现      |
+| `plan-execute-review` | `plan -> explore* -> coder -> review -> final` | 中等复杂度任务  |
+| `investigation`       | `plan -> explore* -> synthesize`               | 只读排查        |
+| `harness-debug`       | `inspect-run -> inspect-events -> propose-fix` | 调试 agent 自身 |
 
 ### Durable Execution
 
@@ -215,7 +228,9 @@ Mastra 的工具来源很多，Pi 的执行边界很清晰。Etyon 可以把 too
 
 ```ts
 type ToolManifest = {
-  capabilities: Array<"read-fs" | "write-fs" | "shell" | "network" | "git" | "memory" | "ui">
+  capabilities: Array<
+    "read-fs" | "write-fs" | "shell" | "network" | "git" | "memory" | "ui"
+  >
   id: string
   inputSchema: unknown
   outputSchema: unknown
@@ -266,14 +281,14 @@ resolveModelForStep({
 
 当前 memory 已经有 session memory 和 long-term memory，但 agent 需要更多层：
 
-| Memory | 作用 |
-| ------ | ---- |
-| run scratchpad | 当前 run 内 plan、假设、临时发现 |
-| branch memory | fork / regenerate 后保留分支差异 |
-| project memory | 项目约定、架构事实、历史决策 |
-| tool result cache | 大型 grep、测试、构建输出摘要 |
-| user preference | 用户对风格、权限、流程的偏好 |
-| artifact memory | patch、diff、报告、生成文件的引用 |
+| Memory            | 作用                              |
+| ----------------- | --------------------------------- |
+| run scratchpad    | 当前 run 内 plan、假设、临时发现  |
+| branch memory     | fork / regenerate 后保留分支差异  |
+| project memory    | 项目约定、架构事实、历史决策      |
+| tool result cache | 大型 grep、测试、构建输出摘要     |
+| user preference   | 用户对风格、权限、流程的偏好      |
+| artifact memory   | patch、diff、报告、生成文件的引用 |
 
 关键是 memory write 必须显式：
 
@@ -618,14 +633,14 @@ Renderer 不应理解底层 harness event 的全部细节。建议加一个 UI a
 
 内建预设先满足常见本地开发任务。`general-purpose` 是默认 profile；其他 profile 可以通过 chat toolbar 或 `@` / `$` 后续入口选择。
 
-| Profile            | 用途                | 默认工具                                           | 委派 | 写入 | 审批策略                      |
-| ------------------ | ------------------- | -------------------------------------------------- | ---- | ---- | ----------------------------- |
-| `general-purpose`  | 默认对话和轻量分析  | `searchFiles`、`readFile`、`gitDiff`               | 否   | 否   | 只读自动执行                  |
-| `explore`          | 代码库探索和定位    | `listProjectTree`、`searchFiles`、`readFile`       | 否   | 否   | 只读自动执行                  |
-| `plan`             | 方案设计和任务拆解  | `searchFiles`、`readFile`、`gitDiff`、`agent_explore` | 是   | 否   | 子 agent 只读                 |
-| `coder`            | 小范围实现和修复    | `searchFiles`、`readFile`、`gitDiff`、`applyPatch`、`runCheck` | 是 | 是 | 写入 / 长命令需要审批         |
-| `review`           | 代码审查和风险定位  | `gitDiff`、`searchFiles`、`readFile`、`runCheck`   | 可选 | 否   | read-only，check 可条件执行   |
-| `harness-operator` | 调试 agent run 本身 | `agentEventsSearch`、`agentRunInspect`、`gitDiff`  | 否   | 否   | 只读自动执行                  |
+| Profile            | 用途                | 默认工具                                                       | 委派 | 写入 | 审批策略                    |
+| ------------------ | ------------------- | -------------------------------------------------------------- | ---- | ---- | --------------------------- |
+| `general-purpose`  | 默认对话和轻量分析  | `searchFiles`、`readFile`、`gitDiff`                           | 否   | 否   | 只读自动执行                |
+| `explore`          | 代码库探索和定位    | `listProjectTree`、`searchFiles`、`readFile`                   | 否   | 否   | 只读自动执行                |
+| `plan`             | 方案设计和任务拆解  | `searchFiles`、`readFile`、`gitDiff`、`agent_explore`          | 是   | 否   | 子 agent 只读               |
+| `coder`            | 小范围实现和修复    | `searchFiles`、`readFile`、`gitDiff`、`applyPatch`、`runCheck` | 是   | 是   | 写入 / 长命令需要审批       |
+| `review`           | 代码审查和风险定位  | `gitDiff`、`searchFiles`、`readFile`、`runCheck`               | 可选 | 否   | read-only，check 可条件执行 |
+| `harness-operator` | 调试 agent run 本身 | `agentEventsSearch`、`agentRunInspect`、`gitDiff`              | 否   | 否   | 只读自动执行                |
 
 说明：
 
@@ -754,16 +769,16 @@ const AgentSettingsSchema = z.object({
 
 ## 后续可能触达的文件
 
-| 文件或目录 | 说明 |
-| ---------- | ---- |
-| `packages/rpc/src/schemas/settings.ts` | 增加 `settings.agents` schema |
-| `apps/desktop/src/main/server/routes/chat.ts` | 接入 tools / runtime |
-| `apps/desktop/src/main/agents/` | 新增 agent runtime、profiles、tools、permissions、events |
-| `apps/desktop/src/main/db/schema.ts` | 新增 agent run / event / tool call 表 |
-| `apps/desktop/src/main/chat-messages.ts` | 保持 UI snapshot，同时关联 latest agent run |
-| `apps/desktop/src/renderer/routes/chat.$sessionId.tsx` | 渲染 tool parts、approval、sub-agent trace |
-| `apps/desktop/src/renderer/components/chat/` | 拆出 tool call、approval、trace UI 组件 |
-| `doc/code-agent-tools.md` | 和具体 tool surface 保持同步 |
+| 文件或目录                                             | 说明                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| `packages/rpc/src/schemas/settings.ts`                 | 增加 `settings.agents` schema                            |
+| `apps/desktop/src/main/server/routes/chat.ts`          | 接入 tools / runtime                                     |
+| `apps/desktop/src/main/agents/`                        | 新增 agent runtime、profiles、tools、permissions、events |
+| `apps/desktop/src/main/db/schema.ts`                   | 新增 agent run / event / tool call 表                    |
+| `apps/desktop/src/main/chat-messages.ts`               | 保持 UI snapshot，同时关联 latest agent run              |
+| `apps/desktop/src/renderer/routes/chat.$sessionId.tsx` | 渲染 tool parts、approval、sub-agent trace               |
+| `apps/desktop/src/renderer/components/chat/`           | 拆出 tool call、approval、trace UI 组件                  |
+| `doc/code-agent-tools.md`                              | 和具体 tool surface 保持同步                             |
 
 ## 测试策略
 
@@ -794,20 +809,20 @@ Mastra 的测试用例值得借鉴这些方向：
 
 ### Etyon 首批测试矩阵
 
-| 层级 | 目标 | 建议文件 |
-| ---- | ---- | -------- |
-| profile / settings | `settings.agents.enabled = false` 默认不改变 chat；profile id、工具策略、预算默认值稳定 | `packages/rpc/src/schemas/settings.test.ts` 或现有 settings test |
-| tool registry | profile 只暴露允许工具；tool name 标准化；重复名称报错；子 agent tools 只在 delegation 开启时出现 | `apps/desktop/src/main/agents/tool-registry.test.ts` |
-| permission engine | `allow` / `ask` / `deny` 优先级；secret 文件、破坏性命令、跨 workspace 路径、网络命令判断 | `apps/desktop/src/main/agents/permission-engine.test.ts` |
-| execution env | workspace 路径规范化、symlink 处理、abort、timeout、stdout / stderr 截断、完整输出引用 | `apps/desktop/src/main/agents/execution-env.test.ts` |
-| tool execution | `readFile` range、`searchFiles` 预算、`gitDiff` 路径过滤、`runCheck` 输出归一化、`applyPatch` 审批前不写入 | `apps/desktop/src/main/agents/tools/*.test.ts` |
-| agent runtime | mock model 第一次返回 tool call，第二次返回 final text；断言 tool result 进入下一步输入，事件顺序稳定 | `apps/desktop/src/main/agents/agent-runtime.test.ts` |
-| approval flow | 需要审批时暂停，不执行工具；approve 后继续；deny 后给模型明确 tool error；approval state 可持久化 | `apps/desktop/src/main/agents/approval-flow.test.ts` |
-| event store | `agent_runs`、`agent_events`、`agent_tool_calls` 顺序号、parent run、tool call id、失败状态可重建 | `apps/desktop/src/main/agents/agent-event-store.test.ts` |
-| chat route | `/api/chat` 在 agents 关闭时走旧路径；开启时注入 tools / stopWhen；`UIMessage` 持久化包含 tool parts | `apps/desktop/src/main/server/routes/chat.test.ts` |
-| renderer UI | tool part 的 `input-streaming`、`approval-requested`、`output-available`、`output-error` 状态渲染；审批按钮调用 `addToolApprovalResponse()` | `apps/desktop/src/renderer/components/chat/*.test.tsx` |
-| sub-agent | 子 agent run 独立；父模型只看到 summary；完整 trace 存 event store；父 tool parts 不进入子 agent context | `apps/desktop/src/main/agents/delegation-manager.test.ts` |
-| stream adapter | sub-agent `subRunId`、child events、tool result summary 转成 UI 可消费结构，不污染 assistant text | `apps/desktop/src/main/agents/agent-ui-adapter.test.ts` |
+| 层级               | 目标                                                                                                                                        | 建议文件                                                         |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| profile / settings | `settings.agents.enabled = false` 默认不改变 chat；profile id、工具策略、预算默认值稳定                                                     | `packages/rpc/src/schemas/settings.test.ts` 或现有 settings test |
+| tool registry      | profile 只暴露允许工具；tool name 标准化；重复名称报错；子 agent tools 只在 delegation 开启时出现                                           | `apps/desktop/src/main/agents/tool-registry.test.ts`             |
+| permission engine  | `allow` / `ask` / `deny` 优先级；secret 文件、破坏性命令、跨 workspace 路径、网络命令判断                                                   | `apps/desktop/src/main/agents/permission-engine.test.ts`         |
+| execution env      | workspace 路径规范化、symlink 处理、abort、timeout、stdout / stderr 截断、完整输出引用                                                      | `apps/desktop/src/main/agents/execution-env.test.ts`             |
+| tool execution     | `readFile` range、`searchFiles` 预算、`gitDiff` 路径过滤、`runCheck` 输出归一化、`applyPatch` 审批前不写入                                  | `apps/desktop/src/main/agents/tools/*.test.ts`                   |
+| agent runtime      | mock model 第一次返回 tool call，第二次返回 final text；断言 tool result 进入下一步输入，事件顺序稳定                                       | `apps/desktop/src/main/agents/agent-runtime.test.ts`             |
+| approval flow      | 需要审批时暂停，不执行工具；approve 后继续；deny 后给模型明确 tool error；approval state 可持久化                                           | `apps/desktop/src/main/agents/approval-flow.test.ts`             |
+| event store        | `agent_runs`、`agent_events`、`agent_tool_calls` 顺序号、parent run、tool call id、失败状态可重建                                           | `apps/desktop/src/main/agents/agent-event-store.test.ts`         |
+| chat route         | `/api/chat` 在 agents 关闭时走旧路径；开启时注入 tools / stopWhen；`UIMessage` 持久化包含 tool parts                                        | `apps/desktop/src/main/server/routes/chat.test.ts`               |
+| renderer UI        | tool part 的 `input-streaming`、`approval-requested`、`output-available`、`output-error` 状态渲染；审批按钮调用 `addToolApprovalResponse()` | `apps/desktop/src/renderer/components/chat/*.test.tsx`           |
+| sub-agent          | 子 agent run 独立；父模型只看到 summary；完整 trace 存 event store；父 tool parts 不进入子 agent context                                    | `apps/desktop/src/main/agents/delegation-manager.test.ts`        |
+| stream adapter     | sub-agent `subRunId`、child events、tool result summary 转成 UI 可消费结构，不污染 assistant text                                           | `apps/desktop/src/main/agents/agent-ui-adapter.test.ts`          |
 
 ### 测试夹具
 

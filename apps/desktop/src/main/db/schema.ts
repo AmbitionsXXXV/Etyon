@@ -57,6 +57,85 @@ export const chatMessages = sqliteTable(
   })
 )
 
+export const agentRuns = sqliteTable(
+  "agent_runs",
+  {
+    chatSessionId: text("chat_session_id")
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: "cascade" }),
+    errorMessage: text("error_message"),
+    finishedAt: text("finished_at"),
+    id: text("id").primaryKey(),
+    modelId: text("model_id"),
+    parentRunId: text("parent_run_id"),
+    profileId: text("profile_id").notNull(),
+    startedAt: text("started_at").notNull(),
+    status: text("status", {
+      enum: ["failed", "running", "succeeded"]
+    }).notNull()
+  },
+  (table) => ({
+    chatSessionIdx: index("agent_runs_chat_session_idx").on(
+      table.chatSessionId
+    ),
+    parentRunIdx: index("agent_runs_parent_run_idx").on(table.parentRunId),
+    statusIdx: index("agent_runs_status_idx").on(table.status)
+  })
+)
+
+export const agentEvents = sqliteTable(
+  "agent_events",
+  {
+    createdAt: text("created_at").notNull(),
+    id: text("id").primaryKey(),
+    payloadJson: text("payload_json").notNull(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    type: text("type").notNull()
+  },
+  (table) => ({
+    runSequenceIdx: index("agent_events_run_sequence_idx").on(
+      table.runId,
+      table.sequence
+    )
+  })
+)
+
+export const agentToolCalls = sqliteTable(
+  "agent_tool_calls",
+  {
+    approvalState: text("approval_state", {
+      enum: ["approved", "denied", "not_required", "pending"]
+    }).notNull(),
+    errorMessage: text("error_message"),
+    finishedAt: text("finished_at"),
+    id: text("id").primaryKey(),
+    inputJson: text("input_json").notNull(),
+    outputJson: text("output_json"),
+    parentToolCallId: text("parent_tool_call_id"),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    startedAt: text("started_at").notNull(),
+    state: text("state", {
+      enum: ["failed", "finished", "requested", "running"]
+    }).notNull(),
+    toolName: text("tool_name").notNull()
+  },
+  (table) => ({
+    runStateIdx: index("agent_tool_calls_run_state_idx").on(
+      table.runId,
+      table.state
+    ),
+    runToolIdx: index("agent_tool_calls_run_tool_idx").on(
+      table.runId,
+      table.toolName
+    )
+  })
+)
+
 export const chatSessionMemories = sqliteTable("chat_session_memories", {
   content: text("content").notNull(),
   createdAt: text("created_at").notNull(),
@@ -127,6 +206,9 @@ export const memoryEmbeddings = sqliteTable(
 )
 
 export const schema = {
+  agentEvents,
+  agentRuns,
+  agentToolCalls,
   chatMessages,
   chatSessionMemories,
   chatSessions,

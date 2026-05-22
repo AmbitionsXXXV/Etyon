@@ -232,6 +232,22 @@ interface StoredProviderModel {
 - chat 请求中，skills 注入顺序位于 session memory / long-term memory 之后、project snapshot 之前
 - 当前召回策略是基于用户最近 3 条消息提取关键词，并按 `name`、`description`、`metadata.short-description`、正文的 overlap 排序；当请求没有可提取关键词时，会按 project 优先和名称顺序使用默认 skills 预算
 
+## Agents Tab
+
+- Settings 左侧导航包含 `Agents` tab，用于控制 chat 是否进入 managed agent runtime；默认 `settings.agents.enabled=false`，关闭时 `/api/chat` 继续走普通模型路径
+- 当前 tab 只暴露已经接到底层 runtime 的配置：
+  - `enabled`：开启 managed agents
+  - `allowSubagentDelegation`：控制父 agent 是否可使用受控子 agent tools，默认关闭
+  - `requireApprovalForWrites`：写入能力必须经过 approval，默认开启
+  - `showToolTraces`：保留 tool call 与 runtime event trace，默认开启
+  - `defaultProfileId`：选择默认 profile；内建 profile 包括 `general-purpose`、`explore`、`plan`、`coder`、`review`、`harness-operator`
+  - `maxSteps`：单次 chat agent loop 的最大 tool step，范围 `1-20`
+  - `maxConcurrentSubagents`：delegation 并发预算，范围 `1-4`；超出预算时子 agent tool 会返回 rejected summary，不会启动新的 child run
+- 开启 delegation 后，`coder` 可委派给 `explore` / `review`，`plan` 可委派给 `explore`；子 agent 使用独立 `agent_runs.parent_run_id` 和受限工具集，父 agent 只收到 summary
+- `Agents` tab 借鉴 Alma 的 `Control ring`、`Crew roster` 与 `Routing preview`，但不展示静态 run dashboard；真实运行状态应来自 `agent_runs`、`agent_events` 和 `agent_tool_calls`
+- Chat viewport 负责承载运行时交互：tool trace 紧贴 assistant bubble 显示，`approval-requested` 状态在 trace 行内提供批准 / 拒绝操作，不额外打开 settings 或独立 workbench
+- 表单控件统一走 HeroUI shared styles：`Input`、`TextArea`、`Select.Trigger`、`NumberField.Group` 在 settings 卡片内使用可辨识背景、边框和全宽布局，只有小型数值 stepper 保留紧凑宽度
+
 ## Token Savings Tab
 
 - Settings 左侧导航包含 `Token Savings` tab，用于展示 RTK 的全局 token 压缩收益，不参与 settings draft/save

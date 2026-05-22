@@ -190,6 +190,9 @@ export type {
   SkillScope
 } from "./schemas/skills"
 export {
+  AgentExecutionModeSchema,
+  AgentProfileSchema,
+  AgentSettingsSchema,
   AiProviderConfigSchema,
   AiProviderNameSchema,
   AiSettingsSchema,
@@ -212,6 +215,9 @@ export {
   UpdateSettingsSchema
 } from "./schemas/settings"
 export type {
+  AgentExecutionMode,
+  AgentProfile,
+  AgentSettings,
   AiProviderConfig,
   AiProviderName,
   AiSettings,

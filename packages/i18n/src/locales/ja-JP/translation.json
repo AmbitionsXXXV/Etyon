@@ -109,6 +109,19 @@
     "snapshot": {
       "loading": "プロジェクト snapshot を準備中...",
       "ready": "Snapshot: {snapshotId}"
+    },
+    "toolTrace": {
+      "approve": "承認",
+      "deny": "拒否",
+      "state": {
+        "approvalRequested": "approval が必要",
+        "approvalResponded": "approval 対応済み",
+        "inputAvailable": "準備完了",
+        "inputStreaming": "準備中",
+        "outputAvailable": "完了",
+        "outputDenied": "拒否",
+        "outputError": "失敗"
+      }
     }
   },
   "home": {
@@ -202,6 +215,125 @@
       "default": "デフォルト",
       "description": "Dock、タスクバー、トレイに表示するアプリアイコンを選択します。",
       "title": "アプリアイコン"
+    },
+    "agents": {
+      "control": {
+        "allowSubagentDelegation": {
+          "description": "現在の roster を specialist prompt に含め、subagent がより適した役割へ作業を渡せるようにします。",
+          "label": "subagent delegation を許可"
+        },
+        "enabled": {
+          "description": "managed agent tools を chat routing に公開します。オフの場合、chat は通常のモデル経路を使います。",
+          "label": "managed agents を有効化"
+        },
+        "requireApprovalForWrites": {
+          "description": "書き込み可能な profile でも、patch と command の書き込みは明示的な承認に通します。",
+          "label": "書き込みに approval を要求"
+        },
+        "showToolTraces": {
+          "description": "tool calls と runtime events を保存し、harness で実行内容を確認できるようにします。",
+          "label": "tool traces を表示"
+        }
+      },
+      "defaults": {
+        "maxConcurrentSubagents": {
+          "label": "同時 subagents"
+        },
+        "maxSteps": {
+          "label": "最大 tool steps"
+        },
+        "profile": {
+          "label": "既定 profile"
+        }
+      },
+      "description": "Managed profiles は raw tool calls の上に置かれます。Chat は主要な viewport のままで、ここでは runtime lane、tool budget、event trace だけを変更します。",
+      "executionMode": {
+        "coder": "Coder",
+        "generalist": "Generalist",
+        "operator": "Operator",
+        "plan": "Plan"
+      },
+      "metrics": {
+        "active": {
+          "description": "chat routing で利用できる組み込み profiles。",
+          "label": "Active profiles"
+        },
+        "custom": {
+          "description": "組み込み crew に追加された custom profiles。",
+          "label": "Custom profiles"
+        },
+        "delegation": {
+          "description": "より狭い specialist に作業を渡せる profiles。",
+          "label": "Delegation lanes"
+        }
+      },
+      "preview": {
+        "description": "リクエストが managed agent lane に入るとき、chat routing はこの要約を参照します。",
+        "title": "Routing Preview"
+      },
+      "profiles": {
+        "coder": {
+          "description": "小さく境界づけた変更を実装し、検証します。",
+          "focus": {
+            "implementation": "implementation",
+            "technicalDebt": "technical debt",
+            "tests": "tests"
+          },
+          "name": "Coder"
+        },
+        "explore": {
+          "description": "コードベースを探索し、関連ファイルを見つけます。",
+          "focus": {
+            "codeSearch": "code search",
+            "fileReading": "file reading",
+            "projectStructure": "project structure"
+          },
+          "name": "Explore"
+        },
+        "generalPurpose": {
+          "description": "既定の chat と軽量な project analysis。",
+          "focus": {
+            "conversation": "conversation",
+            "lightweightAnalysis": "lightweight analysis",
+            "projectContext": "project context"
+          },
+          "name": "General Purpose"
+        },
+        "harnessOperator": {
+          "description": "agent runs、events、harness behavior を確認します。",
+          "focus": {
+            "agentEvents": "agent events",
+            "runtimeDiagnostics": "runtime diagnostics",
+            "toolLoop": "tool loop"
+          },
+          "name": "Harness Operator"
+        },
+        "plan": {
+          "description": "目標を scoped plans と implementation slices に分解します。",
+          "focus": {
+            "requirements": "requirements",
+            "riskControl": "risk control",
+            "sequencing": "sequencing"
+          },
+          "name": "Plan"
+        },
+        "review": {
+          "description": "diff を確認し、behavioral risks を見つけます。",
+          "focus": {
+            "diffReview": "diff review",
+            "risk": "risk",
+            "testGaps": "test gaps"
+          },
+          "name": "Review"
+        }
+      },
+      "roster": {
+        "description": "chat が agent mode に入るときの既定 profile を選びます。",
+        "readonly": "読み取り専用",
+        "title": "Crew roster",
+        "writeCapable": "書き込み可能"
+      },
+      "title": "Agents"
     },
     "chat": {
       "autoCompact": {
@@ -363,6 +495,7 @@
       "title": "言語"
     },
     "nav": {
+      "agents": "Agents",
       "channels": "Channels",
       "chat": "Chat",
       "colorSchema": "カラースキーマ",

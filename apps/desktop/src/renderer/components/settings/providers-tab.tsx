@@ -850,8 +850,8 @@ export const ProvidersTab = ({
             </div>
           </div>
 
-          <ScrollArea className="mt-5 min-h-0 flex-1 px-2">
-            <div className="space-y-5 pr-2">
+          <div className="mt-5 flex min-h-0 flex-1 flex-col px-2">
+            <div className="shrink-0 space-y-5 pr-2">
               <div
                 className={cn(
                   "rounded-xl border px-3 py-2 text-xs",
@@ -970,40 +970,42 @@ export const ProvidersTab = ({
                   </div>
                 )}
               </div>
+            </div>
 
-              <div className="flex min-h-48 flex-col rounded-2xl border border-border bg-background/50 p-3">
-                <div className="shrink-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold">
-                        {t("settings.providers.models.title")}
-                      </h4>
-                      <p className="pt-1 text-[0.6875rem] text-muted-foreground">
-                        {t("settings.providers.models.description")}
-                      </p>
-                    </div>
-                    <Button
-                      isDisabled={
-                        fetchModelsMutation.isPending || !hasProviderCredential
-                      }
-                      onPress={handleFetchClick}
-                      type="button"
-                      variant="outline"
-                    >
-                      {fetchButtonLabel}
-                    </Button>
+            <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-background/50 p-3">
+              <div className="shrink-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">
+                      {t("settings.providers.models.title")}
+                    </h4>
+                    <p className="pt-1 text-[0.6875rem] text-muted-foreground">
+                      {t("settings.providers.models.description")}
+                    </p>
                   </div>
-
-                  <div className="pt-3">
-                    <SearchInput
-                      onChange={handleModelSearchChange}
-                      placeholder={t("settings.providers.models.search")}
-                      value={modelSearchValue}
-                    />
-                  </div>
+                  <Button
+                    isDisabled={
+                      fetchModelsMutation.isPending || !hasProviderCredential
+                    }
+                    onPress={handleFetchClick}
+                    type="button"
+                    variant="outline"
+                  >
+                    {fetchButtonLabel}
+                  </Button>
                 </div>
 
-                <div className="mt-3 space-y-2">
+                <div className="pt-3">
+                  <SearchInput
+                    onChange={handleModelSearchChange}
+                    placeholder={t("settings.providers.models.search")}
+                    value={modelSearchValue}
+                  />
+                </div>
+              </div>
+
+              <ScrollArea className="mt-3 min-h-0 flex-1 pr-1.5">
+                <div className="space-y-2 pr-2">
                   {filteredModels.length === 0 && (
                     <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
                       {t("settings.providers.models.empty")}
@@ -1019,9 +1021,9 @@ export const ProvidersTab = ({
                     />
                   ))}
                 </div>
-              </div>
+              </ScrollArea>
             </div>
-          </ScrollArea>
+          </div>
         </motion.div>
       </div>
     </motion.section>

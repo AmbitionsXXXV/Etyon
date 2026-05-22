@@ -109,6 +109,19 @@
     "snapshot": {
       "loading": "正在准备项目快照...",
       "ready": "快照：{snapshotId}"
+    },
+    "toolTrace": {
+      "approve": "批准",
+      "deny": "拒绝",
+      "state": {
+        "approvalRequested": "需要 approval",
+        "approvalResponded": "已处理 approval",
+        "inputAvailable": "已准备",
+        "inputStreaming": "准备中",
+        "outputAvailable": "已完成",
+        "outputDenied": "已拒绝",
+        "outputError": "失败"
+      }
     }
   },
   "home": {
@@ -202,6 +215,125 @@
       "default": "默认",
       "description": "选择用于 Dock、任务栏和托盘的应用图标。",
       "title": "应用图标"
+    },
+    "agents": {
+      "control": {
+        "allowSubagentDelegation": {
+          "description": "把当前 roster 注入 specialist prompt，让 subagent 可以把任务转给更合适的角色。",
+          "label": "允许 subagent delegation"
+        },
+        "enabled": {
+          "description": "把 managed agent tools 暴露给 chat routing。关闭后，chat 会继续走普通模型路径。",
+          "label": "启用 managed agents"
+        },
+        "requireApprovalForWrites": {
+          "description": "即使使用可写 profile，patch 和 command 写操作也必须经过显式确认。",
+          "label": "写操作需要 approval"
+        },
+        "showToolTraces": {
+          "description": "持久化 tool calls 和 runtime events，方便 harness 追踪发生过什么。",
+          "label": "显示 tool traces"
+        }
+      },
+      "defaults": {
+        "maxConcurrentSubagents": {
+          "label": "并发 subagents"
+        },
+        "maxSteps": {
+          "label": "最大 tool steps"
+        },
+        "profile": {
+          "label": "默认 profile"
+        }
+      },
+      "description": "Managed profiles 位于原始 tool calls 之上。Chat 仍是主要视口；这里仅改变 runtime lane、tool budget 和 event trace。",
+      "executionMode": {
+        "coder": "Coder",
+        "generalist": "Generalist",
+        "operator": "Operator",
+        "plan": "Plan"
+      },
+      "metrics": {
+        "active": {
+          "description": "可参与 chat routing 的内建 profiles。",
+          "label": "活跃 profiles"
+        },
+        "custom": {
+          "description": "叠加在内建 crew 之上的自定义 profiles。",
+          "label": "自定义 profiles"
+        },
+        "delegation": {
+          "description": "可把任务交给更窄 specialist 的 profiles。",
+          "label": "Delegation lanes"
+        }
+      },
+      "preview": {
+        "description": "当请求进入 managed agent lane 时，chat routing 会读取这段摘要。",
+        "title": "Routing Preview"
+      },
+      "profiles": {
+        "coder": {
+          "description": "实现小范围、边界清晰的变更，并完成验证。",
+          "focus": {
+            "implementation": "implementation",
+            "technicalDebt": "technical debt",
+            "tests": "tests"
+          },
+          "name": "Coder"
+        },
+        "explore": {
+          "description": "探索代码库并定位相关文件。",
+          "focus": {
+            "codeSearch": "code search",
+            "fileReading": "file reading",
+            "projectStructure": "project structure"
+          },
+          "name": "Explore"
+        },
+        "generalPurpose": {
+          "description": "默认 chat 和轻量 project analysis。",
+          "focus": {
+            "conversation": "conversation",
+            "lightweightAnalysis": "lightweight analysis",
+            "projectContext": "project context"
+          },
+          "name": "General Purpose"
+        },
+        "harnessOperator": {
+          "description": "检查 agent runs、events 和 harness 行为。",
+          "focus": {
+            "agentEvents": "agent events",
+            "runtimeDiagnostics": "runtime diagnostics",
+            "toolLoop": "tool loop"
+          },
+          "name": "Harness Operator"
+        },
+        "plan": {
+          "description": "把目标拆成有边界的计划和实现切片。",
+          "focus": {
+            "requirements": "requirements",
+            "riskControl": "risk control",
+            "sequencing": "sequencing"
+          },
+          "name": "Plan"
+        },
+        "review": {
+          "description": "审查 diff 并找出行为风险。",
+          "focus": {
+            "diffReview": "diff review",
+            "risk": "risk",
+            "testGaps": "test gaps"
+          },
+          "name": "Review"
+        }
+      },
+      "roster": {
+        "description": "选择 chat 进入 agent mode 时默认使用的 profile。",
+        "readonly": "只读",
+        "title": "Crew roster",
+        "writeCapable": "可写"
+      },
+      "title": "Agents"
     },
     "chat": {
       "autoCompact": {
@@ -363,6 +495,7 @@
       "title": "语言"
     },
     "nav": {
+      "agents": "Agents",
       "channels": "频道",
       "chat": "Chat",
       "colorSchema": "颜色方案",

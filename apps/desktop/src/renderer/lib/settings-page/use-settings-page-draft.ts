@@ -1,5 +1,6 @@
 import type { LocalePreference } from "@etyon/i18n"
 import type {
+  AgentSettings,
   AiProviderConfig,
   AiProviderName,
   AppIcon,
@@ -182,6 +183,10 @@ export const useSettingsPageDraft = () => {
 
   const handleAppIconChange = useCallback(
     (v: AppIcon) => updateDraftRef.current("appIcon", v),
+    []
+  )
+  const handleAgentsChange = useCallback(
+    (v: AgentSettings) => updateDraftRef.current("agents", v),
     []
   )
   const handleAutoStartChange = useCallback(
@@ -371,6 +376,7 @@ export const useSettingsPageDraft = () => {
 
   return {
     draft,
+    handleAgentsChange,
     handleAiProviderConfigChange,
     handleAiProviderEnabledChange,
     handleAppIconChange,

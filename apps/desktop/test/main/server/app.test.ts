@@ -1,6 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 
+import type { AppSettings } from "@etyon/rpc"
+import { AppSettingsSchema } from "@etyon/rpc"
 import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/fetch"
 import type { RouterClient } from "@orpc/server"
@@ -23,17 +25,26 @@ interface MockChatSession {
 }
 
 const {
+  appendAgentEventMock,
   buildMentionContextMock,
   buildMemorySystemPromptMock,
   buildSkillsSystemPromptMock,
   buildSessionMemorySystemPromptMock,
   convertToModelMessagesMock,
+  createAgentRunMock,
   getChatSessionByIdMock,
   getChatSessionMemoryMock,
+  getSettingsMock,
+  listAgentEventsMock,
+  listAgentToolCallsMock,
   mockedHomeDir,
+  recordAgentToolCallMock,
   replaceChatMessagesMock,
   resolveModelMock,
-  streamTextMock
+  stepCountIsMock,
+  streamTextMock,
+  updateAgentRunMock,
+  updateAgentToolCallMock
 } = vi.hoisted(() => {
   const defaultChatSession = {
     archivedAt: null,
@@ -46,8 +57,44 @@ const {
     title: "",
     updatedAt: "2026-04-06T09:00:00.000Z"
   } satisfies MockChatSession
+  // Keep this inside vi.hoisted so settings mocks are initialized before imports.
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const buildSettings = (agents?: Record<string, unknown>) =>
+    ({
+      agents: {
+        allowSubagentDelegation: false,
+        defaultProfileId: "general-purpose",
+        enabled: false,
+        maxConcurrentSubagents: 2,
+        maxSteps: 8,
+        profiles: [],
+        requireApprovalForWrites: true,
+        showToolTraces: true,
+        ...agents
+      },
+      memory: {
+        autoRetrieve: true,
+        autoSummarize: false,
+        embeddingModel: "",
+        enabled: true,
+        includeChatbot: true,
+        maxContextEntries: 8,
+        maxRetrievedMemories: 8,
+        memoryToolModel: "__auto__",
+        queryRewriting: true,
+        shareAcrossProjects: true,
+        similarityThreshold: 0.1
+      },
+      skills: {
+        enabled: true,
+        includeGlobal: true,
+        includeProject: true,
+        maxContextSkills: 4
+      }
+    }) as unknown as AppSettings
 
   return {
+    appendAgentEventMock: vi.fn(() => Promise.resolve({ id: "event-1" })),
     buildMentionContextMock: vi.fn(() => ({
       snapshotId: "snapshot-1",
       system: "snapshot context"
@@ -58,6 +105,20 @@ const {
     buildSkillsSystemPromptMock: vi.fn(() => "skills context"),
     buildSessionMemorySystemPromptMock: vi.fn(() => "session memory context"),
     convertToModelMessagesMock: vi.fn((messages) => Promise.resolve(messages)),
+    createAgentRunMock: vi.fn(() =>
+      Promise.resolve({
+        appendEvent: appendAgentEventMock,
+        chatSessionId: "session-1",
+        errorMessage: null,
+        finishedAt: null,
+        id: "run-1",
+        modelId: "openai/gpt-4.1",
+        parentRunId: null,
+        profileId: "general-purpose",
+        startedAt: "2026-05-22T06:00:00.000Z",
+        status: "running"
+      })
+    ),
     getChatSessionByIdMock: vi.fn(() => Promise.resolve(defaultChatSession)),
     getChatSessionMemoryMock: vi.fn(() =>
       Promise.resolve({
@@ -68,10 +129,20 @@ const {
         updatedAt: "2026-04-06T09:01:00.000Z"
       })
     ),
+    getSettingsMock: vi.fn(() => buildSettings()),
+    listAgentEventsMock: vi.fn(() => Promise.resolve([])),
+    listAgentToolCallsMock: vi.fn(() => Promise.resolve([])),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    recordAgentToolCallMock: vi.fn(() =>
+      Promise.resolve({ id: "tool-call-1" })
+    ),
     replaceChatMessagesMock: vi.fn(() => Promise.resolve([])),
     resolveModelMock: vi.fn(() => ({ modelId: "test-model" })),
-    streamTextMock: vi.fn(() => ({
+    stepCountIsMock: vi.fn((stepCount: number) => ({
+      kind: "step-count",
+      stepCount
+    })),
+    streamTextMock: vi.fn((_options: unknown) => ({
       toUIMessageStreamResponse: async (options: {
         onFinish?: (event: { messages: unknown[] }) => Promise<void> | void
       }) => {
@@ -97,13 +168,26 @@ const {
           }
         )
       }
-    }))
+    })),
+    updateAgentRunMock: vi.fn(() => Promise.resolve({ id: "run-1" })),
+    updateAgentToolCallMock: vi.fn(() => Promise.resolve({ id: "tool-call-1" }))
   }
 })
 
 vi.mock("ai", () => ({
   convertToModelMessages: convertToModelMessagesMock,
-  streamText: streamTextMock
+  stepCountIs: stepCountIsMock,
+  streamText: streamTextMock,
+  tool: (definition: unknown) => definition
+}))
+
+vi.mock("@/main/agents/agent-event-store", () => ({
+  createAgentRun: createAgentRunMock,
+  listAgentEvents: listAgentEventsMock,
+  listAgentToolCalls: listAgentToolCallsMock,
+  recordAgentToolCall: recordAgentToolCallMock,
+  updateAgentRun: updateAgentRunMock,
+  updateAgentToolCall: updateAgentToolCallMock
 }))
 
 vi.mock("@electron-toolkit/utils", () => ({
@@ -120,19 +204,46 @@ vi.mock("@electron-toolkit/utils", () => ({
   }
 }))
 
-vi.mock("electron", () => ({
-  BrowserWindow: {
-    getAllWindows: () => []
-  },
-  app: {
-    getLocale: () => "en-US",
-    getPath: () => mockedHomeDir,
-    getVersion: () => "0.1.0-test"
-  },
-  ipcMain: {
-    on: vi.fn()
+vi.mock("electron-store", () => {
+  class MockElectronStore {
+    readonly store = new Map<string, unknown>()
+
+    get(key: string): unknown {
+      return this.store.get(key)
+    }
+
+    set(key: string, value: unknown): void {
+      this.store.set(key, value)
+    }
   }
-}))
+
+  return {
+    default: MockElectronStore
+  }
+})
+
+vi.mock("electron", () => {
+  const electronMock = {
+    BrowserWindow: {
+      getAllWindows: () => []
+    },
+    app: {
+      getLocale: () => "en-US",
+      getName: () => "Etyon",
+      getPath: () => mockedHomeDir,
+      getVersion: () => "0.1.0-test",
+      name: "Etyon"
+    },
+    ipcMain: {
+      on: vi.fn()
+    }
+  }
+
+  return {
+    ...electronMock,
+    default: electronMock
+  }
+})
 
 vi.mock("@/main/server/lib/providers", () => ({
   resolveModel: resolveModelMock
@@ -164,27 +275,7 @@ vi.mock("@/main/skills", () => ({
 }))
 
 vi.mock("@/main/settings", () => ({
-  getSettings: vi.fn(() => ({
-    memory: {
-      autoRetrieve: true,
-      autoSummarize: false,
-      embeddingModel: "",
-      enabled: true,
-      includeChatbot: true,
-      maxContextEntries: 8,
-      maxRetrievedMemories: 8,
-      memoryToolModel: "__auto__",
-      queryRewriting: true,
-      shareAcrossProjects: true,
-      similarityThreshold: 0.1
-    },
-    skills: {
-      enabled: true,
-      includeGlobal: true,
-      includeProject: true,
-      maxContextSkills: 4
-    }
-  }))
+  getSettings: getSettingsMock
 }))
 
 const getLogFilePath = (): string =>
@@ -222,6 +313,13 @@ const authorizeRequest = (request: Request): Request => {
 
   return new Request(request, { headers })
 }
+
+const buildAgentSettings = (
+  agents: Partial<AppSettings["agents"]>
+): AppSettings =>
+  AppSettingsSchema.parse({
+    agents
+  })
 
 describe("hono app", () => {
   afterAll(() => {
@@ -399,6 +497,7 @@ describe("hono app", () => {
     expect(buildSkillsSystemPromptMock).toHaveBeenCalledWith({
       projectPath: "/tmp/project-a",
       query: "",
+      selectedSkills: [],
       settings: {
         enabled: true,
         includeGlobal: true,
@@ -427,6 +526,79 @@ describe("hono app", () => {
         }
       ],
       sessionId: "session-1"
+    })
+  })
+
+  it("does not inject agent tools into chat requests while agents are disabled", async () => {
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "message-1",
+            parts: [],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+    const streamOptions = streamTextMock.mock.calls[0]?.[0] as
+      | Record<string, unknown>
+      | undefined
+
+    expect(response.status).toBe(200)
+    expect(streamOptions).not.toHaveProperty("tools")
+    expect(streamOptions).not.toHaveProperty("stopWhen")
+    expect(stepCountIsMock).not.toHaveBeenCalled()
+  })
+
+  it("injects read-only agent tools and step budget when agents are enabled", async () => {
+    getSettingsMock.mockReturnValueOnce(
+      buildAgentSettings({
+        enabled: true,
+        maxSteps: 6
+      })
+    )
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "message-1",
+            parts: [],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+    const streamOptions = streamTextMock.mock.calls[0]?.[0] as
+      | {
+          stopWhen?: unknown
+          tools?: Record<string, unknown>
+        }
+      | undefined
+
+    expect(response.status).toBe(200)
+    expect(Object.keys(streamOptions?.tools ?? {}).toSorted()).toEqual([
+      "gitDiff",
+      "readFile",
+      "searchFiles"
+    ])
+    expect(stepCountIsMock).toHaveBeenCalledWith(6)
+    expect(streamOptions?.stopWhen).toEqual({
+      kind: "step-count",
+      stepCount: 6
     })
   })
 

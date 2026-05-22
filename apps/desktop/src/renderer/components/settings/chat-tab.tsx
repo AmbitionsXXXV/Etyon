@@ -28,9 +28,6 @@ interface ChatSwitchRowProps {
   onChange: (checked: boolean) => void
 }
 
-const CHAT_FIELD_CLASS_NAME =
-  "border-border/80 bg-background/80 shadow-sm hover:bg-background focus-within:border-primary/60"
-
 const ChatSwitch = ({
   checked,
   isDisabled = false,
@@ -200,7 +197,7 @@ export const ChatTab = ({ chat, onChange }: ChatTabProps) => {
           <Label className="text-sm font-medium">
             {t("settings.chat.autoCompact.keepRecentMessages.label")}
           </Label>
-          <NumberField.Group className={cn("w-36", CHAT_FIELD_CLASS_NAME)}>
+          <NumberField.Group className="w-full max-w-40">
             <NumberField.DecrementButton />
             <NumberField.Input className="text-center tabular-nums" />
             <NumberField.IncrementButton />

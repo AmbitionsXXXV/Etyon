@@ -109,6 +109,19 @@
     "snapshot": {
       "loading": "Preparing project snapshot...",
       "ready": "Snapshot: {snapshotId}"
+    },
+    "toolTrace": {
+      "approve": "Approve",
+      "deny": "Deny",
+      "state": {
+        "approvalRequested": "Approval needed",
+        "approvalResponded": "Approval handled",
+        "inputAvailable": "Ready",
+        "inputStreaming": "Preparing",
+        "outputAvailable": "Done",
+        "outputDenied": "Denied",
+        "outputError": "Failed"
+      }
     }
   },
   "home": {
@@ -202,6 +215,125 @@
       "default": "Default",
       "description": "Choose your preferred app icon for the dock, taskbar, and tray.",
       "title": "App Icon"
+    },
+    "agents": {
+      "control": {
+        "allowSubagentDelegation": {
+          "description": "Let specialist prompts include the active roster so a subagent can hand work to a better fit.",
+          "label": "Allow subagent delegation"
+        },
+        "enabled": {
+          "description": "Expose managed agent tools to chat routing. When off, chat stays on the plain model path.",
+          "label": "Enable managed agents"
+        },
+        "requireApprovalForWrites": {
+          "description": "Keep patch and command writes behind explicit approval even for write-capable profiles.",
+          "label": "Require approval for writes"
+        },
+        "showToolTraces": {
+          "description": "Persist tool calls and runtime events so the harness can inspect what happened.",
+          "label": "Show tool traces"
+        }
+      },
+      "defaults": {
+        "maxConcurrentSubagents": {
+          "label": "Concurrent subagents"
+        },
+        "maxSteps": {
+          "label": "Max tool steps"
+        },
+        "profile": {
+          "label": "Default profile"
+        }
+      },
+      "description": "Managed profiles sit above raw tool calls. Chat remains the main viewport; this only changes the runtime lane, tool budget, and event trace.",
+      "executionMode": {
+        "coder": "Coder",
+        "generalist": "Generalist",
+        "operator": "Operator",
+        "plan": "Plan"
+      },
+      "metrics": {
+        "active": {
+          "description": "Built-in profiles available for chat routing.",
+          "label": "Active profiles"
+        },
+        "custom": {
+          "description": "Custom profiles layered on top of the built-in crew.",
+          "label": "Custom profiles"
+        },
+        "delegation": {
+          "description": "Profiles that can hand work to a narrower specialist.",
+          "label": "Delegation lanes"
+        }
+      },
+      "preview": {
+        "description": "This is the summary used by chat routing when a request enters the managed agent lane.",
+        "title": "Routing Preview"
+      },
+      "profiles": {
+        "coder": {
+          "description": "Implements small, bounded changes with validation.",
+          "focus": {
+            "implementation": "implementation",
+            "technicalDebt": "technical debt",
+            "tests": "tests"
+          },
+          "name": "Coder"
+        },
+        "explore": {
+          "description": "Explores the codebase and locates relevant files.",
+          "focus": {
+            "codeSearch": "code search",
+            "fileReading": "file reading",
+            "projectStructure": "project structure"
+          },
+          "name": "Explore"
+        },
+        "generalPurpose": {
+          "description": "Default chat and lightweight project analysis.",
+          "focus": {
+            "conversation": "conversation",
+            "lightweightAnalysis": "lightweight analysis",
+            "projectContext": "project context"
+          },
+          "name": "General Purpose"
+        },
+        "harnessOperator": {
+          "description": "Inspects agent runs, events, and harness behavior.",
+          "focus": {
+            "agentEvents": "agent events",
+            "runtimeDiagnostics": "runtime diagnostics",
+            "toolLoop": "tool loop"
+          },
+          "name": "Harness Operator"
+        },
+        "plan": {
+          "description": "Turns goals into scoped plans and implementation slices.",
+          "focus": {
+            "requirements": "requirements",
+            "riskControl": "risk control",
+            "sequencing": "sequencing"
+          },
+          "name": "Plan"
+        },
+        "review": {
+          "description": "Reviews diffs and finds behavioral risks.",
+          "focus": {
+            "diffReview": "diff review",
+            "risk": "risk",
+            "testGaps": "test gaps"
+          },
+          "name": "Review"
+        }
+      },
+      "roster": {
+        "description": "Pick the default profile used when chat enters agent mode.",
+        "readonly": "Read-only",
+        "title": "Crew roster",
+        "writeCapable": "Write-capable"
+      },
+      "title": "Agents"
     },
     "chat": {
       "autoCompact": {
@@ -363,6 +495,7 @@
       "title": "Language"
     },
     "nav": {
+      "agents": "Agents",
       "channels": "Channels",
       "chat": "Chat",
       "colorSchema": "Color Schema",
