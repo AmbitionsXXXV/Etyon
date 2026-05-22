@@ -139,6 +139,7 @@
       "output": "Output",
       "rawOutput": "Raw result",
       "repeated": "Repeated {count}x",
+      "runCommand": "Run {command}",
       "shell": "Shell",
       "state": {
         "approvalRequested": "Approval needed",

@@ -285,31 +285,39 @@ const ProjectFileTree = ({
     model.setGitStatus(gitStatusEntries)
   }, [model, paths, gitStatusEntries])
 
+  const collapseFoldersLabel = t("chat.projectPanel.collapseFolders")
+  const isCollapseFoldersDisabled = directoryPaths.length === 0
+  const collapseFoldersButton = (
+    <Button
+      aria-label={collapseFoldersLabel}
+      className="shrink-0"
+      isDisabled={isCollapseFoldersDisabled}
+      isIconOnly
+      onPress={handleCollapseFolders}
+      size="sm"
+      type="button"
+      variant="ghost"
+    >
+      <HugeiconsIcon icon={FolderMinusIcon} size={14} strokeWidth={2} />
+    </Button>
+  )
+
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-muted-foreground">
           {label}
         </span>
-        <Tooltip>
-          <Tooltip.Trigger>
-            <Button
-              aria-label={t("chat.projectPanel.collapseFolders")}
-              className="shrink-0"
-              isDisabled={directoryPaths.length === 0}
-              isIconOnly
-              onPress={handleCollapseFolders}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon icon={FolderMinusIcon} size={14} strokeWidth={2} />
-            </Button>
-          </Tooltip.Trigger>
-          <Tooltip.Content placement="bottom">
-            {t("chat.projectPanel.collapseFolders")}
-          </Tooltip.Content>
-        </Tooltip>
+        {isCollapseFoldersDisabled ? (
+          collapseFoldersButton
+        ) : (
+          <Tooltip>
+            <Tooltip.Trigger>{collapseFoldersButton}</Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">
+              {collapseFoldersLabel}
+            </Tooltip.Content>
+          </Tooltip>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden py-2">
         <FileTree

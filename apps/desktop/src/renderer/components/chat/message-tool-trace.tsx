@@ -16,6 +16,8 @@ import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { DynamicToolUIPart, ToolUIPart } from "ai"
 import { getToolName } from "ai"
+import { useState } from "react"
+import type { ReactNode } from "react"
 
 import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
 import type {
@@ -50,6 +52,11 @@ interface MessageToolTraceProps {
 
 const TOOL_TRACE_PREVIEW_MAX_LENGTH = 220
 const TOOL_TRACE_DETAIL_MAX_LENGTH = 2_400
+const TOOL_CALL_OUTPUT_PREVIEW_MAX_LENGTH = 700
+const COMMAND_TITLE_TOKEN_LIMIT = 4
+const SHELL_COMMAND_SEPARATOR_PATTERN = /\s*(?:&&|\|\||[;|])\s*/u
+const TEST_FILE_PATTERN =
+  /(?:^|\s)([^\s"'`]+)\.test\.[cm]?[tj]sx?(?=$|\s|["'])/u
 const TOOL_TRACE_STATE_LABEL_KEY_BY_STATE = {
   "approval-requested": "chat.toolTrace.state.approvalRequested",
   "approval-responded": "chat.toolTrace.state.approvalResponded",
@@ -124,6 +131,60 @@ const formatDuration = (durationMs: number | undefined): string => {
 
   return `${(durationMs / 1000).toFixed(1)} s`
 }
+
+const getPathBaseName = (value: string): string => {
+  const normalizedPath = value.replaceAll("\\", "/")
+  const pathParts = normalizedPath.split("/")
+
+  return pathParts.at(-1) ?? value
+}
+
+const getCommandTitleSubject = (command: string): string => {
+  const testFileMatch = command.match(TEST_FILE_PATTERN)
+  const testFilePath = testFileMatch?.[1]
+
+  if (testFilePath) {
+    return `${getPathBaseName(testFilePath)} tests`
+  }
+
+  const commandHead =
+    command.split(SHELL_COMMAND_SEPARATOR_PATTERN)[0]?.trim() ?? command.trim()
+  const tokens = commandHead.split(/\s+/u).filter(Boolean)
+  const visibleTokens = tokens.slice(0, COMMAND_TITLE_TOKEN_LIMIT)
+  const suffix = tokens.length > visibleTokens.length ? " ..." : ""
+
+  return `${visibleTokens.join(" ")}${suffix}`.trim() || command.trim()
+}
+
+const getShellSummary = ({
+  command,
+  cwd
+}: {
+  command: string
+  cwd?: string
+}): string => {
+  const commandParts = command
+    .split(SHELL_COMMAND_SEPARATOR_PATTERN)
+    .filter((part) => part.trim().length > 0)
+  const commandCount = commandParts.length + (cwd ? 1 : 0)
+
+  if (commandCount === 0) {
+    return ""
+  }
+
+  const firstCommand = cwd
+    ? "cd"
+    : (commandParts[0]?.split(/\s+/u).find(Boolean) ?? "")
+
+  if (commandCount === 1) {
+    return firstCommand
+  }
+
+  return `${firstCommand}, ${commandCount - 1}+`
+}
+
+const getCollapsedOutputPreview = (output: string): string =>
+  output.trimEnd().slice(0, TOOL_CALL_OUTPUT_PREVIEW_MAX_LENGTH)
 
 const getToolTraceStateClassName = (state: ChatToolState): string => {
   switch (state) {
@@ -212,12 +273,73 @@ const getCommandOutputView = (output: unknown): CommandOutputView | null => {
   }
 }
 
+const getCommandOutputContent = (
+  commandOutput: CommandOutputView | null
+): string =>
+  [commandOutput?.stdoutPreview, commandOutput?.stderrPreview]
+    .filter(Boolean)
+    .join("\n")
+
+const getCommandExitCodeMeta = ({
+  commandOutput,
+  label
+}: {
+  commandOutput: CommandOutputView | null
+  label: string
+}): string => {
+  if (commandOutput?.exitCode === undefined) {
+    return ""
+  }
+
+  return `${label}: ${commandOutput.exitCode ?? "-"}`
+}
+
+const getStructuredToolTraceMetaItems = ({
+  commandDuration,
+  commandExitCodeMeta,
+  commandOutput,
+  durationLabel,
+  inputMeta,
+  statusLabel,
+  truncatedLabel
+}: {
+  commandDuration: string
+  commandExitCodeMeta: string
+  commandOutput: CommandOutputView | null
+  durationLabel: string
+  inputMeta: string
+  statusLabel: string
+  truncatedLabel: string
+}): string[] => [
+  inputMeta,
+  commandOutput?.status ? `${statusLabel}: ${commandOutput.status}` : "",
+  commandExitCodeMeta,
+  commandDuration ? `${durationLabel}: ${commandDuration}` : "",
+  commandOutput?.truncated ? truncatedLabel : ""
+]
+
 const getToolInputCommand = (input: unknown): string => {
   if (!isRecord(input)) {
     return ""
   }
 
-  return getString(input, "command") ?? getString(input, "path") ?? ""
+  return getString(input, "command") ?? ""
+}
+
+const getToolInputCwd = (input: unknown): string => {
+  if (!isRecord(input)) {
+    return ""
+  }
+
+  return getString(input, "cwd") ?? ""
+}
+
+const getToolInputPath = (input: unknown): string => {
+  if (!isRecord(input)) {
+    return ""
+  }
+
+  return getString(input, "path") ?? ""
 }
 
 const getToolInputMeta = (input: unknown): string => {
@@ -335,6 +457,193 @@ const ToolTraceMeta = ({ items }: { items: string[] }) => {
   )
 }
 
+const ToolCallShellLine = ({
+  command,
+  cwd
+}: {
+  command: string
+  cwd?: string
+}) => (
+  <div className="mb-3 wrap-break-word whitespace-pre-wrap text-zinc-100">
+    <span className="text-zinc-500">$ </span>
+    {cwd ? (
+      <>
+        <span className="text-cyan-300">cd</span>
+        <span> {cwd} </span>
+        <span className="text-zinc-300">&&</span>
+        <span> </span>
+      </>
+    ) : null}
+    <span>{command}</span>
+  </div>
+)
+
+const ToolCallOutputPreview = ({ output }: { output: string }) => {
+  const preview = getCollapsedOutputPreview(output)
+
+  if (!preview) {
+    return null
+  }
+
+  return (
+    <pre className="max-h-28 overflow-hidden mask-[linear-gradient(to_bottom,black_70%,transparent_100%)] px-5 pb-4 pl-9 font-mono text-xs leading-6 wrap-break-word whitespace-pre-wrap text-muted-foreground/55">
+      {preview}
+    </pre>
+  )
+}
+
+const CommandToolCallCard = ({
+  actions,
+  command,
+  detail,
+  isStreaming = false,
+  metaItems = [],
+  output,
+  title,
+  cwd
+}: {
+  actions?: ReactNode
+  command: string
+  cwd?: string
+  detail?: ReactNode
+  isStreaming?: boolean
+  metaItems?: string[]
+  output: string
+  title: string
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const shellSummary = getShellSummary({ command, cwd })
+
+  return (
+    <Disclosure
+      className="overflow-hidden rounded-2xl border border-border/70 bg-background/70"
+      isExpanded={isExpanded}
+      onExpandedChange={setIsExpanded}
+    >
+      <Disclosure.Heading>
+        <Button
+          className="h-11 w-full justify-between rounded-none border-b border-border/60 px-4 text-muted-foreground hover:bg-muted/30 data-[hovered=true]:bg-muted/30"
+          slot="trigger"
+          type="button"
+          variant="ghost"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="grid size-5 shrink-0 place-items-center text-muted-foreground">
+              {isExpanded ? (
+                <Disclosure.Indicator />
+              ) : (
+                <HugeiconsIcon icon={ComputerTerminal02Icon} size={15} />
+              )}
+            </span>
+            <span className="min-w-0 truncate text-left text-sm font-medium">
+              <span>{title}</span>
+              {shellSummary ? (
+                <span className="ml-1 text-muted-foreground/70">
+                  {shellSummary}
+                </span>
+              ) : null}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span aria-hidden="true" className="text-muted-foreground/70">
+              ...
+            </span>
+          </span>
+        </Button>
+      </Disclosure.Heading>
+
+      {isExpanded ? null : <ToolCallOutputPreview output={output} />}
+
+      <Disclosure.Content>
+        <Disclosure.Body className="space-y-3 p-0">
+          {actions ? <div className="px-4 pt-3">{actions}</div> : null}
+          <TerminalOutput
+            className="rounded-none border-0 bg-transparent shadow-none"
+            command={command}
+            contentClassName="max-h-80 p-4"
+            header="hidden"
+            isStreaming={isStreaming}
+            output={output}
+            prefix={<ToolCallShellLine command={command} cwd={cwd} />}
+          />
+          {metaItems.length > 0 ? (
+            <div className="px-4 pb-3">
+              <ToolTraceMeta items={metaItems} />
+            </div>
+          ) : null}
+          {detail ? (
+            <div className="space-y-1.5 px-4 pb-4">{detail}</div>
+          ) : null}
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  )
+}
+
+const ToolApprovalActions = ({
+  isApprovalActionDisabled,
+  onApprovalResponse,
+  part
+}: {
+  isApprovalActionDisabled: boolean
+  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+
+  if (part.state !== "approval-requested") {
+    return null
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        isDisabled={isApprovalActionDisabled}
+        onPress={() => onApprovalResponse(part, true)}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
+        {t("chat.toolTrace.approve")}
+      </Button>
+      <Button
+        isDisabled={isApprovalActionDisabled}
+        onPress={() => onApprovalResponse(part, false)}
+        size="sm"
+        type="button"
+        variant="danger-soft"
+      >
+        <HugeiconsIcon icon={Cancel01Icon} size={13} />
+        {t("chat.toolTrace.deny")}
+      </Button>
+    </div>
+  )
+}
+
+const ToolTraceDetailPanels = ({
+  input,
+  output
+}: {
+  input: unknown
+  output?: unknown
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <>
+      <ToolTracePanel
+        body={formatToolTraceDetail(input)}
+        label={t("chat.toolTrace.input")}
+      />
+      <ToolTracePanel
+        body={output === undefined ? "" : formatToolTraceDetail(output)}
+        label={t("chat.toolTrace.rawOutput")}
+      />
+    </>
+  )
+}
+
 export const FunctionCallTextTraceCard = ({
   segment
 }: {
@@ -401,93 +710,24 @@ export const CommandTextTraceCard = ({
   segment: AssistantCommandTextSegment
 }) => {
   const { t } = useI18n()
-  const isSuccess = segment.exitCode === 0
+  const title = t("chat.toolTrace.runCommand", {
+    command: getCommandTitleSubject(segment.command)
+  })
 
   return (
-    <Card
-      className="rounded-xl border border-border/70 bg-background/70 p-0 shadow-none"
-      variant="transparent"
-    >
-      <Card.Header className="flex items-start justify-between gap-3 p-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <span
-            className={cn(
-              "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg",
-              isSuccess
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-                : "bg-destructive/10 text-destructive"
-            )}
-          >
-            <HugeiconsIcon icon={ComputerTerminal02Icon} size={15} />
-          </span>
-          <div className="min-w-0">
-            <Card.Title className="truncate text-xs">
-              {t("chat.toolTrace.executedCommand")}
-            </Card.Title>
-            <Card.Description className="mt-1 truncate font-mono text-[0.6875rem]">
-              {segment.command}
-            </Card.Description>
-          </div>
-        </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-md px-1.5 py-0.5 text-[0.625rem] font-medium",
-            isSuccess
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-              : "bg-destructive/10 text-destructive"
-          )}
-        >
-          {t(
-            isSuccess
-              ? "chat.toolTrace.state.outputAvailable"
-              : "chat.toolTrace.state.outputError"
-          )}
-        </span>
-      </Card.Header>
-      <Card.Content className="space-y-2 px-3 pb-3">
-        <ToolTraceMeta
-          items={[
-            `${t("chat.toolTrace.cwd")}: ${segment.cwd}`,
-            `${t("chat.toolTrace.shell")}: ${segment.shell}`,
-            `${t("chat.toolTrace.exitCode")}: ${segment.exitCode}`,
-            segment.repeatCount > 1
-              ? t("chat.toolTrace.repeated", { count: segment.repeatCount })
-              : ""
-          ]}
-        />
-        <TerminalOutput
-          command={segment.command}
-          output={segment.output}
-          title={t("chat.terminal.title")}
-        />
-      </Card.Content>
-    </Card>
-  )
-}
-
-const ToolTraceCommandOutputSection = ({
-  commandOutput,
-  commandOutputContent,
-  inputCommand,
-  isCommandStreaming,
-  toolName
-}: {
-  commandOutput: CommandOutputView | null
-  commandOutputContent: string
-  inputCommand: string
-  isCommandStreaming: boolean
-  toolName: string
-}) => {
-  if (!(commandOutput || inputCommand)) {
-    return null
-  }
-
-  return (
-    <TerminalOutput
-      command={inputCommand}
-      isStreaming={isCommandStreaming && !commandOutputContent}
-      output={commandOutputContent}
-      title={toolName}
+    <CommandToolCallCard
+      command={segment.command}
+      cwd={segment.cwd}
+      metaItems={[
+        `${t("chat.toolTrace.cwd")}: ${segment.cwd}`,
+        `${t("chat.toolTrace.shell")}: ${segment.shell}`,
+        `${t("chat.toolTrace.exitCode")}: ${segment.exitCode}`,
+        segment.repeatCount > 1
+          ? t("chat.toolTrace.repeated", { count: segment.repeatCount })
+          : ""
+      ]}
+      output={segment.output}
+      title={title}
     />
   )
 }
@@ -507,22 +747,64 @@ export const StructuredToolTraceCard = ({
     part.state === "output-available" ? getToolOutputSummary(part.output) : ""
   const preview = output || getToolTracePreview(part)
   const inputCommand = getToolInputCommand(part.input)
+  const inputCwd = getToolInputCwd(part.input)
+  const inputPath = getToolInputPath(part.input)
+  const inputLabel = inputCommand || inputPath
   const inputMeta = getToolInputMeta(part.input)
   const commandOutput =
     part.state === "output-available" ? getCommandOutputView(part.output) : null
-  const commandExitCodeMeta =
-    commandOutput?.exitCode === undefined
-      ? ""
-      : `${t("chat.toolTrace.exitCode")}: ${commandOutput.exitCode ?? "-"}`
+  const commandExitCodeMeta = getCommandExitCodeMeta({
+    commandOutput,
+    label: t("chat.toolTrace.exitCode")
+  })
   const commandDuration = formatDuration(commandOutput?.durationMs)
-  const commandOutputContent = [
-    commandOutput?.stdoutPreview,
-    commandOutput?.stderrPreview
-  ]
-    .filter(Boolean)
-    .join("\n")
+  const commandOutputContent = getCommandOutputContent(commandOutput)
   const isCommandStreaming =
     part.state === "input-streaming" || part.state === "input-available"
+  const statusLabel = t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])
+  const statusClassName = getToolTraceStateClassName(part.state)
+  const metaItems = getStructuredToolTraceMetaItems({
+    commandDuration,
+    commandExitCodeMeta,
+    commandOutput,
+    durationLabel: t("chat.toolTrace.duration"),
+    inputMeta,
+    statusLabel: t("chat.toolTrace.status"),
+    truncatedLabel: t("chat.toolTrace.truncated")
+  })
+  const approvalActions =
+    part.state === "approval-requested" ? (
+      <ToolApprovalActions
+        isApprovalActionDisabled={isApprovalActionDisabled}
+        onApprovalResponse={onApprovalResponse}
+        part={part}
+      />
+    ) : null
+  const outputDetail =
+    part.state === "output-available" ? part.output : undefined
+  const detailPanels = (
+    <ToolTraceDetailPanels input={part.input} output={outputDetail} />
+  )
+
+  if (inputCommand) {
+    const commandOutputText = commandOutputContent || preview
+    const title = t("chat.toolTrace.runCommand", {
+      command: getCommandTitleSubject(inputCommand)
+    })
+
+    return (
+      <CommandToolCallCard
+        actions={approvalActions}
+        command={inputCommand}
+        cwd={inputCwd}
+        detail={detailPanels}
+        isStreaming={isCommandStreaming && !commandOutputText}
+        metaItems={metaItems}
+        output={commandOutputText}
+        title={title}
+      />
+    )
+  }
 
   return (
     <Card
@@ -536,9 +818,9 @@ export const StructuredToolTraceCard = ({
           </span>
           <div className="min-w-0">
             <Card.Title className="truncate text-xs">{toolName}</Card.Title>
-            {inputCommand ? (
+            {inputLabel ? (
               <Card.Description className="mt-1 truncate font-mono text-[0.6875rem]">
-                {inputCommand}
+                {inputLabel}
               </Card.Description>
             ) : null}
           </div>
@@ -546,10 +828,10 @@ export const StructuredToolTraceCard = ({
         <span
           className={cn(
             "shrink-0 rounded-md px-1.5 py-0.5 text-[0.625rem] font-medium",
-            getToolTraceStateClassName(part.state)
+            statusClassName
           )}
         >
-          {t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])}
+          {statusLabel}
         </span>
       </Card.Header>
       <Card.Content className="space-y-2 px-3 pb-3">
@@ -558,64 +840,9 @@ export const StructuredToolTraceCard = ({
             {preview}
           </p>
         ) : null}
-        <ToolTraceMeta
-          items={[
-            inputMeta,
-            commandOutput?.status
-              ? `${t("chat.toolTrace.status")}: ${commandOutput.status}`
-              : "",
-            commandExitCodeMeta,
-            commandDuration
-              ? `${t("chat.toolTrace.duration")}: ${commandDuration}`
-              : "",
-            commandOutput?.truncated ? t("chat.toolTrace.truncated") : ""
-          ]}
-        />
-        {part.state === "approval-requested" ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              isDisabled={isApprovalActionDisabled}
-              onPress={() => onApprovalResponse(part, true)}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
-              {t("chat.toolTrace.approve")}
-            </Button>
-            <Button
-              isDisabled={isApprovalActionDisabled}
-              onPress={() => onApprovalResponse(part, false)}
-              size="sm"
-              type="button"
-              variant="danger-soft"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={13} />
-              {t("chat.toolTrace.deny")}
-            </Button>
-          </div>
-        ) : null}
-        <ToolTraceCommandOutputSection
-          commandOutput={commandOutput}
-          commandOutputContent={commandOutputContent}
-          inputCommand={inputCommand}
-          isCommandStreaming={isCommandStreaming}
-          toolName={toolName}
-        />
-        <div className="space-y-1.5">
-          <ToolTracePanel
-            body={formatToolTraceDetail(part.input)}
-            label={t("chat.toolTrace.input")}
-          />
-          <ToolTracePanel
-            body={
-              part.state === "output-available"
-                ? formatToolTraceDetail(part.output)
-                : ""
-            }
-            label={t("chat.toolTrace.rawOutput")}
-          />
-        </div>
+        <ToolTraceMeta items={metaItems} />
+        {approvalActions}
+        <div className="space-y-1.5">{detailPanels}</div>
       </Card.Content>
     </Card>
   )

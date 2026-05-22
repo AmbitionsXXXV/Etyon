@@ -139,6 +139,7 @@
       "output": "出力",
       "rawOutput": "生の結果",
       "repeated": "{count} 回繰り返し",
+      "runCommand": "{command} を実行",
       "shell": "Shell",
       "state": {
         "approvalRequested": "approval が必要",
