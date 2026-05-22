@@ -32,7 +32,8 @@ const lintRules = {
   "eslint/func-style": "off",
   "eslint/no-use-before-define": "off",
   "eslint/sort-keys": "off",
-  "eslint-plugin-unicorn/number-literal-case": "off"
+  "eslint-plugin-unicorn/number-literal-case": "off",
+  "unicorn/numeric-separators-style": "off"
 } satisfies DummyRuleMap
 
 export default defineConfig({
