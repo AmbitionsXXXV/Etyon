@@ -34,6 +34,14 @@
       "regenerate": "再生成"
     },
     "loading": "chat session を読み込み中...",
+    "live": {
+      "memoryLoading": "長期メモリを取得中...",
+      "modelStart": "モデルに接続中...",
+      "receiving": "応答を受信中...",
+      "thinking": "思考中...",
+      "toolRunning": "コマンドを実行中...",
+      "waiting": "応答を準備中..."
+    },
     "mentions": {
       "empty": "一致するファイル、フォルダー、または skills がありません。",
       "filesGroup": "ファイル",
@@ -111,6 +119,11 @@
       "loading": "プロジェクト snapshot を準備中...",
       "ready": "Snapshot: {snapshotId}"
     },
+    "terminal": {
+      "clear": "クリア",
+      "noOutput": "出力なし",
+      "title": "ターミナル出力"
+    },
     "toolTrace": {
       "approve": "承認",
       "copied": "コピー済み",
@@ -120,6 +133,7 @@
       "duration": "所要時間",
       "executedCommand": "コマンド",
       "exitCode": "終了コード",
+      "functionCall": "ツール呼び出し",
       "input": "入力",
       "noOutput": "出力なし",
       "output": "出力",
@@ -141,6 +155,9 @@
       "thinking": "思考プロセス",
       "title": "ツール実行",
       "truncated": "切り詰め済み"
+    },
+    "workTime": {
+      "label": "所要時間 {duration}"
     }
   },
   "home": {

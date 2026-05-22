@@ -1,0 +1,43 @@
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const parseExistingMetadata = (
+  metadata: unknown
+): Record<string, unknown> | undefined => {
+  if (!isRecord(metadata)) {
+    return undefined
+  }
+
+  return metadata
+}
+
+export const attachWorkTimeToLatestAssistantMessage = <
+  MESSAGE extends { metadata?: unknown; role: string }
+>(
+  messages: MESSAGE[],
+  workTimeMs: number
+): MESSAGE[] => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+
+    if (message?.role !== "assistant") {
+      continue
+    }
+
+    const metadata = parseExistingMetadata(message.metadata)
+
+    return messages.map((candidate, candidateIndex) =>
+      candidateIndex === index
+        ? {
+            ...candidate,
+            metadata: {
+              ...metadata,
+              workTimeMs
+            }
+          }
+        : candidate
+    )
+  }
+
+  return messages
+}

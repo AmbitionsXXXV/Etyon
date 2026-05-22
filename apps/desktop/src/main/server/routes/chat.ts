@@ -14,8 +14,10 @@ import { getDb } from "@/main/db"
 import { buildMemorySystemPrompt } from "@/main/memory"
 import { buildMentionContext } from "@/main/project-snapshot"
 import { resolveModel } from "@/main/server/lib/providers"
+import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
 import { buildSkillsSystemPrompt } from "@/main/skills"
+import { buildMoonshotReasoningForAssistantToolCalls } from "@/shared/providers/moonshot-reasoning"
 
 const chatRoute = new Hono()
 const WHITESPACE_PATTERN = /\s+/gu
@@ -42,6 +44,9 @@ const buildMemoryQuery = (messages: UIMessage[]): string =>
 const isSystemPrompt = (prompt: string | undefined): prompt is string =>
   typeof prompt === "string" && prompt.length > 0
 
+const isMoonshotModelId = (modelId: string | null | undefined): boolean =>
+  typeof modelId === "string" && modelId.startsWith("moonshot/")
+
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
@@ -63,54 +68,65 @@ chatRoute.post("/chat", async (c) => {
   }
 
   const selectedSkills = mentions.filter((mention) => mention.kind === "skill")
-  const memory = await getChatSessionMemory(db, sessionId)
+  const settings = getSettings()
+  const memoryQuery = buildMemoryQuery(messages)
+  const shouldRetrieveLongTermMemory =
+    settings.memory.enabled && settings.memory.autoRetrieve
+  const [memory, modelMessages] = await Promise.all([
+    getChatSessionMemory(db, sessionId),
+    convertToModelMessages(messages)
+  ])
   const { system } = buildMentionContext({
     mentions,
     projectPath: session.projectPath
   })
   const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
-  const settings = getSettings()
-  const memoryQuery = buildMemoryQuery(messages)
-  const longTermMemorySystem = await buildMemorySystemPrompt({
-    db,
-    projectPath: session.projectPath,
-    query: memoryQuery,
-    settings: settings.memory
-  })
   const skillsSystem = buildSkillsSystemPrompt({
     projectPath: session.projectPath,
     query: memoryQuery,
     selectedSkills,
     settings: settings.skills
   })
-  const systemPrompts = [
-    sessionMemorySystem,
-    longTermMemorySystem,
-    skillsSystem,
-    system
-  ].filter(isSystemPrompt)
-  const model = resolveModel(requestedModelId ?? session.modelId ?? undefined)
-  const modelMessages = await convertToModelMessages(messages)
-  const result = await streamAgentChat({
-    db,
-    messages: modelMessages,
-    model,
-    modelId: requestedModelId ?? session.modelId ?? null,
-    projectPath: session.projectPath,
-    sessionId,
-    settings,
-    systemPrompts
-  })
+  const systemPrompts = [sessionMemorySystem, skillsSystem, system].filter(
+    isSystemPrompt
+  )
+  const effectiveModelId = requestedModelId ?? session.modelId ?? null
+  const model = resolveModel(effectiveModelId ?? undefined)
+  const moonshotReasoningForAssistantToolCalls = isMoonshotModelId(
+    effectiveModelId
+  )
+    ? buildMoonshotReasoningForAssistantToolCalls(modelMessages)
+    : []
+  const requestStartedAt = Date.now()
 
-  return result.toUIMessageStreamResponse({
-    onFinish: async ({ messages: nextMessages }) => {
+  return buildChatStreamResponse({
+    buildLongTermMemorySystem: () =>
+      buildMemorySystemPrompt({
+        db,
+        projectPath: session.projectPath,
+        query: memoryQuery,
+        settings: settings.memory
+      }),
+    db,
+    messages,
+    model,
+    modelId: effectiveModelId,
+    modelMessages,
+    moonshotReasoningForAssistantToolCalls,
+    onFinishPersist: async (nextMessages) => {
       await replaceChatMessages({
         db,
         messages: nextMessages,
         sessionId
       })
     },
-    originalMessages: messages
+    projectPath: session.projectPath,
+    requestStartedAt,
+    sessionId,
+    settings,
+    shouldRetrieveLongTermMemory,
+    streamAgentChat,
+    systemPrompts
   })
 })
 

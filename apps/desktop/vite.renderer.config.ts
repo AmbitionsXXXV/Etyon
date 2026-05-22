@@ -40,6 +40,7 @@ const optimizedDependencies = [
   "@tiptap/react",
   "@tiptap/starter-kit",
   "ai",
+  "ansi-to-react",
   "class-variance-authority",
   "clsx",
   "i18next",

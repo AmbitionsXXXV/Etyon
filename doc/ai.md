@@ -154,6 +154,21 @@ const ChatComponent = () => {
 - 持久化消息时会同步更新 session `updatedAt`；如果 title 为空，会从第一条 user 文本生成 session 标题
 - renderer 的 `onFinish` 只负责失效 `chatSessions.list` 与 `chatSessions.listMessages` 缓存，让 sidebar title 与下次进入页面的历史保持一致
 
+## Chat Live Status 与 Work Time
+
+- 请求提交后、assistant 第一段内容到达前，chat viewport 会显示轻量 live 状态行，使用 [`tw-shimmer`](https://www.assistant-ui.com/tw-shimmer) 文本动画，而不是 spinner。
+- live 状态会根据当前流式内容切换文案：`memory-loading`（长期 memory 检索）、`model-start`（连接模型）、`waiting`（已提交）、`thinking`（`reasoning` part 或未闭合的 `<antThinking>`）、`tool-running`（终端类 tool 正在执行）、`receiving`（正文流式输出）。
+- `/api/chat` 通过 `createUIMessageStream` 发送 transient `data-chat-request-phase` 事件；renderer 的 `useChat({ onData })` 接收后更新 live 状态，不再把 memory 准备时间算进「无反馈等待」。
+- 长期 memory 检索在 UI stream 开始后异步执行（`buildMemorySystemPrompt`），完成后再 `writer.merge(result.toUIMessageStream())`；session memory、skills、`@` snapshot 仍在 route 层与 `convertToModelMessages` 并行准备。
+- 每次 `/api/chat` 请求会在服务端记录 `workTimeMs`，并写入最新 assistant 消息的 `metadata.workTimeMs`；renderer 在 assistant 回复开头展示用时，并在流式过程中实时刷新。
+- 命令输出使用 HeroUI + `TerminalOutput` 组件渲染，参考 [AI Elements Terminal](https://elements.ai-sdk.dev/components/terminal)，支持 ANSI 颜色、自动滚动、复制与流式光标。
+
+## Chat Timeline 布局
+
+- assistant 消息按 `message.parts` 顺序渲染（`AssistantMessageTimeline`），不再把 tool trace 汇总到底部暂存区。
+- `text` part 内的 `<antThinking>`、`Executed in ...`、`<function_calls>` 会在该 text part 内按出现顺序拆成 timeline 条目。
+- AI SDK `tool-*` parts 与 `reasoning` parts 在各自 stream 位置内联展示；`MessageToolTrace` 仅保留复用卡片组件，不再作为聚合容器。
+
 ## Chat Message Actions
 
 assistant 消息下方固定展示一组本地 action，顺序为复制、好评、差评、重新生成：
@@ -224,6 +239,7 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 ### OpenAI-compatible Providers
 
 - `moonshot` 与 `zai-coding-plan` 在运行时复用 `createOpenAI({ apiKey, baseURL }).chat(model)`，请求会落到 OpenAI-compatible 的 `/chat/completions`
+- Kimi thinking 模型在多轮 tool call 时要求历史 assistant `tool_calls` 消息携带 `reasoning_content`；`moonshot` provider 通过 `createMoonshotFetch()` 在 `/chat/completions` 请求发出前补齐缺失字段（优先复用已保存的 `reasoning` part，否则写入占位符），避免 `thinking is enabled but reasoning_content is missing` 400 错误
 - `openai` 官方 provider 继续使用 `createOpenAI({ apiKey, baseURL })(model)`，保持 AI SDK v6 默认的 Responses API 行为
 - 建模前会检查：
   - `enabled === true`
@@ -264,7 +280,10 @@ Renderer draft.availableModels / draft.models
 | ----------------------------------------------------------- | ---------------------------------------- |
 | `apps/desktop/src/main/chat-messages.ts`                    | Chat UIMessage 持久化                    |
 | `apps/desktop/src/main/chat-session-memory.ts`              | Session memory 构建、读取与 prompt 注入  |
+| `apps/desktop/src/main/server/routes/build-chat-stream-response.ts` | Chat UI stream（memory phase + model merge） |
 | `apps/desktop/src/main/server/routes/chat.ts`               | Chat 流式对话端点                        |
+| `apps/desktop/src/renderer/components/chat/assistant-message-timeline.tsx` | assistant 消息 timeline 渲染 |
+| `apps/desktop/src/shared/chat/stream-data.ts`               | Chat stream transient data 类型          |
 | `apps/desktop/src/main/server/lib/providers.ts`             | AI Provider 工厂                         |
 | `apps/desktop/src/main/telegram/bridge.ts`                  | Chat SDK Telegram adapter 与 AI 回复桥接 |
 | `apps/desktop/src/main/telegram/client.ts`                  | Telegram `getMe` 连接测试 client         |

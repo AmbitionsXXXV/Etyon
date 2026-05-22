@@ -35,14 +35,12 @@ import { isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
+import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import {
   MessageActions,
   USER_MESSAGE_ACTIONS
 } from "@/renderer/components/chat/message-actions"
-import {
-  AssistantThinkingTrace,
-  MessageToolTrace
-} from "@/renderer/components/chat/message-tool-trace"
+import { AssistantThinkingTrace } from "@/renderer/components/chat/message-tool-trace"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
@@ -53,6 +51,15 @@ import {
 import type { ProjectContextPanelView } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
+import {
+  ASSISTANT_LIVE_STATUS_LABEL_KEY,
+  resolveAssistantLiveStatus
+} from "@/renderer/lib/chat/live-status"
+import {
+  formatWorkTime,
+  parseChatMessageMetadata
+} from "@/renderer/lib/chat/message-metadata"
+import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
   buildAiSettingsWithDefaultModel,
@@ -75,31 +82,29 @@ import type {
   PromptMentionTrigger,
   PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
-import {
-  hasNonTextAssistantSegments,
-  splitAssistantTextSegments
-} from "@/renderer/lib/chat/tool-ui"
-import type {
-  AssistantCommandTextSegment,
-  AssistantTextSegment
-} from "@/renderer/lib/chat/tool-ui"
+import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
   getChatSessionTitle,
   sortChatSessionsByLastOpenedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
-
-interface ChatMessageMetadata {
-  mentions?: ChatMention[]
-}
+import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
+import type {
+  ChatRequestPhase,
+  ChatStreamDataTypes
+} from "@/shared/chat/stream-data"
 
 interface MentionQueryState {
   query: string
   trigger: PromptMentionTrigger
 }
 
-type ChatUiMessage = UIMessage<ChatMessageMetadata>
+type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
+type ReasoningChatPart = Extract<
+  ChatUiMessage["parts"][number],
+  { type: "reasoning" }
+>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
 
@@ -154,13 +159,15 @@ const toRuntimeChatMessage = (
     role: message.role
   }
 
-  if (message.metadata === undefined) {
+  const metadata = parseChatMessageMetadata(message.metadata)
+
+  if (metadata === undefined) {
     return runtimeMessage
   }
 
   return {
     ...runtimeMessage,
-    metadata: message.metadata as ChatMessageMetadata
+    metadata
   }
 }
 
@@ -179,9 +186,12 @@ const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
 const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
   message.parts.filter(isToolUIPart)
 
-const isCommandTextSegment = (
-  segment: AssistantTextSegment
-): segment is AssistantCommandTextSegment => segment.type === "executed-command"
+const getMessageReasoningParts = (
+  message: ChatUiMessage
+): ReasoningChatPart[] =>
+  message.parts.filter(
+    (part): part is ReasoningChatPart => part.type === "reasoning"
+  )
 
 const MessageTextContent = ({
   mentions,
@@ -696,6 +706,89 @@ const MessageSegmentContent = ({
   )
 }
 
+const hasRenderableAssistantContent = (message: ChatUiMessage | undefined) =>
+  message?.role === "assistant" &&
+  (getMessageText(message).trim() !== "" ||
+    getMessageReasoningParts(message).length > 0 ||
+    getMessageToolParts(message).length > 0)
+
+const AssistantWorkTime = ({
+  liveStartedAt,
+  workTimeMs
+}: {
+  liveStartedAt?: number
+  workTimeMs?: number
+}) => {
+  const { t } = useI18n()
+  const [liveElapsedMs, setLiveElapsedMs] = useState<number | undefined>()
+
+  useEffect(() => {
+    if (workTimeMs !== undefined) {
+      setLiveElapsedMs(undefined)
+      return
+    }
+
+    if (liveStartedAt === undefined) {
+      setLiveElapsedMs(undefined)
+      return
+    }
+
+    const updateElapsed = () => {
+      setLiveElapsedMs(Math.max(0, Date.now() - liveStartedAt))
+    }
+
+    updateElapsed()
+    const intervalId = window.setInterval(updateElapsed, 200)
+
+    return () => window.clearInterval(intervalId)
+  }, [liveStartedAt, workTimeMs])
+
+  const durationMs =
+    workTimeMs ?? liveElapsedMs ?? (liveStartedAt === undefined ? undefined : 0)
+
+  if (durationMs === undefined) {
+    return null
+  }
+
+  return (
+    <p className="mb-2 text-[0.6875rem] text-muted-foreground">
+      {t("chat.workTime.label", {
+        duration: formatWorkTime(durationMs)
+      })}
+    </p>
+  )
+}
+
+const AssistantLiveStatus = ({
+  latestMessage,
+  requestPhase,
+  requestStartedAt,
+  status
+}: {
+  latestMessage?: ChatUiMessage
+  requestPhase?: ChatRequestPhase | null
+  requestStartedAt?: number
+  status: "streaming" | "submitted"
+}) => {
+  const { t } = useI18n()
+  const liveStatus = resolveAssistantLiveStatus({
+    latestMessage,
+    requestPhase,
+    status
+  })
+
+  return (
+    <div className="group/message flex justify-start outline-none">
+      <div className="flex w-full max-w-3xl flex-col gap-1 px-1 py-2 text-xs">
+        <span className="shimmer text-muted-foreground/80">
+          {t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
+        </span>
+        <AssistantWorkTime liveStartedAt={requestStartedAt} />
+      </div>
+    </div>
+  )
+}
+
 const EditingMessageBubble = ({
   editingMessageText,
   isRequestPending,
@@ -748,45 +841,71 @@ const EditingMessageBubble = ({
 
 const ChatMessageBubble = ({
   isAssistant,
+  isLatestAssistantMessage,
   isRequestPending,
+  liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
   showToolTraces
 }: {
   isAssistant: boolean
+  isLatestAssistantMessage: boolean
   isRequestPending: boolean
+  liveWorkTimeStartedAt?: number
   message: ChatUiMessage
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   showToolTraces: boolean
 }) => {
-  const mentions = message.metadata?.mentions ?? []
+  const metadata = parseChatMessageMetadata(message.metadata)
+  const mentions = metadata?.mentions ?? []
   const messageText = getMessageText(message)
-  const toolParts =
-    showToolTraces && isAssistant ? getMessageToolParts(message) : []
-  const segments =
-    showToolTraces && isAssistant
-      ? splitAssistantTextSegments(messageText)
-      : ([
-          {
-            text: messageText,
-            type: "text"
-          }
-        ] satisfies AssistantTextSegment[])
-  const commandSegments = segments.filter(isCommandTextSegment)
-  const usesStructuredSegments =
-    showToolTraces && isAssistant && hasNonTextAssistantSegments(segments)
+  const segments = isAssistant
+    ? ([
+        {
+          text: messageText,
+          type: "text"
+        }
+      ] satisfies AssistantTextSegment[])
+    : []
+  const usesStructuredSegments = false
   const hasInlineMentions = splitPromptTextByMentions({
     mentions,
     text: messageText
   }).some((part) => part.type === "mention")
 
+  if (isAssistant) {
+    return (
+      <div className="w-full min-w-0 px-1 py-1 text-sm leading-6 text-foreground">
+        <AssistantWorkTime
+          liveStartedAt={
+            isLatestAssistantMessage && isRequestPending
+              ? liveWorkTimeStartedAt
+              : undefined
+          }
+          workTimeMs={metadata?.workTimeMs}
+        />
+
+        {mentions.length > 0 && !hasInlineMentions ? (
+          <MessageMentionChips
+            isAssistant
+            mentions={mentions}
+            messageId={message.id}
+          />
+        ) : null}
+
+        <AssistantMessageTimeline
+          isApprovalActionDisabled={isRequestPending}
+          mentions={mentions}
+          message={message}
+          onApprovalResponse={onApprovalResponse}
+          showToolTraces={showToolTraces}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div
-      className={cn("rounded-3xl px-4 py-3", {
-        "bg-muted/60 text-foreground": isAssistant,
-        "bg-primary text-primary-foreground": !isAssistant
-      })}
-    >
+    <div className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground">
       {mentions.length > 0 && !hasInlineMentions ? (
         <MessageMentionChips
           isAssistant={isAssistant}
@@ -802,13 +921,6 @@ const ChatMessageBubble = ({
         text={messageText}
         usesStructuredSegments={usesStructuredSegments}
       />
-
-      <MessageToolTrace
-        commandSegments={commandSegments}
-        isApprovalActionDisabled={isRequestPending}
-        onApprovalResponse={onApprovalResponse}
-        parts={toolParts}
-      />
     </div>
   )
 }
@@ -816,7 +928,9 @@ const ChatMessageBubble = ({
 const ChatMessageItem = ({
   editingMessageId,
   editingMessageText,
+  isLatestAssistantMessage,
   isRequestPending,
+  liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
   onCancelEditMessage,
@@ -828,7 +942,9 @@ const ChatMessageItem = ({
 }: {
   editingMessageId: string | null
   editingMessageText: string
+  isLatestAssistantMessage: boolean
   isRequestPending: boolean
+  liveWorkTimeStartedAt?: number
   message: ChatUiMessage
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   onCancelEditMessage: () => void
@@ -850,7 +966,12 @@ const ChatMessageItem = ({
         isAssistant ? "justify-start" : "justify-end"
       )}
     >
-      <div>
+      <div
+        className={cn(
+          "min-w-0",
+          isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
+        )}
+      >
         {isEditingMessage ? (
           <EditingMessageBubble
             editingMessageText={editingMessageText}
@@ -863,7 +984,9 @@ const ChatMessageItem = ({
         ) : (
           <ChatMessageBubble
             isAssistant={isAssistant}
+            isLatestAssistantMessage={isLatestAssistantMessage}
             isRequestPending={isRequestPending}
+            liveWorkTimeStartedAt={liveWorkTimeStartedAt}
             message={message}
             onApprovalResponse={onApprovalResponse}
             showToolTraces={showToolTraces}
@@ -950,6 +1073,10 @@ const ChatRuntime = ({
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState("")
+  const [requestPhase, setRequestPhase] = useState<ChatRequestPhase | null>(
+    null
+  )
+  const [requestStartedAt, setRequestStartedAt] = useState<number | undefined>()
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const {
     addToolApprovalResponse,
@@ -963,7 +1090,15 @@ const ChatRuntime = ({
   } = useChat<ChatUiMessage>({
     id: selectedSession.id,
     messages: initialMessages,
-    onFinish: onChatFinish,
+    onData: (dataPart) => {
+      if (isChatRequestPhaseDataPart(dataPart)) {
+        setRequestPhase(dataPart.data.phase)
+      }
+    },
+    onFinish: () => {
+      setRequestPhase(null)
+      onChatFinish()
+    },
     transport
   })
 
@@ -1041,6 +1176,23 @@ const ChatRuntime = ({
   const isComposerDisabled =
     isModelUpdating || status === "streaming" || status === "submitted"
   const isRequestPending = status === "streaming" || status === "submitted"
+  const latestMessage = messages.at(-1)
+  const latestAssistantMessageId = useMemo(
+    () => messages.findLast((message) => message.role === "assistant")?.id,
+    [messages]
+  )
+  const shouldShowAssistantLiveStatus =
+    isRequestPending && !hasRenderableAssistantContent(latestMessage)
+
+  useEffect(() => {
+    if (status === "submitted" || status === "streaming") {
+      setRequestStartedAt((currentValue) => currentValue ?? Date.now())
+      return
+    }
+
+    setRequestPhase(null)
+    setRequestStartedAt(undefined)
+  }, [status])
   const latestUserMentions = useMemo(() => {
     for (const message of messages.toReversed()) {
       if (message.role === "user") {
@@ -1227,8 +1379,13 @@ const ChatRuntime = ({
                     <ChatMessageItem
                       editingMessageId={editingMessageId}
                       editingMessageText={editingMessageText}
+                      isLatestAssistantMessage={
+                        message.role === "assistant" &&
+                        message.id === latestAssistantMessageId
+                      }
                       isRequestPending={isRequestPending}
                       key={message.id}
+                      liveWorkTimeStartedAt={requestStartedAt}
                       message={message}
                       onApprovalResponse={handleToolApprovalResponse}
                       onCancelEditMessage={handleCancelEditMessage}
@@ -1239,6 +1396,16 @@ const ChatRuntime = ({
                       showToolTraces={showToolTraces}
                     />
                   ))}
+                  {shouldShowAssistantLiveStatus ? (
+                    <AssistantLiveStatus
+                      latestMessage={latestMessage}
+                      requestPhase={requestPhase}
+                      requestStartedAt={requestStartedAt}
+                      status={
+                        status === "streaming" ? "streaming" : "submitted"
+                      }
+                    />
+                  ) : null}
                   {error && (
                     <ChatErrorActionBar
                       errorMessage={error.message}

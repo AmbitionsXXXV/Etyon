@@ -245,7 +245,7 @@ interface StoredProviderModel {
   - `maxConcurrentSubagents`：delegation 并发预算，范围 `1-4`；超出预算时子 agent tool 会返回 rejected summary，不会启动新的 child run
 - 开启 delegation 后，`coder` 可委派给 `explore` / `review`，`plan` 可委派给 `explore`；子 agent 使用独立 `agent_runs.parent_run_id` 和受限工具集，父 agent 只收到 summary
 - `Agents` tab 借鉴 Alma 的 `Control ring`、`Crew roster` 与 `Routing preview`，但不展示静态 run dashboard；真实运行状态应来自 `agent_runs`、`agent_events` 和 `agent_tool_calls`
-- Chat viewport 负责承载运行时交互：tool trace 紧贴 assistant bubble 显示，`approval-requested` 状态在 trace 行内提供批准 / 拒绝操作，不额外打开 settings 或独立 workbench
+- Chat viewport 负责承载运行时交互：tool trace 紧贴 assistant 输出显示，`approval-requested` 状态在 trace 行内提供批准 / 拒绝操作，不额外打开 settings 或独立 workbench；文本流里的 `<antThinking>`、`Executed in ...`、`<function_calls><invoke ...>` 会被解析成 trace，正文不直接展示原始标签。Assistant 输出采用无外框连续布局，只有 user 消息保留右侧 bubble；请求提交到第一段 assistant 内容到达前显示轻量 live 状态行
 - 表单控件统一走 HeroUI shared styles：`Input`、`TextArea`、`Select.Trigger`、`NumberField.Group` 在 settings 卡片内使用可辨识背景、边框和全宽布局，只有小型数值 stepper 保留紧凑宽度
 
 ## Token Savings Tab

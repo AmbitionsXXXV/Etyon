@@ -7,8 +7,6 @@ import {
   CheckmarkCircle01Icon,
   Clock03Icon,
   ComputerTerminal02Icon,
-  Copy02Icon,
-  CopyCheckIcon,
   FileCodeIcon,
   SearchCodeIcon,
   ToolsIcon,
@@ -18,9 +16,12 @@ import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { DynamicToolUIPart, ToolUIPart } from "ai"
 import { getToolName } from "ai"
-import { useCallback, useEffect, useRef, useState } from "react"
 
-import type { AssistantCommandTextSegment } from "@/renderer/lib/chat/tool-ui"
+import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
+import type {
+  AssistantCommandTextSegment,
+  AssistantFunctionCallTextSegment
+} from "@/renderer/lib/chat/tool-ui"
 
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
 type ChatToolState = ChatToolPart["state"]
@@ -39,13 +40,9 @@ interface ToolTracePanelProps {
   label: string
 }
 
-interface ToolTraceTerminalBlockProps {
-  command?: string
-  content: string
-}
-
 interface MessageToolTraceProps {
   commandSegments: AssistantCommandTextSegment[]
+  functionCallSegments: AssistantFunctionCallTextSegment[]
   isApprovalActionDisabled: boolean
   onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
   parts: ChatToolPart[]
@@ -147,6 +144,10 @@ const getToolTraceStateClassName = (state: ChatToolState): string => {
 }
 
 const getToolIcon = (toolName: string): IconSvgElement => {
+  if (toolName === "bash" || toolName === "shell") {
+    return ComputerTerminal02Icon
+  }
+
   if (toolName === "runCheck" || toolName === "rtkCommand") {
     return ComputerTerminal02Icon
   }
@@ -230,6 +231,23 @@ const getToolInputMeta = (input: unknown): string => {
   return [cwd ? `cwd: ${cwd}` : "", reason].filter(Boolean).join(" · ")
 }
 
+const getFunctionCallParameterValue = (
+  segment: AssistantFunctionCallTextSegment,
+  name: string
+): string =>
+  segment.parameters.find((parameter) => parameter.name === name)?.value ?? ""
+
+const formatFunctionCallParameters = (
+  segment: AssistantFunctionCallTextSegment
+): string =>
+  segment.parameters
+    .map((parameter) =>
+      parameter.value.includes("\n")
+        ? `${parameter.name}:\n${parameter.value}`
+        : `${parameter.name}: ${parameter.value}`
+    )
+    .join("\n")
+
 const getToolOutputSummary = (output: unknown): string => {
   if (!isRecord(output)) {
     return formatToolTracePreview(output)
@@ -267,101 +285,16 @@ const getToolOutputSummary = (output: unknown): string => {
   return formatToolTracePreview(output)
 }
 
-const ToolTraceTerminalBlock = ({
-  command,
-  content
-}: ToolTraceTerminalBlockProps) => {
-  const { t } = useI18n()
-  const [isCopied, setIsCopied] = useState(false)
-  const contentRef = useRef<HTMLPreElement | null>(null)
-  const hasContent = content.length > 0
-
-  useEffect(() => {
-    const contentElement = contentRef.current
-
-    if (contentElement) {
-      contentElement.scrollTop = contentElement.scrollHeight
-    }
-  }, [content])
-
-  useEffect(() => {
-    if (!isCopied) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => setIsCopied(false), 1200)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [isCopied])
-
-  const handleCopy = useCallback(async () => {
-    if (!(hasContent && navigator.clipboard)) {
-      return
-    }
-
-    await navigator.clipboard.writeText(content)
-    setIsCopied(true)
-  }, [content, hasContent])
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-border/70 bg-zinc-950 text-zinc-100 shadow-inner">
-      {command || hasContent ? (
-        <div className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2">
-            {command ? (
-              <>
-                <span className="shrink-0 font-mono text-[0.6875rem] text-zinc-500">
-                  $
-                </span>
-                <code className="truncate font-mono text-[0.6875rem] text-zinc-200">
-                  {command}
-                </code>
-              </>
-            ) : null}
-          </div>
-          {hasContent ? (
-            <Button
-              aria-label={t(
-                isCopied ? "chat.toolTrace.copied" : "chat.toolTrace.copyOutput"
-              )}
-              className="size-7 shrink-0 text-zinc-400 hover:text-zinc-100"
-              isIconOnly
-              onPress={handleCopy}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <HugeiconsIcon
-                icon={isCopied ? CopyCheckIcon : Copy02Icon}
-                size={14}
-              />
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      <pre
-        className={cn(
-          "max-h-72 overflow-auto p-3 font-mono text-[0.6875rem] leading-5 wrap-break-word whitespace-pre-wrap",
-          hasContent ? "text-zinc-100" : "text-zinc-500 italic"
-        )}
-        ref={contentRef}
-      >
-        {hasContent ? content : t("chat.toolTrace.noOutput")}
-      </pre>
-    </div>
-  )
-}
-
 const ToolTracePanel = ({ body, label }: ToolTracePanelProps) => {
   if (!body) {
     return null
   }
 
   return (
-    <Disclosure className="rounded-lg border border-border/60 bg-background/50">
-      <Disclosure.Heading>
+    <Disclosure className="overflow-hidden rounded-lg border border-border/60 bg-background/50">
+      <Disclosure.Heading className="rounded-lg">
         <Button
-          className="h-8 w-full justify-between px-2 text-xs"
+          className="h-8 w-full justify-between rounded-lg px-2 text-xs hover:bg-muted/50 data-[hovered=true]:bg-muted/50"
           slot="trigger"
           type="button"
           variant="ghost"
@@ -402,7 +335,67 @@ const ToolTraceMeta = ({ items }: { items: string[] }) => {
   )
 }
 
-const CommandTextTraceCard = ({
+export const FunctionCallTextTraceCard = ({
+  segment
+}: {
+  segment: AssistantFunctionCallTextSegment
+}) => {
+  const { t } = useI18n()
+  const inputCommand =
+    getFunctionCallParameterValue(segment, "command") ||
+    getFunctionCallParameterValue(segment, "path")
+  const cwd = getFunctionCallParameterValue(segment, "cwd")
+
+  return (
+    <Card
+      className="rounded-xl border border-border/70 bg-background/70 p-0 shadow-none"
+      variant="transparent"
+    >
+      <Card.Header className="flex items-start justify-between gap-3 p-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={getToolIcon(segment.name)} size={15} />
+          </span>
+          <div className="min-w-0">
+            <Card.Title className="truncate text-xs">
+              {t("chat.toolTrace.functionCall")}
+            </Card.Title>
+            <Card.Description className="mt-1 truncate font-mono text-[0.6875rem] font-medium text-foreground!">
+              {inputCommand || segment.name}
+            </Card.Description>
+          </div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-md px-1.5 py-0.5 text-[0.625rem] font-medium",
+            getToolTraceStateClassName("input-available")
+          )}
+        >
+          {t("chat.toolTrace.state.inputAvailable")}
+        </span>
+      </Card.Header>
+      <Card.Content className="space-y-2 px-3 pb-3">
+        <ToolTraceMeta
+          items={[
+            `${t("chat.toolTrace.input")}: ${segment.name}`,
+            cwd ? `${t("chat.toolTrace.cwd")}: ${cwd}` : ""
+          ]}
+        />
+        {inputCommand ? (
+          <p className="rounded-md border border-border/60 bg-muted/45 p-2 font-mono text-[0.6875rem] leading-5 wrap-break-word whitespace-pre-wrap text-foreground">
+            {inputCommand}
+          </p>
+        ) : null}
+        <ToolTracePanel
+          body={formatFunctionCallParameters(segment)}
+          label={t("chat.toolTrace.input")}
+        />
+      </Card.Content>
+    </Card>
+  )
+}
+
+export const CommandTextTraceCard = ({
   segment
 }: {
   segment: AssistantCommandTextSegment
@@ -462,16 +455,44 @@ const CommandTextTraceCard = ({
               : ""
           ]}
         />
-        <ToolTraceTerminalBlock
+        <TerminalOutput
           command={segment.command}
-          content={segment.output}
+          output={segment.output}
+          title={t("chat.terminal.title")}
         />
       </Card.Content>
     </Card>
   )
 }
 
-const StructuredToolTraceCard = ({
+const ToolTraceCommandOutputSection = ({
+  commandOutput,
+  commandOutputContent,
+  inputCommand,
+  isCommandStreaming,
+  toolName
+}: {
+  commandOutput: CommandOutputView | null
+  commandOutputContent: string
+  inputCommand: string
+  isCommandStreaming: boolean
+  toolName: string
+}) => {
+  if (!(commandOutput || inputCommand)) {
+    return null
+  }
+
+  return (
+    <TerminalOutput
+      command={inputCommand}
+      isStreaming={isCommandStreaming && !commandOutputContent}
+      output={commandOutputContent}
+      title={toolName}
+    />
+  )
+}
+
+export const StructuredToolTraceCard = ({
   isApprovalActionDisabled,
   onApprovalResponse,
   part
@@ -500,6 +521,8 @@ const StructuredToolTraceCard = ({
   ]
     .filter(Boolean)
     .join("\n")
+  const isCommandStreaming =
+    part.state === "input-streaming" || part.state === "input-available"
 
   return (
     <Card
@@ -572,12 +595,13 @@ const StructuredToolTraceCard = ({
             </Button>
           </div>
         ) : null}
-        {commandOutput ? (
-          <ToolTraceTerminalBlock
-            command={inputCommand}
-            content={commandOutputContent}
-          />
-        ) : null}
+        <ToolTraceCommandOutputSection
+          commandOutput={commandOutput}
+          commandOutputContent={commandOutputContent}
+          inputCommand={inputCommand}
+          isCommandStreaming={isCommandStreaming}
+          toolName={toolName}
+        />
         <div className="space-y-1.5">
           <ToolTracePanel
             body={formatToolTraceDetail(part.input)}
@@ -629,13 +653,18 @@ export const AssistantThinkingTrace = ({ text }: { text: string }) => {
 
 export const MessageToolTrace = ({
   commandSegments,
+  functionCallSegments,
   isApprovalActionDisabled,
   onApprovalResponse,
   parts
 }: MessageToolTraceProps) => {
   const { t } = useI18n()
 
-  if (parts.length === 0 && commandSegments.length === 0) {
+  if (
+    parts.length === 0 &&
+    commandSegments.length === 0 &&
+    functionCallSegments.length === 0
+  ) {
     return null
   }
 
@@ -648,6 +677,15 @@ export const MessageToolTrace = ({
       {commandSegments.map((segment) => (
         <CommandTextTraceCard
           key={`${segment.cwd}-${segment.shell}-${segment.command}-${segment.exitCode}`}
+          segment={segment}
+        />
+      ))}
+      {functionCallSegments.map((segment, index) => (
+        <FunctionCallTextTraceCard
+          key={`${segment.name}-${index}-${getFunctionCallParameterValue(
+            segment,
+            "command"
+          )}`}
           segment={segment}
         />
       ))}

@@ -82,6 +82,7 @@
     "onnx",
     "pids",
     "poimandres",
+    "Renderable",
     "sentencepiece",
     "Subdeps",
     "togglefullscreen",

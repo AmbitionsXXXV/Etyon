@@ -9,6 +9,7 @@ import type {
 import type { LanguageModel } from "ai"
 
 import { getSettings } from "@/main/settings"
+import { createMoonshotFetch } from "@/shared/providers/moonshot-reasoning"
 import {
   BUILT_IN_PROVIDER_CATALOG,
   resolveProviderBaseURL
@@ -121,7 +122,13 @@ const createProviderModel = (
     throw new Error(`Provider "${provider}" is disabled.`)
   }
 
-  const createOpenAICompatibleChatModel = (baseURL?: string): LanguageModel => {
+  const createOpenAICompatibleChatModel = ({
+    baseURL,
+    fetch: customFetch
+  }: {
+    baseURL?: string
+    fetch?: typeof fetch
+  } = {}): LanguageModel => {
     const apiKey = providerConfig.apiKey.trim()
 
     if (!apiKey) {
@@ -131,7 +138,8 @@ const createProviderModel = (
     const openai = createOpenAI({
       apiKey,
       name: provider,
-      ...(baseURL ? { baseURL } : {})
+      ...(baseURL ? { baseURL } : {}),
+      ...(customFetch ? { fetch: customFetch } : {})
     })
 
     return openai.chat(model)
@@ -179,17 +187,18 @@ const createProviderModel = (
       return gateway(model)
     }
     case "moonshot": {
-      return createOpenAICompatibleChatModel(
-        resolveProviderBaseURL(provider, providerConfig)
-      )
+      return createOpenAICompatibleChatModel({
+        baseURL: resolveProviderBaseURL(provider, providerConfig),
+        fetch: createMoonshotFetch()
+      })
     }
     case "openai": {
       return createOpenAIResponsesModel(providerConfig.baseURL)
     }
     case "zai-coding-plan": {
-      return createOpenAICompatibleChatModel(
-        resolveProviderBaseURL(provider, providerConfig)
-      )
+      return createOpenAICompatibleChatModel({
+        baseURL: resolveProviderBaseURL(provider, providerConfig)
+      })
     }
     default: {
       const _exhaustive: never = provider

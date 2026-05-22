@@ -114,11 +114,14 @@ describe("resolveModel", () => {
   it("uses chat completions for moonshot models", () => {
     const model = resolveModel("moonshot/kimi-k2.6")
 
-    expect(createOpenAIMock).toHaveBeenCalledWith({
-      apiKey: "moonshot-key",
-      baseURL: "https://api.moonshot.cn/v1",
-      name: "moonshot"
-    })
+    expect(createOpenAIMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "moonshot-key",
+        baseURL: "https://api.moonshot.cn/v1",
+        fetch: expect.any(Function),
+        name: "moonshot"
+      })
+    )
     expect(openAIProviderMock).not.toHaveBeenCalled()
     expect(openAIProviderMock.chat).toHaveBeenCalledWith("kimi-k2.6")
     expect(model).toEqual({
@@ -185,11 +188,14 @@ describe("resolveModel", () => {
 
     const model = resolveModel()
 
-    expect(createOpenAIMock).toHaveBeenCalledWith({
-      apiKey: "moonshot-key",
-      baseURL: "https://api.moonshot.cn/v1",
-      name: "moonshot"
-    })
+    expect(createOpenAIMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "moonshot-key",
+        baseURL: "https://api.moonshot.cn/v1",
+        fetch: expect.any(Function),
+        name: "moonshot"
+      })
+    )
     expect(openAIProviderMock.chat).toHaveBeenCalledWith("kimi-k2.6")
     expect(model).toEqual({
       modelId: "kimi-k2.6",

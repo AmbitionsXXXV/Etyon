@@ -1,6 +1,7 @@
 @layer theme, base, components, utilities;
 
 @import "tailwindcss";
+@import "tw-shimmer";
 @import "@heroui/styles";
 @import "@heroui-pro/react/css";
 @import "tw-animate-css";

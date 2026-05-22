@@ -6,6 +6,7 @@ import { AppSettingsSchema } from "@etyon/rpc"
 import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/fetch"
 import type { RouterClient } from "@orpc/server"
+import type * as Ai from "ai"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { getLocalConnectionToken } from "@/main/local-connection"
@@ -142,44 +143,58 @@ const {
       kind: "step-count",
       stepCount
     })),
-    streamTextMock: vi.fn((_options: unknown) => ({
-      toUIMessageStreamResponse: async (options: {
-        onFinish?: (event: { messages: unknown[] }) => Promise<void> | void
-      }) => {
-        await options.onFinish?.({
-          messages: [
-            {
-              id: "message-1",
-              parts: [],
-              role: "user"
-            },
-            {
-              id: "message-2",
-              parts: [],
-              role: "assistant"
+    streamTextMock: vi.fn(() => ({
+      toUIMessageStream: vi.fn(
+        () =>
+          new ReadableStream({
+            start(controller) {
+              controller.close()
             }
-          ]
-        })
-
-        return Response.json(
-          { ok: true },
-          {
-            status: 200
-          }
-        )
-      }
+          })
+      )
     })),
     updateAgentRunMock: vi.fn(() => Promise.resolve({ id: "run-1" })),
     updateAgentToolCallMock: vi.fn(() => Promise.resolve({ id: "tool-call-1" }))
   }
 })
 
-vi.mock("ai", () => ({
-  convertToModelMessages: convertToModelMessagesMock,
-  stepCountIs: stepCountIsMock,
-  streamText: streamTextMock,
-  tool: (definition: unknown) => definition
-}))
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof Ai>()
+
+  return {
+    ...actual,
+    convertToModelMessages: convertToModelMessagesMock,
+    stepCountIs: stepCountIsMock,
+    streamText: streamTextMock,
+    tool: (definition: unknown) => definition
+  }
+})
+
+const getFirstStreamTextCallOptions = ():
+  | Record<string, unknown>
+  | undefined => {
+  const calls = streamTextMock.mock.calls as unknown as [
+    Record<string, unknown> | undefined
+  ][]
+
+  return calls[0]?.[0]
+}
+
+const consumeChatResponse = async (response: Response): Promise<void> => {
+  if (!response.body) {
+    return
+  }
+
+  const reader = response.body.getReader()
+
+  while (true) {
+    const { done } = await reader.read()
+
+    if (done) {
+      break
+    }
+  }
+}
 
 vi.mock("@/main/agents/agent-event-store", () => ({
   createAgentRun: createAgentRunMock,
@@ -401,6 +416,7 @@ describe("hono app", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe(
       "http://localhost:5173"
     )
+    await consumeChatResponse(response)
   })
 
   it("serves oRPC over /rpc and logs a single structured request event", async () => {
@@ -466,7 +482,8 @@ describe("hono app", () => {
     })
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ ok: true })
+    expect(response.headers.get("content-type")).toContain("text/event-stream")
+    await consumeChatResponse(response)
     expect(resolveModelMock).toHaveBeenCalledWith("openai/gpt-4o-mini")
     expect(getChatSessionByIdMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -508,25 +525,22 @@ describe("hono app", () => {
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         system:
-          "session memory context\n\nlong-term memory context\n\nskills context\n\nsnapshot context"
+          "session memory context\n\nskills context\n\nsnapshot context\n\nlong-term memory context"
       })
     )
-    expect(replaceChatMessagesMock).toHaveBeenCalledWith({
-      db: expect.anything(),
-      messages: [
-        {
-          id: "message-1",
-          parts: [],
-          role: "user"
-        },
-        {
-          id: "message-2",
-          parts: [],
-          role: "assistant"
-        }
-      ],
-      sessionId: "session-1"
-    })
+    expect(replaceChatMessagesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "user"
+          }),
+          expect.objectContaining({
+            role: "assistant"
+          })
+        ])
+      })
+    )
   })
 
   it("does not inject agent tools into chat requests while agents are disabled", async () => {
@@ -547,11 +561,11 @@ describe("hono app", () => {
       },
       method: "POST"
     })
-    const streamOptions = streamTextMock.mock.calls[0]?.[0] as
-      | Record<string, unknown>
-      | undefined
 
     expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+    const streamOptions = getFirstStreamTextCallOptions()
+
     expect(streamOptions).not.toHaveProperty("tools")
     expect(streamOptions).not.toHaveProperty("stopWhen")
     expect(stepCountIsMock).not.toHaveBeenCalled()
@@ -582,14 +596,15 @@ describe("hono app", () => {
       },
       method: "POST"
     })
-    const streamOptions = streamTextMock.mock.calls[0]?.[0] as
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+    const streamOptions = getFirstStreamTextCallOptions() as
       | {
           stopWhen?: unknown
           tools?: Record<string, unknown>
         }
       | undefined
 
-    expect(response.status).toBe(200)
     expect(Object.keys(streamOptions?.tools ?? {}).toSorted()).toEqual([
       "gitDiff",
       "readFile",
@@ -622,6 +637,7 @@ describe("hono app", () => {
     })
 
     expect(response.status).toBe(200)
+    await consumeChatResponse(response)
     expect(resolveModelMock).toHaveBeenCalledWith("moonshot/kimi-k2.5")
   })
 
@@ -661,6 +677,7 @@ describe("hono app", () => {
     })
 
     expect(response.status).toBe(200)
+    await consumeChatResponse(response)
     expect(resolveModelMock).toHaveBeenCalledWith(undefined)
   })
 })

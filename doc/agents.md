@@ -33,7 +33,7 @@
 - 数据库已新增 `agent_runs`、`agent_events`、`agent_tool_calls`，用于记录 run lifecycle、tool call lifecycle 和 harness inspection。
 - 首版工具包含只读的 `searchFiles`、`readFile`、`listProjectTree`、`gitDiff`，写入/检查类 `applyPatch`、`runCheck`、`rtkCommand` 进入权限判断；`harness-operator` 可用 `agentEventsSearch` 与 `agentRunInspect` 做只读诊断。
 - `coder` / `plan` profiles 在开启 `allowSubagentDelegation` 后会暴露受控 delegation tools，例如 `agentExplore` 和 `agentReview`；子 agent 使用独立 child run、独立 tool trace、受限 context，并且不会拿到需要 approval 的工具。
-- Chat viewport 会渲染 tool trace；当 AI SDK tool part 进入 `approval-requested` 状态时，可直接在 trace 行内批准或拒绝，并继续同一条 chat stream。
+- Chat viewport 会渲染 tool trace；当 AI SDK tool part 进入 `approval-requested` 状态时，可直接在 trace 行内批准或拒绝，并继续同一条 chat stream；同时会把文本流里的 `<antThinking>`、`Executed in ...` 和 `<function_calls><invoke ...>` transcript 解析成紧凑 trace，避免原始工具标签直接漏进正文。Assistant 输出不使用整块 bubble 包裹，而是以无背景的连续流式内容和 trace 卡片向下展开；请求提交后如果还没有第一段 assistant part，会先显示轻量 live 状态行。
 - Settings 新增 `Agents` tab，用于控制 global enable、default profile、tool step budget、delegation 开关、write approval 与 trace visibility；profile 编辑、approval inbox 和完整 run graph 仍保留在后续阶段。
 
 ## 激进架构进步方向

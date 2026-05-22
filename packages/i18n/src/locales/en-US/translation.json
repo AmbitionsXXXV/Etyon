@@ -34,6 +34,14 @@
       "regenerate": "Regenerate"
     },
     "loading": "Loading chat session...",
+    "live": {
+      "memoryLoading": "Retrieving long-term memory...",
+      "modelStart": "Connecting to model...",
+      "receiving": "Receiving response...",
+      "thinking": "Thinking...",
+      "toolRunning": "Running command...",
+      "waiting": "Preparing response..."
+    },
     "mentions": {
       "empty": "No matching files, folders, or skills.",
       "filesGroup": "Files",
@@ -111,6 +119,11 @@
       "loading": "Preparing project snapshot...",
       "ready": "Snapshot: {snapshotId}"
     },
+    "terminal": {
+      "clear": "Clear",
+      "noOutput": "No output",
+      "title": "Terminal output"
+    },
     "toolTrace": {
       "approve": "Approve",
       "copied": "Copied",
@@ -120,6 +133,7 @@
       "duration": "Duration",
       "executedCommand": "Command",
       "exitCode": "Exit code",
+      "functionCall": "Tool call",
       "input": "Input",
       "noOutput": "No output",
       "output": "Output",
@@ -141,6 +155,9 @@
       "thinking": "Thinking",
       "title": "Tool activity",
       "truncated": "Truncated"
+    },
+    "workTime": {
+      "label": "Worked for {duration}"
     }
   },
   "home": {

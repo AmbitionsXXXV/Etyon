@@ -58,6 +58,78 @@ describe("chat tool ui helpers", () => {
     ])
   })
 
+  it("extracts function call transcript blocks", () => {
+    expect(
+      splitAssistantTextSegments(
+        [
+          "我来查看一下当前项目的 Git 状态：",
+          "",
+          "<function_calls>",
+          '<invoke name="bash">',
+          '<parameter name="command">git status &amp;&amp; git diff --stat</parameter>',
+          '<parameter name="cwd">/Users/example/project</parameter>',
+          "</invoke>",
+          "</function_calls>",
+          "",
+          "Done."
+        ].join("\n")
+      )
+    ).toEqual([
+      {
+        text: "我来查看一下当前项目的 Git 状态：",
+        type: "text"
+      },
+      {
+        name: "bash",
+        parameters: [
+          {
+            name: "command",
+            value: "git status && git diff --stat"
+          },
+          {
+            name: "cwd",
+            value: "/Users/example/project"
+          }
+        ],
+        type: "function-call"
+      },
+      {
+        text: "Done.",
+        type: "text"
+      }
+    ])
+  })
+
+  it("does not leak malformed function call closing tags", () => {
+    expect(
+      splitAssistantTextSegments(
+        [
+          "<function_calls>",
+          '<invoke name="bash">',
+          '<parameter name="command">git diff --stat</parameter>',
+          "</invoke>",
+          "</invoke>",
+          "After"
+        ].join("\n")
+      )
+    ).toEqual([
+      {
+        name: "bash",
+        parameters: [
+          {
+            name: "command",
+            value: "git diff --stat"
+          }
+        ],
+        type: "function-call"
+      },
+      {
+        text: "After",
+        type: "text"
+      }
+    ])
+  })
+
   it("compacts repeated command transcripts", () => {
     const repeatedTranscript = [
       "I will inspect git.",
