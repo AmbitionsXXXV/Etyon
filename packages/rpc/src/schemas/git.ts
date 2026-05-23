@@ -31,7 +31,16 @@ export const GitProjectDiffInputSchema = z.object({
   sessionId: z.string()
 })
 
+export const GitProjectDiffFileSnapshotSchema = z.object({
+  newContent: z.string(),
+  oldContent: z.string(),
+  oldPath: z.string().optional(),
+  path: z.string(),
+  stage: z.enum(["staged", "unstaged"])
+})
+
 export const GitProjectDiffOutputSchema = z.object({
+  fileSnapshots: z.array(GitProjectDiffFileSnapshotSchema),
   hasPatch: z.boolean(),
   patch: z.string(),
   projectPath: z.string(),
@@ -39,6 +48,9 @@ export const GitProjectDiffOutputSchema = z.object({
 })
 
 export type GitFileStatus = z.infer<typeof GitFileStatusSchema>
+export type GitProjectDiffFileSnapshot = z.infer<
+  typeof GitProjectDiffFileSnapshotSchema
+>
 export type GitProjectDiffInput = z.infer<typeof GitProjectDiffInputSchema>
 export type GitProjectDiffOutput = z.infer<typeof GitProjectDiffOutputSchema>
 export type GitProjectStatus = z.infer<typeof GitProjectStatusSchema>

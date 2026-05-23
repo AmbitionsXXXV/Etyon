@@ -6,7 +6,8 @@ import {
   buildProjectTreeDirectoryPaths,
   formatProjectDiffCount,
   getProjectDiffFileStats,
-  getProjectDiffSummary
+  getProjectDiffSummary,
+  parseProjectDiffFiles
 } from "@/renderer/lib/chat/project-context-panel"
 import { resolveProjectFileViewerLanguage } from "@/renderer/lib/chat/project-file-code-viewer"
 
@@ -121,6 +122,25 @@ describe("project context panel helpers", () => {
 
   it("formats diff counts with grouping separators", () => {
     expect(formatProjectDiffCount(2937)).toBe("2,937")
+  })
+
+  it("builds expandable file diffs from full git file snapshots", () => {
+    const files = parseProjectDiffFiles({
+      fileSnapshots: [
+        {
+          newContent: ["one", "shared", "new", ""].join("\n"),
+          oldContent: ["one", "shared", "old", ""].join("\n"),
+          path: "src/app.ts",
+          stage: "unstaged"
+        }
+      ],
+      patch: ""
+    })
+
+    expect(files).toHaveLength(1)
+    expect(files[0]?.isPartial).toBe(false)
+    expect(files[0]?.additionLines).toEqual(["one\n", "shared\n", "new\n"])
+    expect(files[0]?.deletionLines).toEqual(["one\n", "shared\n", "old\n"])
   })
 
   it("builds deepest-first directory paths for tree collapse actions", () => {

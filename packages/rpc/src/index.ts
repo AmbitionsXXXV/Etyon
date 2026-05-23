@@ -46,6 +46,7 @@ export type {
 } from "./schemas/cursor-auth"
 export {
   GitFileStatusSchema,
+  GitProjectDiffFileSnapshotSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
   GitProjectStatusSchema,
@@ -53,6 +54,7 @@ export {
 } from "./schemas/git"
 export type {
   GitFileStatus,
+  GitProjectDiffFileSnapshot,
   GitProjectDiffInput,
   GitProjectDiffOutput,
   GitProjectStatus,

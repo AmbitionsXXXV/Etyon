@@ -649,9 +649,13 @@ const CollapsibleFileDiff = ({
   }, [fileDiff.name])
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/70 text-[11px]">
+    <div className="rounded-xl border border-border/70 text-[11px]">
       <button
-        className="flex w-full cursor-pointer items-center gap-2 border-b border-border/50 bg-muted/50 px-3 py-2 text-left transition-colors hover:bg-muted/80"
+        className={cn(
+          "sticky top-0 z-20 flex w-full cursor-pointer items-center gap-2 rounded-t-[11px] border-b border-border/50 bg-muted/95 px-3 py-2 text-left shadow-sm backdrop-blur transition-colors hover:bg-muted",
+          isCollapsed && "rounded-b-[11px] border-b-0"
+        )}
+        data-project-diff-file-header=""
         onClick={handleToggle}
         type="button"
       >
@@ -681,13 +685,15 @@ const CollapsibleFileDiff = ({
       </button>
 
       {isCollapsed ? null : (
-        <FileDiff
-          className="text-[11px]"
-          fileDiff={fileDiff}
-          key={`${fileDiff.name}-${fileDiff.prevName ?? ""}-${index}`}
-          options={DIFF_RENDER_OPTIONS}
-          style={PROJECT_DIFF_STYLE}
-        />
+        <div className="overflow-hidden rounded-b-[11px]">
+          <FileDiff
+            className="text-[11px]"
+            fileDiff={fileDiff}
+            key={`${fileDiff.name}-${fileDiff.prevName ?? ""}-${index}`}
+            options={DIFF_RENDER_OPTIONS}
+            style={PROJECT_DIFF_STYLE}
+          />
+        </div>
       )}
     </div>
   )
@@ -883,8 +889,12 @@ export const ProjectContextPanel = ({
     [projectItems]
   )
   const diffFiles = useMemo(
-    () => parseProjectDiffFiles(gitDiff?.patch ?? ""),
-    [gitDiff?.patch]
+    () =>
+      parseProjectDiffFiles({
+        fileSnapshots: gitDiff?.fileSnapshots ?? [],
+        patch: gitDiff?.patch ?? ""
+      }),
+    [gitDiff?.fileSnapshots, gitDiff?.patch]
   )
   const diffSummary = useMemo(
     () =>

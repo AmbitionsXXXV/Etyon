@@ -286,8 +286,12 @@ const ProjectContextTrigger = ({
 }) => {
   const { t } = useI18n()
   const diffFiles = useMemo(
-    () => parseProjectDiffFiles(gitDiff?.patch ?? ""),
-    [gitDiff?.patch]
+    () =>
+      parseProjectDiffFiles({
+        fileSnapshots: gitDiff?.fileSnapshots ?? [],
+        patch: gitDiff?.patch ?? ""
+      }),
+    [gitDiff?.fileSnapshots, gitDiff?.patch]
   )
   const diffSummary = useMemo(
     () =>

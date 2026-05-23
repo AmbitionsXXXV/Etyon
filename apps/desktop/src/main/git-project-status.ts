@@ -5,6 +5,7 @@ import { promisify } from "node:util"
 
 import type {
   GitFileStatus,
+  GitProjectDiffFileSnapshot,
   GitProjectDiffOutput,
   GitProjectStatus,
   GitStatusFile
@@ -12,8 +13,17 @@ import type {
 
 const GIT_COMMAND_TIMEOUT_MS = 3000
 const GIT_DIFF_MAX_BUFFER = 2 * 1024 * 1024
+const GIT_DIFF_SNAPSHOT_MAX_FILE_BYTES = 512 * 1024
 const GIT_STATUS_MAX_BUFFER = 512 * 1024
 const NULL_BYTE = String.fromCodePoint(0)
+
+type GitDiffStage = GitProjectDiffFileSnapshot["stage"]
+
+interface GitDiffNameStatusEntry {
+  newPath: string
+  oldPath?: string
+  status: string
+}
 
 const execFileAsync = promisify(execFile)
 
@@ -44,6 +54,68 @@ const getErrorMessage = (error: unknown): string =>
 const normalizeGitPath = (filePath: string): string =>
   filePath.split(path.sep).join("/")
 
+const parseGitDiffNameStatus = (stdout: string): GitDiffNameStatusEntry[] => {
+  const tokens = stdout.split(NULL_BYTE).filter(Boolean)
+  const entries: GitDiffNameStatusEntry[] = []
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const status = tokens[index]
+
+    if (!status) {
+      continue
+    }
+
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const oldPath = tokens[index + 1]
+      const newPath = tokens[index + 2]
+
+      if (oldPath && newPath) {
+        entries.push({
+          newPath: normalizeGitPath(newPath),
+          oldPath: normalizeGitPath(oldPath),
+          status
+        })
+      }
+
+      index += 2
+      continue
+    }
+
+    const newPath = tokens[index + 1]
+
+    if (newPath) {
+      entries.push({
+        newPath: normalizeGitPath(newPath),
+        status
+      })
+    }
+
+    index += 1
+  }
+
+  return entries
+}
+
+const resolveProjectFilePath = ({
+  projectPath,
+  relativePath
+}: {
+  projectPath: string
+  relativePath: string
+}): string => {
+  const resolvedPath = path.resolve(projectPath, relativePath)
+  const relativeToProject = path.relative(projectPath, resolvedPath)
+
+  if (
+    relativeToProject.startsWith("..") ||
+    path.isAbsolute(relativeToProject)
+  ) {
+    throw new Error(`Git path escapes project root: ${relativePath}`)
+  }
+
+  return resolvedPath
+}
+
 const runGit = async ({
   args,
   maxBuffer,
@@ -62,6 +134,180 @@ const runGit = async ({
   })
 
   return String(stdout)
+}
+
+const readGitBlob = ({
+  projectPath,
+  revision,
+  filePath
+}: {
+  filePath: string
+  projectPath: string
+  revision: string
+}): Promise<string> =>
+  runGit({
+    args: ["show", `${revision}:${filePath}`],
+    maxBuffer: GIT_DIFF_SNAPSHOT_MAX_FILE_BYTES,
+    projectPath
+  })
+
+const readWorktreeFile = async ({
+  filePath,
+  projectPath
+}: {
+  filePath: string
+  projectPath: string
+}): Promise<string> => {
+  const resolvedPath = resolveProjectFilePath({
+    projectPath,
+    relativePath: filePath
+  })
+  const stats = await fs.promises.stat(resolvedPath)
+
+  if (stats.size > GIT_DIFF_SNAPSHOT_MAX_FILE_BYTES) {
+    throw new Error(`Git diff snapshot file is too large: ${filePath}`)
+  }
+
+  return fs.promises.readFile(resolvedPath, "utf-8")
+}
+
+const readGitDiffOldContent = ({
+  entry,
+  oldPath,
+  projectPath,
+  stage
+}: {
+  entry: GitDiffNameStatusEntry
+  oldPath: string
+  projectPath: string
+  stage: GitDiffStage
+}): Promise<string> => {
+  if (entry.status.startsWith("A")) {
+    return Promise.resolve("")
+  }
+
+  return readGitBlob({
+    filePath: oldPath,
+    projectPath,
+    revision: stage === "staged" ? "HEAD" : ""
+  })
+}
+
+const readGitDiffNewContent = ({
+  entry,
+  projectPath,
+  stage
+}: {
+  entry: GitDiffNameStatusEntry
+  projectPath: string
+  stage: GitDiffStage
+}): Promise<string> => {
+  if (entry.status.startsWith("D")) {
+    return Promise.resolve("")
+  }
+
+  if (stage === "staged") {
+    return readGitBlob({
+      filePath: entry.newPath,
+      projectPath,
+      revision: ""
+    })
+  }
+
+  return readWorktreeFile({
+    filePath: entry.newPath,
+    projectPath
+  })
+}
+
+const readGitDiffSnapshot = async ({
+  entry,
+  projectPath,
+  stage
+}: {
+  entry: GitDiffNameStatusEntry
+  projectPath: string
+  stage: GitDiffStage
+}): Promise<GitProjectDiffFileSnapshot | null> => {
+  const oldPath = entry.oldPath ?? entry.newPath
+
+  try {
+    const [newContent, oldContent] = await Promise.all([
+      readGitDiffNewContent({
+        entry,
+        projectPath,
+        stage
+      }),
+      readGitDiffOldContent({
+        entry,
+        oldPath,
+        projectPath,
+        stage
+      })
+    ])
+
+    return {
+      newContent,
+      oldContent,
+      oldPath: entry.oldPath,
+      path: entry.newPath,
+      stage
+    }
+  } catch {
+    return null
+  }
+}
+
+const getGitDiffFileSnapshots = async ({
+  projectPath,
+  stage
+}: {
+  projectPath: string
+  stage: GitDiffStage
+}): Promise<GitProjectDiffFileSnapshot[]> => {
+  const nameStatus = await runGit({
+    args: [
+      "diff",
+      ...(stage === "staged" ? ["--cached"] : []),
+      "--name-status",
+      "-z",
+      "--",
+      "."
+    ],
+    maxBuffer: GIT_STATUS_MAX_BUFFER,
+    projectPath
+  })
+  const entries = parseGitDiffNameStatus(nameStatus)
+  const snapshots = await Promise.all(
+    entries.map((entry) =>
+      readGitDiffSnapshot({
+        entry,
+        projectPath,
+        stage
+      })
+    )
+  )
+
+  return snapshots.filter(
+    (snapshot): snapshot is GitProjectDiffFileSnapshot => snapshot !== null
+  )
+}
+
+const getGitDiffFileSnapshotsSafely = async ({
+  projectPath,
+  stage
+}: {
+  projectPath: string
+  stage: GitDiffStage
+}): Promise<GitProjectDiffFileSnapshot[]> => {
+  try {
+    return await getGitDiffFileSnapshots({
+      projectPath,
+      stage
+    })
+  } catch {
+    return []
+  }
 }
 
 const resolveGitFileStatus = (statusCode: string): GitFileStatus => {
@@ -243,6 +489,7 @@ export const getGitProjectDiff = async (
 ): Promise<GitProjectDiffOutput> => {
   const normalizedProjectPath = path.resolve(projectPath)
   const emptyDiff = {
+    fileSnapshots: [],
     hasPatch: false,
     patch: "",
     projectPath: normalizedProjectPath,
@@ -257,23 +504,33 @@ export const getGitProjectDiff = async (
   }
 
   try {
-    const [stagedPatch, unstagedPatch] = await Promise.all([
-      runGit({
-        args: ["diff", "--cached", "--no-color", "--no-ext-diff", "--", "."],
-        maxBuffer: GIT_DIFF_MAX_BUFFER,
-        projectPath: normalizedProjectPath
-      }),
-      runGit({
-        args: ["diff", "--no-color", "--no-ext-diff", "--", "."],
-        maxBuffer: GIT_DIFF_MAX_BUFFER,
-        projectPath: normalizedProjectPath
-      })
-    ])
+    const [stagedPatch, unstagedPatch, stagedSnapshots, unstagedSnapshots] =
+      await Promise.all([
+        runGit({
+          args: ["diff", "--cached", "--no-color", "--no-ext-diff", "--", "."],
+          maxBuffer: GIT_DIFF_MAX_BUFFER,
+          projectPath: normalizedProjectPath
+        }),
+        runGit({
+          args: ["diff", "--no-color", "--no-ext-diff", "--", "."],
+          maxBuffer: GIT_DIFF_MAX_BUFFER,
+          projectPath: normalizedProjectPath
+        }),
+        getGitDiffFileSnapshotsSafely({
+          projectPath: normalizedProjectPath,
+          stage: "staged"
+        }),
+        getGitDiffFileSnapshotsSafely({
+          projectPath: normalizedProjectPath,
+          stage: "unstaged"
+        })
+      ])
     const patch = [stagedPatch.trim(), unstagedPatch.trim()]
       .filter(Boolean)
       .join("\n")
 
     return {
+      fileSnapshots: [...stagedSnapshots, ...unstagedSnapshots],
       hasPatch: patch.length > 0,
       patch,
       projectPath: normalizedProjectPath,

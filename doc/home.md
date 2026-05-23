@@ -91,7 +91,8 @@ Sidebar 采用 **卡片嵌入式侧栏** 设计语言：
 - `Files` view 使用可拖拽宽度的文件树和独立 Shiki 代码预览区，点击文件只更新右侧预览，不替换文件树；右侧 panel 默认展开更宽，拖拽时不再限制到窄宽度；`Changes` view 显示基于 Git 的 file diff，`Commit` view 显示变更文件列表和提交信息编辑区；Commit 文件路径按右侧 panel 可用宽度换行，状态标签保持固定尺寸；当前 `Commit` 按钮仅作为视图入口，不执行 Git 写操作。
 - `Files` view 使用 `@pierre/trees/react`：数据来自 `projectSnapshots.listFiles({ query: "", limit: 5000 })`，传入文件相对路径，不启用内置 search，并用 `gitStatus.files` 显示变更状态；文件树颜色通过项目 theme token 覆盖 Pierre 默认色，顶部提供一键收起所有文件夹的图标按钮。
 - `Changes` view 使用 `@pierre/diffs/react`：主进程通过 `git diff --cached` 和 `git diff` 返回 patch，renderer 用 `parsePatchFiles` 拆成多个可折叠 `FileDiff`；diff 背景、gutter、选择态和新增 / 删除色都映射到系统 theme token。
-- `Changes` view 的滚动由 view 内容区统一持有，单个 diff 卡片不再整块 sticky，避免滚动条移动但高内容卡片仍停留在视口内。
+- `Changes` view 的滚动由 view 内容区统一持有；每个 diff 文件只让文件 header sticky 到容器顶部，后续文件滚动到位后自然接管当前 sticky 指示。
+- `Changes` view 的 tracked diff 会附带可选的新旧文件内容快照；renderer 优先用快照生成可展开的非 partial `FileDiff`，让 `unmodified lines` 位置可以点击展开上下文。
 - Git 摘要和文件树会区分新增 / 删除 / 修改 / 重命名 / 未跟踪状态，其中新增使用 success，删除使用 danger。
 - 当前 diff 只展示 tracked file patch；untracked 文件会出现在 Git 摘要和文件树状态中，但不会展开为 patch 内容。
 

@@ -1,10 +1,11 @@
 import type {
   GitFileStatus,
+  GitProjectDiffFileSnapshot,
   GitProjectStatus,
   GitStatusFile,
   ProjectSnapshotItem
 } from "@etyon/rpc"
-import { parsePatchFiles } from "@pierre/diffs"
+import { parseDiffFromFile, parsePatchFiles } from "@pierre/diffs"
 import type { FileDiffMetadata } from "@pierre/diffs"
 import type { GitStatusEntry } from "@pierre/trees"
 
@@ -21,6 +22,11 @@ export interface ProjectGitStatusSummaryItem {
   count: number
   prefix: string
   status: Exclude<GitFileStatus, "ignored">
+}
+
+interface ParseProjectDiffFilesInput {
+  fileSnapshots?: readonly GitProjectDiffFileSnapshot[]
+  patch: string
 }
 
 const DIFF_COUNT_FORMATTER = new Intl.NumberFormat()
@@ -169,7 +175,7 @@ export const buildProjectTreeDirectoryPaths = (
   })
 }
 
-export const parseProjectDiffFiles = (patch: string): FileDiffMetadata[] => {
+const parsePatchDiffFiles = (patch: string): FileDiffMetadata[] => {
   if (!patch.trim()) {
     return []
   }
@@ -181,4 +187,81 @@ export const parseProjectDiffFiles = (patch: string): FileDiffMetadata[] => {
   } catch {
     return []
   }
+}
+
+const parseProjectDiffSnapshot = (
+  snapshot: GitProjectDiffFileSnapshot
+): FileDiffMetadata | null => {
+  try {
+    return parseDiffFromFile(
+      {
+        contents: snapshot.oldContent,
+        name: snapshot.oldPath ?? snapshot.path
+      },
+      {
+        contents: snapshot.newContent,
+        name: snapshot.path
+      }
+    )
+  } catch {
+    return null
+  }
+}
+
+const shiftSnapshotForPatchFile = ({
+  patchFile,
+  snapshotsByPath
+}: {
+  patchFile: FileDiffMetadata
+  snapshotsByPath: Map<string, GitProjectDiffFileSnapshot[]>
+}): GitProjectDiffFileSnapshot | undefined => {
+  const snapshots = snapshotsByPath.get(patchFile.name)
+  const snapshot = snapshots?.shift()
+
+  if (snapshots?.length === 0) {
+    snapshotsByPath.delete(patchFile.name)
+  }
+
+  return snapshot
+}
+
+export const parseProjectDiffFiles = (
+  input: ParseProjectDiffFilesInput | string
+): FileDiffMetadata[] => {
+  const { fileSnapshots = [], patch } =
+    typeof input === "string" ? { patch: input } : input
+  const patchFiles = parsePatchDiffFiles(patch)
+
+  if (fileSnapshots.length === 0) {
+    return patchFiles
+  }
+
+  const snapshotsByPath = new Map<string, GitProjectDiffFileSnapshot[]>()
+
+  for (const snapshot of fileSnapshots) {
+    const pathSnapshots = snapshotsByPath.get(snapshot.path)
+
+    if (pathSnapshots) {
+      pathSnapshots.push(snapshot)
+      continue
+    }
+
+    snapshotsByPath.set(snapshot.path, [snapshot])
+  }
+
+  if (patchFiles.length === 0) {
+    return fileSnapshots
+      .map(parseProjectDiffSnapshot)
+      .filter((fileDiff): fileDiff is FileDiffMetadata => fileDiff !== null)
+  }
+
+  return patchFiles.map((patchFile) => {
+    const snapshot = shiftSnapshotForPatchFile({
+      patchFile,
+      snapshotsByPath
+    })
+    const snapshotDiff = snapshot ? parseProjectDiffSnapshot(snapshot) : null
+
+    return snapshotDiff ?? patchFile
+  })
 }

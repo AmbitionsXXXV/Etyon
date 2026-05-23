@@ -1,8 +1,23 @@
+import { execFileSync } from "node:child_process"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+
 import { describe, expect, it } from "vite-plus/test"
 
-import { parseGitStatusPorcelain } from "@/main/git-project-status"
+import {
+  getGitProjectDiff,
+  parseGitStatusPorcelain
+} from "@/main/git-project-status"
 
 const NULL_BYTE = String.fromCodePoint(0)
+
+const runGit = (cwd: string, args: string[]): void => {
+  execFileSync("git", args, {
+    cwd,
+    stdio: "ignore"
+  })
+}
 
 describe("git project status", () => {
   it("parses porcelain status into compact counts and tree entries", () => {
@@ -52,5 +67,40 @@ describe("git project status", () => {
       renamed: 1,
       untracked: 1
     })
+  })
+
+  it("returns full file snapshots for tracked diffs", async () => {
+    const projectPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "etyon-git-diff-")
+    )
+
+    try {
+      runGit(projectPath, ["init"])
+      runGit(projectPath, ["config", "user.email", "test@example.com"])
+      runGit(projectPath, ["config", "user.name", "Etyon Test"])
+      await fs.mkdir(path.join(projectPath, "src"))
+      await fs.writeFile(path.join(projectPath, "src/app.ts"), "one\nold\n")
+      runGit(projectPath, ["add", "."])
+      runGit(projectPath, ["commit", "-m", "initial"])
+      await fs.writeFile(path.join(projectPath, "src/app.ts"), "one\nnew\n")
+
+      const diff = await getGitProjectDiff(projectPath)
+
+      expect(diff.hasPatch).toBe(true)
+      expect(diff.fileSnapshots).toEqual([
+        {
+          newContent: "one\nnew\n",
+          oldContent: "one\nold\n",
+          oldPath: undefined,
+          path: "src/app.ts",
+          stage: "unstaged"
+        }
+      ])
+    } finally {
+      await fs.rm(projectPath, {
+        force: true,
+        recursive: true
+      })
+    }
   })
 })
