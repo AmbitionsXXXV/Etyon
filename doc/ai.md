@@ -167,6 +167,7 @@ const ChatComponent = () => {
 
 - assistant 消息按 `message.parts` 顺序渲染（`AssistantMessageTimeline`），不再把 tool trace 汇总到底部暂存区。
 - assistant `text` part 使用 `streamdown` 解析 Markdown，支持流式未闭合 Markdown 的补全、GFM 表格 / 列表 / code fence 渲染，以及响应期间的 caret / 动画。
+- assistant code fence 保留 `streamdown` 的复制 / 下载 action，但只展示一层 code block 外框；language header 与 code body 共用同一个容器，右侧 action 在 hover / focus 时显示，避免返回内容里再出现双层卡片。
 - `settings.chat.streamdown.animation` 控制 `streamdown` 的 `animated` 配置：默认 `fade-in`，可选 `blur-in`、`slide-up`、`typewriter` 或 `none`。动画只在最新 assistant 消息仍处于 streaming / submitted 状态时启用。
 - `text` part 内的 `<antThinking>`、`Executed in ...`、`<function_calls>` 会在该 text part 内按出现顺序拆成 timeline 条目。
 - 命令类 tool call 使用 Cursor 风格的折叠卡片：收起态只显示运行标题和输出预览；展开后才显示完整 `$ cd <cwd> && <command>`，并把命令行与 terminal output 放在同一个滚动区域里。
