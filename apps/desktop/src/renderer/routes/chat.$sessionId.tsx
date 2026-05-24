@@ -1203,28 +1203,42 @@ const ChatRuntime = ({
     []
   )
 
+  const isNearBottomRef = useRef(true)
+
   const handleMessagesScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
-      updateScrollToBottomVisibility(event.currentTarget)
+      const el = event.currentTarget
+      const distanceFromBottom =
+        el.scrollHeight - el.scrollTop - el.clientHeight
+      isNearBottomRef.current =
+        distanceFromBottom <= MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX
+      updateScrollToBottomVisibility(el)
     },
     [updateScrollToBottomVisibility]
   )
 
-  const handleScrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end"
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const scrollElement = messagesScrollRef.current
+    if (!scrollElement) {
+      return
+    }
+    scrollElement.scrollTo({
+      behavior,
+      top: scrollElement.scrollHeight
     })
-    setShowScrollToBottom(false)
   }, [])
 
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottom()
+    setShowScrollToBottom(false)
+  }, [scrollToBottom])
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end"
-    })
+    if (isNearBottomRef.current) {
+      scrollToBottom("instant")
+    }
     updateScrollToBottomVisibility(messagesScrollRef.current)
-  }, [messages, updateScrollToBottomVisibility])
+  }, [messages, scrollToBottom, updateScrollToBottomVisibility])
 
   useEffect(() => {
     if (!editingMessageId) {
@@ -1443,29 +1457,39 @@ const ChatRuntime = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {messages.map((message) => (
-                    <ChatMessageItem
-                      chatSessionId={selectedSession.id}
-                      editingMessageId={editingMessageId}
-                      editingMessageText={editingMessageText}
-                      isLatestAssistantMessage={
-                        message.role === "assistant" &&
-                        message.id === latestAssistantMessageId
-                      }
-                      isRequestPending={isRequestPending}
-                      key={message.id}
-                      liveWorkTimeStartedAt={requestStartedAt}
-                      message={message}
-                      onApprovalResponse={handleToolApprovalResponse}
-                      onCancelEditMessage={handleCancelEditMessage}
-                      onEditingMessageTextChange={setEditingMessageText}
-                      onRegenerate={handleRegenerate}
-                      onStartEditMessage={handleStartEditMessage}
-                      onSubmitEditedMessage={handleSubmitEditedMessage}
-                      showToolTraces={showToolTraces}
-                      streamdownAnimation={streamdownAnimation}
-                    />
-                  ))}
+                  {messages.map((message) => {
+                    const isEmptyLatestAssistant =
+                      shouldShowAssistantLiveStatus &&
+                      message.id === latestMessage?.id &&
+                      message.role === "assistant"
+                    if (isEmptyLatestAssistant) {
+                      return null
+                    }
+
+                    return (
+                      <ChatMessageItem
+                        chatSessionId={selectedSession.id}
+                        editingMessageId={editingMessageId}
+                        editingMessageText={editingMessageText}
+                        isLatestAssistantMessage={
+                          message.role === "assistant" &&
+                          message.id === latestAssistantMessageId
+                        }
+                        isRequestPending={isRequestPending}
+                        key={message.id}
+                        liveWorkTimeStartedAt={requestStartedAt}
+                        message={message}
+                        onApprovalResponse={handleToolApprovalResponse}
+                        onCancelEditMessage={handleCancelEditMessage}
+                        onEditingMessageTextChange={setEditingMessageText}
+                        onRegenerate={handleRegenerate}
+                        onStartEditMessage={handleStartEditMessage}
+                        onSubmitEditedMessage={handleSubmitEditedMessage}
+                        showToolTraces={showToolTraces}
+                        streamdownAnimation={streamdownAnimation}
+                      />
+                    )
+                  })}
                   {shouldShowAssistantLiveStatus ? (
                     <AssistantLiveStatus
                       latestMessage={latestMessage}
