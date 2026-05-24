@@ -6,6 +6,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "types": [],
     "strict": true,
     "noEmit": true
   },
