@@ -8,14 +8,16 @@ import {
 } from "@/shared/providers/provider-catalog"
 
 describe("provider-catalog", () => {
-  it("shows only moonshot and z.ai in the settings providers tab", () => {
+  it("shows cursor, moonshot, and z.ai in the settings providers tab", () => {
     const providers = getSettingsTabProviders()
 
     expect(providers.map(({ id }) => id)).toEqual([
+      "cursor",
       "moonshot",
       "zai-coding-plan"
     ])
     expect(providers.map(({ name }) => name)).toEqual([
+      "Cursor",
       "Moonshot",
       "Z.AI Coding Plan"
     ])

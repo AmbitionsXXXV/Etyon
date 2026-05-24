@@ -71,7 +71,7 @@ export const agentRuns = sqliteTable(
     profileId: text("profile_id").notNull(),
     startedAt: text("started_at").notNull(),
     status: text("status", {
-      enum: ["failed", "running", "succeeded"]
+      enum: ["failed", "running", "succeeded", "suspended"]
     }).notNull()
   },
   (table) => ({
@@ -120,7 +120,7 @@ export const agentToolCalls = sqliteTable(
       .references(() => agentRuns.id, { onDelete: "cascade" }),
     startedAt: text("started_at").notNull(),
     state: text("state", {
-      enum: ["failed", "finished", "requested", "running"]
+      enum: ["approval_requested", "failed", "finished", "requested", "running"]
     }).notNull(),
     toolName: text("tool_name").notNull()
   },

@@ -1,4 +1,9 @@
-import type { ChatMention, ParsedSkill, ProjectSnapshotItem } from "@etyon/rpc"
+import type {
+  ChatMention,
+  ParsedSkill,
+  ProjectSnapshotItem,
+  PromptTemplate
+} from "@etyon/rpc"
 import { CubeIcon, File01Icon, Folder01Icon } from "@hugeicons/core-free-icons"
 
 export interface ActiveMentionMatch {
@@ -15,6 +20,12 @@ export interface PromptEditorActiveMentionRange {
   query: string
   to: number
   trigger: PromptMentionTrigger
+}
+
+export interface PromptEditorActivePromptTemplateCommandRange {
+  from: number
+  query: string
+  to: number
 }
 
 export interface PromptSkillMentionItem {
@@ -52,7 +63,15 @@ export type PromptTextDisplayPart =
       type: "mention"
     }
 
-interface PromptEditorJsonNode {
+export interface PromptPlanShortcutLikeEvent {
+  altKey: boolean
+  ctrlKey: boolean
+  key: string
+  metaKey?: boolean
+  shiftKey?: boolean
+}
+
+export interface PromptEditorJsonNode {
   attrs?: Record<string, unknown>
   content?: PromptEditorJsonNode[]
   text?: string
@@ -60,6 +79,12 @@ interface PromptEditorJsonNode {
 }
 
 const MENTION_PREFIX_PATTERN = /(^|[\s.,:;!?()[\]{}])([@$])([^\s@$]*)$/u
+const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
+const PLAN_COMMAND_PREFIX = "/plan "
+const PROMPT_TEMPLATE_COMMAND_PATTERN =
+  /(?:^|\n)(\/prompt(?:\s+([^\s/]+)?)?)$/iu
+const PROMPT_TEMPLATE_COMMAND_PREFIX = "/prompt "
+const PROMPT_TEMPLATE_SAFE_ARG_PATTERN = /^[\w./:-]+$/u
 const SKILL_QUERY_SEPARATOR = "\n"
 export const PROJECT_MENTION_NODE_TYPE = "projectMention"
 
@@ -315,6 +340,9 @@ export const createPromptMentionItemsByKey = (
 const normalizeSkillQuery = (value: string): string =>
   value.trim().toLowerCase()
 
+const normalizePromptTemplateQuery = (value: string): string =>
+  value.trim().toLowerCase()
+
 const getSkillTitleSearchText = (skill: ParsedSkill): string =>
   [skill.name, skill.name.replaceAll(/[-_\s]+/gu, " ")]
     .filter(Boolean)
@@ -361,6 +389,45 @@ export const filterPromptSkillMentionItems = ({
     .slice(0, limit)
     .map(createPromptSkillMentionItem)
 }
+
+export const filterPromptTemplateItems = ({
+  limit,
+  query,
+  templates
+}: {
+  limit: number
+  query: string
+  templates: PromptTemplate[]
+}): PromptTemplate[] => {
+  const normalizedQuery = normalizePromptTemplateQuery(query)
+
+  return templates
+    .filter((template) => {
+      if (normalizedQuery === "") {
+        return true
+      }
+
+      return [template.name, template.description, template.path]
+        .filter(Boolean)
+        .join(SKILL_QUERY_SEPARATOR)
+        .toLowerCase()
+        .includes(normalizedQuery)
+    })
+    .slice(0, limit)
+}
+
+const quotePromptTemplateCommandArg = (value: string): string => {
+  if (PROMPT_TEMPLATE_SAFE_ARG_PATTERN.test(value)) {
+    return value
+  }
+
+  return `"${value.replaceAll(/(["\\])/gu, "\\$1")}"`
+}
+
+export const createPromptTemplateCommandText = (
+  template: Pick<PromptTemplate, "name">
+): string =>
+  `${PROMPT_TEMPLATE_COMMAND_PREFIX}${quotePromptTemplateCommandArg(template.name)} `
 
 export const scrollActiveMentionItemIntoView = (
   itemElement: Pick<HTMLElement, "scrollIntoView"> | null | undefined
@@ -509,6 +576,98 @@ export const extractPromptEditorPayload = (
   }
 }
 
+const createPlanCommandTextNode = (): PromptEditorJsonNode => ({
+  text: PLAN_COMMAND_PREFIX,
+  type: "text"
+})
+
+const clonePromptEditorJsonNode = (
+  node: PromptEditorJsonNode
+): PromptEditorJsonNode => ({
+  ...(node.attrs ? { attrs: { ...node.attrs } } : {}),
+  ...(node.content
+    ? { content: node.content.map(clonePromptEditorJsonNode) }
+    : {}),
+  ...(node.text === undefined ? {} : { text: node.text }),
+  ...(node.type === undefined ? {} : { type: node.type })
+})
+
+const prefixTextNodeWithPlanCommand = (
+  node: PromptEditorJsonNode
+): PromptEditorJsonNode => ({
+  ...node,
+  text: `${PLAN_COMMAND_PREFIX}${node.text ?? ""}`
+})
+
+const prefixPlanCommandInContent = (
+  content: PromptEditorJsonNode[]
+): PromptEditorJsonNode[] => {
+  const [firstNode, ...remainingNodes] = content
+
+  if (!firstNode) {
+    return [createPlanCommandTextNode()]
+  }
+
+  if (firstNode.type === "text") {
+    return [prefixTextNodeWithPlanCommand(firstNode), ...remainingNodes]
+  }
+
+  if (
+    firstNode.content &&
+    firstNode.type !== PROJECT_MENTION_NODE_TYPE &&
+    firstNode.content.length > 0
+  ) {
+    return [
+      {
+        ...firstNode,
+        content: prefixPlanCommandInContent(firstNode.content)
+      },
+      ...remainingNodes
+    ]
+  }
+
+  return [createPlanCommandTextNode(), firstNode, ...remainingNodes]
+}
+
+export const applyPlanCommandPrefixToPromptEditorJson = (
+  documentNode: PromptEditorJsonNode
+): PromptEditorJsonNode => {
+  const currentText = extractPromptEditorPayload(documentNode).text
+
+  if (PLAN_COMMAND_PATTERN.test(currentText)) {
+    return clonePromptEditorJsonNode(documentNode)
+  }
+
+  const nextDocumentNode = clonePromptEditorJsonNode(documentNode)
+
+  if (!nextDocumentNode.content) {
+    return {
+      ...nextDocumentNode,
+      content: [
+        {
+          content: [createPlanCommandTextNode()],
+          type: "paragraph"
+        }
+      ],
+      type: nextDocumentNode.type ?? "doc"
+    }
+  }
+
+  return {
+    ...nextDocumentNode,
+    content: prefixPlanCommandInContent(nextDocumentNode.content)
+  }
+}
+
+export const isPlanModeKeyboardShortcut = (
+  event: PromptPlanShortcutLikeEvent
+): boolean =>
+  event.altKey &&
+  event.ctrlKey &&
+  !event.metaKey &&
+  !event.shiftKey &&
+  event.key.toLowerCase() === "p"
+
 export const getPromptEditorActiveMentionRange = ({
   selectionFrom,
   textBeforeCaret
@@ -536,6 +695,33 @@ export const getPromptEditorActiveMentionRange = ({
     query: activeMentionMatch.query,
     to: selectionFrom,
     trigger: activeMentionMatch.trigger
+  }
+}
+
+export const getPromptEditorActivePromptTemplateCommandRange = ({
+  selectionFrom,
+  textBeforeCaret
+}: {
+  selectionFrom: number
+  textBeforeCaret: string
+}): PromptEditorActivePromptTemplateCommandRange | null => {
+  const match = textBeforeCaret.match(PROMPT_TEMPLATE_COMMAND_PATTERN)
+
+  if (!match) {
+    return null
+  }
+
+  const commandText = match[1] ?? ""
+  const from = selectionFrom - commandText.length
+
+  if (from < 0) {
+    return null
+  }
+
+  return {
+    from,
+    query: match[2] ?? "",
+    to: selectionFrom
   }
 }
 

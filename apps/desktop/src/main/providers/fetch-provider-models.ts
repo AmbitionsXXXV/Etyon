@@ -5,7 +5,6 @@ import type {
   StoredProviderModelCapabilities
 } from "@etyon/rpc"
 
-import { fetchCursorModels } from "@/main/cursor-auth/service"
 import {
   getProviderCatalogEntry,
   getProviderSeedModels,
@@ -224,6 +223,8 @@ export const fetchProviderModels = async ({
   provider
 }: ProviderFetchModelsInput): Promise<ProviderFetchModelsOutput> => {
   if (provider.providerId === "cursor") {
+    const { fetchCursorModels } = await import("@/main/cursor-auth/service")
+
     return fetchCursorModels()
   }
 

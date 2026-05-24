@@ -35,6 +35,7 @@
     },
     "loading": "Loading chat session...",
     "live": {
+      "agentTurn": "Running agent...",
       "memoryLoading": "Retrieving long-term memory...",
       "modelStart": "Connecting to model...",
       "receiving": "Receiving response...",
@@ -47,6 +48,8 @@
       "filesGroup": "Files",
       "foldersGroup": "Folders",
       "globalSkillSource": "Global",
+      "promptTemplatesEmpty": "No matching prompt templates.",
+      "promptTemplatesGroup": "Prompt Templates",
       "skillsEmpty": "No matching skills.",
       "skillsGroup": "Skills",
       "skillsSearchPlaceholder": "Search skills..."
@@ -126,6 +129,12 @@
     },
     "toolTrace": {
       "approve": "Approve",
+      "childTrace": "Child trace",
+      "childTraceEmpty": "No child events",
+      "childTraceError": "Unable to load child trace",
+      "childTraceEvents": "Events {count}",
+      "childTraceLoading": "Loading child trace...",
+      "childTraceTools": "Tools {count}",
       "copied": "Copied",
       "copyOutput": "Copy output",
       "cwd": "Working directory",
@@ -137,9 +146,12 @@
       "input": "Input",
       "noOutput": "No output",
       "output": "Output",
+      "profile": "Profile",
       "rawOutput": "Raw result",
       "repeated": "Repeated {count}x",
       "runCommand": "Run {command}",
+      "runGraph": "Run graph",
+      "runGraphLoading": "Loading run graph...",
       "shell": "Shell",
       "state": {
         "approvalRequested": "Approval needed",
@@ -254,6 +266,13 @@
       "title": "App Icon"
     },
     "agents": {
+      "approvals": {
+        "description": "Review agent tool approvals that are still waiting for a response.",
+        "empty": "No pending approvals.",
+        "loading": "Loading approvals...",
+        "refresh": "Refresh",
+        "title": "Approval Inbox"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "Let specialist prompts include the active roster so a subagent can hand work to a better fit.",
@@ -284,6 +303,27 @@
         }
       },
       "description": "Managed profiles sit above raw tool calls. Chat remains the main viewport; this only changes the runtime lane, tool budget, and event trace.",
+      "editor": {
+        "description": "Override the active profile name, summary, and runtime constraints.",
+        "fields": {
+          "description": {
+            "label": "Summary"
+          },
+          "instructions": {
+            "label": "Additional instructions",
+            "placeholder": "Add constraints that only apply to this profile."
+          },
+          "name": {
+            "label": "Name"
+          },
+          "readonly": {
+            "description": "When enabled, this profile will not expose write or check tools.",
+            "label": "Read-only mode"
+          }
+        },
+        "reset": "Reset",
+        "title": "Profile override"
+      },
       "executionMode": {
         "coder": "Coder",
         "generalist": "Generalist",

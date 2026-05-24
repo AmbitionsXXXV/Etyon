@@ -20,6 +20,7 @@ describe("skills schemas", () => {
       skills: [
         {
           body: "Use project conventions.",
+          capabilities: ["tools"],
           description: "Use when editing this project.",
           name: "project-skill",
           path: "/tmp/project/.agents/skills/project-skill/SKILL.md",
@@ -42,6 +43,10 @@ describe("skills schemas", () => {
     expect(output.skills.map((skill) => skill.scope)).toEqual([
       "project",
       "global"
+    ])
+    expect(output.skills.map((skill) => skill.capabilities)).toEqual([
+      ["tools"],
+      []
     ])
   })
 })

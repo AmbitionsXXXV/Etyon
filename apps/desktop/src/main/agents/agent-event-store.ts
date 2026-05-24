@@ -1,16 +1,24 @@
 import { randomUUID } from "node:crypto"
 
-import { asc, eq, max } from "drizzle-orm"
+import { and, asc, eq, max, or } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
-import { agentEvents, agentRuns, agentToolCalls } from "@/main/db/schema"
+import {
+  agentEvents,
+  agentRuns,
+  agentToolCalls,
+  chatSessions
+} from "@/main/db/schema"
 
 export type AgentEventType =
   | "agent_run_failed"
   | "agent_run_finished"
   | "agent_run_started"
+  | "agent_session_entry_appended"
   | "agent_step_finished"
   | "agent_step_started"
+  | "plan_step_completed"
+  | "plan_validated"
   | "subagent_finished"
   | "subagent_started"
   | "tool_call_approval_requested"
@@ -31,6 +39,12 @@ export interface AgentEvent {
   type: string
 }
 
+export interface AgentEventNotification extends AgentEvent {
+  chatSessionId: string
+}
+
+export type AgentEventListener = (event: AgentEventNotification) => void
+
 export interface AgentRun {
   appendEvent: (event: AppendAgentEventInput) => Promise<AgentEvent>
   chatSessionId: string
@@ -41,7 +55,7 @@ export interface AgentRun {
   parentRunId: string | null
   profileId: string
   startedAt: string
-  status: "failed" | "running" | "succeeded"
+  status: "failed" | "running" | "succeeded" | "suspended"
 }
 
 export interface AgentToolCall {
@@ -54,8 +68,15 @@ export interface AgentToolCall {
   parentToolCallId: string | null
   runId: string
   startedAt: string
-  state: "failed" | "finished" | "requested" | "running"
+  state: "approval_requested" | "failed" | "finished" | "requested" | "running"
   toolName: string
+}
+
+export interface PendingAgentApproval extends AgentToolCall {
+  approvalId: string | null
+  chatSessionId: string
+  profileId: string
+  runStatus: AgentRun["status"]
 }
 
 export interface AppendAgentEventInput {
@@ -71,6 +92,28 @@ export interface CreateAgentRunOptions {
   profileId: string
 }
 
+export interface GetAgentRunForToolCallOptions {
+  chatSessionId?: string
+  db: AppDatabase
+  pendingApprovalOnly?: boolean
+  toolCallId: string
+}
+
+export interface GetAgentRunForToolApprovalOptions {
+  approvalId: string
+  chatSessionId?: string
+  db: AppDatabase
+  pendingApprovalOnly?: boolean
+  toolCallId?: string
+}
+
+export interface GetAgentRunOptions {
+  chatSessionId?: string
+  db: AppDatabase
+  projectPath?: string
+  runId: string
+}
+
 export interface ListAgentEventsOptions {
   db: AppDatabase
   runId: string
@@ -79,6 +122,20 @@ export interface ListAgentEventsOptions {
 export interface ListAgentToolCallsOptions {
   db: AppDatabase
   runId: string
+}
+
+export interface ListPendingAgentApprovalsOptions {
+  chatSessionId?: string
+  db: AppDatabase
+}
+
+export interface RecoverInterruptedAgentRunsOptions {
+  db: AppDatabase
+}
+
+export interface RecoverInterruptedAgentRunsResult {
+  failedRunIds: string[]
+  suspendedRunIds: string[]
 }
 
 export interface RecordAgentToolCallOptions {
@@ -93,10 +150,12 @@ export interface RecordAgentToolCallOptions {
 }
 
 export interface UpdateAgentToolCallOptions {
+  approvalState?: AgentToolCall["approvalState"]
   db: AppDatabase
   errorMessage?: string | null
   id: string
   output?: unknown
+  runId?: string
   state: AgentToolCall["state"]
 }
 
@@ -108,10 +167,61 @@ export interface UpdateAgentRunOptions {
 }
 
 const getNowIsoString = (): string => new Date().toISOString()
+const INTERRUPTED_RUN_ERROR_MESSAGE =
+  "Agent run was interrupted before the app could finish it."
+const eventAppendQueues = new Map<string, Promise<unknown>>()
+const agentEventListeners = new Set<AgentEventListener>()
 
 const parseJson = (value: string): unknown => JSON.parse(value)
 
 const serializeJson = (value: unknown): string => JSON.stringify(value ?? {})
+
+const getStoredToolCallId = ({
+  runId,
+  toolCallId
+}: {
+  runId: string
+  toolCallId: string
+}): string => `${runId}:${toolCallId}`
+
+const getRunScopedToolCallId = ({
+  runId,
+  toolCallId
+}: {
+  runId: string
+  toolCallId: string
+}): string => `${runId}:${toolCallId}`
+
+const getModelToolCallId = ({
+  runId,
+  storedId
+}: {
+  runId: string
+  storedId: string
+}): string =>
+  storedId.startsWith(`${runId}:`) ? storedId.slice(runId.length + 1) : storedId
+
+const getApprovalRequestPayload = (
+  payload: unknown
+): { approvalId: string; toolCallId: string } | null => {
+  if (typeof payload !== "object" || payload === null) {
+    return null
+  }
+
+  const record = payload as Record<string, unknown>
+
+  if (
+    typeof record.approvalId !== "string" ||
+    typeof record.toolCallId !== "string"
+  ) {
+    return null
+  }
+
+  return {
+    approvalId: record.approvalId,
+    toolCallId: record.toolCallId
+  }
+}
 
 const toAgentEvent = (row: typeof agentEvents.$inferSelect): AgentEvent => ({
   createdAt: row.createdAt,
@@ -149,7 +259,10 @@ const toAgentToolCall = (
   approvalState: row.approvalState,
   errorMessage: row.errorMessage,
   finishedAt: row.finishedAt,
-  id: row.id,
+  id: getModelToolCallId({
+    runId: row.runId,
+    storedId: row.id
+  }),
   input: parseJson(row.inputJson),
   output: row.outputJson ? parseJson(row.outputJson) : undefined,
   parentToolCallId: row.parentToolCallId,
@@ -158,6 +271,139 @@ const toAgentToolCall = (
   state: row.state,
   toolName: row.toolName
 })
+
+const toPendingAgentApproval = (
+  row: {
+    chatSessionId: string
+    errorMessage: string | null
+    finishedAt: string | null
+    id: string
+    inputJson: string
+    outputJson: string | null
+    parentToolCallId: string | null
+    profileId: string
+    runId: string
+    runStatus: AgentRun["status"]
+    startedAt: string
+    state: AgentToolCall["state"]
+    toolName: string
+  },
+  approvalId: string | null
+): PendingAgentApproval => ({
+  approvalId,
+  approvalState: "pending",
+  chatSessionId: row.chatSessionId,
+  errorMessage: row.errorMessage,
+  finishedAt: row.finishedAt,
+  id: getModelToolCallId({
+    runId: row.runId,
+    storedId: row.id
+  }),
+  input: parseJson(row.inputJson),
+  output: row.outputJson ? parseJson(row.outputJson) : undefined,
+  parentToolCallId: row.parentToolCallId,
+  profileId: row.profileId,
+  runId: row.runId,
+  runStatus: row.runStatus,
+  startedAt: row.startedAt,
+  state: row.state,
+  toolName: row.toolName
+})
+
+const listApprovalRequestEventsByRunId = async ({
+  db,
+  runId
+}: {
+  db: AppDatabase
+  runId: string
+}): Promise<(typeof agentEvents.$inferSelect)[]> =>
+  await db
+    .select()
+    .from(agentEvents)
+    .where(
+      and(
+        eq(agentEvents.runId, runId),
+        eq(agentEvents.type, "tool_call_approval_requested")
+      )
+    )
+
+const getApprovalIdsByToolCallId = async ({
+  db,
+  runIds
+}: {
+  db: AppDatabase
+  runIds: string[]
+}): Promise<Map<string, string>> => {
+  const approvalIds = new Map<string, string>()
+  const uniqueRunIds = [...new Set(runIds)]
+
+  for (const runId of uniqueRunIds) {
+    const events = await listApprovalRequestEventsByRunId({
+      db,
+      runId
+    })
+
+    for (const event of events) {
+      const payload = getApprovalRequestPayload(parseJson(event.payloadJson))
+
+      if (payload) {
+        approvalIds.set(
+          getRunScopedToolCallId({
+            runId,
+            toolCallId: payload.toolCallId
+          }),
+          payload.approvalId
+        )
+      }
+    }
+  }
+
+  return approvalIds
+}
+
+const findAgentToolCallRow = async ({
+  db,
+  runId,
+  toolCallId
+}: {
+  db: AppDatabase
+  runId?: string
+  toolCallId: string
+}): Promise<typeof agentToolCalls.$inferSelect | null> => {
+  if (runId) {
+    const [row] = await db
+      .select()
+      .from(agentToolCalls)
+      .where(
+        and(
+          eq(agentToolCalls.runId, runId),
+          or(
+            eq(agentToolCalls.id, getStoredToolCallId({ runId, toolCallId })),
+            eq(agentToolCalls.id, toolCallId)
+          )
+        )
+      )
+
+    return row ?? null
+  }
+
+  const rows = await db.select().from(agentToolCalls)
+  const matches = rows.filter(
+    (row) =>
+      getModelToolCallId({
+        runId: row.runId,
+        storedId: row.id
+      }) === toolCallId
+  )
+
+  if (matches.length > 1) {
+    throw new Error(
+      `Agent tool call id is ambiguous without run scope: ${toolCallId}`
+    )
+  }
+
+  return matches[0] ?? null
+}
 
 const getNextEventSequence = async (
   db: AppDatabase,
@@ -173,7 +419,33 @@ const getNextEventSequence = async (
   return Number(stats?.sequence ?? 0) + 1
 }
 
-export const appendAgentEvent = async ({
+const enqueueAgentEventAppend = async <TValue>(
+  runId: string,
+  task: () => Promise<TValue>
+): Promise<TValue> => {
+  const previousTask = eventAppendQueues.get(runId) ?? Promise.resolve()
+  const currentTask = (async () => {
+    try {
+      await previousTask
+    } catch {
+      // Keep later event appends moving even if an earlier append failed.
+    }
+
+    return await task()
+  })()
+
+  eventAppendQueues.set(runId, currentTask)
+
+  try {
+    return await currentTask
+  } finally {
+    if (eventAppendQueues.get(runId) === currentTask) {
+      eventAppendQueues.delete(runId)
+    }
+  }
+}
+
+const appendAgentEventNow = async ({
   db,
   payload,
   runId,
@@ -199,7 +471,46 @@ export const appendAgentEvent = async ({
     throw new Error("Failed to append agent event.")
   }
 
-  return toAgentEvent(row)
+  const event = toAgentEvent(row)
+  const [runOwner] = await db
+    .select({
+      chatSessionId: agentRuns.chatSessionId
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1)
+  const notification = {
+    ...event,
+    chatSessionId: runOwner?.chatSessionId ?? ""
+  }
+
+  for (const listener of agentEventListeners) {
+    try {
+      listener(notification)
+    } catch {
+      // Observers must not break event persistence.
+    }
+  }
+
+  return event
+}
+
+export const appendAgentEvent = (
+  input: AppendAgentEventInput & {
+    db: AppDatabase
+    runId: string
+  }
+): Promise<AgentEvent> =>
+  enqueueAgentEventAppend(input.runId, () => appendAgentEventNow(input))
+
+export const subscribeAgentEvents = (
+  listener: AgentEventListener
+): (() => void) => {
+  agentEventListeners.add(listener)
+
+  return () => {
+    agentEventListeners.delete(listener)
+  }
 }
 
 export const createAgentRun = async ({
@@ -257,6 +568,195 @@ export const listAgentToolCalls = async ({
   return rows.map(toAgentToolCall)
 }
 
+export const getAgentRun = async ({
+  chatSessionId,
+  db,
+  projectPath,
+  runId
+}: GetAgentRunOptions): Promise<AgentRun | null> => {
+  const [row] = await db
+    .select({
+      chatSessionId: agentRuns.chatSessionId,
+      errorMessage: agentRuns.errorMessage,
+      finishedAt: agentRuns.finishedAt,
+      id: agentRuns.id,
+      modelId: agentRuns.modelId,
+      parentRunId: agentRuns.parentRunId,
+      profileId: agentRuns.profileId,
+      startedAt: agentRuns.startedAt,
+      status: agentRuns.status
+    })
+    .from(agentRuns)
+    .innerJoin(chatSessions, eq(agentRuns.chatSessionId, chatSessions.id))
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : []),
+        ...(projectPath ? [eq(chatSessions.projectPath, projectPath)] : [])
+      )
+    )
+
+  return row ? toAgentRun(db, row) : null
+}
+
+export const getAgentRunForToolCall = async ({
+  chatSessionId,
+  db,
+  pendingApprovalOnly = false,
+  toolCallId
+}: GetAgentRunForToolCallOptions): Promise<AgentRun | null> => {
+  const conditions = [
+    ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : []),
+    ...(pendingApprovalOnly
+      ? [
+          eq(agentToolCalls.approvalState, "pending"),
+          eq(agentToolCalls.state, "approval_requested"),
+          or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
+        ]
+      : [])
+  ]
+  const query = db
+    .select({
+      chatSessionId: agentRuns.chatSessionId,
+      errorMessage: agentRuns.errorMessage,
+      finishedAt: agentRuns.finishedAt,
+      id: agentRuns.id,
+      modelId: agentRuns.modelId,
+      parentRunId: agentRuns.parentRunId,
+      profileId: agentRuns.profileId,
+      startedAt: agentRuns.startedAt,
+      status: agentRuns.status,
+      storedToolCallId: agentToolCalls.id
+    })
+    .from(agentToolCalls)
+    .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
+  const rows =
+    conditions.length > 0 ? await query.where(and(...conditions)) : await query
+  const row = rows.find(
+    (candidate) =>
+      getModelToolCallId({
+        runId: candidate.id,
+        storedId: candidate.storedToolCallId
+      }) === toolCallId
+  )
+
+  return row ? toAgentRun(db, row) : null
+}
+
+export const getAgentRunForToolApproval = async ({
+  approvalId,
+  chatSessionId,
+  db,
+  pendingApprovalOnly = false,
+  toolCallId
+}: GetAgentRunForToolApprovalOptions): Promise<AgentRun | null> => {
+  const conditions = [
+    ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : []),
+    ...(pendingApprovalOnly
+      ? [
+          eq(agentToolCalls.approvalState, "pending"),
+          eq(agentToolCalls.state, "approval_requested"),
+          or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
+        ]
+      : [])
+  ]
+  const query = db
+    .select({
+      chatSessionId: agentRuns.chatSessionId,
+      errorMessage: agentRuns.errorMessage,
+      finishedAt: agentRuns.finishedAt,
+      id: agentRuns.id,
+      modelId: agentRuns.modelId,
+      parentRunId: agentRuns.parentRunId,
+      profileId: agentRuns.profileId,
+      startedAt: agentRuns.startedAt,
+      status: agentRuns.status,
+      storedToolCallId: agentToolCalls.id
+    })
+    .from(agentToolCalls)
+    .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
+  const rows =
+    conditions.length > 0 ? await query.where(and(...conditions)) : await query
+  const approvalIdsByToolCallId = await getApprovalIdsByToolCallId({
+    db,
+    runIds: rows.map((row) => row.id)
+  })
+  const row = rows.find((candidate) => {
+    const modelToolCallId = getModelToolCallId({
+      runId: candidate.id,
+      storedId: candidate.storedToolCallId
+    })
+
+    if (toolCallId && modelToolCallId !== toolCallId) {
+      return false
+    }
+
+    const scopedToolCallId = getRunScopedToolCallId({
+      runId: candidate.id,
+      toolCallId: modelToolCallId
+    })
+
+    return approvalIdsByToolCallId.get(scopedToolCallId) === approvalId
+  })
+
+  return row ? toAgentRun(db, row) : null
+}
+
+export const listPendingAgentApprovals = async ({
+  chatSessionId,
+  db
+}: ListPendingAgentApprovalsOptions): Promise<PendingAgentApproval[]> => {
+  const rows = await db
+    .select({
+      chatSessionId: agentRuns.chatSessionId,
+      errorMessage: agentToolCalls.errorMessage,
+      finishedAt: agentToolCalls.finishedAt,
+      id: agentToolCalls.id,
+      inputJson: agentToolCalls.inputJson,
+      outputJson: agentToolCalls.outputJson,
+      parentToolCallId: agentToolCalls.parentToolCallId,
+      profileId: agentRuns.profileId,
+      runId: agentToolCalls.runId,
+      runStatus: agentRuns.status,
+      startedAt: agentToolCalls.startedAt,
+      state: agentToolCalls.state,
+      toolName: agentToolCalls.toolName
+    })
+    .from(agentToolCalls)
+    .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
+    .where(
+      and(
+        eq(agentToolCalls.approvalState, "pending"),
+        eq(agentToolCalls.state, "approval_requested"),
+        or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended")),
+        ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : [])
+      )
+    )
+    .orderBy(asc(agentToolCalls.startedAt))
+
+  const approvalIdsByToolCallId = await getApprovalIdsByToolCallId({
+    db,
+    runIds: rows.map((row) => row.runId)
+  })
+
+  return rows.map((row) => {
+    const toolCallId = getModelToolCallId({
+      runId: row.runId,
+      storedId: row.id
+    })
+
+    return toPendingAgentApproval(
+      row,
+      approvalIdsByToolCallId.get(
+        getRunScopedToolCallId({
+          runId: row.runId,
+          toolCallId
+        })
+      ) ?? null
+    )
+  })
+}
+
 export const updateAgentRun = async ({
   db,
   errorMessage = null,
@@ -267,7 +767,10 @@ export const updateAgentRun = async ({
     .update(agentRuns)
     .set({
       errorMessage,
-      finishedAt: status === "running" ? null : getNowIsoString(),
+      finishedAt:
+        status === "failed" || status === "succeeded"
+          ? getNowIsoString()
+          : null,
       status
     })
     .where(eq(agentRuns.id, id))
@@ -280,6 +783,48 @@ export const updateAgentRun = async ({
   return toAgentRun(db, row)
 }
 
+export const recoverInterruptedAgentRuns = async ({
+  db
+}: RecoverInterruptedAgentRunsOptions): Promise<RecoverInterruptedAgentRunsResult> => {
+  const rows = await db
+    .select()
+    .from(agentRuns)
+    .where(
+      or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
+    )
+  const failedRunIds: string[] = []
+  const suspendedRunIds: string[] = []
+
+  for (const row of rows) {
+    if (row.status === "suspended") {
+      suspendedRunIds.push(row.id)
+      continue
+    }
+
+    await updateAgentRun({
+      db,
+      errorMessage: INTERRUPTED_RUN_ERROR_MESSAGE,
+      id: row.id,
+      status: "failed"
+    })
+    await appendAgentEvent({
+      db,
+      payload: {
+        error: INTERRUPTED_RUN_ERROR_MESSAGE,
+        reason: "app_startup_recovery"
+      },
+      runId: row.id,
+      type: "agent_run_failed"
+    })
+    failedRunIds.push(row.id)
+  }
+
+  return {
+    failedRunIds,
+    suspendedRunIds
+  }
+}
+
 export const recordAgentToolCall = async ({
   approvalState,
   db,
@@ -290,18 +835,54 @@ export const recordAgentToolCall = async ({
   state,
   toolName
 }: RecordAgentToolCallOptions): Promise<AgentToolCall> => {
+  const now = getNowIsoString()
+  const storedId = getStoredToolCallId({
+    runId,
+    toolCallId: id
+  })
+  const existingRow = await findAgentToolCallRow({
+    db,
+    runId,
+    toolCallId: id
+  })
+
+  if (existingRow) {
+    const [row] = await db
+      .update(agentToolCalls)
+      .set({
+        approvalState:
+          existingRow.approvalState === "not_required"
+            ? approvalState
+            : existingRow.approvalState,
+        errorMessage: null,
+        inputJson: serializeJson(input),
+        parentToolCallId,
+        runId,
+        state,
+        toolName
+      })
+      .where(eq(agentToolCalls.id, existingRow.id))
+      .returning()
+
+    if (!row) {
+      throw new Error(`Agent tool call not found: ${id}`)
+    }
+
+    return toAgentToolCall(row)
+  }
+
   const [row] = await db
     .insert(agentToolCalls)
     .values({
       approvalState,
       errorMessage: null,
       finishedAt: null,
-      id,
+      id: storedId,
       inputJson: serializeJson(input),
       outputJson: null,
       parentToolCallId,
       runId,
-      startedAt: getNowIsoString(),
+      startedAt: now,
       state,
       toolName
     })
@@ -315,22 +896,35 @@ export const recordAgentToolCall = async ({
 }
 
 export const updateAgentToolCall = async ({
+  approvalState,
   db,
   errorMessage = null,
   id,
   output,
+  runId,
   state
 }: UpdateAgentToolCallOptions): Promise<AgentToolCall> => {
+  const existingRow = await findAgentToolCallRow({
+    db,
+    runId,
+    toolCallId: id
+  })
+
+  if (!existingRow) {
+    throw new Error(`Agent tool call not found: ${id}`)
+  }
+
   const [row] = await db
     .update(agentToolCalls)
     .set({
+      ...(approvalState ? { approvalState } : {}),
       errorMessage,
       finishedAt:
         state === "failed" || state === "finished" ? getNowIsoString() : null,
       outputJson: output === undefined ? null : serializeJson(output),
       state
     })
-    .where(eq(agentToolCalls.id, id))
+    .where(eq(agentToolCalls.id, existingRow.id))
     .returning()
 
   if (!row) {

@@ -35,6 +35,7 @@
     },
     "loading": "正在加载 chat session...",
     "live": {
+      "agentTurn": "正在运行 Agent...",
       "memoryLoading": "正在检索长期记忆...",
       "modelStart": "正在连接模型...",
       "receiving": "正在接收响应...",
@@ -47,6 +48,8 @@
       "filesGroup": "文件",
       "foldersGroup": "文件夹",
       "globalSkillSource": "全局",
+      "promptTemplatesEmpty": "没有匹配的 prompt templates。",
+      "promptTemplatesGroup": "Prompt Templates",
       "skillsEmpty": "没有匹配的 skills。",
       "skillsGroup": "Skills",
       "skillsSearchPlaceholder": "搜索 skills..."
@@ -126,6 +129,12 @@
     },
     "toolTrace": {
       "approve": "批准",
+      "childTrace": "子任务 Trace",
+      "childTraceEmpty": "没有子任务事件",
+      "childTraceError": "无法读取子任务 trace",
+      "childTraceEvents": "事件 {count}",
+      "childTraceLoading": "正在读取子任务 trace...",
+      "childTraceTools": "工具 {count}",
       "copied": "已复制",
       "copyOutput": "复制输出",
       "cwd": "工作目录",
@@ -137,9 +146,12 @@
       "input": "输入",
       "noOutput": "无输出",
       "output": "输出",
+      "profile": "Profile",
       "rawOutput": "原始结果",
       "repeated": "重复 {count} 次",
       "runCommand": "运行 {command}",
+      "runGraph": "Run graph",
+      "runGraphLoading": "正在读取 run graph...",
       "shell": "Shell",
       "state": {
         "approvalRequested": "需要 approval",
@@ -254,6 +266,13 @@
       "title": "应用图标"
     },
     "agents": {
+      "approvals": {
+        "description": "查看当前仍在等待处理的 agent tool approvals。",
+        "empty": "没有待处理 approval。",
+        "loading": "正在读取 approvals...",
+        "refresh": "刷新",
+        "title": "Approval Inbox"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "把当前 roster 注入 specialist prompt，让 subagent 可以把任务转给更合适的角色。",
@@ -284,6 +303,27 @@
         }
       },
       "description": "Managed profiles 位于原始 tool calls 之上。Chat 仍是主要视口；这里仅改变 runtime lane、tool budget 和 event trace。",
+      "editor": {
+        "description": "覆盖当前 profile 的名称、摘要和运行约束。",
+        "fields": {
+          "description": {
+            "label": "摘要"
+          },
+          "instructions": {
+            "label": "附加指令",
+            "placeholder": "写入只适用于这个 profile 的额外约束。"
+          },
+          "name": {
+            "label": "名称"
+          },
+          "readonly": {
+            "description": "开启后，这个 profile 不会暴露写入或检查类工具。",
+            "label": "只读模式"
+          }
+        },
+        "reset": "重置",
+        "title": "Profile 覆盖"
+      },
       "executionMode": {
         "coder": "Coder",
         "generalist": "Generalist",

@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { splitAssistantTextSegments } from "@/renderer/lib/chat/tool-ui"
+import {
+  splitAssistantRenderableTextSegments,
+  shouldRenderAssistantToolPart,
+  splitAssistantTextSegments
+} from "@/renderer/lib/chat/tool-ui"
 
 describe("chat tool ui helpers", () => {
+  it("keeps approval tool parts visible when regular tool traces are hidden", () => {
+    expect(
+      shouldRenderAssistantToolPart({
+        showToolTraces: false,
+        state: "approval-requested"
+      })
+    ).toBe(true)
+    expect(
+      shouldRenderAssistantToolPart({
+        showToolTraces: false,
+        state: "output-available"
+      })
+    ).toBe(false)
+    expect(
+      shouldRenderAssistantToolPart({
+        showToolTraces: true,
+        state: "output-available"
+      })
+    ).toBe(true)
+  })
+
   it("extracts thinking blocks from assistant text", () => {
     expect(
       splitAssistantTextSegments(
@@ -16,6 +41,37 @@ describe("chat tool ui helpers", () => {
       {
         text: "Need to inspect files.",
         type: "thinking"
+      },
+      {
+        text: "After",
+        type: "text"
+      }
+    ])
+  })
+
+  it("hides parsed transcript segments when regular tool traces are hidden", () => {
+    expect(
+      splitAssistantRenderableTextSegments({
+        showToolTraces: false,
+        text: [
+          "Before",
+          "<antThinking>internal plan</antThinking>",
+          "Executed in /repo",
+          "bash",
+          "git status",
+          "0",
+          "<function_calls>",
+          '<invoke name="bash">',
+          '<parameter name="command">git diff</parameter>',
+          "</invoke>",
+          "</function_calls>",
+          "After"
+        ].join("\n")
+      })
+    ).toEqual([
+      {
+        text: "Before",
+        type: "text"
       },
       {
         text: "After",

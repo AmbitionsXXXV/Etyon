@@ -1,5 +1,6 @@
 import path from "node:path"
 
+import { getAgentToolManifest } from "@/main/agents/tool-manifest"
 import type { AgentToolName } from "@/main/agents/types"
 
 export type AgentPermissionAction = "allow" | "ask" | "deny"
@@ -22,22 +23,19 @@ export interface EvaluateAgentToolPermissionOptions {
 const COMMAND_INSTALL_PATTERN =
   /\b(?:bun|deno|npm|pnpm|vp|yarn)\s+(?:add|install|i)\b/u
 const COMMAND_NETWORK_PATTERN = /\b(?:curl|wget|fetch|http|https)\b/u
+const COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN =
+  /(?:^|[;&|]\s*)(?:rtk\s+)?(?:bun|deno|npm|pnpm|yarn)\b/u
 const DESTRUCTIVE_COMMAND_PATTERNS = [
   /\brm\s+-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)\b/u,
   /\bgit\s+checkout\s+--\b/u,
   /\bgit\s+reset\s+--hard\b/u,
   /\bsudo\b/u
 ] as const
-const READONLY_AGENT_TOOLS = new Set<AgentToolName>([
-  "agentEventsSearch",
-  "agentRunInspect",
-  "gitDiff",
-  "listProjectTree",
-  "readFile",
-  "searchFiles"
-])
-const SAFE_CHECK_COMMAND_PATTERN =
-  /^(?:rtk\s+)?vp\s+run\s+[\w@/:#.-]+\s*(?:run\s+[\w@/:#.-]+)?$/u
+const SAFE_CHECK_COMMAND_PATTERNS = [
+  /^(?:rtk\s+)?vp\s+check$/u,
+  /^(?:rtk\s+)?vp\s+test\s+run(?:\s+[\w@/:#.,=-]+)*$/u,
+  /^(?:rtk\s+)?vp\s+run\s+[\w@/:#.-]+(?:\s+run(?:\s+[\w@/:#.,=-]+)*)?$/u
+] as const
 const SECRET_BASENAMES = new Set([
   ".env",
   ".env.local",
@@ -102,7 +100,7 @@ const isInsideWorkspace = (
   )
 }
 
-const isSecretPath = (requestedPath: string): boolean => {
+export const isSecretAgentPath = (requestedPath: string): boolean => {
   const normalizedPath = requestedPath.replaceAll("\\", "/").toLowerCase()
   const basename = path.posix.basename(normalizedPath)
   const extension = path.posix.extname(normalizedPath)
@@ -122,7 +120,15 @@ const isRiskyCommand = (command: string): boolean =>
   COMMAND_INSTALL_PATTERN.test(command) || COMMAND_NETWORK_PATTERN.test(command)
 
 const isSafeCheckCommand = (command: string): boolean =>
-  SAFE_CHECK_COMMAND_PATTERN.test(command)
+  SAFE_CHECK_COMMAND_PATTERNS.some((pattern) => pattern.test(command))
+
+const isUnsupportedPackageManagerCommand = (command: string): boolean =>
+  COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN.test(command)
+
+const hasToolCapability = (
+  name: AgentToolName,
+  capability: ReturnType<typeof getAgentToolManifest>["capabilities"][number]
+): boolean => getAgentToolManifest(name).capabilities.includes(capability)
 
 const evaluateReadOnlyPath = (
   input: unknown,
@@ -143,7 +149,7 @@ const evaluateReadOnlyPath = (
     })
   }
 
-  if (isSecretPath(requestedPath)) {
+  if (isSecretAgentPath(requestedPath)) {
     return buildDecision({
       action: "deny",
       reason: "The requested path looks like a secret or credential file.",
@@ -170,6 +176,15 @@ const evaluateCommandPermission = (
       reason: "The command matches a destructive command pattern.",
       risk: "high",
       ruleId: "destructive-command"
+    })
+  }
+
+  if (isUnsupportedPackageManagerCommand(command)) {
+    return buildDecision({
+      action: "deny",
+      reason: "Use vp for package manager commands.",
+      risk: "high",
+      ruleId: "unsupported-package-manager"
     })
   }
 
@@ -240,7 +255,9 @@ export const evaluateAgentToolPermission = ({
   name,
   workspaceRoot
 }: EvaluateAgentToolPermissionOptions): AgentPermissionDecision => {
-  if (name === "readFile") {
+  const manifest = getAgentToolManifest(name)
+
+  if (hasToolCapability(name, "read-fs")) {
     const pathDecision = evaluateReadOnlyPath(input, workspaceRoot)
 
     if (pathDecision) {
@@ -248,16 +265,26 @@ export const evaluateAgentToolPermission = ({
     }
   }
 
-  if (name === "applyPatch") {
+  if (hasToolCapability(name, "write-fs")) {
     return buildDecision({
       action: "ask",
-      reason: "Patch application writes files and requires approval.",
+      reason: "File edits write project files and require approval.",
       risk: "medium",
       ruleId: "write-requires-approval"
     })
   }
 
-  if (name === "rtkCommand" || name === "runCheck") {
+  if (hasToolCapability(name, "network")) {
+    return buildDecision({
+      action: "ask",
+      reason:
+        "Network tools can send queries outside the workspace and require approval.",
+      risk: "high",
+      ruleId: "network-requires-approval"
+    })
+  }
+
+  if (hasToolCapability(name, "shell")) {
     const cwdDecision = evaluateCommandCwd(input, workspaceRoot)
 
     if (cwdDecision) {
@@ -267,7 +294,7 @@ export const evaluateAgentToolPermission = ({
     return evaluateCommandPermission(input, name)
   }
 
-  if (READONLY_AGENT_TOOLS.has(name)) {
+  if (manifest.riskLevel === "safe") {
     return buildDecision({
       action: "allow",
       reason: "The tool only reads project context.",

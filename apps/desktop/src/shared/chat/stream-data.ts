@@ -1,6 +1,6 @@
 export const CHAT_REQUEST_PHASE_DATA_NAME = "chat-request-phase" as const
 
-export type ChatRequestPhase = "memory-loading" | "model-start"
+export type ChatRequestPhase = "agent-turn" | "memory-loading" | "model-start"
 
 export interface ChatRequestPhaseData {
   phase: ChatRequestPhase

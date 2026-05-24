@@ -17,6 +17,7 @@ describe("telegram settings helpers", () => {
       allowedUserIds: "",
       botToken: "123:abc",
       botUsername: "",
+      defaultModel: "",
       enabled: true,
       requireMentionInGroups: true
     })

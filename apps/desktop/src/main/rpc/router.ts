@@ -1,4 +1,8 @@
 import {
+  InspectAgentRunInputSchema,
+  InspectAgentRunOutputSchema,
+  ListPendingAgentApprovalsInputSchema,
+  PendingAgentApprovalsOutputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -47,6 +51,7 @@ import {
   ServerUrlOutputSchema,
   SidebarUiStateSchema,
   SkillsListOutputSchema,
+  PromptTemplatesListOutputSchema,
   TelegramTestConnectionInputSchema,
   TelegramTestConnectionOutputSchema,
   TestProxyInputSchema,
@@ -56,6 +61,12 @@ import {
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
+import {
+  getAgentRun,
+  listAgentEvents,
+  listAgentToolCalls,
+  listPendingAgentApprovals
+} from "@/main/agents/agent-event-store"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -110,7 +121,7 @@ import {
   setProjectPinned,
   setSidebarWidthPx
 } from "@/main/sidebar-ui-state"
-import { listSkills } from "@/main/skills"
+import { listSkillPromptTemplates, listSkills } from "@/main/skills"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 import { syncTelegramBridge } from "@/main/telegram/bridge"
 import { testTelegramConnection } from "@/main/telegram/test-connection"
@@ -155,6 +166,58 @@ const cursorAuthStatus = rpc
   .output(CursorAuthStatusOutputSchema)
   .handler(() => getCursorAuthStatus())
 
+const agentsInspectRun = rpc
+  .input(InspectAgentRunInputSchema)
+  .output(InspectAgentRunOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentRun({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      runId: input.runId
+    })
+
+    if (!run) {
+      throw new Error(`Agent run not found: ${input.runId}`)
+    }
+
+    const [events, toolCalls] = await Promise.all([
+      listAgentEvents({
+        db: context.db,
+        runId: input.runId
+      }),
+      listAgentToolCalls({
+        db: context.db,
+        runId: input.runId
+      })
+    ])
+
+    return {
+      events,
+      run: {
+        chatSessionId: run.chatSessionId,
+        errorMessage: run.errorMessage,
+        finishedAt: run.finishedAt,
+        id: run.id,
+        modelId: run.modelId,
+        parentRunId: run.parentRunId,
+        profileId: run.profileId,
+        startedAt: run.startedAt,
+        status: run.status
+      },
+      toolCalls
+    }
+  })
+
+const agentsListPendingApprovals = rpc
+  .input(ListPendingAgentApprovalsInputSchema)
+  .output(PendingAgentApprovalsOutputSchema)
+  .handler(async ({ context, input }) => ({
+    approvals: await listPendingAgentApprovals({
+      chatSessionId: input.sessionId,
+      db: context.db
+    })
+  }))
+
 const gitProjectDiff = rpc
   .input(GitProjectDiffInputSchema)
   .output(GitProjectDiffOutputSchema)
@@ -165,7 +228,9 @@ const gitProjectDiff = rpc
       throw new Error(`Chat session not found: ${input.sessionId}`)
     }
 
-    return getGitProjectDiff(session.projectPath)
+    return getGitProjectDiff(session.projectPath, {
+      paths: input.paths
+    })
   })
 
 const memoryList = rpc
@@ -195,6 +260,18 @@ const skillsList = rpc
 
     return {
       skills: listSkills({
+        projectPaths: sessions.map((session) => session.projectPath)
+      })
+    }
+  })
+
+const skillsListPromptTemplates = rpc
+  .output(PromptTemplatesListOutputSchema)
+  .handler(async ({ context }) => {
+    const sessions = await listChatSessions(context.db)
+
+    return {
+      templates: listSkillPromptTemplates({
         projectPaths: sessions.map((session) => session.projectPath)
       })
     }
@@ -478,6 +555,10 @@ const sidebarStateSetWidth = rpc
   })
 
 export const router = {
+  agents: {
+    inspectRun: agentsInspectRun,
+    listPendingApprovals: agentsListPendingApprovals
+  },
   chatSessions: {
     archive: chatSessionsArchive,
     create: chatSessionsCreate,
@@ -538,7 +619,8 @@ export const router = {
     getUrl: serverGetUrl
   },
   skills: {
-    list: skillsList
+    list: skillsList,
+    listPromptTemplates: skillsListPromptTemplates
   },
   sidebarState: {
     get: sidebarStateGet,

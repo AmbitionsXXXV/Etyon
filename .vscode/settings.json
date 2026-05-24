@@ -70,6 +70,7 @@
     "source.fixAll.oxc": "explicit"
   },
   "cSpell.words": [
+    "apos",
     "chadracula",
     "evondev",
     "ipinfo",
@@ -80,6 +81,8 @@
     "nowarn",
     "oklab",
     "onnx",
+    "pathspec",
+    "Pathspecs",
     "pids",
     "poimandres",
     "Renderable",

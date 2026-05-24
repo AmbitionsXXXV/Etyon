@@ -21,7 +21,9 @@
 | `searchFiles`     | server-side                   | 是       | `query`, `cwd`, `glob?`, `maxResults`                | matches                                                                   | 使用 `rg`，默认跳过 gitignored 文件，控制输出预算。        |
 | `listProjectTree` | server-side                   | 是       | `cwd`, `depth`, `maxEntries`                         | tree                                                                      | 用于快速建立项目结构上下文，优先 RTK/tree 压缩。           |
 | `gitDiff`         | server-side                   | 是       | `cwd`, `paths?`                                      | `summary`, `files`, `diffPreview`                                         | 复用现有 project context / git diff 能力。                 |
-| `applyPatch`      | server-side + UI confirmation | 否       | `patch`, `reason`                                    | `applied`, `diff`, `error?`                                               | 所有文件写入首版都走 patch，不直接暴露任意写文件。         |
+| `applyPatch`      | server-side + UI confirmation | 否       | `patch`, `reason`                                    | `applied`, `diff`, `error?`                                               | 应用 unified patch，适合多文件改动和可审查 diff。          |
+| `editFile`        | server-side + UI confirmation | 否       | `path`, `edits[]`                                    | `applied`, `diff`, `replacements`, `truncated`                            | 对单文件做精确 `oldText` / `newText` 替换。                |
+| `writeFile`       | server-side + UI confirmation | 否       | `path`, `content`                                    | `written`, `path`, `bytesWritten`                                         | 创建或覆盖 workspace 内 UTF-8 文本文件。                   |
 | `runCheck`        | server-side                   | 条件允许 | `command`, `cwd`, `timeoutMs`                        | `status`, `failures`, `rawPreview`                                        | 测试 / typecheck / lint 专用命令，仍走 RTK。               |
 | `requestApproval` | client-side interaction       | 否       | `action`, `risk`, `preview`                          | `approved`, `comment?`                                                    | 高风险命令和写操作统一进入确认流。                         |
 
@@ -78,7 +80,7 @@ Etyon 是 Electron app，`DirectChatTransport` 对测试和单进程本地执行
 建议内部规则沿用三层：
 
 - `allow`：只读文件、`rg`、`git diff`、`rtk ls/read/find`、项目内安全检查命令
-- `ask`：写文件 patch、包安装、网络请求、长时间命令、raw bash output、跨目录读取
+- `ask`：写文件 patch / edit / write、包安装、网络请求、长时间命令、raw bash output、跨目录读取
 - `deny`：读取 secret 文件、系统目录写入、破坏性 git / rm、未知二进制自执行
 
 这个模型与 Claude Code 的 allow / ask / deny 和 Codex 的 workspace-write / on-request 对齐，也适合 Etyon 后续把规则做成 Settings 可视化配置。

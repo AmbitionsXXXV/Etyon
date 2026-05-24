@@ -7,6 +7,7 @@ import type { ChatRequestPhase } from "@/shared/chat/stream-data"
 const TERMINAL_TOOL_NAMES = new Set(["bash", "rtkCommand", "runCheck", "shell"])
 
 export type AssistantLiveStatusKind =
+  | "agent-turn"
   | "memory-loading"
   | "model-start"
   | "receiving"
@@ -102,6 +103,10 @@ const resolveSubmittedLiveStatus = (
     return "model-start"
   }
 
+  if (requestPhase === "agent-turn") {
+    return "agent-turn"
+  }
+
   return "waiting"
 }
 
@@ -145,6 +150,7 @@ export const resolveAssistantLiveStatus = ({
 }
 
 export const ASSISTANT_LIVE_STATUS_LABEL_KEY = {
+  "agent-turn": "chat.live.agentTurn",
   "memory-loading": "chat.live.memoryLoading",
   "model-start": "chat.live.modelStart",
   receiving: "chat.live.receiving",

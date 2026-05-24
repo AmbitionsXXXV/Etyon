@@ -11,7 +11,8 @@
     "check": "vp check",
     "fix": "vp check --fix",
     "lint": "vp lint",
-    "test": "vp test"
+    "test": "vp test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@etyon/i18n": "workspace:*",

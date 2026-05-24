@@ -3,7 +3,9 @@ import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
+import { recoverInterruptedAgentRuns } from "@/main/agents/agent-event-store"
 import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
 import { setupMenu } from "@/main/menu"
@@ -48,6 +50,20 @@ const handleAppReady = async (): Promise<void> => {
   }
 
   await ensureDatabaseReady()
+
+  const recoveredRuns = await recoverInterruptedAgentRuns({
+    db: getDb()
+  })
+
+  if (
+    recoveredRuns.failedRunIds.length > 0 ||
+    recoveredRuns.suspendedRunIds.length > 0
+  ) {
+    logger.info("agent_run_recovery_completed", {
+      failedRunCount: recoveredRuns.failedRunIds.length,
+      suspendedRunCount: recoveredRuns.suspendedRunIds.length
+    })
+  }
 
   registerRpcHandler()
   await startServer()

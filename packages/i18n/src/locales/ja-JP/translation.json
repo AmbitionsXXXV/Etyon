@@ -35,6 +35,7 @@
     },
     "loading": "chat session を読み込み中...",
     "live": {
+      "agentTurn": "Agent を実行中...",
       "memoryLoading": "長期メモリを取得中...",
       "modelStart": "モデルに接続中...",
       "receiving": "応答を受信中...",
@@ -47,6 +48,8 @@
       "filesGroup": "ファイル",
       "foldersGroup": "フォルダー",
       "globalSkillSource": "Global",
+      "promptTemplatesEmpty": "一致する prompt templates がありません。",
+      "promptTemplatesGroup": "Prompt Templates",
       "skillsEmpty": "一致する skills がありません。",
       "skillsGroup": "Skills",
       "skillsSearchPlaceholder": "skills を検索..."
@@ -126,6 +129,12 @@
     },
     "toolTrace": {
       "approve": "承認",
+      "childTrace": "子タスク trace",
+      "childTraceEmpty": "子タスクイベントなし",
+      "childTraceError": "子タスク trace を読み込めません",
+      "childTraceEvents": "イベント {count}",
+      "childTraceLoading": "子タスク trace を読み込み中...",
+      "childTraceTools": "ツール {count}",
       "copied": "コピー済み",
       "copyOutput": "出力をコピー",
       "cwd": "作業ディレクトリ",
@@ -137,9 +146,12 @@
       "input": "入力",
       "noOutput": "出力なし",
       "output": "出力",
+      "profile": "Profile",
       "rawOutput": "生の結果",
       "repeated": "{count} 回繰り返し",
       "runCommand": "{command} を実行",
+      "runGraph": "Run graph",
+      "runGraphLoading": "run graph を読み込み中...",
       "shell": "Shell",
       "state": {
         "approvalRequested": "approval が必要",
@@ -254,6 +266,13 @@
       "title": "アプリアイコン"
     },
     "agents": {
+      "approvals": {
+        "description": "まだ応答待ちの agent tool approvals を確認します。",
+        "empty": "保留中の approval はありません。",
+        "loading": "approvals を読み込み中...",
+        "refresh": "更新",
+        "title": "Approval Inbox"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "現在の roster を specialist prompt に含め、subagent がより適した役割へ作業を渡せるようにします。",
@@ -284,6 +303,27 @@
         }
       },
       "description": "Managed profiles は raw tool calls の上に置かれます。Chat は主要な viewport のままで、ここでは runtime lane、tool budget、event trace だけを変更します。",
+      "editor": {
+        "description": "現在の profile の名前、要約、実行時の制約を上書きします。",
+        "fields": {
+          "description": {
+            "label": "要約"
+          },
+          "instructions": {
+            "label": "追加指示",
+            "placeholder": "この profile だけに適用する制約を追加します。"
+          },
+          "name": {
+            "label": "名前"
+          },
+          "readonly": {
+            "description": "有効にすると、この profile は書き込みやチェック用 tools を公開しません。",
+            "label": "読み取り専用モード"
+          }
+        },
+        "reset": "リセット",
+        "title": "Profile override"
+      },
       "executionMode": {
         "coder": "Coder",
         "generalist": "Generalist",

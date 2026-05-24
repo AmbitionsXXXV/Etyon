@@ -30,9 +30,12 @@ describe("agent profiles", () => {
       readonly: true
     })
     expect(profile.toolPolicy.allowedToolNames).toEqual([
+      "fileInfo",
+      "findFiles",
       "searchFiles",
       "readFile",
-      "gitDiff"
+      "gitDiff",
+      "memorySearch"
     ])
     expect(profile.toolPolicy.allowWrites).toBe(false)
   })
@@ -54,5 +57,51 @@ describe("agent profiles", () => {
     const profile = resolveActiveAgentProfile(settings)
 
     expect(profile.id).toBe("general-purpose")
+  })
+
+  it("uses readonly overrides to remove write-capable tool policy", () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        profiles: [
+          {
+            id: "coder",
+            name: "Coder",
+            readonly: true
+          }
+        ]
+      }
+    }).agents
+
+    const profile = resolveActiveAgentProfile(settings)
+
+    expect(profile.readonly).toBe(true)
+    expect(profile.toolPolicy.allowWrites).toBe(false)
+    expect(profile.toolPolicy.allowedToolNames).not.toContain("applyPatch")
+    expect(profile.toolPolicy.allowedToolNames).not.toContain("writeFile")
+    expect(profile.toolPolicy.allowedToolNames).not.toContain("runCheck")
+  })
+
+  it("keeps profile-specific safe tools when a readonly override is saved", () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "harness-operator",
+        profiles: [
+          {
+            id: "harness-operator",
+            name: "Harness Operator",
+            readonly: true
+          }
+        ]
+      }
+    }).agents
+
+    const profile = resolveActiveAgentProfile(settings)
+
+    expect(profile.toolPolicy.allowedToolNames).toEqual([
+      "agentEventsSearch",
+      "agentRunInspect",
+      "gitDiff"
+    ])
   })
 })

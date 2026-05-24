@@ -1,13 +1,19 @@
+import type { ParsedSkill, PromptTemplate } from "@etyon/rpc"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
   applyMentionSelection,
+  applyPlanCommandPrefixToPromptEditorJson,
+  createPromptTemplateCommandText,
   createMentionFromProjectSnapshotItem,
   extractPromptEditorPayload,
+  filterPromptTemplateItems,
   filterPromptSkillMentionItems,
   getActiveMentionMatch,
   getMentionTokenTypeLabel,
   getPromptEditorActiveMentionRange,
+  getPromptEditorActivePromptTemplateCommandRange,
+  isPlanModeKeyboardShortcut,
   replaceMentionQuery,
   splitPromptTextByMentions,
   scrollActiveMentionItemIntoView
@@ -173,6 +179,101 @@ describe("prompt input helpers", () => {
     })
   })
 
+  it("prefixes prompt editor content with the plan command without losing mentions", () => {
+    const documentNode = {
+      content: [
+        {
+          content: [
+            {
+              attrs: {
+                kind: "file",
+                path: "/project/src/renderer/index.ts",
+                relativePath: "src/renderer/index.ts",
+                snapshotId: "snapshot-1"
+              },
+              type: "projectMention"
+            },
+            {
+              text: " 这块怎么改",
+              type: "text"
+            }
+          ],
+          type: "paragraph"
+        }
+      ],
+      type: "doc"
+    }
+
+    expect(
+      extractPromptEditorPayload(
+        applyPlanCommandPrefixToPromptEditorJson(documentNode)
+      )
+    ).toEqual({
+      mentions: [
+        {
+          kind: "file",
+          path: "/project/src/renderer/index.ts",
+          relativePath: "src/renderer/index.ts",
+          snapshotId: "snapshot-1"
+        }
+      ],
+      text: "/plan @src/renderer/index.ts 这块怎么改"
+    })
+  })
+
+  it("does not duplicate an existing plan command prefix", () => {
+    const documentNode = {
+      content: [
+        {
+          content: [
+            {
+              text: "/plan 调整 agent runtime",
+              type: "text"
+            }
+          ],
+          type: "paragraph"
+        }
+      ],
+      type: "doc"
+    }
+
+    expect(
+      extractPromptEditorPayload(
+        applyPlanCommandPrefixToPromptEditorJson(documentNode)
+      ).text
+    ).toBe("/plan 调整 agent runtime")
+  })
+
+  it("detects the plan mode keyboard shortcut", () => {
+    expect(
+      isPlanModeKeyboardShortcut({
+        altKey: true,
+        ctrlKey: true,
+        key: "p",
+        metaKey: false,
+        shiftKey: false
+      })
+    ).toBe(true)
+    expect(
+      isPlanModeKeyboardShortcut({
+        altKey: true,
+        ctrlKey: false,
+        key: "p",
+        metaKey: true,
+        shiftKey: false
+      })
+    ).toBe(false)
+    expect(
+      isPlanModeKeyboardShortcut({
+        altKey: true,
+        ctrlKey: true,
+        key: "x",
+        metaKey: false,
+        shiftKey: false
+      })
+    ).toBe(false)
+  })
+
   it("maps the active mention query before the editor caret to a document range", () => {
     expect(
       getPromptEditorActiveMentionRange({
@@ -187,27 +288,80 @@ describe("prompt input helpers", () => {
     })
   })
 
+  it("maps the active prompt template command before the editor caret", () => {
+    expect(
+      getPromptEditorActivePromptTemplateCommandRange({
+        selectionFrom: "/prompt review".length,
+        textBeforeCaret: "/prompt review"
+      })
+    ).toEqual({
+      from: 0,
+      query: "review",
+      to: 14
+    })
+    expect(
+      getPromptEditorActivePromptTemplateCommandRange({
+        selectionFrom: "/prompt review src".length,
+        textBeforeCaret: "/prompt review src"
+      })
+    ).toBeNull()
+  })
+
+  it("filters and formats prompt template commands", () => {
+    const templates: PromptTemplate[] = [
+      {
+        body: "Review $1",
+        description: "Review a focused diff.",
+        name: "review",
+        path: "/project/.agents/skills/reviewer/prompts/review.md"
+      },
+      {
+        body: "Plan $1",
+        description: null,
+        name: "quick plan",
+        path: "/project/.agents/skills/planner/prompts/quick-plan.md"
+      }
+    ]
+
+    expect(
+      filterPromptTemplateItems({
+        limit: 10,
+        query: "diff",
+        templates
+      }).map((template) => template.name)
+    ).toEqual(["review"])
+    expect(createPromptTemplateCommandText(templates[1])).toBe(
+      '/prompt "quick plan" '
+    )
+  })
+
   it("filters skill suggestions by title only when requested", () => {
-    const skills = [
+    const skills: ParsedSkill[] = [
       {
         body: "Use when working on Rust ownership and lifetimes.",
+        capabilities: [],
         description: "Rust code style guidance.",
+        modelVisible: true,
         name: "coding-guidelines",
         path: "/project/.agents/skills/coding-guidelines/SKILL.md",
         projectPath: "/project",
         scope: "project",
-        shortDescription: "Rust style"
+        shortDescription: "Rust style",
+        visible: true
       },
       {
         body: "Drizzle relations and schema examples.",
+        capabilities: [],
         description: "Type-safe SQL ORM.",
+        modelVisible: true,
         name: "drizzle-orm",
         path: "/project/.agents/skills/drizzle-orm/SKILL.md",
         projectPath: "/project",
         scope: "project",
-        shortDescription: "Database ORM"
+        shortDescription: "Database ORM",
+        visible: true
       }
-    ] as const
+    ]
 
     expect(
       filterPromptSkillMentionItems({

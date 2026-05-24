@@ -1,4 +1,30 @@
 export {
+  AgentRunTraceEventSchema,
+  AgentRunTraceRunSchema,
+  AgentRunTraceToolCallSchema,
+  AgentRunStatusSchema,
+  AgentToolApprovalStateSchema,
+  AgentToolCallStateSchema,
+  InspectAgentRunInputSchema,
+  InspectAgentRunOutputSchema,
+  ListPendingAgentApprovalsInputSchema,
+  PendingAgentApprovalSchema,
+  PendingAgentApprovalsOutputSchema
+} from "./schemas/agents"
+export type {
+  AgentRunTraceEvent,
+  AgentRunTraceRun,
+  AgentRunTraceToolCall,
+  AgentRunStatus,
+  AgentToolApprovalState,
+  AgentToolCallState,
+  InspectAgentRunInput,
+  InspectAgentRunOutput,
+  ListPendingAgentApprovalsInput,
+  PendingAgentApproval,
+  PendingAgentApprovalsOutput
+} from "./schemas/agents"
+export {
   ArchiveChatSessionInputSchema,
   ChatMentionSchema,
   ChatSessionMemoryOutputSchema,
@@ -181,15 +207,21 @@ export type {
 } from "./schemas/sidebar-state"
 export {
   ParsedSkillSchema,
+  PromptTemplateSchema,
+  PromptTemplatesListOutputSchema,
   SkillsListOutputSchema,
   SkillsSettingsSchema,
-  SkillScopeSchema
+  SkillScopeSchema,
+  SkillSourceSchema
 } from "./schemas/skills"
 export type {
   ParsedSkill,
+  PromptTemplate,
+  PromptTemplatesListOutput,
   SkillsListOutput,
   SkillsSettings,
-  SkillScope
+  SkillScope,
+  SkillSource
 } from "./schemas/skills"
 export {
   AgentExecutionModeSchema,

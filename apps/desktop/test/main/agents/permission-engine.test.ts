@@ -87,6 +87,20 @@ describe("agent permission engine", () => {
     expect(
       evaluateAgentToolPermission({
         input: {
+          content: "export const value = 1\n",
+          path: "src/generated.ts"
+        },
+        name: "writeFile",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "ask",
+      ruleId: "write-requires-approval"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
           command: "rtk git status --short",
           rawOutput: true
         },
@@ -112,6 +126,29 @@ describe("agent permission engine", () => {
       ).toMatchObject({
         action: "deny",
         ruleId: "destructive-command"
+      })
+    }
+  })
+
+  it("denies unsupported package manager commands before approval", () => {
+    for (const command of [
+      "npm install",
+      "pnpm add lodash",
+      "rtk yarn test",
+      "bun run build",
+      "deno task test"
+    ]) {
+      expect(
+        evaluateAgentToolPermission({
+          input: {
+            command
+          },
+          name: "rtkCommand",
+          workspaceRoot
+        })
+      ).toMatchObject({
+        action: "deny",
+        ruleId: "unsupported-package-manager"
       })
     }
   })
@@ -150,21 +187,43 @@ describe("agent permission engine", () => {
     })
   })
 
-  it("allows bounded check commands", () => {
+  it("asks before running network tools", () => {
     expect(
       evaluateAgentToolPermission({
         input: {
-          command:
-            "vp run @etyon/desktop#test run test/main/agents/tool-registry.test.ts",
-          timeoutMs: 60_000
+          query: "latest vite release"
         },
-        name: "runCheck",
+        name: "webSearch",
         workspaceRoot
       })
     ).toMatchObject({
-      action: "allow",
-      ruleId: "safe-check-command"
+      action: "ask",
+      ruleId: "network-requires-approval"
     })
+  })
+
+  it("allows bounded check commands", () => {
+    for (const command of [
+      "vp check",
+      "rtk vp check",
+      "vp test run",
+      "vp test run apps/desktop/test/main/agents/permission-engine.test.ts",
+      "vp run @etyon/desktop#test run test/main/agents/tool-registry.test.ts"
+    ]) {
+      expect(
+        evaluateAgentToolPermission({
+          input: {
+            command,
+            timeoutMs: 60_000
+          },
+          name: "runCheck",
+          workspaceRoot
+        })
+      ).toMatchObject({
+        action: "allow",
+        ruleId: "safe-check-command"
+      })
+    }
   })
 
   it("denies command cwd outside the workspace", () => {

@@ -1,5 +1,6 @@
 import type { AgentProfile } from "@etyon/rpc"
 
+import { compileAgentToolNames } from "@/main/agents/tool-policy"
 import type { AgentProfileId, ManagedAgentProfile } from "@/main/agents/types"
 
 export const BUILT_IN_AGENT_PROFILE_IDS = [
@@ -10,6 +11,26 @@ export const BUILT_IN_AGENT_PROFILE_IDS = [
   "review",
   "harness-operator"
 ] as const satisfies readonly AgentProfileId[]
+
+const READONLY_AGENT_TOOL_NAMES = [
+  "fileInfo",
+  "findFiles",
+  "searchFiles",
+  "readFile",
+  "gitDiff",
+  "memorySearch"
+] as const satisfies ManagedAgentProfile["toolPolicy"]["allowedToolNames"]
+
+const createReadonlyAgentToolPolicy = (
+  allowedToolNames: readonly ManagedAgentProfile["toolPolicy"]["allowedToolNames"][number][] = READONLY_AGENT_TOOL_NAMES
+): ManagedAgentProfile["toolPolicy"] => ({
+  allowWrites: false,
+  allowedToolNames: compileAgentToolNames({
+    allowedToolNames,
+    restrictToSafeTools: true
+  }),
+  requireApprovalForWrites: true
+})
 
 export const BUILT_IN_AGENT_PROFILES = [
   {
@@ -36,7 +57,14 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["searchFiles", "readFile", "gitDiff"],
+      allowedToolNames: [
+        "fileInfo",
+        "findFiles",
+        "searchFiles",
+        "readFile",
+        "gitDiff",
+        "memorySearch"
+      ],
       requireApprovalForWrites: true
     }
   },
@@ -64,18 +92,26 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["listProjectTree", "searchFiles", "readFile"],
+      allowedToolNames: [
+        "listProjectTree",
+        "listDirectory",
+        "fileInfo",
+        "findFiles",
+        "searchFiles",
+        "readFile",
+        "memorySearch"
+      ],
       requireApprovalForWrites: true
     }
   },
   {
-    allowedDelegateProfileIds: ["explore"],
+    allowedDelegateProfileIds: ["coder", "explore"],
     available: true,
     budgetPolicy: {
       maxSteps: 10
     },
     delegationPolicy: {
-      allowedDelegateProfileIds: ["explore"],
+      allowedDelegateProfileIds: ["coder", "explore"],
       canDelegate: true
     },
     description: "Turns goals into scoped plans and implementation slices.",
@@ -92,18 +128,27 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["searchFiles", "readFile", "gitDiff", "agentExplore"],
+      allowedToolNames: [
+        "findFiles",
+        "fileInfo",
+        "searchFiles",
+        "readFile",
+        "gitDiff",
+        "memorySearch",
+        "agentCoder",
+        "agentExplore"
+      ],
       requireApprovalForWrites: true
     }
   },
   {
-    allowedDelegateProfileIds: ["explore", "review"],
+    allowedDelegateProfileIds: ["explore", "plan", "review"],
     available: true,
     budgetPolicy: {
       maxSteps: 12
     },
     delegationPolicy: {
-      allowedDelegateProfileIds: ["explore", "review"],
+      allowedDelegateProfileIds: ["explore", "plan", "review"],
       canDelegate: true
     },
     description: "Implements small, bounded changes with validation.",
@@ -121,12 +166,20 @@ export const BUILT_IN_AGENT_PROFILES = [
     toolPolicy: {
       allowWrites: true,
       allowedToolNames: [
+        "findFiles",
+        "fileInfo",
         "searchFiles",
+        "listDirectory",
         "readFile",
         "gitDiff",
+        "memorySearch",
         "applyPatch",
+        "editFile",
+        "writeFile",
         "runCheck",
+        "webSearch",
         "agentExplore",
+        "agentPlan",
         "agentReview"
       ],
       requireApprovalForWrites: true
@@ -156,7 +209,16 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["gitDiff", "searchFiles", "readFile", "runCheck"],
+      allowedToolNames: [
+        "gitDiff",
+        "listDirectory",
+        "fileInfo",
+        "findFiles",
+        "searchFiles",
+        "readFile",
+        "memorySearch",
+        "runCheck"
+      ],
       requireApprovalForWrites: true
     }
   },
@@ -210,11 +272,7 @@ const buildCustomProfile = (profile: AgentProfile): ManagedAgentProfile => ({
     preferredModel: profile.preferredModel
   },
   readonly: true,
-  toolPolicy: {
-    allowWrites: false,
-    allowedToolNames: ["searchFiles", "readFile", "gitDiff"],
-    requireApprovalForWrites: true
-  }
+  toolPolicy: createReadonlyAgentToolPolicy()
 })
 
 const mergeProfileOverride = (
@@ -243,7 +301,14 @@ const mergeProfileOverride = (
     delegationPolicy: {
       allowedDelegateProfileIds: override.allowedDelegateProfileIds,
       canDelegate: override.allowedDelegateProfileIds.length > 0
-    }
+    },
+    ...(override.readonly
+      ? {
+          toolPolicy: createReadonlyAgentToolPolicy(
+            profile.toolPolicy.allowedToolNames
+          )
+        }
+      : {})
   }
 }
 

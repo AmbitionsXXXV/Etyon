@@ -6,8 +6,12 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   buildSkillsSystemPrompt,
+  formatModelDisabledSkillReferencesForSystemPrompt,
+  formatSkillsForSystemPrompt,
+  listSkillPromptTemplates,
   listSkills,
-  parseSkillFile
+  parseSkillFile,
+  resolveSelectedSkillCapabilities
 } from "@/main/skills"
 
 const { mockedHomeDir } = vi.hoisted(() => ({
@@ -73,6 +77,9 @@ describe("skills", () => {
         "---",
         "name: react-patterns",
         "description: Use when editing React renderer code.",
+        "capabilities:",
+        "  - tools",
+        "  - context-loaders",
         "metadata:",
         "  short-description: Renderer React patterns",
         "---",
@@ -85,10 +92,13 @@ describe("skills", () => {
 
     expect(parseSkillFile(skillPath)).toEqual({
       body: "# React Patterns\n\nKeep components outside other components.",
+      capabilities: ["tools", "context-loaders"],
       description: "Use when editing React renderer code.",
+      modelVisible: true,
       name: "react-patterns",
       path: skillPath,
-      shortDescription: "Renderer React patterns"
+      shortDescription: "Renderer React patterns",
+      visible: true
     })
   })
 
@@ -115,15 +125,63 @@ describe("skills", () => {
         expect.objectContaining({
           name: "project-editing",
           projectPath,
-          scope: "project"
+          scope: "project",
+          source: {
+            kind: "project",
+            root: path.join(projectPath, ".agents", "skills")
+          }
         }),
         expect.objectContaining({
           name: "global-writing",
           projectPath: null,
-          scope: "global"
+          scope: "global",
+          source: {
+            kind: "user",
+            root: path.join(mockedHomeDir, ".codex", "skills")
+          }
         })
       ])
     )
+  })
+
+  it("resolves capabilities from explicitly selected skill mentions", () => {
+    const projectPath = path.join(mockedHomeDir, "project-capabilities")
+    const skillDir = path.join(projectPath, ".agents", "skills", "write-skill")
+    const skillPath = path.join(skillDir, "SKILL.md")
+
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      skillPath,
+      [
+        "---",
+        "name: write-skill",
+        "description: Use when editing files.",
+        "capabilities:",
+        "  - write-fs",
+        "  - shell",
+        "---",
+        "",
+        "Use write tools carefully."
+      ].join("\n")
+    )
+
+    expect(
+      resolveSelectedSkillCapabilities({
+        projectPath,
+        selectedSkills: [
+          {
+            description: "Use when editing files.",
+            kind: "skill",
+            name: "write-skill",
+            path: skillPath,
+            projectPath,
+            relativePath: "write-skill",
+            scope: "project",
+            shortDescription: null
+          }
+        ]
+      })
+    ).toEqual(["write-fs", "shell"])
   })
 
   it("builds a skill prompt from matching project and global skills", () => {
@@ -152,6 +210,8 @@ describe("skills", () => {
     expect(prompt).toContain("copy-global")
     expect(prompt).toContain("Use the project renderer conventions.")
     expect(prompt).toContain("Use concise user-facing copy.")
+    expect(prompt).toContain("<skills>")
+    expect(prompt).toContain("<skill>")
   })
 
   it("respects project and global skill settings", () => {
@@ -179,5 +239,188 @@ describe("skills", () => {
 
     expect(prompt).toContain("project-only")
     expect(prompt).not.toContain("global-only")
+  })
+
+  it("keeps model-invisible skills listable but skips them in the system prompt", () => {
+    const projectPath = path.join(mockedHomeDir, "project-d")
+    const skillDir = path.join(projectPath, ".agents", "skills", "hidden-skill")
+    const skillPath = path.join(skillDir, "SKILL.md")
+
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      skillPath,
+      [
+        "---",
+        "name: hidden-skill",
+        "description: Use when the model should not see this.",
+        "visible: true",
+        "model-visible: false",
+        "---",
+        "",
+        "Do not inject this body."
+      ].join("\n")
+    )
+
+    const skills = listSkills({
+      projectPaths: [projectPath]
+    })
+
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelVisible: false,
+          name: "hidden-skill",
+          visible: true
+        })
+      ])
+    )
+    expect(
+      formatSkillsForSystemPrompt(
+        skills.filter((skill) => skill.name === "hidden-skill")
+      )
+    ).toBe("")
+  })
+
+  it("formats model-visible skills as escaped XML", () => {
+    expect(
+      formatSkillsForSystemPrompt([
+        {
+          body: 'Use <button> & "quotes".',
+          capabilities: ["tools"],
+          description: "Renderer <rules>",
+          modelVisible: true,
+          name: "renderer",
+          path: "/tmp/SKILL.md",
+          projectPath: "/tmp/project",
+          scope: "project",
+          shortDescription: "Renderer rules",
+          visible: true
+        }
+      ])
+    ).toContain("Use &lt;button&gt; &amp; &quot;quotes&quot;.")
+    expect(
+      formatSkillsForSystemPrompt([
+        {
+          body: 'Use <button> & "quotes".',
+          capabilities: ["tools"],
+          description: "Renderer <rules>",
+          modelVisible: true,
+          name: "renderer",
+          path: "/tmp/SKILL.md",
+          projectPath: "/tmp/project",
+          scope: "project",
+          shortDescription: "Renderer rules",
+          visible: true
+        }
+      ])
+    ).toContain("<capability>tools</capability>")
+  })
+
+  it("formats model-disabled skills as references without instructions", () => {
+    const references = formatModelDisabledSkillReferencesForSystemPrompt([
+      {
+        body: "Hidden implementation details.",
+        capabilities: ["context-loaders"],
+        description: "Use when a hidden skill is explicitly selected.",
+        modelVisible: false,
+        name: "hidden-reference",
+        path: "/tmp/hidden-reference/SKILL.md",
+        projectPath: "/tmp/project",
+        scope: "project",
+        shortDescription: "Hidden reference",
+        visible: true
+      }
+    ])
+
+    expect(references).toContain("<skill_references>")
+    expect(references).toContain("<name>hidden-reference</name>")
+    expect(references).toContain("<capability>context-loaders</capability>")
+    expect(references).toContain("<model_visible>false</model_visible>")
+    expect(references).not.toContain("Hidden implementation details.")
+  })
+
+  it("includes selected model-disabled skills as references in the prompt", () => {
+    const projectPath = path.join(mockedHomeDir, "project-e")
+    const skillDir = path.join(
+      projectPath,
+      ".agents",
+      "skills",
+      "hidden-selected"
+    )
+    const skillPath = path.join(skillDir, "SKILL.md")
+
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      skillPath,
+      [
+        "---",
+        "name: hidden-selected",
+        "description: Use when explicitly selected.",
+        "model-disabled: true",
+        "---",
+        "",
+        "Do not reveal this body."
+      ].join("\n")
+    )
+
+    const prompt = buildSkillsSystemPrompt({
+      projectPath,
+      query: "",
+      selectedSkills: [
+        {
+          description: "Use when explicitly selected.",
+          kind: "skill",
+          name: "hidden-selected",
+          path: skillPath,
+          projectPath,
+          relativePath: ".agents/skills/hidden-selected/SKILL.md",
+          scope: "project",
+          shortDescription: null
+        }
+      ],
+      settings: enabledSkillsSettings
+    })
+
+    expect(prompt).toContain("<skill_references>")
+    expect(prompt).toContain("<name>hidden-selected</name>")
+    expect(prompt).not.toContain("Do not reveal this body.")
+  })
+
+  it("loads prompt templates from skill prompt directories", () => {
+    const projectPath = path.join(mockedHomeDir, "project-f")
+    const skillDir = path.join(projectPath, ".agents", "skills", "review-skill")
+    const promptsDir = path.join(skillDir, "prompts")
+
+    writeSkill({
+      description: "Use when reviewing code.",
+      name: "review-skill",
+      root: path.join(projectPath, ".agents", "skills")
+    })
+    fs.mkdirSync(promptsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(promptsDir, "review.md"),
+      [
+        "---",
+        "name: Review Current Diff",
+        "description: Review the current diff",
+        "---",
+        "Review $1 for regressions."
+      ].join("\n")
+    )
+    fs.mkdirSync(path.join(promptsDir, "nested"))
+    fs.writeFileSync(path.join(promptsDir, "nested", "ignored.md"), "Ignore")
+
+    expect(
+      listSkillPromptTemplates({
+        projectPaths: [projectPath]
+      })
+    ).toEqual([
+      {
+        body: "Review $1 for regressions.",
+        description: "Review the current diff",
+        name: "Review Current Diff",
+        path: path.join(promptsDir, "review.md")
+      }
+    ])
   })
 })

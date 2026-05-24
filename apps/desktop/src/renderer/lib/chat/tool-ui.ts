@@ -50,6 +50,14 @@ export type AssistantTextSegment =
   | AssistantPlainTextSegment
   | AssistantThinkingTextSegment
 
+export const shouldRenderAssistantToolPart = ({
+  showToolTraces,
+  state
+}: {
+  showToolTraces: boolean
+  state: string
+}): boolean => showToolTraces || state === "approval-requested"
+
 interface ParsedCommandBlock {
   nextIndex: number
   segment: AssistantCommandTextSegment
@@ -400,3 +408,32 @@ export const splitAssistantTextSegments = (
 export const hasNonTextAssistantSegments = (
   segments: AssistantTextSegment[]
 ): boolean => segments.some((segment) => segment.type !== "text")
+
+export const splitAssistantRenderableTextSegments = ({
+  showToolTraces,
+  text
+}: {
+  showToolTraces: boolean
+  text: string
+}): AssistantTextSegment[] => {
+  if (!text.trim()) {
+    return []
+  }
+
+  const segments = splitAssistantTextSegments(text)
+
+  if (showToolTraces) {
+    return segments
+  }
+
+  if (!hasNonTextAssistantSegments(segments)) {
+    return [
+      {
+        text,
+        type: "text"
+      }
+    ]
+  }
+
+  return segments.filter((segment) => segment.type === "text")
+}

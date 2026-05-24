@@ -10,7 +10,7 @@ describe("isChatRequestPhaseDataPart", () => {
     expect(
       isChatRequestPhaseDataPart({
         data: {
-          phase: "memory-loading"
+          phase: "agent-turn"
         },
         type: CHAT_REQUEST_PHASE_DATA_TYPE
       })

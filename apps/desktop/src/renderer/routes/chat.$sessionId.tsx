@@ -6,6 +6,7 @@ import type {
   ChatSessionSummary,
   GitProjectDiffOutput,
   ProjectSnapshotItem,
+  PromptTemplate,
   StreamdownAnimation
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
@@ -52,6 +53,7 @@ import {
 import type { ProjectContextPanelView } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
+import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
   resolveAssistantLiveStatus
@@ -74,6 +76,7 @@ import {
 } from "@/renderer/lib/chat/project-context-panel"
 import {
   filterPromptSkillMentionItems,
+  filterPromptTemplateItems,
   getMentionDisplayName,
   getMentionTokenTypeLabel,
   getMentionTitle,
@@ -121,6 +124,7 @@ const getChatSessionMessagesQueryOptions = (sessionId: string) =>
 const MENTION_ITEM_LIMIT = 50
 const MENTION_SEARCH_DEBOUNCE_WAIT_MS = 180
 const MENTION_SKILL_ITEM_LIMIT = 20
+const PROMPT_TEMPLATE_ITEM_LIMIT = 20
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
@@ -559,12 +563,24 @@ const useChatMentionSuggestions = ({
 }) => {
   const [mentionQueryState, setMentionQueryState] =
     useState<MentionQueryState | null>(null)
+  const [promptTemplateQuery, setPromptTemplateQuery] = useState<string | null>(
+    null
+  )
   const [debouncedMentionQueryState] = useDebouncedValue(mentionQueryState, {
     key: "chat-mention-suggestions",
     leading: true,
     trailing: true,
     wait: MENTION_SEARCH_DEBOUNCE_WAIT_MS
   })
+  const [debouncedPromptTemplateQuery] = useDebouncedValue(
+    promptTemplateQuery,
+    {
+      key: "chat-prompt-template-suggestions",
+      leading: true,
+      trailing: true,
+      wait: MENTION_SEARCH_DEBOUNCE_WAIT_MS
+    }
+  )
   const mentionTrigger = mentionQueryState?.trigger ?? null
   const mentionQuery =
     debouncedMentionQueryState?.trigger === mentionTrigger
@@ -587,6 +603,11 @@ const useChatMentionSuggestions = ({
       sessionExists &&
       (mentionTrigger === "project" || mentionTrigger === "skill")
   })
+  const promptTemplatesQuery = useQuery({
+    ...orpc.skills.listPromptTemplates.queryOptions({}),
+    enabled: sessionExists && promptTemplateQuery !== null,
+    placeholderData: (previousData) => previousData
+  })
   const mentionSkillItems = useMemo(
     () =>
       filterPromptSkillMentionItems({
@@ -603,6 +624,15 @@ const useChatMentionSuggestions = ({
       selectedSession?.projectPath
     ]
   )
+  const promptTemplateItems = useMemo(
+    () =>
+      filterPromptTemplateItems({
+        limit: PROMPT_TEMPLATE_ITEM_LIMIT,
+        query: debouncedPromptTemplateQuery ?? "",
+        templates: promptTemplatesQuery.data?.templates ?? []
+      }),
+    [debouncedPromptTemplateQuery, promptTemplatesQuery.data?.templates]
+  )
   const handleMentionQueryChange = useCallback(
     (query: string | null, trigger: PromptMentionTrigger | null) => {
       setMentionQueryState(
@@ -616,15 +646,24 @@ const useChatMentionSuggestions = ({
     },
     []
   )
+  const handlePromptTemplateQueryChange = useCallback(
+    (query: string | null) => {
+      setPromptTemplateQuery(query)
+    },
+    []
+  )
 
   return {
     handleMentionQueryChange,
+    handlePromptTemplateQueryChange,
     isLoadingFileItems:
       mentionItemsQuery.isFetching ||
       (mentionTrigger === "project" && mentionSkillsQuery.isFetching),
+    isLoadingPromptTemplateItems: promptTemplatesQuery.isFetching,
     isLoadingSkillItems: mentionSkillsQuery.isFetching,
     mentionItems: mentionItemsQuery.data?.files ?? [],
-    mentionSkillItems
+    mentionSkillItems,
+    promptTemplateItems
   }
 }
 
@@ -846,6 +885,7 @@ const EditingMessageBubble = ({
 }
 
 const ChatMessageBubble = ({
+  chatSessionId,
   isAssistant,
   isLatestAssistantMessage,
   isRequestPending,
@@ -855,6 +895,7 @@ const ChatMessageBubble = ({
   showToolTraces,
   streamdownAnimation
 }: {
+  chatSessionId: string
   isAssistant: boolean
   isLatestAssistantMessage: boolean
   isRequestPending: boolean
@@ -904,6 +945,7 @@ const ChatMessageBubble = ({
         ) : null}
 
         <AssistantMessageTimeline
+          chatSessionId={chatSessionId}
           isStreamdownAnimating={isLatestAssistantMessage && isRequestPending}
           isApprovalActionDisabled={isRequestPending}
           message={message}
@@ -937,6 +979,7 @@ const ChatMessageBubble = ({
 }
 
 const ChatMessageItem = ({
+  chatSessionId,
   editingMessageId,
   editingMessageText,
   isLatestAssistantMessage,
@@ -952,6 +995,7 @@ const ChatMessageItem = ({
   showToolTraces,
   streamdownAnimation
 }: {
+  chatSessionId: string
   editingMessageId: string | null
   editingMessageText: string
   isLatestAssistantMessage: boolean
@@ -996,6 +1040,7 @@ const ChatMessageItem = ({
           />
         ) : (
           <ChatMessageBubble
+            chatSessionId={chatSessionId}
             isAssistant={isAssistant}
             isLatestAssistantMessage={isLatestAssistantMessage}
             isRequestPending={isRequestPending}
@@ -1025,6 +1070,7 @@ const ChatMessageItem = ({
 const ChatRuntime = ({
   gitDiff,
   isLoadingFileItems,
+  isLoadingPromptTemplateItems,
   isLoadingProjectTreeItems,
   isLoadingSkillItems,
   isModelUpdating,
@@ -1038,12 +1084,14 @@ const ChatRuntime = ({
   onMentionQueryChange,
   onModelChange,
   onOpenSettings,
+  onPromptTemplateQueryChange,
   onProjectContextOpenChange,
   onRefreshProjectContext,
   onToggleProjectContext,
   onProjectContextViewChange,
   projectTreeItems,
   projectContextView,
+  promptTemplateItems,
   selectedModelValue,
   selectedSession,
   showToolTraces,
@@ -1054,6 +1102,7 @@ const ChatRuntime = ({
 }: {
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
+  isLoadingPromptTemplateItems: boolean
   isLoadingProjectTreeItems: boolean
   isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
@@ -1070,12 +1119,14 @@ const ChatRuntime = ({
   ) => void
   onModelChange: (value: string | null) => void
   onOpenSettings: () => void
+  onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
   onRefreshProjectContext: () => void
   onToggleProjectContext: () => void
   onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
   projectContextView: ProjectContextPanelView
+  promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
   showToolTraces: boolean
@@ -1115,6 +1166,7 @@ const ChatRuntime = ({
       setRequestPhase(null)
       onChatFinish()
     },
+    sendAutomaticallyWhen: shouldSendChatAutomatically,
     transport
   })
 
@@ -1393,6 +1445,7 @@ const ChatRuntime = ({
                 <div className="space-y-4">
                   {messages.map((message) => (
                     <ChatMessageItem
+                      chatSessionId={selectedSession.id}
                       editingMessageId={editingMessageId}
                       editingMessageText={editingMessageText}
                       isLatestAssistantMessage={
@@ -1478,6 +1531,7 @@ const ChatRuntime = ({
               </div>
             }
             isLoadingFileItems={isLoadingFileItems}
+            isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
             isLoadingSkillItems={isLoadingSkillItems}
             mentionEmptyLabel={t("chat.mentions.empty")}
             mentionFileGroupLabel={t("chat.mentions.filesGroup")}
@@ -1492,9 +1546,13 @@ const ChatRuntime = ({
             )}
             isOutputActive={isRequestPending}
             onMentionQueryChange={onMentionQueryChange}
+            onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onStop={handleStop}
             onSubmit={handleSubmit}
             placeholder={t("chat.composer.placeholder")}
+            promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
+            promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
+            promptTemplateItems={promptTemplateItems}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -1507,6 +1565,7 @@ const ChatRuntime = ({
 const ChatPendingState = ({
   gitDiff,
   isLoadingFileItems,
+  isLoadingPromptTemplateItems,
   isLoadingProjectTreeItems,
   isLoadingSkillItems,
   isProjectContextOpen,
@@ -1515,12 +1574,14 @@ const ChatPendingState = ({
   onMentionQueryChange,
   onModelChange,
   onOpenSettings,
+  onPromptTemplateQueryChange,
   onProjectContextOpenChange,
   onRefreshProjectContext,
   onToggleProjectContext,
   onProjectContextViewChange,
   projectTreeItems,
   projectContextView,
+  promptTemplateItems,
   selectedModelValue,
   selectedSession,
   sessionTitle,
@@ -1528,6 +1589,7 @@ const ChatPendingState = ({
 }: {
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
+  isLoadingPromptTemplateItems: boolean
   isLoadingProjectTreeItems: boolean
   isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
@@ -1539,12 +1601,14 @@ const ChatPendingState = ({
   ) => void
   onModelChange: (value: string | null) => void
   onOpenSettings: () => void
+  onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
   onRefreshProjectContext: () => void
   onToggleProjectContext: () => void
   onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
   projectContextView: ProjectContextPanelView
+  promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
   sessionTitle: string
@@ -1607,6 +1671,7 @@ const ChatPendingState = ({
               </div>
             }
             isLoadingFileItems={isLoadingFileItems}
+            isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
             isLoadingSkillItems={isLoadingSkillItems}
             mentionEmptyLabel={t("chat.mentions.empty")}
             mentionFileGroupLabel={t("chat.mentions.filesGroup")}
@@ -1620,8 +1685,12 @@ const ChatPendingState = ({
               "chat.mentions.skillsSearchPlaceholder"
             )}
             onMentionQueryChange={onMentionQueryChange}
+            onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onSubmit={NOOP_PROMPT_SUBMIT}
             placeholder={t("chat.composer.placeholder")}
+            promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
+            promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
+            promptTemplateItems={promptTemplateItems}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -1694,10 +1763,13 @@ const ChatSessionPage = () => {
   })
   const {
     handleMentionQueryChange,
+    handlePromptTemplateQueryChange,
     isLoadingFileItems,
+    isLoadingPromptTemplateItems,
     isLoadingSkillItems,
     mentionItems,
-    mentionSkillItems
+    mentionSkillItems,
+    promptTemplateItems
   } = useChatMentionSuggestions({
     selectedSession: session,
     sessionExists,
@@ -1922,6 +1994,7 @@ const ChatSessionPage = () => {
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}
+          isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
           isLoadingSkillItems={isLoadingSkillItems}
           isModelUpdating={setModelMutation.isPending}
@@ -1934,12 +2007,14 @@ const ChatSessionPage = () => {
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}
+          onPromptTemplateQueryChange={handlePromptTemplateQueryChange}
           onProjectContextOpenChange={handleProjectContextOpenChange}
           onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
           onToggleProjectContext={handleToggleProjectContext}
           projectContextView={projectContextView}
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
+          promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
           showToolTraces={settingsQuery.data?.agents.showToolTraces ?? true}
@@ -1954,6 +2029,7 @@ const ChatSessionPage = () => {
         <ChatPendingState
           gitDiff={gitDiffQuery.data}
           isLoadingFileItems={isLoadingFileItems}
+          isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
           isLoadingSkillItems={isLoadingSkillItems}
           isProjectContextOpen={isProjectContextOpen}
@@ -1962,12 +2038,14 @@ const ChatSessionPage = () => {
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}
+          onPromptTemplateQueryChange={handlePromptTemplateQueryChange}
           onProjectContextOpenChange={handleProjectContextOpenChange}
           onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
           onToggleProjectContext={handleToggleProjectContext}
           projectContextView={projectContextView}
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
+          promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
           sessionTitle={sessionTitle}

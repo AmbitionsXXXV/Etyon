@@ -16,7 +16,11 @@ import { buildMentionContext } from "@/main/project-snapshot"
 import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
-import { buildSkillsSystemPrompt } from "@/main/skills"
+import {
+  buildSkillsSystemPrompt,
+  listSkillPromptTemplates,
+  resolveSelectedSkillCapabilities
+} from "@/main/skills"
 import { buildMoonshotReasoningForAssistantToolCalls } from "@/shared/providers/moonshot-reasoning"
 
 const chatRoute = new Hono()
@@ -68,6 +72,10 @@ chatRoute.post("/chat", async (c) => {
   }
 
   const selectedSkills = mentions.filter((mention) => mention.kind === "skill")
+  const selectedSkillCapabilities = resolveSelectedSkillCapabilities({
+    projectPath: session.projectPath,
+    selectedSkills
+  })
   const settings = getSettings()
   const memoryQuery = buildMemoryQuery(messages)
   const shouldRetrieveLongTermMemory =
@@ -100,6 +108,7 @@ chatRoute.post("/chat", async (c) => {
   const requestStartedAt = Date.now()
 
   return buildChatStreamResponse({
+    abortSignal: c.req.raw.signal,
     buildLongTermMemorySystem: () =>
       buildMemorySystemPrompt({
         db,
@@ -121,10 +130,16 @@ chatRoute.post("/chat", async (c) => {
       })
     },
     projectPath: session.projectPath,
+    promptTemplates: listSkillPromptTemplates({
+      projectPaths: [session.projectPath]
+    }),
     requestStartedAt,
     sessionId,
     settings,
     shouldRetrieveLongTermMemory,
+    ...(selectedSkillCapabilities.length > 0
+      ? { skillCapabilities: selectedSkillCapabilities }
+      : {}),
     streamAgentChat,
     systemPrompts
   })

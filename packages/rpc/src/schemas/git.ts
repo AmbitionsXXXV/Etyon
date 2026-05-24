@@ -28,6 +28,7 @@ export const GitProjectStatusSchema = z.object({
 })
 
 export const GitProjectDiffInputSchema = z.object({
+  paths: z.array(z.string().min(1)).max(50).optional(),
   sessionId: z.string()
 })
 

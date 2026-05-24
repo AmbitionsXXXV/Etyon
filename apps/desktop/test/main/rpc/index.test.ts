@@ -7,6 +7,14 @@ import type { RouterClient } from "@orpc/server"
 import { RPCHandler } from "@orpc/server/message-port"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
+import {
+  appendAgentEvent,
+  createAgentRun,
+  recordAgentToolCall,
+  updateAgentRun
+} from "@/main/agents/agent-event-store"
+import { createChatSession } from "@/main/chat-sessions"
+import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { createMessagePortRpcContext } from "@/main/rpc/context"
 import type { AppRouter } from "@/main/rpc/router"
@@ -33,20 +41,47 @@ vi.mock("@electron-toolkit/utils", () => ({
   }
 }))
 
-vi.mock("electron", () => ({
-  BrowserWindow: {
-    getAllWindows: () => []
-  },
-  app: {
-    getAppPath: () => mockedAppPath,
-    getLocale: () => "en-US",
-    getPath: () => mockedHomeDir,
-    getVersion: () => "0.1.0-test"
-  },
-  ipcMain: {
-    on: vi.fn()
+vi.mock("electron-store", () => {
+  class MockElectronStore {
+    readonly store = new Map<string, unknown>()
+
+    get(key: string): unknown {
+      return this.store.get(key)
+    }
+
+    set(key: string, value: unknown): void {
+      this.store.set(key, value)
+    }
   }
-}))
+
+  return {
+    default: MockElectronStore
+  }
+})
+
+vi.mock("electron", () => {
+  const electronMock = {
+    BrowserWindow: {
+      getAllWindows: () => []
+    },
+    app: {
+      getAppPath: () => mockedAppPath,
+      getLocale: () => "en-US",
+      getName: () => "Etyon Test",
+      getPath: () => mockedHomeDir,
+      getVersion: () => "0.1.0-test",
+      name: "Etyon Test"
+    },
+    ipcMain: {
+      on: vi.fn()
+    }
+  }
+
+  return {
+    ...electronMock,
+    default: electronMock
+  }
+})
 
 describe("message-port rpc", () => {
   afterAll(() => {
@@ -175,6 +210,238 @@ describe("message-port rpc", () => {
     await client.projects.remove({
       projectPath
     })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("exposes skill prompt templates over the message-port adapter", async () => {
+    const projectPath = path.join(mockedHomeDir, "prompt-template-project")
+    const promptDir = path.join(
+      projectPath,
+      ".agents",
+      "skills",
+      "rpc-template-skill",
+      "prompts"
+    )
+
+    fs.mkdirSync(promptDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(path.dirname(promptDir), "SKILL.md"),
+      [
+        "---",
+        "name: rpc-template-skill",
+        "description: Use when testing RPC prompt templates.",
+        "---",
+        "",
+        "Use RPC prompt template instructions."
+      ].join("\n")
+    )
+    fs.writeFileSync(
+      path.join(promptDir, "review.md"),
+      [
+        "---",
+        "name: review",
+        "description: Review selected context",
+        "---",
+        "Review $1."
+      ].join("\n")
+    )
+
+    await ensureDatabaseReady()
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    await client.chatSessions.create({
+      projectPath
+    })
+
+    const result = await client.skills.listPromptTemplates()
+
+    expect(result.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: "Review $1.",
+          description: "Review selected context",
+          name: "review",
+          path: path.join(promptDir, "review.md")
+        })
+      ])
+    )
+
+    await client.projects.remove({
+      projectPath
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("exposes pending agent approvals over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon")
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "pending",
+      db: getDb(),
+      id: "rpc-tool-approval-1",
+      input: {
+        command: "vp install"
+      },
+      runId: run.id,
+      state: "approval_requested",
+      toolName: "runCheck"
+    })
+    await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        approvalId: "approval-1",
+        toolCallId: "rpc-tool-approval-1"
+      },
+      runId: run.id,
+      type: "tool_call_approval_requested"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: run.id,
+      status: "suspended"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.listPendingApprovals({
+      sessionId: session.id
+    })
+
+    expect(result.approvals).toEqual([
+      expect.objectContaining({
+        approvalId: "approval-1",
+        chatSessionId: session.id,
+        id: "rpc-tool-approval-1",
+        input: {
+          command: "vp install"
+        },
+        runId: run.id,
+        runStatus: "suspended",
+        state: "approval_requested",
+        toolName: "runCheck"
+      })
+    ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("inspects an agent run trace over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon")
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        profileId: "coder",
+        toolNames: ["readFile"]
+      },
+      runId: run.id,
+      type: "agent_run_started"
+    })
+    await recordAgentToolCall({
+      approvalState: "not_required",
+      db: getDb(),
+      id: "rpc-tool-call-1",
+      input: {
+        path: "README.md"
+      },
+      runId: run.id,
+      state: "finished",
+      toolName: "readFile"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.inspectRun({
+      runId: run.id,
+      sessionId: session.id
+    })
+
+    expect(result.run).toMatchObject({
+      chatSessionId: session.id,
+      id: run.id,
+      profileId: "coder",
+      status: "running"
+    })
+    expect(result.events).toEqual([
+      expect.objectContaining({
+        payload: {
+          profileId: "coder",
+          toolNames: ["readFile"]
+        },
+        runId: run.id,
+        sequence: 1,
+        type: "agent_run_started"
+      })
+    ])
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        id: "rpc-tool-call-1",
+        input: {
+          path: "README.md"
+        },
+        runId: run.id,
+        state: "finished",
+        toolName: "readFile"
+      })
+    ])
 
     port1.close()
     port2.close()

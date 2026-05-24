@@ -25,7 +25,24 @@ interface GitDiffNameStatusEntry {
   status: string
 }
 
+interface GitProjectDiffOptions {
+  excludeSecretPaths?: boolean
+  paths?: string[]
+}
+
 const execFileAsync = promisify(execFile)
+const SECRET_GIT_EXCLUDE_PATHS = [
+  ":(exclude).env",
+  ":(exclude).env.*",
+  ":(exclude)**/.env",
+  ":(exclude)**/.env.*",
+  ":(exclude)**/.ssh/**",
+  ":(exclude)**/secrets/**",
+  ":(exclude)**/*.key",
+  ":(exclude)**/*.p12",
+  ":(exclude)**/*.pem",
+  ":(exclude)**/*.pfx"
+] as const
 
 const createEmptyGitProjectStatus = ({
   error,
@@ -116,6 +133,55 @@ const resolveProjectFilePath = ({
   return resolvedPath
 }
 
+const normalizeGitPathspec = ({
+  projectPath,
+  relativePath
+}: {
+  projectPath: string
+  relativePath: string
+}): string => {
+  const resolvedPath = resolveProjectFilePath({
+    projectPath,
+    relativePath
+  })
+  const pathspec = normalizeGitPath(path.relative(projectPath, resolvedPath))
+
+  return pathspec || "."
+}
+
+const getGitPathspecs = ({
+  excludeSecretPaths = false,
+  paths,
+  projectPath
+}: {
+  excludeSecretPaths?: boolean
+  paths?: string[]
+  projectPath: string
+}): string[] => {
+  const normalizedPaths = (paths ?? [])
+    .map((filePath) => filePath.trim())
+    .filter(Boolean)
+
+  if (normalizedPaths.length === 0) {
+    return excludeSecretPaths ? [".", ...SECRET_GIT_EXCLUDE_PATHS] : ["."]
+  }
+
+  const pathspecs = [
+    ...new Set(
+      normalizedPaths.map((filePath) =>
+        normalizeGitPathspec({
+          projectPath,
+          relativePath: filePath
+        })
+      )
+    )
+  ]
+
+  return excludeSecretPaths
+    ? [...pathspecs, ...SECRET_GIT_EXCLUDE_PATHS]
+    : pathspecs
+}
+
 const runGit = async ({
   args,
   maxBuffer,
@@ -175,6 +241,7 @@ const readGitDiffOldContent = ({
   entry,
   oldPath,
   projectPath,
+
   stage
 }: {
   entry: GitDiffNameStatusEntry
@@ -259,9 +326,11 @@ const readGitDiffSnapshot = async ({
 }
 
 const getGitDiffFileSnapshots = async ({
+  pathspecs,
   projectPath,
   stage
 }: {
+  pathspecs: string[]
   projectPath: string
   stage: GitDiffStage
 }): Promise<GitProjectDiffFileSnapshot[]> => {
@@ -272,7 +341,7 @@ const getGitDiffFileSnapshots = async ({
       "--name-status",
       "-z",
       "--",
-      "."
+      ...pathspecs
     ],
     maxBuffer: GIT_STATUS_MAX_BUFFER,
     projectPath
@@ -294,14 +363,17 @@ const getGitDiffFileSnapshots = async ({
 }
 
 const getGitDiffFileSnapshotsSafely = async ({
+  pathspecs,
   projectPath,
   stage
 }: {
+  pathspecs: string[]
   projectPath: string
   stage: GitDiffStage
 }): Promise<GitProjectDiffFileSnapshot[]> => {
   try {
     return await getGitDiffFileSnapshots({
+      pathspecs,
       projectPath,
       stage
     })
@@ -485,9 +557,15 @@ export const getGitProjectStatuses = async (
 }
 
 export const getGitProjectDiff = async (
-  projectPath: string
+  projectPath: string,
+  options: GitProjectDiffOptions = {}
 ): Promise<GitProjectDiffOutput> => {
   const normalizedProjectPath = path.resolve(projectPath)
+  const pathspecs = getGitPathspecs({
+    excludeSecretPaths: options.excludeSecretPaths,
+    paths: options.paths,
+    projectPath: normalizedProjectPath
+  })
   const emptyDiff = {
     fileSnapshots: [],
     hasPatch: false,
@@ -507,20 +585,29 @@ export const getGitProjectDiff = async (
     const [stagedPatch, unstagedPatch, stagedSnapshots, unstagedSnapshots] =
       await Promise.all([
         runGit({
-          args: ["diff", "--cached", "--no-color", "--no-ext-diff", "--", "."],
+          args: [
+            "diff",
+            "--cached",
+            "--no-color",
+            "--no-ext-diff",
+            "--",
+            ...pathspecs
+          ],
           maxBuffer: GIT_DIFF_MAX_BUFFER,
           projectPath: normalizedProjectPath
         }),
         runGit({
-          args: ["diff", "--no-color", "--no-ext-diff", "--", "."],
+          args: ["diff", "--no-color", "--no-ext-diff", "--", ...pathspecs],
           maxBuffer: GIT_DIFF_MAX_BUFFER,
           projectPath: normalizedProjectPath
         }),
         getGitDiffFileSnapshotsSafely({
+          pathspecs,
           projectPath: normalizedProjectPath,
           stage: "staged"
         }),
         getGitDiffFileSnapshotsSafely({
+          pathspecs,
           projectPath: normalizedProjectPath,
           stage: "unstaged"
         })

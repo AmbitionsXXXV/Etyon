@@ -29,6 +29,15 @@ describe("resolveAssistantLiveStatus", () => {
     ).toBe("model-start")
   })
 
+  it("returns agent-turn when the stream reports agent execution", () => {
+    expect(
+      resolveAssistantLiveStatus({
+        requestPhase: "agent-turn",
+        status: "submitted"
+      })
+    ).toBe("agent-turn")
+  })
+
   it("detects streaming reasoning parts as thinking", () => {
     expect(
       resolveAssistantLiveStatus({

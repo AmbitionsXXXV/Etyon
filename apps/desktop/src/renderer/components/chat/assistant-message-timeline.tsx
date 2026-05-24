@@ -12,7 +12,10 @@ import {
 } from "@/renderer/components/chat/message-tool-trace"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
-import { splitAssistantTextSegments } from "@/renderer/lib/chat/tool-ui"
+import {
+  shouldRenderAssistantToolPart,
+  splitAssistantRenderableTextSegments
+} from "@/renderer/lib/chat/tool-ui"
 import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
 import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
 
@@ -117,17 +120,10 @@ const AssistantTextPartTimeline = ({
   streamdownAnimation: StreamdownAnimation
   text: string
 }) => {
-  if (!showToolTraces) {
-    return (
-      <AssistantMarkdownContent
-        isAnimating={isStreamdownAnimating}
-        streamdownAnimation={streamdownAnimation}
-        text={text}
-      />
-    )
-  }
-
-  const segments = splitAssistantTextSegments(text)
+  const segments = splitAssistantRenderableTextSegments({
+    showToolTraces,
+    text
+  })
 
   return (
     <>
@@ -178,6 +174,7 @@ const AssistantTextSegmentTimelineItem = ({
 }
 
 const AssistantTimelinePart = ({
+  chatSessionId,
   isStreamdownAnimating,
   isApprovalActionDisabled,
   messageId,
@@ -187,6 +184,7 @@ const AssistantTimelinePart = ({
   showToolTraces,
   streamdownAnimation
 }: {
+  chatSessionId: string
   isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
   messageId: string
@@ -221,9 +219,16 @@ const AssistantTimelinePart = ({
     )
   }
 
-  if (showToolTraces && isToolUIPart(part)) {
+  if (
+    isToolUIPart(part) &&
+    shouldRenderAssistantToolPart({
+      showToolTraces,
+      state: part.state
+    })
+  ) {
     return (
       <StructuredToolTraceCard
+        chatSessionId={chatSessionId}
         isApprovalActionDisabled={isApprovalActionDisabled}
         onApprovalResponse={onApprovalResponse}
         part={part}
@@ -235,6 +240,7 @@ const AssistantTimelinePart = ({
 }
 
 export const AssistantMessageTimeline = ({
+  chatSessionId,
   className,
   isStreamdownAnimating,
   isApprovalActionDisabled,
@@ -243,6 +249,7 @@ export const AssistantMessageTimeline = ({
   showToolTraces,
   streamdownAnimation
 }: {
+  chatSessionId: string
   className?: string
   isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
@@ -254,6 +261,7 @@ export const AssistantMessageTimeline = ({
   <div className={cn("space-y-2", className)}>
     {message.parts.map((part, index) => (
       <AssistantTimelinePart
+        chatSessionId={chatSessionId}
         isStreamdownAnimating={isStreamdownAnimating}
         isApprovalActionDisabled={isApprovalActionDisabled}
         key={getTimelinePartKey(message.id, part, index)}

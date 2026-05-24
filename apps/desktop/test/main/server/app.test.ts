@@ -38,10 +38,12 @@ const {
   getSettingsMock,
   listAgentEventsMock,
   listAgentToolCallsMock,
+  listSkillPromptTemplatesMock,
   mockedHomeDir,
   recordAgentToolCallMock,
   replaceChatMessagesMock,
   resolveModelMock,
+  resolveSelectedSkillCapabilitiesMock,
   stepCountIsMock,
   streamTextMock,
   updateAgentRunMock,
@@ -133,12 +135,14 @@ const {
     getSettingsMock: vi.fn(() => buildSettings()),
     listAgentEventsMock: vi.fn(() => Promise.resolve([])),
     listAgentToolCallsMock: vi.fn(() => Promise.resolve([])),
+    listSkillPromptTemplatesMock: vi.fn(() => []),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     recordAgentToolCallMock: vi.fn(() =>
       Promise.resolve({ id: "tool-call-1" })
     ),
     replaceChatMessagesMock: vi.fn(() => Promise.resolve([])),
     resolveModelMock: vi.fn(() => ({ modelId: "test-model" })),
+    resolveSelectedSkillCapabilitiesMock: vi.fn(() => []),
     stepCountIsMock: vi.fn((stepCount: number) => ({
       kind: "step-count",
       stepCount
@@ -286,7 +290,9 @@ vi.mock("@/main/project-snapshot", () => ({
 }))
 
 vi.mock("@/main/skills", () => ({
-  buildSkillsSystemPrompt: buildSkillsSystemPromptMock
+  buildSkillsSystemPrompt: buildSkillsSystemPromptMock,
+  listSkillPromptTemplates: listSkillPromptTemplatesMock,
+  resolveSelectedSkillCapabilities: resolveSelectedSkillCapabilitiesMock
 }))
 
 vi.mock("@/main/settings", () => ({
@@ -522,6 +528,10 @@ describe("hono app", () => {
         maxContextSkills: 4
       }
     })
+    expect(resolveSelectedSkillCapabilitiesMock).toHaveBeenCalledWith({
+      projectPath: "/tmp/project-a",
+      selectedSkills: []
+    })
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         system:
@@ -606,7 +616,10 @@ describe("hono app", () => {
       | undefined
 
     expect(Object.keys(streamOptions?.tools ?? {}).toSorted()).toEqual([
+      "fileInfo",
+      "findFiles",
       "gitDiff",
+      "memorySearch",
       "readFile",
       "searchFiles"
     ])
@@ -615,6 +628,43 @@ describe("hono app", () => {
       kind: "step-count",
       stepCount: 6
     })
+  })
+
+  it("forwards the chat request abort signal to the model stream", async () => {
+    const abortController = new AbortController()
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "message-1",
+            parts: [],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST",
+      signal: abortController.signal
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+    const streamOptions = getFirstStreamTextCallOptions() as
+      | {
+          abortSignal?: AbortSignal
+        }
+      | undefined
+
+    expect(streamOptions?.abortSignal).toBeInstanceOf(AbortSignal)
+    expect(streamOptions?.abortSignal?.aborted).toBe(false)
+
+    abortController.abort()
+
+    expect(streamOptions?.abortSignal?.aborted).toBe(true)
   })
 
   it("falls back to the session model when the request body does not provide one", async () => {
