@@ -1,11 +1,17 @@
 import type {
+  AgentSessionQueuedMessageQueue,
   ChatMention,
   ProjectSnapshotItem,
   PromptTemplate
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { Button } from "@heroui/react"
-import { CubeIcon, SentIcon, StopIcon } from "@hugeicons/core-free-icons"
+import {
+  CubeIcon,
+  Queue02Icon,
+  SentIcon,
+  StopIcon
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
@@ -20,6 +26,7 @@ import type {
 } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { listAgentComposerQueueActions } from "@/renderer/lib/chat/agent-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   PROJECT_MENTION_NODE_TYPE,
@@ -465,6 +472,97 @@ const PromptInputSuggestions = ({
   )
 }
 
+const PromptInputActions = ({
+  disabled,
+  isOutputActive,
+  isQueueSubmitEnabled,
+  isSubmitting,
+  onQueueSubmit,
+  onStop,
+  queueFollowUpLabel,
+  queueSteerLabel,
+  stopLabel,
+  submitLabel
+}: {
+  disabled: boolean
+  isOutputActive: boolean
+  isQueueSubmitEnabled: boolean
+  isSubmitting: boolean
+  onQueueSubmit: (queue?: AgentSessionQueuedMessageQueue) => Promise<void>
+  onStop?: () => void
+  queueFollowUpLabel: string
+  queueSteerLabel: string
+  stopLabel: string
+  submitLabel: string
+}) => {
+  const handleSingleActionPress = useCallback(() => {
+    if (isOutputActive) {
+      onStop?.()
+      return
+    }
+
+    void onQueueSubmit()
+  }, [isOutputActive, onQueueSubmit, onStop])
+  const queueActions = listAgentComposerQueueActions({
+    canQueueMessage: isOutputActive && isQueueSubmitEnabled
+  })
+  const actionLabel = isOutputActive ? stopLabel : submitLabel
+  const actionIcon = isOutputActive ? StopIcon : SentIcon
+
+  if (queueActions.length > 0) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button
+          aria-label={stopLabel}
+          isIconOnly
+          onPress={onStop}
+          size="sm"
+          type="button"
+          variant="danger"
+        >
+          <HugeiconsIcon icon={StopIcon} size={16} strokeWidth={2} />
+        </Button>
+        {queueActions.map((action) => {
+          const icon = action.queue === "follow-up" ? Queue02Icon : SentIcon
+          const label =
+            action.queue === "follow-up" ? queueFollowUpLabel : queueSteerLabel
+
+          return (
+            <Button
+              aria-label={label}
+              isDisabled={disabled || isSubmitting}
+              isIconOnly
+              key={action.queue}
+              onPress={() => {
+                void onQueueSubmit(action.queue)
+              }}
+              size="sm"
+              type="button"
+              variant={action.queue === "follow-up" ? "secondary" : "primary"}
+            >
+              <HugeiconsIcon icon={icon} size={16} strokeWidth={2} />
+            </Button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      aria-label={actionLabel}
+      isDisabled={isOutputActive ? false : disabled || isSubmitting}
+      isIconOnly
+      onPress={handleSingleActionPress}
+      size="sm"
+      type="button"
+      variant={isOutputActive ? "danger" : "primary"}
+    >
+      <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
+    </Button>
+  )
+}
+
 export const PromptInput = ({
   disabled = false,
   footer,
@@ -472,6 +570,7 @@ export const PromptInput = ({
   isLoadingPromptTemplateItems = false,
   isLoadingSkillItems = false,
   isOutputActive = false,
+  isQueueSubmitEnabled = false,
   mentionGlobalSkillSourceLabel,
   mentionFileGroupLabel,
   mentionFolderGroupLabel,
@@ -488,6 +587,8 @@ export const PromptInput = ({
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
   promptTemplateItems = [],
+  queueFollowUpLabel,
+  queueSteerLabel,
   stopLabel,
   submitLabel
 }: {
@@ -497,6 +598,7 @@ export const PromptInput = ({
   isLoadingPromptTemplateItems?: boolean
   isLoadingSkillItems?: boolean
   isOutputActive?: boolean
+  isQueueSubmitEnabled?: boolean
   mentionGlobalSkillSourceLabel: string
   mentionFileGroupLabel: string
   mentionFolderGroupLabel: string
@@ -514,12 +616,15 @@ export const PromptInput = ({
   onStop?: () => void
   onSubmit: (payload: {
     mentions: ChatMention[]
+    queue?: AgentSessionQueuedMessageQueue
     text: string
   }) => Promise<void>
   placeholder: string
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
   promptTemplateItems?: PromptTemplate[]
+  queueFollowUpLabel: string
+  queueSteerLabel: string
   stopLabel: string
   submitLabel: string
 }) => {
@@ -730,32 +835,36 @@ export const PromptInput = ({
     [activePromptTemplateRange, editor]
   )
 
-  const handleSubmit = useCallback(async () => {
-    if (!editor) {
-      return
-    }
+  const handleSubmit = useCallback(
+    async (queue?: AgentSessionQueuedMessageQueue) => {
+      if (!editor) {
+        return
+      }
 
-    const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
-    const normalizedText = text.trim()
+      const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
+      const normalizedText = text.trim()
 
-    if ((normalizedText === "" && mentions.length === 0) || disabled) {
-      return
-    }
+      if ((normalizedText === "" && mentions.length === 0) || disabled) {
+        return
+      }
 
-    setIsSubmitting(true)
+      setIsSubmitting(true)
 
-    try {
-      await onSubmit({
-        mentions,
-        text: normalizedText
-      })
-      editor.commands.clearContent()
-      editor.commands.focus()
-      setActiveMentionRange(null)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }, [disabled, editor, onSubmit])
+      try {
+        await onSubmit({
+          mentions,
+          ...(queue ? { queue } : {}),
+          text: normalizedText
+        })
+        editor.commands.clearContent()
+        editor.commands.focus()
+        setActiveMentionRange(null)
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [disabled, editor, onSubmit]
+  )
 
   const handleSelectMentionItemClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -881,18 +990,6 @@ export const PromptInput = ({
     ]
   )
 
-  const handleSubmitClick = useCallback(() => {
-    if (isOutputActive) {
-      onStop?.()
-      return
-    }
-
-    void handleSubmit()
-  }, [handleSubmit, isOutputActive, onStop])
-
-  const actionLabel = isOutputActive ? stopLabel : submitLabel
-  const actionIcon = isOutputActive ? StopIcon : SentIcon
-
   return (
     <div className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none">
       <PromptInputSuggestions
@@ -937,17 +1034,18 @@ export const PromptInput = ({
 
       <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
         <div className="min-w-0 flex-1">{footer}</div>
-        <Button
-          aria-label={actionLabel}
-          isDisabled={isOutputActive ? false : disabled || isSubmitting}
-          isIconOnly
-          onPress={handleSubmitClick}
-          size="sm"
-          type="button"
-          variant={isOutputActive ? "danger" : "primary"}
-        >
-          <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
-        </Button>
+        <PromptInputActions
+          disabled={disabled}
+          isOutputActive={isOutputActive}
+          isQueueSubmitEnabled={isQueueSubmitEnabled}
+          isSubmitting={isSubmitting}
+          onQueueSubmit={handleSubmit}
+          onStop={onStop}
+          queueFollowUpLabel={queueFollowUpLabel}
+          queueSteerLabel={queueSteerLabel}
+          stopLabel={stopLabel}
+          submitLabel={submitLabel}
+        />
       </div>
     </div>
   )

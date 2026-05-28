@@ -6,6 +6,7 @@ import { AgentRuntimeError } from "@/main/agents/agent-errors"
 import type { AgentRuntimeErrorCode } from "@/main/agents/agent-errors"
 import {
   createAgentRun,
+  getLatestCompletedAgentRunForSession,
   getAgentRunForToolApproval,
   listAgentEvents,
   listPendingAgentApprovals,
@@ -111,6 +112,11 @@ interface AgentRunRuntimeState {
 interface PersistedAgentSessionContext {
   messages: ModelMessage[]
   queuedMessages: ModelMessage[]
+}
+
+interface AgentRequestModelMessagesContext {
+  modelMessages: ModelMessage[]
+  persistedSessionContext: PersistedAgentSessionContext
 }
 
 type AgentRunFinishStatus = "succeeded" | "suspended"
@@ -261,14 +267,35 @@ const stripPlanProgressFromModelMessages = ({
   }
 
   return messages.map((message) => {
-    if (message.role !== "assistant" || typeof message.content !== "string") {
+    if (message.role !== "assistant") {
       return message
     }
 
+    if (typeof message.content === "string") {
+      return {
+        ...message,
+        content: stripPlanProgressMarkers(message.content).trim()
+      }
+    }
+
+    if (!Array.isArray(message.content)) {
+      return message
+    }
+
+    const contentParts: unknown[] = message.content
+    const content = contentParts.map((part) =>
+      isRecord(part) && part.type === "text" && typeof part.text === "string"
+        ? {
+            ...part,
+            text: stripPlanProgressMarkers(part.text).trim()
+          }
+        : part
+    ) as ModelMessage["content"]
+
     return {
       ...message,
-      content: stripPlanProgressMarkers(message.content).trim()
-    }
+      content
+    } as ModelMessage
   })
 }
 
@@ -751,6 +778,86 @@ const loadPersistedAgentSessionContext = async ({
       buildAgentSessionTreeFromEvents(events).buildContext()
     ),
     queuedMessages: buildQueuedSessionModelMessages(events)
+  }
+}
+
+const loadLatestCompletedRunQueuedMessages = async ({
+  db,
+  sessionId
+}: {
+  db: AppDatabase
+  sessionId: string
+}): Promise<ModelMessage[]> => {
+  const run = await getLatestCompletedAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  })
+
+  if (!run) {
+    return []
+  }
+
+  const events = await listAgentEvents({
+    db,
+    runId: run.id
+  })
+
+  return buildQueuedSessionModelMessages(events)
+}
+
+const loadAgentRequestModelMessages = async ({
+  approvalResumeMatch,
+  db,
+  messages,
+  resumedRun,
+  run,
+  sessionId
+}: {
+  approvalResumeMatch: ToolApprovalResumeMatch | null
+  db: AppDatabase
+  messages: ModelMessage[]
+  resumedRun: AgentRun | null
+  run: AgentRun
+  sessionId: string
+}): Promise<AgentRequestModelMessagesContext> => {
+  const matchedApprovalIds = new Set(
+    (approvalResumeMatch?.responseRecords ?? []).map(
+      (response) => response.approvalId
+    )
+  )
+  const approvalFilteredMessages = filterUnmatchedApprovalResumeMessages({
+    allowedApprovalIds: matchedApprovalIds,
+    messages
+  })
+  const persistedSessionContext = resumedRun
+    ? await loadPersistedAgentSessionContext({
+        db,
+        run
+      })
+    : {
+        messages: [],
+        queuedMessages: []
+      }
+  const latestCompletedRunQueuedMessages = resumedRun
+    ? []
+    : await loadLatestCompletedRunQueuedMessages({
+        db,
+        sessionId
+      })
+
+  return {
+    modelMessages: mergeResumedModelMessages({
+      persistedMessages: persistedSessionContext.messages,
+      requestMessages: [
+        ...approvalFilteredMessages,
+        ...buildApprovalResponseModelMessages(
+          approvalResumeMatch?.responseRecords ?? []
+        ),
+        ...persistedSessionContext.queuedMessages,
+        ...latestCompletedRunQueuedMessages
+      ]
+    }),
+    persistedSessionContext
   }
 }
 
@@ -1327,34 +1434,15 @@ export const streamAgentChat = async ({
     })
   })
   const toolNames = Object.keys(agentTools)
-  const matchedApprovalIds = new Set(
-    (approvalResumeMatch?.responseRecords ?? []).map(
-      (response) => response.approvalId
-    )
-  )
-  const approvalFilteredMessages = filterUnmatchedApprovalResumeMessages({
-    allowedApprovalIds: matchedApprovalIds,
-    messages
-  })
-  const persistedSessionContext = resumedRun
-    ? await loadPersistedAgentSessionContext({
-        db,
-        run
-      })
-    : {
-        messages: [],
-        queuedMessages: []
-      }
-  const modelMessages = mergeResumedModelMessages({
-    persistedMessages: persistedSessionContext.messages,
-    requestMessages: [
-      ...approvalFilteredMessages,
-      ...buildApprovalResponseModelMessages(
-        approvalResumeMatch?.responseRecords ?? []
-      ),
-      ...persistedSessionContext.queuedMessages
-    ]
-  })
+  const { modelMessages, persistedSessionContext } =
+    await loadAgentRequestModelMessages({
+      approvalResumeMatch,
+      db,
+      messages,
+      resumedRun,
+      run,
+      sessionId
+    })
 
   await (resumedRun
     ? updateAgentRun({

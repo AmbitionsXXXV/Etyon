@@ -202,8 +202,10 @@ const consumeChatResponse = async (response: Response): Promise<void> => {
 
 vi.mock("@/main/agents/agent-event-store", () => ({
   createAgentRun: createAgentRunMock,
+  getLatestCompletedAgentRunForSession: vi.fn(() => Promise.resolve(null)),
   listAgentEvents: listAgentEventsMock,
   listAgentToolCalls: listAgentToolCallsMock,
+  listPendingAgentApprovals: vi.fn(() => Promise.resolve([])),
   recordAgentToolCall: recordAgentToolCallMock,
   updateAgentRun: updateAgentRunMock,
   updateAgentToolCall: updateAgentToolCallMock

@@ -3,26 +3,36 @@ export {
   AgentRunTraceRunSchema,
   AgentRunTraceToolCallSchema,
   AgentRunStatusSchema,
+  AgentSessionQueuedMessageQueueSchema,
   AgentToolApprovalStateSchema,
   AgentToolCallStateSchema,
   InspectAgentRunInputSchema,
   InspectAgentRunOutputSchema,
   ListPendingAgentApprovalsInputSchema,
+  ListRecoverableAgentRunsInputSchema,
   PendingAgentApprovalSchema,
-  PendingAgentApprovalsOutputSchema
+  PendingAgentApprovalsOutputSchema,
+  QueueAgentMessageInputSchema,
+  QueueAgentMessageOutputSchema,
+  RecoverableAgentRunsOutputSchema
 } from "./schemas/agents"
 export type {
   AgentRunTraceEvent,
   AgentRunTraceRun,
   AgentRunTraceToolCall,
   AgentRunStatus,
+  AgentSessionQueuedMessageQueue,
   AgentToolApprovalState,
   AgentToolCallState,
   InspectAgentRunInput,
   InspectAgentRunOutput,
   ListPendingAgentApprovalsInput,
+  ListRecoverableAgentRunsInput,
   PendingAgentApproval,
-  PendingAgentApprovalsOutput
+  PendingAgentApprovalsOutput,
+  QueueAgentMessageInput,
+  QueueAgentMessageOutput,
+  RecoverableAgentRunsOutput
 } from "./schemas/agents"
 export {
   ArchiveChatSessionInputSchema,

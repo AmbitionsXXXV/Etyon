@@ -60,6 +60,30 @@ export type AgentLoopModel = (
   context: AgentLoopModelContext
 ) => Promise<AgentLoopModelTurn> | AgentLoopModelTurn
 
+export type AgentLoopModelStreamPart =
+  | {
+      text: string
+      type: "text-delta"
+    }
+  | {
+      toolCall: AgentLoopToolCall
+      type: "tool-call"
+    }
+  | {
+      stopReason?: AgentLoopModelTurn["stopReason"]
+      type: "finish"
+    }
+
+export type AgentLoopModelStream =
+  | AsyncIterable<AgentLoopModelStreamPart>
+  | ReadableStream<AgentLoopModelStreamPart>
+
+export interface CreateAgentLoopStreamModelOptions {
+  stream: (
+    context: AgentLoopModelContext
+  ) => AgentLoopModelStream | Promise<AgentLoopModelStream>
+}
+
 export interface AgentLoopToolExecutionContext {
   abortSignal?: AbortSignal
   messages: readonly AgentLoopMessage[]
@@ -211,6 +235,12 @@ interface AgentLoopNextTurnState {
   tools: Record<string, AgentLoopTool>
 }
 
+interface AgentLoopModelStreamState {
+  content: string
+  stopReason?: AgentLoopModelTurn["stopReason"]
+  toolCalls: AgentLoopToolCall[]
+}
+
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -260,6 +290,201 @@ const waitForPromiseWithAbortSignal = async <TValue>({
     abortSignal.removeEventListener("abort", rejectAborted)
   }
 }
+
+const createAgentLoopModelStreamState = (): AgentLoopModelStreamState => ({
+  content: "",
+  toolCalls: []
+})
+
+const applyAgentLoopModelStreamPart = (
+  state: AgentLoopModelStreamState,
+  part: AgentLoopModelStreamPart
+): void => {
+  switch (part.type) {
+    case "finish": {
+      state.stopReason = part.stopReason
+      break
+    }
+    case "text-delta": {
+      state.content += part.text
+      break
+    }
+    case "tool-call": {
+      state.toolCalls.push(part.toolCall)
+      break
+    }
+    default: {
+      throw new Error("Unknown agent loop model stream part.")
+    }
+  }
+}
+
+const createAgentLoopModelTurnFromStreamState = ({
+  content,
+  stopReason,
+  toolCalls
+}: AgentLoopModelStreamState): AgentLoopModelTurn => ({
+  content,
+  ...(stopReason ? { stopReason } : {}),
+  toolCalls
+})
+
+const isReadableAgentLoopModelStream = (
+  stream: AgentLoopModelStream
+): stream is ReadableStream<AgentLoopModelStreamPart> => {
+  const maybeReadableStream = stream as { getReader?: unknown }
+
+  return typeof maybeReadableStream.getReader === "function"
+}
+
+const readReadableAgentLoopModelStream = async ({
+  abortSignal,
+  stream
+}: {
+  abortSignal?: AbortSignal
+  stream: ReadableStream<AgentLoopModelStreamPart>
+}): Promise<AgentLoopModelTurn> => {
+  const reader = stream.getReader()
+  const state = createAgentLoopModelStreamState()
+
+  if (abortSignal?.aborted) {
+    await reader.cancel(createAgentLoopAbortError())
+    reader.releaseLock()
+
+    return createAgentLoopModelTurnFromStreamState({
+      ...state,
+      stopReason: "aborted"
+    })
+  }
+
+  const abort = abortSignal ? Promise.withResolvers<"aborted">() : undefined
+  const abortListener = (): void => {
+    void reader.cancel(createAgentLoopAbortError())
+    abort?.resolve("aborted")
+  }
+
+  abortSignal?.addEventListener("abort", abortListener, {
+    once: true
+  })
+
+  try {
+    while (true) {
+      const readResult = abort
+        ? await Promise.race([reader.read(), abort.promise])
+        : await reader.read()
+
+      if (readResult === "aborted") {
+        return createAgentLoopModelTurnFromStreamState({
+          ...state,
+          stopReason: "aborted"
+        })
+      }
+
+      if (readResult.done) {
+        return createAgentLoopModelTurnFromStreamState(state)
+      }
+
+      applyAgentLoopModelStreamPart(state, readResult.value)
+
+      if (state.stopReason) {
+        return createAgentLoopModelTurnFromStreamState(state)
+      }
+    }
+  } finally {
+    abortSignal?.removeEventListener("abort", abortListener)
+    reader.releaseLock()
+  }
+}
+
+const readAsyncIterableAgentLoopModelStream = async ({
+  abortSignal,
+  stream
+}: {
+  abortSignal?: AbortSignal
+  stream: AsyncIterable<AgentLoopModelStreamPart>
+}): Promise<AgentLoopModelTurn> => {
+  const iterator = stream[Symbol.asyncIterator]()
+  const state = createAgentLoopModelStreamState()
+
+  if (abortSignal?.aborted) {
+    await iterator.return?.()
+
+    return createAgentLoopModelTurnFromStreamState({
+      ...state,
+      stopReason: "aborted"
+    })
+  }
+
+  const abort = abortSignal ? Promise.withResolvers<"aborted">() : undefined
+  const abortListener = (): void => {
+    void iterator.return?.()
+    abort?.resolve("aborted")
+  }
+
+  abortSignal?.addEventListener("abort", abortListener, {
+    once: true
+  })
+
+  try {
+    while (true) {
+      const nextResult = abort
+        ? await Promise.race([iterator.next(), abort.promise])
+        : await iterator.next()
+
+      if (nextResult === "aborted") {
+        return createAgentLoopModelTurnFromStreamState({
+          ...state,
+          stopReason: "aborted"
+        })
+      }
+
+      if (nextResult.done) {
+        return createAgentLoopModelTurnFromStreamState(state)
+      }
+
+      applyAgentLoopModelStreamPart(state, nextResult.value)
+
+      if (state.stopReason) {
+        return createAgentLoopModelTurnFromStreamState(state)
+      }
+    }
+  } finally {
+    abortSignal?.removeEventListener("abort", abortListener)
+  }
+}
+
+export const createAgentLoopStreamModel =
+  ({ stream }: CreateAgentLoopStreamModelOptions): AgentLoopModel =>
+  async (context) => {
+    let modelStream: AgentLoopModelStream
+
+    try {
+      modelStream = await waitForPromiseWithAbortSignal({
+        abortSignal: context.abortSignal,
+        promise: Promise.resolve(stream(context))
+      })
+    } catch (error) {
+      if (context.abortSignal?.aborted) {
+        return {
+          content: "",
+          stopReason: "aborted",
+          toolCalls: []
+        }
+      }
+
+      throw error
+    }
+
+    return isReadableAgentLoopModelStream(modelStream)
+      ? readReadableAgentLoopModelStream({
+          abortSignal: context.abortSignal,
+          stream: modelStream
+        })
+      : readAsyncIterableAgentLoopModelStream({
+          abortSignal: context.abortSignal,
+          stream: modelStream
+        })
+  }
 
 const buildErrorResult = ({
   message,

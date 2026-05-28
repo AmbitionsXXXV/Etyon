@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { and, asc, eq, max, or } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, max, or } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import {
@@ -92,6 +92,16 @@ export interface CreateAgentRunOptions {
   profileId: string
 }
 
+export interface GetActiveAgentRunForSessionOptions {
+  chatSessionId: string
+  db: AppDatabase
+}
+
+export interface GetLatestCompletedAgentRunForSessionOptions {
+  chatSessionId: string
+  db: AppDatabase
+}
+
 export interface GetAgentRunForToolCallOptions {
   chatSessionId?: string
   db: AppDatabase
@@ -125,6 +135,11 @@ export interface ListAgentToolCallsOptions {
 }
 
 export interface ListPendingAgentApprovalsOptions {
+  chatSessionId?: string
+  db: AppDatabase
+}
+
+export interface ListRecoverableAgentRunsOptions {
   chatSessionId?: string
   db: AppDatabase
 }
@@ -599,6 +614,46 @@ export const getAgentRun = async ({
   return row ? toAgentRun(db, row) : null
 }
 
+export const getActiveAgentRunForSession = async ({
+  chatSessionId,
+  db
+}: GetActiveAgentRunForSessionOptions): Promise<AgentRun | null> => {
+  const [row] = await db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatSessionId, chatSessionId),
+        isNull(agentRuns.parentRunId),
+        or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
+      )
+    )
+    .orderBy(desc(agentRuns.startedAt))
+    .limit(1)
+
+  return row ? toAgentRun(db, row) : null
+}
+
+export const getLatestCompletedAgentRunForSession = async ({
+  chatSessionId,
+  db
+}: GetLatestCompletedAgentRunForSessionOptions): Promise<AgentRun | null> => {
+  const [row] = await db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.chatSessionId, chatSessionId),
+        isNull(agentRuns.parentRunId),
+        or(eq(agentRuns.status, "failed"), eq(agentRuns.status, "succeeded"))
+      )
+    )
+    .orderBy(desc(agentRuns.finishedAt), desc(agentRuns.startedAt))
+    .limit(1)
+
+  return row ? toAgentRun(db, row) : null
+}
+
 export const getAgentRunForToolCall = async ({
   chatSessionId,
   db,
@@ -755,6 +810,24 @@ export const listPendingAgentApprovals = async ({
       ) ?? null
     )
   })
+}
+
+export const listRecoverableAgentRuns = async ({
+  chatSessionId,
+  db
+}: ListRecoverableAgentRunsOptions): Promise<AgentRun[]> => {
+  const conditions = [
+    eq(agentRuns.status, "failed"),
+    isNull(agentRuns.parentRunId),
+    ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : [])
+  ]
+  const rows = await db
+    .select()
+    .from(agentRuns)
+    .where(and(...conditions))
+    .orderBy(desc(agentRuns.finishedAt), desc(agentRuns.startedAt))
+
+  return rows.map((row) => toAgentRun(db, row))
 }
 
 export const updateAgentRun = async ({

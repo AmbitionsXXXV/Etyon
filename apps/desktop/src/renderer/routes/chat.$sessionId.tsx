@@ -1,6 +1,7 @@
 import { useChat } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type {
+  AgentSessionQueuedMessageQueue,
   ChatMention,
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
@@ -53,6 +54,8 @@ import {
 import type { ProjectContextPanelView } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
+import { resolveAgentComposerQueueState } from "@/renderer/lib/chat/agent-queue"
+import { getLatestRecoverableAgentRun } from "@/renderer/lib/chat/agent-recovery"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
@@ -1068,6 +1071,7 @@ const ChatMessageItem = ({
 }
 
 const ChatRuntime = ({
+  agentsEnabled,
   gitDiff,
   isLoadingFileItems,
   isLoadingPromptTemplateItems,
@@ -1100,6 +1104,7 @@ const ChatRuntime = ({
   streamdownAnimation,
   transport
 }: {
+  agentsEnabled: boolean
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
@@ -1144,6 +1149,9 @@ const ChatRuntime = ({
     null
   )
   const [requestStartedAt, setRequestStartedAt] = useState<number | undefined>()
+  const [dismissedRecoverableRunIds, setDismissedRecoverableRunIds] = useState<
+    Set<string>
+  >(() => new Set())
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const {
     addToolApprovalResponse,
@@ -1255,9 +1263,32 @@ const ChatRuntime = ({
     }
   }, [editingMessageId, messages])
 
-  const isComposerDisabled =
-    isModelUpdating || status === "streaming" || status === "submitted"
   const isRequestPending = status === "streaming" || status === "submitted"
+  const { canQueueMessage, isComposerDisabled } =
+    resolveAgentComposerQueueState({
+      agentsEnabled,
+      isModelUpdating,
+      isRequestPending
+    })
+  const recoverableRunsQuery = useQuery({
+    ...orpc.agents.listRecoverableRuns.queryOptions({
+      input: {
+        sessionId: selectedSession.id
+      }
+    }),
+    enabled: !isRequestPending,
+    refetchInterval: CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+  })
+  const latestRecoverableAgentRun = useMemo(
+    () => getLatestRecoverableAgentRun(recoverableRunsQuery.data?.runs ?? []),
+    [recoverableRunsQuery.data?.runs]
+  )
+  const visibleRecoverableAgentRun =
+    !isRequestPending &&
+    latestRecoverableAgentRun &&
+    !dismissedRecoverableRunIds.has(latestRecoverableAgentRun.id)
+      ? latestRecoverableAgentRun
+      : null
   const latestMessage = messages.at(-1)
   const latestAssistantMessageId = useMemo(
     () => messages.findLast((message) => message.role === "assistant")?.id,
@@ -1304,11 +1335,22 @@ const ChatRuntime = ({
   const handleSubmit = useCallback(
     async ({
       mentions,
+      queue,
       text
     }: {
       mentions: ChatMention[]
+      queue?: AgentSessionQueuedMessageQueue
       text: string
     }): Promise<void> => {
+      if (canQueueMessage) {
+        await rpcClient.agents.queueMessage({
+          content: text,
+          queue: queue ?? "steer",
+          sessionId: selectedSession.id
+        })
+        return
+      }
+
       const metadata =
         mentions.length > 0
           ? {
@@ -1324,7 +1366,7 @@ const ChatRuntime = ({
         buildChatRequestOptions(mentions)
       )
     },
-    [buildChatRequestOptions, sendMessage]
+    [buildChatRequestOptions, canQueueMessage, selectedSession.id, sendMessage]
   )
 
   const getMessageRegenerateMentions = useCallback(
@@ -1370,6 +1412,22 @@ const ChatRuntime = ({
       getMessageRegenerateMentions,
       regenerate
     ]
+  )
+  const handleRecoverableRunDismiss = useCallback((runId: string) => {
+    setDismissedRecoverableRunIds((currentValue) => {
+      if (currentValue.has(runId)) {
+        return currentValue
+      }
+
+      return new Set([...currentValue, runId])
+    })
+  }, [])
+  const handleRecoverableRunRegenerate = useCallback(
+    (runId: string) => {
+      handleRecoverableRunDismiss(runId)
+      handleRegenerate()
+    },
+    [handleRecoverableRunDismiss, handleRegenerate]
   )
 
   const handleStartEditMessage = useCallback((message: ChatUiMessage) => {
@@ -1444,7 +1502,9 @@ const ChatRuntime = ({
               onScroll={handleMessagesScroll}
               ref={messagesScrollRef}
             >
-              {messages.length === 0 && !error ? (
+              {messages.length === 0 &&
+              !error &&
+              !visibleRecoverableAgentRun ? (
                 <div className="flex h-full items-center justify-center">
                   <div className="max-w-md text-center">
                     <h2 className="text-lg font-semibold">
@@ -1508,6 +1568,25 @@ const ChatRuntime = ({
                       onRegenerate={handleRegenerate}
                     />
                   )}
+                  {!error && visibleRecoverableAgentRun ? (
+                    <ChatErrorActionBar
+                      errorMessage={
+                        visibleRecoverableAgentRun.errorMessage ??
+                        t("chat.error.agentRunFailed")
+                      }
+                      isRegenerating={isRequestPending}
+                      onDismiss={() =>
+                        handleRecoverableRunDismiss(
+                          visibleRecoverableAgentRun.id
+                        )
+                      }
+                      onRegenerate={() =>
+                        handleRecoverableRunRegenerate(
+                          visibleRecoverableAgentRun.id
+                        )
+                      }
+                    />
+                  ) : null}
                   <div ref={messagesEndRef} />
                 </div>
               )}
@@ -1569,6 +1648,7 @@ const ChatRuntime = ({
               "chat.mentions.skillsSearchPlaceholder"
             )}
             isOutputActive={isRequestPending}
+            isQueueSubmitEnabled={canQueueMessage}
             onMentionQueryChange={onMentionQueryChange}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onStop={handleStop}
@@ -1577,6 +1657,8 @@ const ChatRuntime = ({
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
+            queueFollowUpLabel={t("chat.composer.queueFollowUp")}
+            queueSteerLabel={t("chat.composer.queueSteer")}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -1715,6 +1797,8 @@ const ChatPendingState = ({
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
+            queueFollowUpLabel={t("chat.composer.queueFollowUp")}
+            queueSteerLabel={t("chat.composer.queueSteer")}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -2015,6 +2099,7 @@ const ChatSessionPage = () => {
     <section className="flex min-h-0 flex-1 overflow-hidden">
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
+          agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}

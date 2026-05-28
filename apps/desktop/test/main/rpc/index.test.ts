@@ -10,9 +10,11 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 import {
   appendAgentEvent,
   createAgentRun,
+  listAgentEvents,
   recordAgentToolCall,
   updateAgentRun
 } from "@/main/agents/agent-event-store"
+import { listPendingAgentSessionQueuedMessages } from "@/main/agents/agent-session-events"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -356,6 +358,110 @@ describe("message-port rpc", () => {
         state: "approval_requested",
         toolName: "runCheck"
       })
+    ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("exposes recoverable agent runs over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-recoverable")
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Agent run was interrupted before finishing.",
+      id: run.id,
+      status: "failed"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.listRecoverableRuns({
+      sessionId: session.id
+    })
+
+    expect(result.runs).toEqual([
+      expect.objectContaining({
+        chatSessionId: session.id,
+        errorMessage: "Agent run was interrupted before finishing.",
+        id: run.id,
+        parentRunId: null,
+        status: "failed"
+      })
+    ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("queues agent steering over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-queue")
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.queueMessage({
+      content: "Prefer the existing helper.",
+      queue: "steer",
+      sessionId: session.id
+    })
+    const events = await listAgentEvents({
+      db: getDb(),
+      runId: run.id
+    })
+
+    expect(result.message).toEqual({
+      chatSessionId: session.id,
+      content: "Prefer the existing helper.",
+      queue: "steer",
+      runId: run.id
+    })
+    expect(listPendingAgentSessionQueuedMessages(events)).toEqual([
+      {
+        message: "Prefer the existing helper.",
+        queue: "steer"
+      }
     ])
 
     port1.close()

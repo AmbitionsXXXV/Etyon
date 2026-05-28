@@ -68,6 +68,19 @@ export interface AgentSessionQueuedMessage {
   queue: AgentSessionQueuedMessageQueue
 }
 
+export interface CreateAgentSessionQueuedMessageWriterOptions {
+  run: AgentRun
+}
+
+export interface AgentSessionQueuedMessageWriteInput {
+  content: string
+  queue: AgentSessionQueuedMessageQueue
+}
+
+export type AgentSessionQueuedMessageWriter = (
+  message: AgentSessionQueuedMessageWriteInput
+) => Promise<void>
+
 const MODEL_MESSAGE_ROLES = new Set(["assistant", "system", "tool", "user"])
 const QUEUED_MESSAGE_QUEUES = new Set(["follow-up", "steer"])
 
@@ -346,6 +359,34 @@ export const appendAgentSessionPlanModeEvent = async ({
     run
   })
 }
+
+export const createAgentSessionQueuedMessageWriter =
+  ({
+    run
+  }: CreateAgentSessionQueuedMessageWriterOptions): AgentSessionQueuedMessageWriter =>
+  async ({ content, queue }) => {
+    switch (queue) {
+      case "follow-up": {
+        await appendAgentSessionQueuedFollowUpEvent({
+          message: content,
+          run
+        })
+        break
+      }
+      case "steer": {
+        await appendAgentSessionQueuedSteeringEvent({
+          message: content,
+          run
+        })
+        break
+      }
+      default: {
+        const exhaustiveQueue: never = queue
+
+        throw new Error(`Unknown queued message queue: ${exhaustiveQueue}`)
+      }
+    }
+  }
 
 export const listPendingAgentSessionQueuedMessages = (
   events: readonly AgentEvent[]

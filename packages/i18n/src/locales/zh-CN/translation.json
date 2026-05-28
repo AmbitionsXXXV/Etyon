@@ -19,6 +19,9 @@
   "chat": {
     "composer": {
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
+      "queue": "加入队列",
+      "queueFollowUp": "作为后续任务",
+      "queueSteer": "转向当前运行",
       "send": "发送",
       "stop": "停止输出"
     },
@@ -30,6 +33,7 @@
       "title": "会话信息"
     },
     "error": {
+      "agentRunFailed": "Agent run 未完成就失败了。",
       "dismiss": "关闭",
       "regenerate": "重新生成"
     },

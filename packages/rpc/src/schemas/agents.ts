@@ -94,6 +94,37 @@ export const PendingAgentApprovalsOutputSchema = z.object({
   approvals: z.array(PendingAgentApprovalSchema)
 })
 
+export const ListRecoverableAgentRunsInputSchema = z.object({
+  sessionId: z.string().optional()
+})
+
+export const RecoverableAgentRunsOutputSchema = z.object({
+  runs: z.array(AgentRunTraceRunSchema)
+})
+
+export const AgentSessionQueuedMessageQueueSchema = z.enum([
+  "follow-up",
+  "steer"
+])
+
+export const QueueAgentMessageInputSchema = z.object({
+  content: z.string().trim().min(1),
+  queue: AgentSessionQueuedMessageQueueSchema.default("steer"),
+  sessionId: z.string()
+})
+
+export const QueueAgentMessageOutputSchema = z.object({
+  message: z.object({
+    chatSessionId: z.string(),
+    content: z.string(),
+    queue: AgentSessionQueuedMessageQueueSchema,
+    runId: z.string()
+  })
+})
+
+export type AgentSessionQueuedMessageQueue = z.infer<
+  typeof AgentSessionQueuedMessageQueueSchema
+>
 export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>
 export type AgentRunTraceEvent = z.infer<typeof AgentRunTraceEventSchema>
 export type AgentRunTraceRun = z.infer<typeof AgentRunTraceRunSchema>
@@ -107,7 +138,19 @@ export type InspectAgentRunOutput = z.infer<typeof InspectAgentRunOutputSchema>
 export type ListPendingAgentApprovalsInput = z.infer<
   typeof ListPendingAgentApprovalsInputSchema
 >
+export type ListRecoverableAgentRunsInput = z.infer<
+  typeof ListRecoverableAgentRunsInputSchema
+>
 export type PendingAgentApproval = z.infer<typeof PendingAgentApprovalSchema>
 export type PendingAgentApprovalsOutput = z.infer<
   typeof PendingAgentApprovalsOutputSchema
+>
+export type QueueAgentMessageInput = z.infer<
+  typeof QueueAgentMessageInputSchema
+>
+export type QueueAgentMessageOutput = z.infer<
+  typeof QueueAgentMessageOutputSchema
+>
+export type RecoverableAgentRunsOutput = z.infer<
+  typeof RecoverableAgentRunsOutputSchema
 >

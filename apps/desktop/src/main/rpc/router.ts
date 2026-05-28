@@ -2,7 +2,11 @@ import {
   InspectAgentRunInputSchema,
   InspectAgentRunOutputSchema,
   ListPendingAgentApprovalsInputSchema,
+  ListRecoverableAgentRunsInputSchema,
   PendingAgentApprovalsOutputSchema,
+  QueueAgentMessageInputSchema,
+  QueueAgentMessageOutputSchema,
+  RecoverableAgentRunsOutputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -62,11 +66,14 @@ import {
 import { BrowserWindow } from "electron"
 
 import {
+  getActiveAgentRunForSession,
   getAgentRun,
   listAgentEvents,
   listAgentToolCalls,
-  listPendingAgentApprovals
+  listPendingAgentApprovals,
+  listRecoverableAgentRuns
 } from "@/main/agents/agent-event-store"
+import { createAgentSessionQueuedMessageWriter } from "@/main/agents/agent-session-events"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -217,6 +224,60 @@ const agentsListPendingApprovals = rpc
       db: context.db
     })
   }))
+
+const agentsListRecoverableRuns = rpc
+  .input(ListRecoverableAgentRunsInputSchema)
+  .output(RecoverableAgentRunsOutputSchema)
+  .handler(async ({ context, input }) => {
+    const runs = await listRecoverableAgentRuns({
+      chatSessionId: input.sessionId,
+      db: context.db
+    })
+
+    return {
+      runs: runs.map((run) => ({
+        chatSessionId: run.chatSessionId,
+        errorMessage: run.errorMessage,
+        finishedAt: run.finishedAt,
+        id: run.id,
+        modelId: run.modelId,
+        parentRunId: run.parentRunId,
+        profileId: run.profileId,
+        startedAt: run.startedAt,
+        status: run.status
+      }))
+    }
+  })
+
+const agentsQueueMessage = rpc
+  .input(QueueAgentMessageInputSchema)
+  .output(QueueAgentMessageOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getActiveAgentRunForSession({
+      chatSessionId: input.sessionId,
+      db: context.db
+    })
+
+    if (!run) {
+      throw new Error(
+        `Active agent run not found for chat session: ${input.sessionId}`
+      )
+    }
+
+    await createAgentSessionQueuedMessageWriter({ run })({
+      content: input.content,
+      queue: input.queue
+    })
+
+    return {
+      message: {
+        chatSessionId: run.chatSessionId,
+        content: input.content,
+        queue: input.queue,
+        runId: run.id
+      }
+    }
+  })
 
 const gitProjectDiff = rpc
   .input(GitProjectDiffInputSchema)
@@ -557,7 +618,9 @@ const sidebarStateSetWidth = rpc
 export const router = {
   agents: {
     inspectRun: agentsInspectRun,
-    listPendingApprovals: agentsListPendingApprovals
+    listPendingApprovals: agentsListPendingApprovals,
+    listRecoverableRuns: agentsListRecoverableRuns,
+    queueMessage: agentsQueueMessage
   },
   chatSessions: {
     archive: chatSessionsArchive,

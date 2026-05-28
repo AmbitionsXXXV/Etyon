@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from "vite-plus/test"
 import type {
   AgentLoopEvent,
   AgentLoopMessage,
-  AgentLoopModel
+  AgentLoopModel,
+  AgentLoopModelStreamPart
 } from "@/main/agents/agent-loop"
-import { runAgentLoop } from "@/main/agents/agent-loop"
+import {
+  createAgentLoopStreamModel,
+  runAgentLoop
+} from "@/main/agents/agent-loop"
 
 const createDeferred = <TValue>() => {
   const { promise, reject, resolve } = Promise.withResolvers<TValue>()
@@ -45,6 +49,39 @@ const sequentialBatchModel: AgentLoopModel = ({ messages }) => {
     ]
   }
 }
+
+const STREAMED_INSPECT_TURN_PARTS = [
+  {
+    text: "I will inspect ",
+    type: "text-delta" as const
+  },
+  {
+    text: "the file.",
+    type: "text-delta" as const
+  },
+  {
+    toolCall: {
+      input: {
+        path: "src/main.ts"
+      },
+      toolCallId: "tool-call-1",
+      toolName: "readFile"
+    },
+    type: "tool-call" as const
+  }
+] satisfies AgentLoopModelStreamPart[]
+
+const createStreamedInspectTurn =
+  (): ReadableStream<AgentLoopModelStreamPart> =>
+    new ReadableStream({
+      start: (controller) => {
+        for (const part of STREAMED_INSPECT_TURN_PARTS) {
+          controller.enqueue(part)
+        }
+
+        controller.close()
+      }
+    })
 
 describe("agent loop", () => {
   it("feeds tool results into the next model turn", async () => {
@@ -167,6 +204,93 @@ describe("agent loop", () => {
       role: "assistant",
       toolCalls: []
     })
+  })
+
+  it("adapts streamed model parts into an agent loop model turn", async () => {
+    const modelContexts: unknown[] = []
+    const model = createAgentLoopStreamModel({
+      stream: (context) => {
+        modelContexts.push({
+          availableToolNames: context.availableToolNames,
+          turnIndex: context.turnIndex
+        })
+
+        return createStreamedInspectTurn()
+      }
+    })
+    const result = await runAgentLoop({
+      maxTurns: 1,
+      messages: [
+        {
+          content: "Read src/main.ts.",
+          role: "user"
+        }
+      ],
+      model,
+      tools: {
+        readFile: {
+          execute: () => "content"
+        }
+      }
+    })
+
+    expect(modelContexts).toEqual([
+      {
+        availableToolNames: ["readFile"],
+        turnIndex: 0
+      }
+    ])
+    expect(result.messages.at(1)).toEqual({
+      content: "I will inspect the file.",
+      role: "assistant",
+      toolCalls: [
+        {
+          input: {
+            path: "src/main.ts"
+          },
+          toolCallId: "tool-call-1",
+          toolName: "readFile"
+        }
+      ]
+    })
+  })
+
+  it("cancels a readable model stream when the loop is aborted", async () => {
+    const abortController = new AbortController()
+    const cancelReasons: unknown[] = []
+    const streamStarted = createDeferred<null>()
+    const model = createAgentLoopStreamModel({
+      stream: () =>
+        new ReadableStream({
+          cancel: (reason) => {
+            cancelReasons.push(reason)
+          },
+          start: () => {
+            streamStarted.resolve(null)
+          }
+        })
+    })
+    const loopPromise = runAgentLoop({
+      abortSignal: abortController.signal,
+      maxTurns: 1,
+      messages: [
+        {
+          content: "Start.",
+          role: "user"
+        }
+      ],
+      model,
+      tools: {}
+    })
+
+    await streamStarted.promise
+    abortController.abort()
+
+    const result = await loopPromise
+
+    expect(result.stopReason).toBe("aborted")
+    expect(cancelReasons).toEqual([expect.any(Error)])
+    expect((cancelReasons[0] as Error).message).toBe("Agent loop aborted.")
   })
 
   it("keeps parallel tool results in source order for the next model turn", async () => {

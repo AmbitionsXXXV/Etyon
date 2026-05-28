@@ -5,11 +5,13 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   createAgentRun,
+  getActiveAgentRunForSession,
   getAgentRun,
   getAgentRunForToolApproval,
   getAgentRunForToolCall,
   listAgentEvents,
   listPendingAgentApprovals,
+  listRecoverableAgentRuns,
   listAgentToolCalls,
   recordAgentToolCall,
   recoverInterruptedAgentRuns,
@@ -24,7 +26,8 @@ import {
   appendAgentSessionPlanModeEvent,
   appendAgentSessionQueuedFollowUpEvent,
   appendAgentSessionQueuedSteeringEvent,
-  buildAgentSessionTreeFromEvents
+  buildAgentSessionTreeFromEvents,
+  createAgentSessionQueuedMessageWriter
 } from "@/main/agents/agent-session-events"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
@@ -263,6 +266,56 @@ describe("agent event store", () => {
       }
     ])
     expect(customMessages).toEqual([
+      {
+        data: {
+          message: "Prefer concise output.",
+          queue: "steer"
+        },
+        type: "steering"
+      },
+      {
+        data: {
+          message: "Continue after the final answer.",
+          queue: "follow-up"
+        },
+        type: "follow-up"
+      }
+    ])
+  })
+
+  it("adapts agent queued message writes to persisted session events", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/gpt-4.1",
+      profileId: "general-purpose"
+    })
+    const writeQueuedMessage = createAgentSessionQueuedMessageWriter({ run })
+
+    await writeQueuedMessage({
+      content: "Prefer concise output.",
+      queue: "steer"
+    })
+    await writeQueuedMessage({
+      content: "Continue after the final answer.",
+      queue: "follow-up"
+    })
+
+    expect(
+      buildAgentSessionTreeFromEvents(
+        await listAgentEvents({
+          db,
+          runId: run.id
+        })
+      )
+        .listEntries()
+        .filter((entry) => entry.type === "custom_message")
+        .map((entry) => entry.message)
+    ).toEqual([
       {
         data: {
           message: "Prefer concise output.",
@@ -664,6 +717,61 @@ describe("agent event store", () => {
     )
   })
 
+  it("resolves the active top-level run for a chat session", async () => {
+    await ensureDatabaseReady()
+
+    const ownerSession = await createChatSession({ db: getDb() })
+    const otherSession = await createChatSession({ db: getDb() })
+    const ownerRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const childRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1-mini",
+      parentRunId: ownerRun.id,
+      profileId: "explore"
+    })
+    const otherRun = await createAgentRun({
+      chatSessionId: otherSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await updateAgentRun({
+      db: getDb(),
+      id: otherRun.id,
+      status: "suspended"
+    })
+
+    await expect(
+      getActiveAgentRunForSession({
+        chatSessionId: ownerSession.id,
+        db: getDb()
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: ownerRun.id,
+        parentRunId: null,
+        status: "running"
+      })
+    )
+    await expect(
+      getActiveAgentRunForSession({
+        chatSessionId: childRun.chatSessionId,
+        db: getDb()
+      })
+    ).resolves.not.toEqual(
+      expect.objectContaining({
+        id: childRun.id
+      })
+    )
+  })
+
   it("does not resume approval tool calls from a different chat session", async () => {
     await ensureDatabaseReady()
 
@@ -1010,6 +1118,85 @@ describe("agent event store", () => {
         runId: suspendedRun.id,
         runStatus: "suspended"
       })
+    )
+  })
+
+  it("lists failed top-level runs as recoverable for the owning session", async () => {
+    await ensureDatabaseReady()
+
+    const ownerSession = await createChatSession({ db: getDb() })
+    const otherSession = await createChatSession({ db: getDb() })
+    const failedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const childFailedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1-mini",
+      parentRunId: failedRun.id,
+      profileId: "explore"
+    })
+    const otherFailedRun = await createAgentRun({
+      chatSessionId: otherSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const runningRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Provider stream failed.",
+      id: failedRun.id,
+      status: "failed"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Child failed.",
+      id: childFailedRun.id,
+      status: "failed"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Other session failed.",
+      id: otherFailedRun.id,
+      status: "failed"
+    })
+
+    const recoverableRuns = await listRecoverableAgentRuns({
+      chatSessionId: ownerSession.id,
+      db: getDb()
+    })
+
+    expect(recoverableRuns).toEqual([
+      expect.objectContaining({
+        chatSessionId: ownerSession.id,
+        errorMessage: "Provider stream failed.",
+        id: failedRun.id,
+        parentRunId: null,
+        status: "failed"
+      })
+    ])
+    expect(recoverableRuns).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: childFailedRun.id
+        }),
+        expect.objectContaining({
+          id: otherFailedRun.id
+        }),
+        expect.objectContaining({
+          id: runningRun.id
+        })
+      ])
     )
   })
 
