@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai"
-import { isToolUIPart, lastAssistantMessageIsCompleteWithToolCalls } from "ai"
+import { isToolUIPart } from "ai"
 
 interface ShouldSendChatAutomaticallyOptions {
   messages: UIMessage[]
@@ -21,5 +21,4 @@ const hasToolApprovalResponse = (message: UIMessage | undefined): boolean =>
 export const shouldSendChatAutomatically = ({
   messages
 }: ShouldSendChatAutomaticallyOptions): boolean =>
-  hasToolApprovalResponse(messages.at(-1)) ||
-  lastAssistantMessageIsCompleteWithToolCalls({ messages })
+  hasToolApprovalResponse(messages.at(-1))

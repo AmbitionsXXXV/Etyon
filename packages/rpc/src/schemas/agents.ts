@@ -180,6 +180,14 @@ export const RecoverableAgentRunsOutputSchema = z.object({
   runs: z.array(AgentRunTraceRunSchema)
 })
 
+export const StopActiveAgentRunInputSchema = z.object({
+  sessionId: z.string()
+})
+
+export const StopActiveAgentRunOutputSchema = z.object({
+  stopped: z.boolean()
+})
+
 export const AgentRunGraphTemplateIdSchema = z.enum([
   "harness-debug",
   "investigation",
@@ -500,6 +508,12 @@ export type StartAgentRunGraphNextStageInput = z.infer<
 >
 export type StartAgentRunGraphNextStageOutput = z.infer<
   typeof StartAgentRunGraphNextStageOutputSchema
+>
+export type StopActiveAgentRunInput = z.infer<
+  typeof StopActiveAgentRunInputSchema
+>
+export type StopActiveAgentRunOutput = z.infer<
+  typeof StopActiveAgentRunOutputSchema
 >
 export type QueuedAgentMessagesOutput = z.infer<
   typeof QueuedAgentMessagesOutputSchema

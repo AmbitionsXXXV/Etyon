@@ -18,6 +18,7 @@ import {
   streamText
 } from "ai"
 
+import { registerActiveAgentRun } from "@/main/agents/active-agent-runs"
 import { recordAgentToolOutputArtifacts } from "@/main/agents/agent-artifacts"
 import {
   AgentRuntimeError,
@@ -161,7 +162,8 @@ interface AgentRequestModelMessagesContext {
   persistedSessionContext: PersistedAgentSessionContext
 }
 
-type AgentRunFinishStatus = "succeeded" | "suspended"
+type AgentRunFinishStatus = "failed" | "succeeded" | "suspended"
+type AgentUiStreamChunk = InferUIMessageChunk<UIMessage>
 
 interface PendingLoopApprovalRequest {
   approvalId: string
@@ -185,6 +187,7 @@ interface AgentChatStreamResult {
 }
 
 const DELEGATION_SUMMARY_MAX_CHARS = 6_000
+const AGENT_RUN_STOPPED_MESSAGE = "Agent run was stopped."
 const ANT_THINKING_BLOCK_PATTERN = /<antThinking>[\s\S]*?<\/antThinking>/gu
 const COMMAND_TRANSCRIPT_BLOCK_PATTERN =
   /(?:^|\n)Executed in [^\n]*(?:\r?\n)(?:bash|fish|sh|zsh)(?:\r?\n)[\s\S]*?(?:\r?\n)-?\d+(?=\r?\n|$)/gu
@@ -192,6 +195,30 @@ const EXCESS_BLANK_LINES_PATTERN = /\n{3,}/gu
 const FUNCTION_CALLS_BLOCK_PATTERN =
   /<function_calls>[\s\S]*?<\/function_calls>/gu
 const MODEL_MESSAGE_ROLES = new Set(["assistant", "system", "tool", "user"])
+
+interface AgentUiStreamWaiter {
+  reject: (reason?: unknown) => void
+  resolve: (value: IteratorResult<AgentUiStreamChunk>) => void
+}
+
+interface AgentUiStreamBridge {
+  close: () => void
+  fail: (error: unknown) => void
+  read: () => AsyncIterable<AgentUiStreamChunk>
+  write: (chunk: AgentUiStreamChunk) => void
+}
+
+interface AgentUiLiveSink {
+  finishText: () => void
+  writeApprovalRequest: (request: PendingLoopApprovalRequest) => void
+  writeTextDelta: (text: string) => void
+  writeToolCall: (toolCall: AgentLoopToolCall) => void
+  writeToolResult: (result: {
+    isError: boolean
+    output: unknown
+    toolCall: AgentLoopToolCall
+  }) => void
+}
 
 const filterActiveAgentTools = <TTool>({
   activeToolNames,
@@ -335,6 +362,9 @@ const getErrorMessage = getAgentRuntimeErrorMessage
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
+const toRejectionError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(getErrorMessage(error))
+
 const getToolRetryErrorMessage = (output: unknown): string => {
   if (isRecord(output) && typeof output.error === "string") {
     return output.error
@@ -369,6 +399,24 @@ const collectAsyncIterable = async (
   }
 
   return values
+}
+
+const createCombinedAbortSignal = (
+  signals: readonly (AbortSignal | undefined)[]
+): AbortSignal | undefined => {
+  const activeSignals = signals.filter(
+    (signal): signal is AbortSignal => signal !== undefined
+  )
+
+  if (activeSignals.length <= 1) {
+    return activeSignals[0]
+  }
+
+  const abortSignal = AbortSignal as typeof AbortSignal & {
+    any: (signals: readonly AbortSignal[]) => AbortSignal
+  }
+
+  return abortSignal.any(activeSignals)
 }
 
 const isModelMessage = (value: unknown): value is ModelMessage =>
@@ -421,16 +469,16 @@ const getProviderResponseText = ({
 const toMainLoopFinishReason = (
   stopReason: AgentLoopStopReason
 ): FinishReason => {
+  if (stopReason === "aborted" || stopReason === "error") {
+    return "error"
+  }
+
   if (stopReason === "max_turns") {
     return "length"
   }
 
   if (stopReason === "suspended") {
     return "tool-calls"
-  }
-
-  if (stopReason === "error") {
-    return "error"
   }
 
   return "stop"
@@ -441,8 +489,31 @@ const isMainLoopSuspended = (stopReason: AgentLoopStopReason): boolean =>
 
 const toMainLoopRunStatus = (
   stopReason: AgentLoopStopReason
-): AgentRunFinishStatus =>
-  isMainLoopSuspended(stopReason) ? "suspended" : "succeeded"
+): AgentRunFinishStatus => {
+  if (stopReason === "aborted" || stopReason === "error") {
+    return "failed"
+  }
+
+  if (isMainLoopSuspended(stopReason)) {
+    return "suspended"
+  }
+
+  return "succeeded"
+}
+
+const getMainLoopFailureMessage = (
+  stopReason: AgentLoopStopReason
+): string | null => {
+  if (stopReason === "aborted") {
+    return AGENT_RUN_STOPPED_MESSAGE
+  }
+
+  if (stopReason === "error") {
+    return "Agent loop stopped with an error."
+  }
+
+  return null
+}
 
 const getToolResultOutputValue = (output: unknown): unknown => {
   if (!isRecord(output) || typeof output.type !== "string") {
@@ -717,13 +788,237 @@ const writeModelMessagesToUiStream = <UI_MESSAGE extends UIMessage>({
   }
 }
 
+const createAgentUiStreamBridge = (): AgentUiStreamBridge => {
+  const chunks: AgentUiStreamChunk[] = []
+  const waiters: AgentUiStreamWaiter[] = []
+  let closed = false
+  let error: Error | undefined
+
+  return {
+    close: () => {
+      if (closed) {
+        return
+      }
+
+      closed = true
+
+      for (const waiter of waiters.splice(0)) {
+        waiter.resolve({
+          done: true,
+          value: undefined
+        })
+      }
+    },
+    fail: (nextError) => {
+      if (closed) {
+        return
+      }
+
+      closed = true
+      error = toRejectionError(nextError)
+
+      if (chunks.length > 0) {
+        return
+      }
+
+      for (const waiter of waiters.splice(0)) {
+        waiter.reject(error)
+      }
+    },
+    read: () => ({
+      [Symbol.asyncIterator]() {
+        return {
+          next: (): Promise<IteratorResult<AgentUiStreamChunk>> => {
+            const chunk = chunks.shift()
+
+            if (chunk) {
+              return Promise.resolve({
+                done: false,
+                value: chunk
+              })
+            }
+
+            if (error) {
+              const { promise, reject } =
+                Promise.withResolvers<IteratorResult<AgentUiStreamChunk>>()
+
+              reject(error)
+
+              return promise
+            }
+
+            if (closed) {
+              return Promise.resolve({
+                done: true,
+                value: undefined
+              })
+            }
+
+            const { promise, reject, resolve } =
+              Promise.withResolvers<IteratorResult<AgentUiStreamChunk>>()
+
+            waiters.push({
+              reject,
+              resolve
+            })
+
+            return promise
+          }
+        }
+      }
+    }),
+    write: (chunk) => {
+      if (closed) {
+        return
+      }
+
+      const waiter = waiters.shift()
+
+      if (waiter) {
+        waiter.resolve({
+          done: false,
+          value: chunk
+        })
+        return
+      }
+
+      chunks.push(chunk)
+    }
+  }
+}
+
+const createAgentUiLiveSink = (
+  stream: AgentUiStreamBridge
+): AgentUiLiveSink => {
+  let activeTextId: string | null = null
+
+  const ensureTextId = (): string => {
+    if (activeTextId) {
+      return activeTextId
+    }
+
+    activeTextId = `agent-text-${randomUUID()}`
+    stream.write({
+      id: activeTextId,
+      type: "text-start"
+    } as AgentUiStreamChunk)
+
+    return activeTextId
+  }
+
+  const finishText = (): void => {
+    if (!activeTextId) {
+      return
+    }
+
+    stream.write({
+      id: activeTextId,
+      type: "text-end"
+    } as AgentUiStreamChunk)
+    activeTextId = null
+  }
+
+  return {
+    finishText,
+    writeApprovalRequest: ({ approvalId, toolCall }) => {
+      finishText()
+      stream.write({
+        approvalId,
+        toolCallId: toolCall.toolCallId,
+        type: "tool-approval-request"
+      } as AgentUiStreamChunk)
+    },
+    writeTextDelta: (text) => {
+      if (text.length === 0) {
+        return
+      }
+
+      stream.write({
+        delta: text,
+        id: ensureTextId(),
+        type: "text-delta"
+      } as AgentUiStreamChunk)
+    },
+    writeToolCall: (toolCall) => {
+      finishText()
+      stream.write({
+        input: toolCall.input,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        type: "tool-input-available"
+      } as AgentUiStreamChunk)
+    },
+    writeToolResult: ({ isError, output, toolCall }) => {
+      finishText()
+
+      if (isError) {
+        stream.write({
+          errorText: getToolRetryErrorMessage(output),
+          toolCallId: toolCall.toolCallId,
+          type: "tool-output-error"
+        } as AgentUiStreamChunk)
+        return
+      }
+
+      stream.write({
+        output,
+        toolCallId: toolCall.toolCallId,
+        type: "tool-output-available"
+      } as AgentUiStreamChunk)
+    }
+  }
+}
+
+const writeToolMessageToLiveSink = ({
+  liveSink,
+  message
+}: {
+  liveSink: AgentUiLiveSink
+  message: ModelMessage
+}): void => {
+  if (message.role !== "tool" || !Array.isArray(message.content)) {
+    return
+  }
+
+  const contentParts: unknown[] = [...message.content]
+
+  for (const part of contentParts) {
+    if (
+      !isRecord(part) ||
+      part.type !== "tool-result" ||
+      typeof part.toolCallId !== "string" ||
+      typeof part.toolName !== "string"
+    ) {
+      continue
+    }
+
+    const isError =
+      isRecord(part.output) &&
+      typeof part.output.type === "string" &&
+      part.output.type.startsWith("error-")
+
+    liveSink.writeToolResult({
+      isError,
+      output: getToolResultOutputValue(part.output),
+      toolCall: {
+        input: undefined,
+        toolCallId: part.toolCallId,
+        toolName: part.toolName
+      }
+    })
+  }
+}
+
 const createMainLoopStreamResult = (
-  execution: Promise<MainAgentLoopExecutionResult>
+  execution: Promise<MainAgentLoopExecutionResult>,
+  liveStream?: AgentUiStreamBridge
 ): AgentChatStreamResult => {
   void (async () => {
     try {
       await execution
-    } catch {
+      liveStream?.close()
+    } catch (error) {
+      liveStream?.fail(error)
       // Consumers observe the same promise through consumeStream() or the UI stream.
     }
   })()
@@ -742,6 +1037,28 @@ const createMainLoopStreamResult = (
       createUIMessageStream<UI_MESSAGE>({
         execute: async ({ writer }) => {
           try {
+            if (liveStream) {
+              if (options?.sendStart !== false) {
+                writer.write({
+                  type: "start"
+                } as InferUIMessageChunk<UI_MESSAGE>)
+              }
+
+              for await (const chunk of liveStream.read()) {
+                writer.write(chunk as InferUIMessageChunk<UI_MESSAGE>)
+              }
+
+              const result = await execution
+
+              if (options?.sendFinish !== false) {
+                writer.write({
+                  finishReason: result.finishReason,
+                  type: "finish"
+                } as InferUIMessageChunk<UI_MESSAGE>)
+              }
+              return
+            }
+
             const result = await execution
 
             writeModelMessagesToUiStream({
@@ -1911,6 +2228,16 @@ export const streamAgentChat = async ({
       modelId,
       profileId: profile.id
     }))
+  const runAbortController = new AbortController()
+  const agentAbortSignal = createCombinedAbortSignal([
+    requestAbortSignal,
+    runAbortController.signal
+  ])
+  const unregisterActiveAgentRun = registerActiveAgentRun({
+    abortController: runAbortController,
+    runId: run.id,
+    sessionId
+  })
   let activeSubagentCount = 0
   const executeDelegation: ExecuteAgentDelegation = async ({
     abortSignal,
@@ -2223,6 +2550,7 @@ export const streamAgentChat = async ({
   if (modelMessages.length === 0) {
     const finishReason: FinishReason = "stop"
 
+    unregisterActiveAgentRun()
     await updateAgentRun({
       db,
       id: run.id,
@@ -2324,6 +2652,7 @@ export const streamAgentChat = async ({
         run
       })
       phaseHandle?.end()
+      unregisterActiveAgentRun()
       throw error
     }
   })()
@@ -2335,6 +2664,8 @@ export const streamAgentChat = async ({
     fallbackSystemPrompt: systemPrompt,
     payload: preparedProviderRequest.payload
   })
+  const liveStream = createAgentUiStreamBridge()
+  const liveSink = createAgentUiLiveSink(liveStream)
 
   const execution = (async (): Promise<MainAgentLoopExecutionResult> => {
     try {
@@ -2351,7 +2682,7 @@ export const streamAgentChat = async ({
 
       const approvedToolResultMessages =
         await executeApprovedToolApprovalResponses({
-          abortSignal: requestAbortSignal,
+          abortSignal: agentAbortSignal,
           agentTools,
           db,
           lifecycleHandlers,
@@ -2360,6 +2691,14 @@ export const streamAgentChat = async ({
           responseRecords: approvalResumeMatch?.responseRecords ?? [],
           run
         })
+
+      for (const message of approvedToolResultMessages) {
+        writeToolMessageToLiveSink({
+          liveSink,
+          message
+        })
+      }
+
       const initialModelMessages = [
         ...preparedMessages,
         ...approvedToolResultMessages
@@ -2372,6 +2711,11 @@ export const streamAgentChat = async ({
         metadata: preparedProviderRequest.requestOptions.metadata,
         mode: "stream",
         model,
+        streamCallbacks: {
+          onFinish: liveSink.finishText,
+          onTextDelta: liveSink.writeTextDelta,
+          onToolCall: liveSink.writeToolCall
+        },
         system: preparedSystemPrompt,
         tools: agentTools
       })
@@ -2386,7 +2730,7 @@ export const streamAgentChat = async ({
         run
       })
       const loopResult = await runAgentLoop({
-        abortSignal: requestAbortSignal,
+        abortSignal: agentAbortSignal,
         activeToolNames: toolNames,
         afterToolCall: async (result: AgentLoopExecutedToolResult) => {
           const toolError = result.isError
@@ -2399,6 +2743,11 @@ export const streamAgentChat = async ({
           await lifecycleHandlers.onToolCallFinish({
             ...(toolError ? { error: toolError } : { output: result.output }),
             success: !result.isError,
+            toolCall: result.toolCall
+          })
+          liveSink.writeToolResult({
+            isError: result.isError,
+            output: result.output,
             toolCall: result.toolCall
           })
 
@@ -2418,6 +2767,10 @@ export const streamAgentChat = async ({
             const approvalId = `tool-approval-${randomUUID()}`
 
             pendingApprovalRequests.push({
+              approvalId,
+              toolCall
+            })
+            liveSink.writeApprovalRequest({
               approvalId,
               toolCall
             })
@@ -2490,6 +2843,7 @@ export const streamAgentChat = async ({
       const status = hasPendingApproval
         ? "suspended"
         : toMainLoopRunStatus(loopResult.stopReason)
+      const failureMessage = getMainLoopFailureMessage(loopResult.stopReason)
 
       await appendAgentSessionModelMessageEvents({
         messages: generatedMessages,
@@ -2507,17 +2861,25 @@ export const streamAgentChat = async ({
       })
       await updateAgentRun({
         db,
+        ...(failureMessage ? { errorMessage: failureMessage } : {}),
         id: run.id,
         status
       })
-      await run.appendEvent({
-        payload: {
-          finishReason,
-          ...(status === "suspended" ? { status } : {}),
-          usage: null
-        },
-        type: "agent_run_finished"
-      })
+      await (status === "failed"
+        ? run.appendEvent({
+            payload: {
+              error: failureMessage ?? "Agent run failed."
+            },
+            type: "agent_run_failed"
+          })
+        : run.appendEvent({
+            payload: {
+              finishReason,
+              ...(status === "suspended" ? { status } : {}),
+              usage: null
+            },
+            type: "agent_run_finished"
+          }))
       await applyMainProviderResponseHooks({
         finishReason,
         runId: run.id,
@@ -2547,8 +2909,10 @@ export const streamAgentChat = async ({
       throw runtimeError
     } finally {
       phaseHandle?.end()
+      liveSink.finishText()
+      unregisterActiveAgentRun()
     }
   })()
 
-  return createMainLoopStreamResult(execution)
+  return createMainLoopStreamResult(execution, liveStream)
 }

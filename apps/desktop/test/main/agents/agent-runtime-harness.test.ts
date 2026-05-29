@@ -91,6 +91,25 @@ const beforeExploreProviderRequestHook: NonNullable<
       }
     : undefined
 
+const readUiStreamChunks = async (
+  stream: ReadableStream<unknown>
+): Promise<unknown[]> => {
+  const reader = stream.getReader()
+  const chunks: unknown[] = []
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    chunks.push(value)
+  }
+
+  return chunks
+}
+
 describe("agent runtime harness", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
@@ -154,6 +173,52 @@ describe("agent runtime harness", () => {
     expect(liveEventTypes).toEqual(
       expect.arrayContaining(["agent_run_started", "agent_run_finished"])
     )
+  })
+
+  it("writes agent provider text deltas to the UI stream before finish", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("streamed", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Stream this.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+    const chunks = await readUiStreamChunks(result.toUIMessageStream())
+    const textDeltaIndex = chunks.findIndex(
+      (chunk) =>
+        typeof chunk === "object" &&
+        chunk !== null &&
+        "type" in chunk &&
+        chunk.type === "text-delta"
+    )
+    const finishIndex = chunks.findIndex(
+      (chunk) =>
+        typeof chunk === "object" &&
+        chunk !== null &&
+        "type" in chunk &&
+        chunk.type === "finish"
+    )
+
+    expect(textDeltaIndex).toBeGreaterThan(-1)
+    expect(finishIndex).toBeGreaterThan(textDeltaIndex)
+    expect(JSON.stringify(chunks[textDeltaIndex])).toContain("streamed")
   })
 
   it("streams without agent runs when agents are disabled", async () => {
@@ -1661,7 +1726,9 @@ describe("agent runtime harness", () => {
     const childRun = runs.find((run) => run.profileId === "explore")
 
     expect(harness.faux.model.doGenerateCalls).toHaveLength(1)
-    expect(childGenerateCall?.abortSignal).toBe(abortController.signal)
+    expect(childGenerateCall?.abortSignal?.aborted).toBe(false)
+    abortController.abort()
+    expect(childGenerateCall?.abortSignal?.aborted).toBe(true)
     expect(childRun).toEqual(
       expect.objectContaining({
         profileId: "explore",

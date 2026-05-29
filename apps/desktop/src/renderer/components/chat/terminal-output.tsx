@@ -3,13 +3,26 @@ import { cn } from "@etyon/ui/lib/utils"
 import { Button } from "@heroui/react"
 import { Copy02Icon, CopyCheckIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import * as AnsiToReact from "ansi-to-react"
+import AnsiToReact from "ansi-to-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { ReactElement, ReactNode } from "react"
+import type { ComponentType, ReactNode } from "react"
 
-const Ansi = AnsiToReact.default as (props: {
+interface AnsiComponentProps {
   children?: string
-}) => ReactElement
+}
+
+type AnsiComponentModule =
+  | ComponentType<AnsiComponentProps>
+  | {
+      default: ComponentType<AnsiComponentProps>
+    }
+
+const resolveAnsiComponent = (
+  module: AnsiComponentModule
+): ComponentType<AnsiComponentProps> =>
+  typeof module === "function" ? module : module.default
+
+const Ansi = resolveAnsiComponent(AnsiToReact as AnsiComponentModule)
 
 interface TerminalOutputProps {
   autoScroll?: boolean

@@ -1542,8 +1542,16 @@ const ChatRuntime = ({
   }, [])
 
   const handleStop = useCallback(() => {
-    void stop()
-  }, [stop])
+    void (async () => {
+      try {
+        await rpcClient.agents.stopActiveRun({
+          sessionId: selectedSession.id
+        })
+      } finally {
+        void stop()
+      }
+    })()
+  }, [selectedSession.id, stop])
 
   const handleSubmitEditedMessage = useCallback(
     (message: ChatUiMessage) => {

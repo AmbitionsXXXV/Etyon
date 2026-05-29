@@ -4,7 +4,8 @@ import { z } from "zod"
 
 import {
   createAiSdkAgentLoopModel,
-  createAiSdkAgentLoopTools
+  createAiSdkAgentLoopTools,
+  convertModelMessagesToAgentLoopMessages
 } from "@/main/agents/agent-loop-ai-sdk"
 
 import {
@@ -166,5 +167,74 @@ describe("agent loop AI SDK adapter", () => {
       }
     })
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it("drops approval-only assistant messages before provider calls", () => {
+    expect(
+      convertModelMessagesToAgentLoopMessages([
+        {
+          content: [
+            {
+              input: {
+                command: "git diff --cached --stat"
+              },
+              toolCallId: "bash:18",
+              toolName: "bash",
+              type: "tool-call"
+            }
+          ],
+          role: "assistant"
+        },
+        {
+          content: [
+            {
+              approvalId: "approval-18",
+              toolCallId: "bash:18",
+              type: "tool-approval-request"
+            }
+          ],
+          role: "assistant"
+        },
+        {
+          content: [
+            {
+              output: {
+                type: "json",
+                value: {
+                  content: "ok"
+                }
+              },
+              toolCallId: "bash:18",
+              toolName: "bash",
+              type: "tool-result"
+            }
+          ],
+          role: "tool"
+        }
+      ])
+    ).toEqual([
+      {
+        content: "",
+        role: "assistant",
+        toolCalls: [
+          {
+            input: {
+              command: "git diff --cached --stat"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash"
+          }
+        ]
+      },
+      {
+        isError: false,
+        output: {
+          content: "ok"
+        },
+        role: "tool",
+        toolCallId: "bash:18",
+        toolName: "bash"
+      }
+    ])
   })
 })

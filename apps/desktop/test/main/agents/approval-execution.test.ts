@@ -151,6 +151,145 @@ describe("agent approval execution", () => {
     ])
   })
 
+  it("turns approved tool execution failures into provider-visible tool results", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+    const targetPath = path.join(harness.projectPath, "existing.txt")
+
+    await fsPromises.writeFile(targetPath, "current", "utf-8")
+
+    const approval = await harness.session.suspendForToolApproval({
+      approvalId: "approval-1",
+      input: {
+        edits: [
+          {
+            newText: "next",
+            oldText: "missing"
+          }
+        ],
+        path: "existing.txt"
+      },
+      profileId: "coder",
+      toolCallId: "edit:18",
+      toolName: "edit"
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("handled failed edit", {
+        modelId: harness.modelId
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: approval.toModelMessages({
+        approved: true
+      })
+    })
+
+    await result.consumeStream()
+
+    const [modelCall] = harness.faux.model.doStreamCalls
+    const promptJson = JSON.stringify(modelCall?.prompt)
+
+    expect(promptJson).toContain("edit:18")
+    expect(promptJson).toContain("Expected exactly one match")
+    expect(promptJson).not.toContain("tool-approval-response")
+  })
+
+  it("keeps split approval resume messages provider-contiguous", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+    const approval = await harness.session.suspendForToolApproval({
+      approvalId: "approval-1",
+      input: {
+        content: "approved",
+        path: "approved.txt"
+      },
+      profileId: "coder",
+      toolCallId: "tool-call-1",
+      toolName: "write"
+    })
+    const [assistantMessage, responseMessage] = approval.toModelMessages({
+      approved: true
+    })
+    const assistantParts = Array.isArray(assistantMessage?.content)
+      ? assistantMessage.content
+      : []
+    const splitMessages = [
+      {
+        content: assistantParts.filter(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            "type" in part &&
+            part.type === "tool-call"
+        ),
+        role: "assistant"
+      },
+      {
+        content: assistantParts.filter(
+          (part) =>
+            typeof part === "object" &&
+            part !== null &&
+            "type" in part &&
+            part.type === "tool-approval-request"
+        ),
+        role: "assistant"
+      },
+      responseMessage
+    ] satisfies ModelMessage[]
+
+    harness.faux.setResponses([
+      createFauxTextResponse("resumed split approval", {
+        modelId: harness.modelId
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: splitMessages
+    })
+
+    await result.consumeStream()
+
+    const [modelCall] = harness.faux.model.doStreamCalls
+    const prompt = modelCall?.prompt ?? []
+    const promptJson = JSON.stringify(prompt)
+    const toolCallIndex = prompt.findIndex(
+      (message) =>
+        message.role === "assistant" &&
+        JSON.stringify(message).includes("tool-call-1")
+    )
+    const toolResultIndex = prompt.findIndex(
+      (message) =>
+        message.role === "tool" &&
+        JSON.stringify(message).includes("tool-call-1")
+    )
+
+    expect(promptJson).not.toContain(
+      "Tool execution did not complete before the next user message."
+    )
+    expect(promptJson).not.toContain("tool-approval-request")
+    expect(promptJson).not.toContain("tool-approval-response")
+    expect(toolCallIndex).toBeGreaterThan(-1)
+    expect(toolResultIndex).toBe(toolCallIndex + 1)
+  })
+
   it("adds a model-visible tool error when approval is denied", async () => {
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",

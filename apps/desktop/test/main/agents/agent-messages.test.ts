@@ -228,6 +228,48 @@ describe("agent messages", () => {
     )
   })
 
+  it("keeps split approval requests attached to pending tool calls", () => {
+    const messages = [
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached --stat"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-18",
+            toolCallId: "bash:18",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-18",
+            approved: true,
+            type: "tool-approval-response"
+          }
+        ],
+        role: "tool"
+      }
+    ] satisfies ModelMessage[]
+
+    expect(completeUnresolvedToolCallsInModelMessages(messages)).toEqual(
+      messages
+    )
+  })
+
   it("formats custom agent messages for debug output", () => {
     expect(
       formatAgentMessageForDebug({

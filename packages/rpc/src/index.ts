@@ -53,6 +53,8 @@ export {
   RetryAgentRunGraphNodeOutputSchema,
   StartAgentRunGraphNextStageInputSchema,
   StartAgentRunGraphNextStageOutputSchema,
+  StopActiveAgentRunInputSchema,
+  StopActiveAgentRunOutputSchema,
   UpdateQueuedAgentMessageInputSchema
 } from "./schemas/agents"
 export type {
@@ -110,6 +112,8 @@ export type {
   RetryAgentRunGraphNodeOutput,
   StartAgentRunGraphNextStageInput,
   StartAgentRunGraphNextStageOutput,
+  StopActiveAgentRunInput,
+  StopActiveAgentRunOutput,
   UpdateQueuedAgentMessageInput
 } from "./schemas/agents"
 export {

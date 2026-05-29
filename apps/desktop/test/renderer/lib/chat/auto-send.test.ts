@@ -65,7 +65,7 @@ describe("shouldSendChatAutomatically", () => {
     expect(shouldSendChatAutomatically({ messages })).toBe(false)
   })
 
-  it("continues after all tool calls in the last assistant step have output", () => {
+  it("does not continue after server-side agent tool calls have output", () => {
     const messages = [
       {
         id: "assistant-1",
@@ -89,7 +89,7 @@ describe("shouldSendChatAutomatically", () => {
       }
     ] satisfies UIMessage[]
 
-    expect(shouldSendChatAutomatically({ messages })).toBe(true)
+    expect(shouldSendChatAutomatically({ messages })).toBe(false)
   })
 
   it("does not continue for assistant text without pending tool work", () => {

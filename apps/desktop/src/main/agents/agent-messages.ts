@@ -272,6 +272,37 @@ const buildInterruptedToolResultMessage = (
   role: "tool"
 })
 
+const onlyRequestsPendingApprovals = ({
+  message,
+  pendingToolCalls
+}: {
+  message: ModelMessage
+  pendingToolCalls: readonly ToolCallRecord[]
+}): boolean => {
+  if (message.role !== "assistant" || pendingToolCalls.length === 0) {
+    return false
+  }
+
+  const content = getModelMessageContentParts(message)
+
+  if (content.length === 0) {
+    return false
+  }
+
+  const pendingToolCallIds = new Set(
+    pendingToolCalls.map(({ toolCallId }) => toolCallId)
+  )
+
+  return content.every((part) => {
+    const approvalRequest = getApprovalRequestRecord(part)
+
+    return (
+      approvalRequest !== null &&
+      pendingToolCallIds.has(approvalRequest.toolCallId)
+    )
+  })
+}
+
 const stripPendingApprovalRequests = ({
   message,
   pendingToolCallIds
@@ -345,14 +376,25 @@ export const completeUnresolvedToolCallsInModelMessages = (
   }
 
   for (const message of messages) {
-    if (message.role !== "tool") {
+    const defersPendingToolFlush = onlyRequestsPendingApprovals({
+      message,
+      pendingToolCalls
+    })
+
+    if (message.role !== "tool" && !defersPendingToolFlush) {
       flushPendingToolCalls()
     }
 
     completedMessages.push(message)
 
     if (message.role === "assistant") {
-      pendingToolCalls = getAssistantToolCallRecords(message)
+      const nextPendingToolCalls = getAssistantToolCallRecords(message)
+
+      if (nextPendingToolCalls.length > 0) {
+        pendingToolCalls = nextPendingToolCalls
+      } else if (!defersPendingToolFlush) {
+        pendingToolCalls = []
+      }
       continue
     }
 

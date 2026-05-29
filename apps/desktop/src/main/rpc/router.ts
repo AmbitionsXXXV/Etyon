@@ -79,6 +79,8 @@ import {
   SidebarUiStateSchema,
   StartAgentRunGraphNextStageInputSchema,
   StartAgentRunGraphNextStageOutputSchema,
+  StopActiveAgentRunInputSchema,
+  StopActiveAgentRunOutputSchema,
   SkillsListOutputSchema,
   PromptTemplatesListOutputSchema,
   TelegramTestConnectionInputSchema,
@@ -91,6 +93,7 @@ import {
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
+import { stopActiveAgentRun } from "@/main/agents/active-agent-runs"
 import { readAgentArtifactTextContent } from "@/main/agents/agent-artifacts"
 import {
   getActiveAgentRunForSession,
@@ -330,6 +333,13 @@ const agentsListRecoverableRuns = rpc
       runs: runs.map(toAgentRunTraceRunOutput)
     }
   })
+
+const agentsStopActiveRun = rpc
+  .input(StopActiveAgentRunInputSchema)
+  .output(StopActiveAgentRunOutputSchema)
+  .handler(({ input }) => ({
+    stopped: stopActiveAgentRun(input.sessionId)
+  }))
 
 const getAgentQueueRunForSession = async ({
   db,
@@ -1246,6 +1256,7 @@ export const router = {
     respondToRunGraphApproval: agentsRespondToRunGraphApproval,
     retryRunGraphNode: agentsRetryRunGraphNode,
     startRunGraphNextStage: agentsStartRunGraphNextStage,
+    stopActiveRun: agentsStopActiveRun,
     updateQueuedMessage: agentsUpdateQueuedMessage
   },
   chatSessions: {

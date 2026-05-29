@@ -18,11 +18,18 @@ import type {
   AgentLoopTool
 } from "@/main/agents/agent-loop"
 
+export interface AiSdkAgentLoopModelStreamCallbacks {
+  onFinish?: () => void
+  onTextDelta?: (text: string) => void
+  onToolCall?: (toolCall: AgentLoopToolCall) => void
+}
+
 export interface CreateAiSdkAgentLoopModelOptions {
   headers?: Readonly<Record<string, string>>
   metadata?: Readonly<Record<string, unknown>>
   model: LanguageModel
   mode?: "generate" | "stream"
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
   system?: string
   tools?: ToolSet
 }
@@ -174,6 +181,10 @@ export const convertModelMessagesToAgentLoopMessages = (
           }
         ]
       })
+
+      if (!content && toolCalls.length === 0) {
+        return []
+      }
 
       return [
         {
@@ -341,6 +352,7 @@ export const createAiSdkAgentLoopModel =
     metadata,
     model,
     mode = "generate",
+    streamCallbacks,
     system,
     tools
   }: CreateAiSdkAgentLoopModelOptions): AgentLoopModel =>
@@ -376,15 +388,19 @@ export const createAiSdkAgentLoopModel =
         >) {
           if (part.type === "text-delta") {
             content += part.text
+            streamCallbacks?.onTextDelta?.(part.text)
             continue
           }
 
           if (part.type === "tool-call") {
-            toolCalls.push({
+            const toolCall = {
               input: part.input,
               toolCallId: part.toolCallId,
               toolName: part.toolName
-            })
+            }
+
+            toolCalls.push(toolCall)
+            streamCallbacks?.onToolCall?.(toolCall)
             continue
           }
 
@@ -397,6 +413,8 @@ export const createAiSdkAgentLoopModel =
             throw part.error
           }
         }
+
+        streamCallbacks?.onFinish?.()
 
         return {
           content,
