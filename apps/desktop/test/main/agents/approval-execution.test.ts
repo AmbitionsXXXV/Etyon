@@ -99,7 +99,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     harness.faux.setResponses([
@@ -133,7 +133,7 @@ describe("agent approval execution", () => {
           content: [
             expect.objectContaining({
               toolCallId: "tool-call-1",
-              toolName: "writeFile",
+              toolName: "write",
               type: "tool-result"
             })
           ],
@@ -146,7 +146,7 @@ describe("agent approval execution", () => {
         approvalState: "approved",
         id: "tool-call-1",
         state: "finished",
-        toolName: "writeFile"
+        toolName: "write"
       }
     ])
   })
@@ -170,7 +170,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     harness.faux.setResponses([
@@ -208,7 +208,7 @@ describe("agent approval execution", () => {
                 type: "execution-denied"
               },
               toolCallId: "tool-call-1",
-              toolName: "writeFile",
+              toolName: "write",
               type: "tool-result"
             })
           ],
@@ -222,7 +222,7 @@ describe("agent approval execution", () => {
         errorMessage: "Denied in chat UI.",
         id: "tool-call-1",
         state: "failed",
-        toolName: "writeFile"
+        toolName: "write"
       }
     ])
     expect(await harness.session.listRuns()).toEqual([
@@ -265,7 +265,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
     const approvalMessages = approval.toModelMessages({
       approved: true
@@ -321,7 +321,7 @@ describe("agent approval execution", () => {
           content: [
             expect.objectContaining({
               toolCallId: "tool-call-1",
-              toolName: "writeFile",
+              toolName: "write",
               type: "tool-result"
             })
           ],
@@ -350,7 +350,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
     const approvalMessages = approval.toModelMessages({
       approved: false,
@@ -426,7 +426,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
     const approvalMessages = approval.toModelMessages({
       approved: true
@@ -496,7 +496,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "current-tool-call",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     await recordAgentToolCall({
@@ -508,7 +508,7 @@ describe("agent approval execution", () => {
       },
       runId: approval.run.id,
       state: "approval_requested",
-      toolName: "runCheck"
+      toolName: "bash"
     })
     await approval.run.appendEvent({
       payload: {
@@ -577,7 +577,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     otherHarness.faux.setResponses([
@@ -623,7 +623,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "current-tool-call",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     harness.faux.setResponses([
@@ -642,7 +642,7 @@ describe("agent approval execution", () => {
                 path: "old.txt"
               },
               toolCallId: "old-tool-call",
-              toolName: "writeFile",
+              toolName: "write",
               type: "tool-call"
             },
             {
@@ -656,7 +656,7 @@ describe("agent approval execution", () => {
                 path: "current.txt"
               },
               toolCallId: "current-tool-call",
-              toolName: "writeFile",
+              toolName: "write",
               type: "tool-call"
             },
             {
@@ -702,9 +702,85 @@ describe("agent approval execution", () => {
         id: "current-tool-call",
         runId: approval.run.id,
         state: "failed",
-        toolName: "writeFile"
+        toolName: "write"
       })
     ])
+  })
+
+  it("completes unresolved prior tool calls with a normal follow-up", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("continued", {
+        modelId: harness.modelId
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Inspect files first.",
+          role: "user"
+        },
+        {
+          content: [
+            {
+              input: {
+                path: "src/value.ts"
+              },
+              toolCallId: "readFile:18",
+              toolName: "readFile",
+              type: "tool-call"
+            },
+            {
+              input: {
+                edits: [],
+                path: "src/value.ts"
+              },
+              toolCallId: "editFile:18",
+              toolName: "editFile",
+              type: "tool-call"
+            },
+            {
+              approvalId: "approval-18",
+              toolCallId: "editFile:18",
+              type: "tool-approval-request"
+            }
+          ],
+          role: "assistant"
+        },
+        {
+          content: "Continue without approving that tool batch.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    const errors: unknown[] = []
+
+    await result.consumeStream({
+      onError: (error) => {
+        errors.push(error)
+      }
+    })
+
+    const [modelCall] = harness.faux.model.doStreamCalls
+    const promptJson = JSON.stringify(modelCall?.prompt)
+
+    expect(errors).toEqual([])
+    expect(promptJson).toContain("Continue without approving")
+    expect(promptJson).toContain("editFile:18")
+    expect(promptJson).toContain("readFile:18")
+    expect(promptJson).toContain("Tool execution did not complete")
   })
 
   it("resumes with the suspended run profile tool scope", async () => {
@@ -726,7 +802,7 @@ describe("agent approval execution", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
 
     harness.faux.setResponses([
@@ -747,18 +823,13 @@ describe("agent approval execution", () => {
     const [modelCall] = harness.faux.model.doStreamCalls
 
     expect(modelCall?.tools?.map((tool) => tool.name).toSorted()).toEqual([
-      "applyPatch",
-      "editFile",
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "memorySearch",
-      "readFile",
-      "runCheck",
-      "searchFiles",
-      "webSearch",
-      "writeFile"
+      "bash",
+      "edit",
+      "find",
+      "grep",
+      "ls",
+      "read",
+      "write"
     ])
   })
 
@@ -825,20 +896,7 @@ describe("agent approval execution", () => {
     ])
     expect(
       childGenerateCall?.tools?.map((tool) => tool.name).toSorted()
-    ).toEqual([
-      "applyPatch",
-      "editFile",
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "memorySearch",
-      "readFile",
-      "runCheck",
-      "searchFiles",
-      "webSearch",
-      "writeFile"
-    ])
+    ).toEqual(["bash", "edit", "find", "grep", "ls", "read", "write"])
     expect(childPromptJson).toContain("Execute the confirmed plan.")
     expect(childPromptJson).toContain("Plan:\\n1. Update tests")
     expect(await harness.session.listToolCalls()).toEqual([

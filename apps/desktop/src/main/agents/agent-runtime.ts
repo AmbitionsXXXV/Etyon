@@ -16,7 +16,10 @@ import {
   updateAgentToolCall
 } from "@/main/agents/agent-event-store"
 import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
-import { convertAgentMessagesToLlm } from "@/main/agents/agent-messages"
+import {
+  completeUnresolvedToolCallsInModelMessages,
+  convertAgentMessagesToLlm
+} from "@/main/agents/agent-messages"
 import {
   parseStructuredPlanFromText,
   stripPlanProgressMarkers,
@@ -845,18 +848,20 @@ const loadAgentRequestModelMessages = async ({
         sessionId
       })
 
+  const modelMessages = mergeResumedModelMessages({
+    persistedMessages: persistedSessionContext.messages,
+    requestMessages: [
+      ...approvalFilteredMessages,
+      ...buildApprovalResponseModelMessages(
+        approvalResumeMatch?.responseRecords ?? []
+      ),
+      ...persistedSessionContext.queuedMessages,
+      ...latestCompletedRunQueuedMessages
+    ]
+  })
+
   return {
-    modelMessages: mergeResumedModelMessages({
-      persistedMessages: persistedSessionContext.messages,
-      requestMessages: [
-        ...approvalFilteredMessages,
-        ...buildApprovalResponseModelMessages(
-          approvalResumeMatch?.responseRecords ?? []
-        ),
-        ...persistedSessionContext.queuedMessages,
-        ...latestCompletedRunQueuedMessages
-      ]
-    }),
+    modelMessages: completeUnresolvedToolCallsInModelMessages(modelMessages),
     persistedSessionContext
   }
 }
@@ -1218,6 +1223,7 @@ export const streamAgentChat = async ({
       )
     }
     const childTools = buildAgentTools({
+      approvalMode: includeApprovalTools ? "preapproved" : "default",
       chatSessionId: sessionId,
       db,
       includeApprovalTools,

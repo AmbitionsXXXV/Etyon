@@ -222,26 +222,17 @@ describe("agent runtime harness", () => {
       }
     ])
     expect(harness.faux.listLastStreamToolNames().toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "memorySearch",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           payload: {
             profileId: "general-purpose",
-            toolNames: [
-              "fileInfo",
-              "findFiles",
-              "searchFiles",
-              "readFile",
-              "gitDiff",
-              "memorySearch"
-            ]
+            toolNames: ["read", "grep", "find", "ls"]
           },
           type: "agent_run_started"
         })
@@ -272,7 +263,7 @@ describe("agent runtime harness", () => {
         },
         modelId: "mock-model",
         toolCallId: "tool-call-1",
-        toolName: "readFile"
+        toolName: "read"
       }),
       createFauxTextResponse("This response must stay queued.", {
         modelId: "mock-model"
@@ -295,7 +286,7 @@ describe("agent runtime harness", () => {
       expect.objectContaining({
         id: "tool-call-1",
         state: "finished",
-        toolName: "readFile"
+        toolName: "read"
       })
     ])
   })
@@ -890,7 +881,7 @@ describe("agent runtime harness", () => {
         },
         modelId: "mock-model",
         toolCallId: "tool-call-1",
-        toolName: "readFile"
+        toolName: "read"
       }),
       createFauxTextResponse("Read package metadata.", {
         modelId: "mock-model"
@@ -898,7 +889,7 @@ describe("agent runtime harness", () => {
     ])
 
     const result = await harness.stream({
-      activeToolNames: ["readFile"],
+      activeToolNames: ["read"],
       messages: [
         {
           content: "Read package metadata.",
@@ -917,12 +908,19 @@ describe("agent runtime harness", () => {
               output: {
                 type: "json",
                 value: expect.objectContaining({
-                  content: '{ "name": "@etyon/desktop" }',
-                  path: "package.json"
+                  content: expect.arrayContaining([
+                    {
+                      text: '{ "name": "@etyon/desktop" }',
+                      type: "text"
+                    }
+                  ]),
+                  details: expect.objectContaining({
+                    path: "package.json"
+                  })
                 })
               },
               toolCallId: "tool-call-1",
-              toolName: "readFile",
+              toolName: "read",
               type: "tool-result"
             })
           ],
@@ -957,7 +955,7 @@ describe("agent runtime harness", () => {
         },
         modelId: "mock-model",
         toolCallId: "tool-call-1",
-        toolName: "readFile"
+        toolName: "read"
       }),
       createFauxTextResponse("Read source file.", {
         modelId: "mock-model"
@@ -965,7 +963,7 @@ describe("agent runtime harness", () => {
     ])
 
     const result = await harness.stream({
-      activeToolNames: ["readFile"],
+      activeToolNames: ["read"],
       messages: [
         {
           content: "Read the source file.",
@@ -985,11 +983,18 @@ describe("agent runtime harness", () => {
           path: "src/main.ts"
         },
         output: expect.objectContaining({
-          content: "export const value = 1",
-          path: "src/main.ts"
+          content: expect.arrayContaining([
+            {
+              text: "export const value = 1",
+              type: "text"
+            }
+          ]),
+          details: expect.objectContaining({
+            path: "src/main.ts"
+          })
         }),
         state: "finished",
-        toolName: "readFile"
+        toolName: "read"
       })
     ])
   })
@@ -1005,24 +1010,23 @@ describe("agent runtime harness", () => {
         }
       })
     })
-    const patch = "*** Begin Patch\n*** End Patch"
-
     harness.faux.setResponses([
       createFauxToolCallResponse({
         input: {
-          patch
+          content: "export const value = 1\n",
+          path: "src/generated.ts"
         },
         modelId: "mock-model",
         toolCallId: "tool-call-1",
-        toolName: "applyPatch"
+        toolName: "write"
       })
     ])
 
     const result = await harness.stream({
-      activeToolNames: ["applyPatch"],
+      activeToolNames: ["write"],
       messages: [
         {
-          content: "Apply this patch.",
+          content: "Write this file.",
           role: "user"
         }
       ] satisfies ModelMessage[]
@@ -1041,10 +1045,10 @@ describe("agent runtime harness", () => {
         approvalState: "pending",
         id: "tool-call-1",
         input: expect.objectContaining({
-          patch
+          path: "src/generated.ts"
         }),
         state: "approval_requested",
-        toolName: "applyPatch"
+        toolName: "write"
       })
     ])
     expect(await harness.session.listPendingApprovals()).toEqual([
@@ -1052,11 +1056,11 @@ describe("agent runtime harness", () => {
         approvalId: expect.any(String),
         id: "tool-call-1",
         input: expect.objectContaining({
-          patch
+          path: "src/generated.ts"
         }),
         runStatus: "suspended",
         state: "approval_requested",
-        toolName: "applyPatch"
+        toolName: "write"
       })
     ])
     expect(await harness.session.listEvents()).toEqual(
@@ -1065,10 +1069,10 @@ describe("agent runtime harness", () => {
           payload: expect.objectContaining({
             approvalId: expect.any(String),
             input: expect.objectContaining({
-              patch
+              path: "src/generated.ts"
             }),
             toolCallId: "tool-call-1",
-            toolName: "applyPatch"
+            toolName: "write"
           }),
           type: "tool_call_approval_requested"
         })
@@ -1094,7 +1098,7 @@ describe("agent runtime harness", () => {
     ])
 
     const result = await harness.stream({
-      activeToolNames: ["readFile"],
+      activeToolNames: ["read"],
       messages: [
         {
           content: "Read a file.",
@@ -1107,13 +1111,13 @@ describe("agent runtime harness", () => {
 
     const events = await harness.session.listEvents()
 
-    expect(harness.faux.listLastStreamToolNames()).toEqual(["readFile"])
+    expect(harness.faux.listLastStreamToolNames()).toEqual(["read"])
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           payload: {
             profileId: "general-purpose",
-            toolNames: ["readFile"]
+            toolNames: ["read"]
           },
           type: "agent_run_started"
         })
@@ -1154,16 +1158,15 @@ describe("agent runtime harness", () => {
     const events = await harness.session.listEvents()
 
     expect(harness.faux.listLastStreamToolNames().toSorted()).toEqual([
-      "applyPatch",
-      "editFile",
-      "writeFile"
+      "edit",
+      "write"
     ])
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           payload: {
             profileId: "coder",
-            toolNames: ["applyPatch", "editFile", "writeFile"]
+            toolNames: ["edit", "write"]
           },
           type: "agent_run_started"
         })
@@ -1189,7 +1192,7 @@ describe("agent runtime harness", () => {
         [
           "Keep this finding.",
           "<antThinking>internal planning</antThinking>",
-          '<function_calls><invoke name="readFile"></invoke></function_calls>',
+          '<function_calls><invoke name="read"></invoke></function_calls>',
           "Executed in /repo",
           "zsh",
           "rtk vp test",
@@ -1246,15 +1249,7 @@ describe("agent runtime harness", () => {
     ])
     expect(
       childGenerateCall?.tools?.map((tool) => tool.name).toSorted()
-    ).toEqual([
-      "fileInfo",
-      "findFiles",
-      "listDirectory",
-      "listProjectTree",
-      "memorySearch",
-      "readFile",
-      "searchFiles"
-    ])
+    ).toEqual(["find", "grep", "ls", "read"])
     expect(childPromptJson).toContain("Find the settings tab files.")
     expect(childPromptJson).not.toContain("parent-only-history")
     expect(await harness.session.listToolCalls()).toEqual([
@@ -1320,7 +1315,7 @@ describe("agent runtime harness", () => {
         },
         modelId: "mock-model",
         toolCallId: "child-tool-call-1",
-        toolName: "readFile"
+        toolName: "read"
       }),
       createFauxGenerateTextResponse("This child response must stay queued.", {
         modelId: "mock-model"
@@ -1529,7 +1524,7 @@ describe("agent runtime harness", () => {
       },
       profileId: "coder",
       toolCallId: "tool-call-1",
-      toolName: "writeFile"
+      toolName: "write"
     })
     const events = await harness.session.listEvents()
 
@@ -1558,7 +1553,7 @@ describe("agent runtime harness", () => {
               path: "pending.txt"
             },
             toolCallId: "tool-call-1",
-            toolName: "writeFile",
+            toolName: "write",
             type: "tool-call"
           },
           {

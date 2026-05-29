@@ -30,12 +30,10 @@ describe("agent profiles", () => {
       readonly: true
     })
     expect(profile.toolPolicy.allowedToolNames).toEqual([
-      "fileInfo",
-      "findFiles",
-      "searchFiles",
-      "readFile",
-      "gitDiff",
-      "memorySearch"
+      "read",
+      "grep",
+      "find",
+      "ls"
     ])
     expect(profile.toolPolicy.allowWrites).toBe(false)
   })
@@ -78,8 +76,8 @@ describe("agent profiles", () => {
     expect(profile.readonly).toBe(true)
     expect(profile.toolPolicy.allowWrites).toBe(false)
     expect(profile.toolPolicy.allowedToolNames).not.toContain("applyPatch")
-    expect(profile.toolPolicy.allowedToolNames).not.toContain("writeFile")
-    expect(profile.toolPolicy.allowedToolNames).not.toContain("runCheck")
+    expect(profile.toolPolicy.allowedToolNames).not.toContain("bash")
+    expect(profile.toolPolicy.allowedToolNames).not.toContain("write")
   })
 
   it("keeps profile-specific safe tools when a readonly override is saved", () => {
@@ -100,8 +98,7 @@ describe("agent profiles", () => {
 
     expect(profile.toolPolicy.allowedToolNames).toEqual([
       "agentEventsSearch",
-      "agentRunInspect",
-      "gitDiff"
+      "agentRunInspect"
     ])
   })
 })

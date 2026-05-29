@@ -16,17 +16,17 @@ describe("agent tool manifests", () => {
   })
 
   it("classifies built-in tool capabilities and risk levels", () => {
-    expect(getAgentToolManifest("readFile")).toMatchObject({
+    expect(getAgentToolManifest("read")).toMatchObject({
       capabilities: ["read-fs"],
       owner: "builtin",
       riskLevel: "safe"
     })
-    expect(getAgentToolManifest("editFile")).toMatchObject({
+    expect(getAgentToolManifest("edit")).toMatchObject({
       capabilities: ["write-fs"],
       owner: "builtin",
       riskLevel: "medium"
     })
-    expect(getAgentToolManifest("rtkCommand")).toMatchObject({
+    expect(getAgentToolManifest("bash")).toMatchObject({
       capabilities: ["shell"],
       owner: "builtin",
       riskLevel: "high"

@@ -266,20 +266,20 @@ describe("agent event store", () => {
       }
     ])
     expect(customMessages).toEqual([
-      {
-        data: {
+      expect.objectContaining({
+        data: expect.objectContaining({
           message: "Prefer concise output.",
           queue: "steer"
-        },
+        }),
         type: "steering"
-      },
-      {
-        data: {
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
           message: "Continue after the final answer.",
           queue: "follow-up"
-        },
+        }),
         type: "follow-up"
-      }
+      })
     ])
   })
 

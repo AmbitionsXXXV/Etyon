@@ -92,6 +92,48 @@ const AGENT_TOOL_MANIFESTS = {
     riskLevel: "medium",
     summary: "Apply a unified patch inside the active project."
   }),
+  bash: createManifest({
+    capabilities: ["shell"],
+    id: "bash",
+    owner: "builtin",
+    riskLevel: "high",
+    summary: "Execute a bash command in the current project."
+  }),
+  edit: createManifest({
+    capabilities: ["write-fs"],
+    id: "edit",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Edit one project file with exact text replacements."
+  }),
+  find: createManifest({
+    capabilities: ["read-fs"],
+    id: "find",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Find project files by glob pattern."
+  }),
+  grep: createManifest({
+    capabilities: ["read-fs"],
+    id: "grep",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Search project file contents for a pattern."
+  }),
+  ls: createManifest({
+    capabilities: ["read-fs"],
+    id: "ls",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "List one project directory."
+  }),
+  read: createManifest({
+    capabilities: ["read-fs"],
+    id: "read",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Read a bounded project file preview."
+  }),
   editFile: createManifest({
     capabilities: ["write-fs"],
     id: "editFile",
@@ -175,6 +217,13 @@ const AGENT_TOOL_MANIFESTS = {
     owner: "builtin",
     riskLevel: "high",
     summary: "Search the public web for current external information."
+  }),
+  write: createManifest({
+    capabilities: ["write-fs"],
+    id: "write",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Create or overwrite a UTF-8 project file."
   }),
   writeFile: createManifest({
     capabilities: ["write-fs"],

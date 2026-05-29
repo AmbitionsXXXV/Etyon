@@ -13,7 +13,10 @@ import {
   getMentionTokenTypeLabel,
   getPromptEditorActiveMentionRange,
   getPromptEditorActivePromptTemplateCommandRange,
+  isPromptImeConfirmKeyDown,
+  isPromptNativeCompositionKeyDown,
   isPlanModeKeyboardShortcut,
+  isPromptSubmitKeyDown,
   replaceMentionQuery,
   splitPromptTextByMentions,
   scrollActiveMentionItemIntoView
@@ -270,6 +273,78 @@ describe("prompt input helpers", () => {
         key: "x",
         metaKey: false,
         shiftKey: false
+      })
+    ).toBe(false)
+  })
+
+  it("detects plain Enter as prompt submit but keeps Shift Enter editable", () => {
+    expect(
+      isPromptSubmitKeyDown({
+        key: "Enter"
+      })
+    ).toBe(true)
+    expect(
+      isPromptSubmitKeyDown({
+        key: "Enter",
+        shiftKey: true
+      })
+    ).toBe(false)
+  })
+
+  it("detects IME composition Enter without treating it as submit", () => {
+    expect(
+      isPromptNativeCompositionKeyDown({
+        key: "Enter",
+        nativeEvent: {
+          isComposing: true
+        }
+      })
+    ).toBe(true)
+    expect(
+      isPromptNativeCompositionKeyDown({
+        key: "Enter",
+        nativeEvent: {
+          keyCode: 229
+        }
+      })
+    ).toBe(true)
+    expect(
+      isPromptImeConfirmKeyDown({
+        event: {
+          key: "Enter",
+          nativeEvent: {
+            isComposing: true
+          }
+        },
+        isCompositionActive: false,
+        isCompositionEndGuardActive: false
+      })
+    ).toBe(true)
+    expect(
+      isPromptImeConfirmKeyDown({
+        event: {
+          key: "Enter"
+        },
+        isCompositionActive: true,
+        isCompositionEndGuardActive: false
+      })
+    ).toBe(true)
+    expect(
+      isPromptImeConfirmKeyDown({
+        event: {
+          key: "Enter"
+        },
+        isCompositionActive: false,
+        isCompositionEndGuardActive: true
+      })
+    ).toBe(true)
+    expect(
+      isPromptImeConfirmKeyDown({
+        event: {
+          key: "Enter"
+        },
+        isCompositionActive: false,
+        isCompositionEndGuardActive: false
       })
     ).toBe(false)
   })

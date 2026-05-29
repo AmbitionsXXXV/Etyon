@@ -31,7 +31,7 @@ import type {
 } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { listAgentComposerQueueActions } from "@/renderer/lib/chat/agent-queue"
+import { resolveAgentComposerPrimaryAction } from "@/renderer/lib/chat/agent-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   PROJECT_MENTION_NODE_TYPE,
@@ -51,7 +51,10 @@ import {
   getPromptSkillDescription,
   getPromptSkillDisplayName,
   getPromptSkillSourceLabel,
+  isPromptImeConfirmKeyDown,
+  isPromptNativeCompositionKeyDown,
   isPlanModeKeyboardShortcut,
+  isPromptSubmitKeyDown,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 import type {
@@ -61,6 +64,8 @@ import type {
   PromptSkillMentionItem,
   PromptMentionTrigger
 } from "@/renderer/lib/chat/prompt-input"
+
+const COMPOSITION_SUBMIT_GUARD_MS = 100
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -384,7 +389,7 @@ const handleIndexedSuggestionKeyDown = <TItem,>({
     return true
   }
 
-  if (event.key !== "Enter" || event.shiftKey) {
+  if (!isPromptSubmitKeyDown(event)) {
     return false
   }
 
@@ -626,75 +631,38 @@ const QueuedPromptMessageList = ({
 
 const PromptInputActions = ({
   disabled,
+  hasPromptInputValue,
   isOutputActive,
   isQueueSubmitEnabled,
   isSubmitting,
-  onQueueSubmit,
   onStop,
-  queueFollowUpLabel,
-  queueSteerLabel,
   stopLabel,
   submitLabel
 }: {
   disabled: boolean
+  hasPromptInputValue: boolean
   isOutputActive: boolean
   isQueueSubmitEnabled: boolean
   isSubmitting: boolean
-  onQueueSubmit: (queue?: AgentSessionQueuedMessageQueue) => Promise<void>
   onStop?: () => void
-  queueFollowUpLabel: string
-  queueSteerLabel: string
   stopLabel: string
   submitLabel: string
 }) => {
-  const queueActions = listAgentComposerQueueActions({
-    canQueueMessage: isOutputActive && isQueueSubmitEnabled
+  const primaryAction = resolveAgentComposerPrimaryAction({
+    hasPromptInputValue,
+    isOutputActive,
+    isQueueSubmitEnabled
   })
-  const actionLabel = isOutputActive ? stopLabel : submitLabel
-  const actionIcon = isOutputActive ? StopIcon : SentIcon
+  const isStopAction = primaryAction === "stop"
+  const actionLabel = isStopAction ? stopLabel : submitLabel
+  const actionIcon = isStopAction ? StopIcon : SentIcon
+  const isActionDisabled = isStopAction ? !onStop : disabled || isSubmitting
   const status: ChatStatus = isOutputActive ? "streaming" : "ready"
-
-  if (queueActions.length > 0) {
-    return (
-      <div className="flex items-center gap-2">
-        <HeroPromptInput.Action
-          aria-label={stopLabel}
-          onPress={onStop}
-          tooltip={stopLabel}
-          type="button"
-          variant="danger"
-        >
-          <HugeiconsIcon icon={StopIcon} size={16} strokeWidth={2} />
-        </HeroPromptInput.Action>
-        {queueActions.map((action) => {
-          const icon = action.queue === "follow-up" ? Queue02Icon : SentIcon
-          const label =
-            action.queue === "follow-up" ? queueFollowUpLabel : queueSteerLabel
-
-          return (
-            <HeroPromptInput.Action
-              aria-label={label}
-              isDisabled={disabled || isSubmitting}
-              key={action.queue}
-              onPress={() => {
-                void onQueueSubmit(action.queue)
-              }}
-              tooltip={label}
-              type="button"
-              variant={action.queue === "follow-up" ? "secondary" : "primary"}
-            >
-              <HugeiconsIcon icon={icon} size={16} strokeWidth={2} />
-            </HeroPromptInput.Action>
-          )
-        })}
-      </div>
-    )
-  }
 
   return (
     <HeroPromptInput.Send
       aria-label={actionLabel}
-      isDisabled={isOutputActive ? false : disabled || isSubmitting}
+      isDisabled={isActionDisabled}
       onStop={onStop}
       status={status}
       type="button"
@@ -811,6 +779,11 @@ export const PromptInput = ({
   const promptTemplateElementByPathRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
+  const isCompositionActiveRef = useRef(false)
+  const compositionSubmitGuardRef = useRef(false)
+  const compositionSubmitGuardTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const mentionItemGroups = useMemo<PromptMentionItemGroup[]>(
     () =>
       buildPromptMentionItemGroups({
@@ -851,6 +824,24 @@ export const PromptInput = ({
   const currentMentionEmptyLabel = isSkillMentionActive
     ? mentionSkillEmptyLabel
     : mentionEmptyLabel
+
+  const clearCompositionSubmitGuard = useCallback(() => {
+    if (compositionSubmitGuardTimeoutRef.current) {
+      clearTimeout(compositionSubmitGuardTimeoutRef.current)
+      compositionSubmitGuardTimeoutRef.current = null
+    }
+
+    compositionSubmitGuardRef.current = false
+  }, [])
+
+  const armCompositionSubmitGuard = useCallback(() => {
+    clearCompositionSubmitGuard()
+    compositionSubmitGuardRef.current = true
+    compositionSubmitGuardTimeoutRef.current = setTimeout(() => {
+      compositionSubmitGuardRef.current = false
+      compositionSubmitGuardTimeoutRef.current = null
+    }, COMPOSITION_SUBMIT_GUARD_MS)
+  }, [clearCompositionSubmitGuard])
 
   const syncPromptInputValue = useCallback((nextEditor: Editor) => {
     setPromptInputValue(extractPromptEditorPayload(nextEditor.getJSON()).text)
@@ -894,7 +885,7 @@ export const PromptInput = ({
       editable: !(disabled || isSubmitting),
       editorProps: {
         attributes: {
-          class: "min-h-28 whitespace-pre-wrap break-words text-sm outline-none"
+          class: "min-h-32 whitespace-pre-wrap break-words text-sm outline-none"
         }
       },
       extensions: [
@@ -931,6 +922,13 @@ export const PromptInput = ({
   useEffect(() => {
     editor?.setEditable(!(disabled || isSubmitting))
   }, [disabled, editor, isSubmitting])
+
+  useEffect(
+    () => () => {
+      clearCompositionSubmitGuard()
+    },
+    [clearCompositionSubmitGuard]
+  )
 
   useEffect(() => {
     if (
@@ -1132,6 +1130,16 @@ export const PromptInput = ({
     []
   )
 
+  const handleEditorCompositionStart = useCallback(() => {
+    clearCompositionSubmitGuard()
+    isCompositionActiveRef.current = true
+  }, [clearCompositionSubmitGuard])
+
+  const handleEditorCompositionEnd = useCallback(() => {
+    isCompositionActiveRef.current = false
+    armCompositionSubmitGuard()
+  }, [armCompositionSubmitGuard])
+
   const handleEditorKeyDown = useCallback(
     async (event: KeyboardEvent<HTMLDivElement>) => {
       if (isPlanModeKeyboardShortcut(event)) {
@@ -1147,6 +1155,27 @@ export const PromptInput = ({
         editor.commands.focus("end")
         setActiveMentionRange(null)
         setActivePromptTemplateRange(null)
+        return
+      }
+
+      if (
+        isPromptImeConfirmKeyDown({
+          event,
+          isCompositionActive: isCompositionActiveRef.current,
+          isCompositionEndGuardActive: compositionSubmitGuardRef.current
+        })
+      ) {
+        event.stopPropagation()
+
+        if (
+          compositionSubmitGuardRef.current &&
+          !isCompositionActiveRef.current &&
+          !isPromptNativeCompositionKeyDown(event)
+        ) {
+          event.preventDefault()
+          clearCompositionSubmitGuard()
+        }
+
         return
       }
 
@@ -1176,7 +1205,7 @@ export const PromptInput = ({
         return
       }
 
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (isPromptSubmitKeyDown(event)) {
         event.preventDefault()
         await handleSubmit()
       }
@@ -1185,6 +1214,7 @@ export const PromptInput = ({
       activeItemIndex,
       activeMentionRange,
       activePromptTemplateRange,
+      clearCompositionSubmitGuard,
       disabled,
       editor,
       handleSelectMentionItem,
@@ -1198,7 +1228,7 @@ export const PromptInput = ({
 
   return (
     <HeroPromptInput
-      allowSubmitWhileRunning
+      allowSubmitWhileRunning={isQueueSubmitEnabled}
       className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none"
       isDisabled={disabled}
       lockInputOnRun={false}
@@ -1248,9 +1278,9 @@ export const PromptInput = ({
         <HeroPromptInput.Content className="p-4">
           <div
             className={cn(
-              "min-h-28 cursor-text text-sm",
+              "min-h-32 cursor-text text-sm",
               "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
-              "[&_.ProseMirror]:min-h-28 [&_.ProseMirror]:outline-none",
+              "[&_.ProseMirror]:min-h-32 [&_.ProseMirror]:outline-none",
               "[&_.ProseMirror_p]:my-0",
               "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
               "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
@@ -1259,26 +1289,26 @@ export const PromptInput = ({
               "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]"
             )}
             data-disabled={disabled || isSubmitting}
+            onCompositionEndCapture={handleEditorCompositionEnd}
+            onCompositionStartCapture={handleEditorCompositionStart}
             onKeyDownCapture={handleEditorKeyDown}
           >
             <EditorContent editor={editor} />
           </div>
         </HeroPromptInput.Content>
 
-        <HeroPromptInput.Toolbar className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
+        <HeroPromptInput.Toolbar className="flex items-center justify-between gap-3 px-4 py-3">
           <HeroPromptInput.ToolbarStart className="min-w-0 flex-1">
             {footer}
           </HeroPromptInput.ToolbarStart>
           <HeroPromptInput.ToolbarEnd>
             <PromptInputActions
               disabled={disabled}
+              hasPromptInputValue={promptInputValue.trim().length > 0}
               isOutputActive={isOutputActive}
               isQueueSubmitEnabled={isQueueSubmitEnabled}
               isSubmitting={isSubmitting}
-              onQueueSubmit={handleSubmit}
               onStop={onStop}
-              queueFollowUpLabel={queueFollowUpLabel}
-              queueSteerLabel={queueSteerLabel}
               stopLabel={stopLabel}
               submitLabel={submitLabel}
             />

@@ -13,12 +13,10 @@ export const BUILT_IN_AGENT_PROFILE_IDS = [
 ] as const satisfies readonly AgentProfileId[]
 
 const READONLY_AGENT_TOOL_NAMES = [
-  "fileInfo",
-  "findFiles",
-  "searchFiles",
-  "readFile",
-  "gitDiff",
-  "memorySearch"
+  "read",
+  "grep",
+  "find",
+  "ls"
 ] as const satisfies ManagedAgentProfile["toolPolicy"]["allowedToolNames"]
 
 const createReadonlyAgentToolPolicy = (
@@ -57,14 +55,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: [
-        "fileInfo",
-        "findFiles",
-        "searchFiles",
-        "readFile",
-        "gitDiff",
-        "memorySearch"
-      ],
+      allowedToolNames: ["read", "grep", "find", "ls"],
       requireApprovalForWrites: true
     }
   },
@@ -92,15 +83,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: [
-        "listProjectTree",
-        "listDirectory",
-        "fileInfo",
-        "findFiles",
-        "searchFiles",
-        "readFile",
-        "memorySearch"
-      ],
+      allowedToolNames: ["read", "grep", "find", "ls"],
       requireApprovalForWrites: true
     }
   },
@@ -129,12 +112,10 @@ export const BUILT_IN_AGENT_PROFILES = [
     toolPolicy: {
       allowWrites: false,
       allowedToolNames: [
-        "findFiles",
-        "fileInfo",
-        "searchFiles",
-        "readFile",
-        "gitDiff",
-        "memorySearch",
+        "read",
+        "grep",
+        "find",
+        "ls",
         "agentCoder",
         "agentExplore"
       ],
@@ -166,18 +147,13 @@ export const BUILT_IN_AGENT_PROFILES = [
     toolPolicy: {
       allowWrites: true,
       allowedToolNames: [
-        "findFiles",
-        "fileInfo",
-        "searchFiles",
-        "listDirectory",
-        "readFile",
-        "gitDiff",
-        "memorySearch",
-        "applyPatch",
-        "editFile",
-        "writeFile",
-        "runCheck",
-        "webSearch",
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "grep",
+        "find",
+        "ls",
         "agentExplore",
         "agentPlan",
         "agentReview"
@@ -209,16 +185,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: [
-        "gitDiff",
-        "listDirectory",
-        "fileInfo",
-        "findFiles",
-        "searchFiles",
-        "readFile",
-        "memorySearch",
-        "runCheck"
-      ],
+      allowedToolNames: ["read", "grep", "find", "ls"],
       requireApprovalForWrites: true
     }
   },
@@ -246,7 +213,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["agentEventsSearch", "agentRunInspect", "gitDiff"],
+      allowedToolNames: ["agentEventsSearch", "agentRunInspect"],
       requireApprovalForWrites: true
     }
   }

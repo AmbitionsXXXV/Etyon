@@ -2,85 +2,42 @@
 
 ## 目标
 
-基于当前 Etyon 桌面端的 AI SDK v6 chat runtime，设计一个本地 code agent tool surface。首版目标不是一次性复刻完整 Codex / Claude Code，而是先把本地高价值能力做成可控、可观测、低 token 浪费的 tools。
+Etyon 的 code agent tool surface 现在优先对齐 Pi coding-agent。旧的 `readFile`、`searchFiles`、`applyPatch`、`runCheck` 等 Etyon 形态只保留为内部兼容入口，不再作为内建 code-agent profile 的默认可见工具。
 
-## 调研结论
+## Pi Tool Surface
 
-- AI SDK v6 支持 server-side tools、client-side tools、需要用户交互的 tools。server-side tools 通过 `execute` 执行并把结果回传 UI；需要确认的工具可以先把 tool call 展示给用户，确认后再继续执行。参考：[AI SDK Chatbot Tool Usage](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-tool-usage)。
-- AI SDK 的 `DirectChatTransport` 可以让桌面 / CLI 这类 single-process app 直接调用 `ToolLoopAgent.stream()`，不必绕 HTTP；当前 Etyon 已经有 Hono `/api/chat`，所以近期更适合先沿用 `streamText` + server-side tools，后续再评估 `ToolLoopAgent` 直连。参考：[AI SDK Transport](https://ai-sdk.dev/docs/ai-sdk-ui/transport)。
-- Claude Code 的内建 tools 明确拆分为 `Bash`、`Read`、`Grep`、`Glob`、`Edit`、`Write`、`WebFetch`、`WebSearch`、`Agent` 等，其中 `Bash`、`Edit`、`Write`、web tools 需要权限；Bash 有 cwd、timeout、output length、background task 等行为边界。参考：[Claude Code Tools Reference](https://code.claude.com/docs/en/tools-reference)。
-- Claude Code 权限模型使用 `allow` / `ask` / `deny`，规则形如 `Bash(npm run *)`、`Read(./.env)`、`WebFetch(domain:example.com)`，并且 deny 优先于 ask / allow。参考：[Claude Code Settings](https://code.claude.com/docs/en/settings)。
-- Codex 默认低摩擦模式是 `workspace-write` + `on-request`：可读写 workspace、执行常规本地命令，越界、网络或高风险行为请求 approval；CLI 也提供 `--sandbox` 与 `--ask-for-approval`。参考：[Codex sandboxing](https://developers.openai.com/codex/concepts/sandboxing)、[Codex CLI reference](https://developers.openai.com/codex/cli/reference)。
+内建 code agent 暴露 7 个工具：
 
-## 首版 Tool Surface
+| Tool    | 自动执行 | 输入                                                                         | 结果                                            | 说明                                                                                      |
+| ------- | -------- | ---------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `read`  | 是       | `path`, `offset?`, `limit?`                                                  | `content: [{ type: "text", text }]`, `details?` | 读取 workspace 内文件；大文件用 `offset` / `limit` 分段读取。                             |
+| `grep`  | 是       | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?` | `content`, `details?`                           | 使用 `rg` 搜索文件内容，返回 `path:line:text` 形态。                                      |
+| `find`  | 是       | `pattern`, `path?`, `limit?`                                                 | `content`, `details?`                           | 按 glob 查找文件路径，例如 `*.ts`、`**/*.json`、`src/**/*.spec.ts`。                      |
+| `ls`    | 是       | `path?`, `limit?`                                                            | `content`, `details?`                           | 列目录，目录名带 `/` 后缀。                                                               |
+| `bash`  | 条件允许 | `command`, `timeout?`                                                        | `content`, `details?`                           | 执行本地命令；`timeout` 使用秒，泛用命令需要 approval。                                   |
+| `edit`  | 否       | `path`, `edits: [{ oldText, newText }]`                                      | `content`, `details.diff`                       | 对单文件做精确替换；兼容模型把 `edits` 发成 JSON 字符串，或发旧式 `oldText` / `newText`。 |
+| `write` | 否       | `path`, `content`                                                            | `content`, `details?`                           | 创建或覆盖 UTF-8 文本文件，并自动创建父目录。                                             |
 
-| Tool              | 类型                          | 自动执行 | 输入                                                 | 结果                                                                      | 说明                                                       |
-| ----------------- | ----------------------------- | -------- | ---------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `rtkCommand`      | server-side                   | 条件允许 | `command`, `cwd`, `timeoutMs`, `reason`, `rawOutput` | `exitCode`, `stdoutPreview`, `stderrPreview`, `tokensSaved`, `durationMs` | 默认 shell 入口。除非 `rawOutput=true`，否则命令先走 RTK。 |
-| `readFile`        | server-side                   | 是       | `path`, `startLine?`, `endLine?`                     | `content`, `truncated`, `lineCount`                                       | 读取 workspace 内文本文件。需要遵守 deny-read 规则。       |
-| `searchFiles`     | server-side                   | 是       | `query`, `cwd`, `glob?`, `maxResults`                | matches                                                                   | 使用 `rg`，默认跳过 gitignored 文件，控制输出预算。        |
-| `listProjectTree` | server-side                   | 是       | `cwd`, `depth`, `maxEntries`                         | tree                                                                      | 用于快速建立项目结构上下文，优先 RTK/tree 压缩。           |
-| `gitDiff`         | server-side                   | 是       | `cwd`, `paths?`                                      | `summary`, `files`, `diffPreview`                                         | 复用现有 project context / git diff 能力。                 |
-| `applyPatch`      | server-side + UI confirmation | 否       | `patch`, `reason`                                    | `applied`, `diff`, `error?`                                               | 应用 unified patch，适合多文件改动和可审查 diff。          |
-| `editFile`        | server-side + UI confirmation | 否       | `path`, `edits[]`                                    | `applied`, `diff`, `replacements`, `truncated`                            | 对单文件做精确 `oldText` / `newText` 替换。                |
-| `writeFile`       | server-side + UI confirmation | 否       | `path`, `content`                                    | `written`, `path`, `bytesWritten`                                         | 创建或覆盖 workspace 内 UTF-8 文本文件。                   |
-| `runCheck`        | server-side                   | 条件允许 | `command`, `cwd`, `timeoutMs`                        | `status`, `failures`, `rawPreview`                                        | 测试 / typecheck / lint 专用命令，仍走 RTK。               |
-| `requestApproval` | client-side interaction       | 否       | `action`, `risk`, `preview`                          | `approved`, `comment?`                                                    | 高风险命令和写操作统一进入确认流。                         |
+## Profile 暴露规则
 
-## Bash Command 设计
+- `general-purpose`、`explore`、`review` 默认只暴露 Pi 只读集合：`read`、`grep`、`find`、`ls`。
+- `coder` 默认暴露完整 Pi 集合：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。
+- `plan` 使用只读集合，并在开启 delegation 时额外暴露 `agentCoder` / `agentExplore`。
+- `harness-operator` 只保留 runtime 诊断工具：`agentEventsSearch`、`agentRunInspect`。
 
-首版不要暴露一个无限制 `bash(command: string)`。需要保留 shell 能力，但把行为边界写进 schema 和 runtime：
+## Approval 边界
 
-```ts
-const BashCommandInput = z.object({
-  command: z.string().min(1),
-  cwd: z.string().min(1),
-  reason: z.string().min(1),
-  rawOutput: z.boolean().default(false),
-  timeoutMs: z.number().int().min(1000).max(600_000).default(120_000)
-})
+- `read`、`grep`、`find`、`ls` 是只读工具，默认可自动执行，但仍受 workspace 边界、secret-like path、symlink 规则限制。
+- `edit`、`write` 永远需要 approval，`requireApprovalForWrites=false` 这类旧设置不会绕过写入确认。
+- `bash` 默认需要 approval；`vp check`、`vp test run`、`vp run ...` 等 bounded verification command 可以自动允许。
+- 禁止破坏性命令、非 `vp` 包管理器命令、越界 cwd、secret-like path。
+
+## AI SDK 连续性
+
+模型上下文必须满足 AI SDK 的 tool-call continuity：如果历史 assistant message 留下未完成 tool call，下一次普通用户 follow-up 前会插入 synthetic `tool-result`，而不是删除原始 tool call。该结果使用 AI SDK 合法的 `error-text` output，避免出现：
+
+```text
+Invalid request: an assistant message with 'tool_calls' must be followed by tool messages
 ```
 
-执行策略：
-
-- 默认将 `command` 改写为 `rtk <command>`，包管理器命令仍遵守项目规则使用 `vp`
-- `rawOutput=true` 只允许在用户确认后执行，用于调试 RTK 过滤问题
-- 命令分段后做风险判断：`rm`、`git reset`、`git checkout --`、跨 workspace 写入、网络下载、安装依赖、系统目录写入进入 approval
-- `cwd` 必须在 workspace 或用户显式授权的 writable roots 内
-- 输出必须有 token budget：stdout / stderr 各保留 preview，完整输出落临时文件或本地 artifact，再提供可读取路径
-- 每次执行记录 `inputTokens`、`outputTokens`、`tokensSaved`、`durationMs`，用于 Token Savings tab
-
-## AI SDK 落地形态
-
-近期沿用当前 `/api/chat`：
-
-```ts
-const result = streamText({
-  messages: await convertToModelMessages(messages),
-  model,
-  stopWhen: stepCountIs(8),
-  tools: codeAgentTools
-})
-```
-
-后续当工具链稳定后，可以将 agent 抽成 `ToolLoopAgent`：
-
-```ts
-const agent = new ToolLoopAgent({
-  instructions,
-  model,
-  tools: codeAgentTools
-})
-```
-
-Etyon 是 Electron app，`DirectChatTransport` 对测试和单进程本地执行有价值；但当前 renderer 已通过本地 Hono server 和 `DefaultChatTransport` 串流，先不急着迁移 transport，避免同时改动 chat persistence、Telegram bridge 和 Settings provider 逻辑。
-
-## 权限模型
-
-建议内部规则沿用三层：
-
-- `allow`：只读文件、`rg`、`git diff`、`rtk ls/read/find`、项目内安全检查命令
-- `ask`：写文件 patch / edit / write、包安装、网络请求、长时间命令、raw bash output、跨目录读取
-- `deny`：读取 secret 文件、系统目录写入、破坏性 git / rm、未知二进制自执行
-
-这个模型与 Claude Code 的 allow / ask / deny 和 Codex 的 workspace-write / on-request 对齐，也适合 Etyon 后续把规则做成 Settings 可视化配置。
+这样与 Pi 的 agent loop 原则一致：不能从悬空 assistant tool call 继续，必须先让模型看到对应的 tool result。

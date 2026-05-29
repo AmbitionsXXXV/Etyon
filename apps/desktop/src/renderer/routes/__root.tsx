@@ -100,12 +100,16 @@ const InsetHeader = () => {
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger render={newChatButton} />
-              <TooltipContent side="bottom">
-                {t("actions.newChat")}
-              </TooltipContent>
-            </Tooltip>
+            {isCreatingChatSession ? (
+              newChatButton
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={newChatButton} />
+                <TooltipContent side="bottom">
+                  {t("actions.newChat")}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

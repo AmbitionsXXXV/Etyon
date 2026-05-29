@@ -1,6 +1,8 @@
+import type { ModelMessage } from "ai"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  completeUnresolvedToolCallsInModelMessages,
   convertAgentMessagesToLlm,
   formatAgentMessageForDebug
 } from "@/main/agents/agent-messages"
@@ -71,6 +73,159 @@ describe("agent messages", () => {
         role: "tool"
       }
     ])
+  })
+
+  it("completes unresolved assistant tool calls before a normal follow-up", () => {
+    expect(
+      completeUnresolvedToolCallsInModelMessages([
+        {
+          content: "Inspect files.",
+          role: "user"
+        },
+        {
+          content: [
+            {
+              input: {
+                path: "src/value.ts"
+              },
+              toolCallId: "readFile:18",
+              toolName: "readFile",
+              type: "tool-call"
+            },
+            {
+              input: {
+                edits: [],
+                path: "src/value.ts"
+              },
+              toolCallId: "editFile:18",
+              toolName: "editFile",
+              type: "tool-call"
+            },
+            {
+              approvalId: "approval-18",
+              toolCallId: "editFile:18",
+              type: "tool-approval-request"
+            }
+          ],
+          role: "assistant"
+        },
+        {
+          content: "Continue without approving that tool batch.",
+          role: "user"
+        }
+      ])
+    ).toEqual([
+      {
+        content: "Inspect files.",
+        role: "user"
+      },
+      {
+        content: [
+          {
+            input: {
+              path: "src/value.ts"
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-call"
+          },
+          {
+            input: {
+              edits: [],
+              path: "src/value.ts"
+            },
+            toolCallId: "editFile:18",
+            toolName: "editFile",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value:
+                "Tool execution did not complete before the next user message."
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-result"
+          },
+          {
+            output: {
+              type: "error-text",
+              value:
+                "Tool execution did not complete before the next user message."
+            },
+            toolCallId: "editFile:18",
+            toolName: "editFile",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: "Continue without approving that tool batch.",
+        role: "user"
+      }
+    ])
+  })
+
+  it("keeps tool calls resolved by results and approval responses", () => {
+    const messages = [
+      {
+        content: [
+          {
+            input: {
+              path: "src/value.ts"
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-call"
+          },
+          {
+            input: {
+              edits: [],
+              path: "src/value.ts"
+            },
+            toolCallId: "editFile:18",
+            toolName: "editFile",
+            type: "tool-call"
+          },
+          {
+            approvalId: "approval-18",
+            toolCallId: "editFile:18",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "text",
+              value: "file contents"
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-result"
+          },
+          {
+            approvalId: "approval-18",
+            approved: true,
+            type: "tool-approval-response"
+          }
+        ],
+        role: "tool"
+      }
+    ] satisfies ModelMessage[]
+
+    expect(completeUnresolvedToolCallsInModelMessages(messages)).toEqual(
+      messages
+    )
   })
 
   it("formats custom agent messages for debug output", () => {

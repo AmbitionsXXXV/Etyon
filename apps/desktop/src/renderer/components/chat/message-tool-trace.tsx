@@ -232,11 +232,16 @@ const getToolIcon = (toolName: string): IconSvgElement => {
     return ComputerTerminal02Icon
   }
 
-  if (toolName === "runCheck" || toolName === "rtkCommand") {
+  if (
+    toolName === "bash" ||
+    toolName === "runCheck" ||
+    toolName === "rtkCommand"
+  ) {
     return ComputerTerminal02Icon
   }
 
   if (
+    toolName === "read" ||
     toolName === "fileInfo" ||
     toolName === "gitDiff" ||
     toolName === "readFile"
@@ -245,6 +250,9 @@ const getToolIcon = (toolName: string): IconSvgElement => {
   }
 
   if (
+    toolName === "find" ||
+    toolName === "grep" ||
+    toolName === "ls" ||
     toolName === "findFiles" ||
     toolName === "listDirectory" ||
     toolName === "listProjectTree" ||
@@ -734,12 +742,12 @@ const ToolTraceCard = ({
       state={state}
       toolName={title}
     >
-      <ChatTool.Trigger className="h-auto min-h-8 w-full justify-between rounded-lg px-2 py-1.5 text-muted-foreground hover:bg-muted/35 data-[hovered=true]:bg-muted/35">
-        <span className="flex min-w-0 items-center gap-2">
+      <ChatTool.Trigger className="h-auto min-h-8 w-full justify-between rounded-lg px-2 py-1.5 text-muted-foreground hover:bg-muted/35 data-[hovered=true]:bg-muted/35 [&>span:first-child]:min-w-0 [&>span:first-child]:flex-1">
+        <span className="flex w-full min-w-0 items-center gap-2">
           <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
             <HugeiconsIcon icon={icon} size={13} />
           </span>
-          <span className="min-w-0 text-left">
+          <span className="min-w-0 flex-1 text-left">
             <span className="block truncate text-xs font-medium text-foreground">
               {title}
             </span>
@@ -749,15 +757,15 @@ const ToolTraceCard = ({
               </span>
             ) : null}
           </span>
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5">
-          <span
-            className={cn(
-              "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
-              statusClassName
-            )}
-          >
-            {statusLabel}
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            <span
+              className={cn(
+                "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
+                statusClassName
+              )}
+            >
+              {statusLabel}
+            </span>
           </span>
         </span>
       </ChatTool.Trigger>

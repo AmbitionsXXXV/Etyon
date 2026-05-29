@@ -87,6 +87,20 @@ const getInputString = (input: unknown, key: string): string | undefined => {
   return typeof value === "string" ? value : undefined
 }
 
+const getCommandTimeoutMs = (input: unknown): number => {
+  const timeoutMs = getInputNumber(input, "timeoutMs")
+
+  if (timeoutMs !== undefined) {
+    return timeoutMs
+  }
+
+  const timeoutSeconds = getInputNumber(input, "timeout")
+
+  return timeoutSeconds === undefined
+    ? SAFE_COMMAND_TIMEOUT_MS
+    : timeoutSeconds * 1000
+}
+
 const isInsideWorkspace = (
   requestedPath: string,
   workspaceRoot: string
@@ -167,8 +181,7 @@ const evaluateCommandPermission = (
 ): AgentPermissionDecision => {
   const command = getInputString(input, "command")?.trim() ?? ""
   const rawOutput = getInputBoolean(input, "rawOutput")
-  const timeoutMs =
-    getInputNumber(input, "timeoutMs") ?? SAFE_COMMAND_TIMEOUT_MS
+  const timeoutMs = getCommandTimeoutMs(input)
 
   if (isDestructiveCommand(command)) {
     return buildDecision({
@@ -215,7 +228,7 @@ const evaluateCommandPermission = (
     })
   }
 
-  if (name === "runCheck" && isSafeCheckCommand(command)) {
+  if ((name === "bash" || name === "runCheck") && isSafeCheckCommand(command)) {
     return buildDecision({
       action: "allow",
       reason: "The command is a bounded project check.",

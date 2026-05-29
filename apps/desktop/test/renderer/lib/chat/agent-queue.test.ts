@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 
 import {
-  listAgentComposerQueueActions,
+  resolveAgentComposerPrimaryAction,
   resolveAgentComposerQueueState
 } from "@/renderer/lib/chat/agent-queue"
 
@@ -45,22 +45,43 @@ describe("agent queue composer state", () => {
     })
   })
 
-  it("offers steering and follow-up queue actions while queueing is available", () => {
-    expect(listAgentComposerQueueActions({ canQueueMessage: true })).toEqual([
-      {
-        labelKey: "chat.composer.queueSteer",
-        queue: "steer"
-      },
-      {
-        labelKey: "chat.composer.queueFollowUp",
-        queue: "follow-up"
-      }
-    ])
+  it("shows stop while an agent request is pending and the prompt is empty", () => {
+    expect(
+      resolveAgentComposerPrimaryAction({
+        hasPromptInputValue: false,
+        isOutputActive: true,
+        isQueueSubmitEnabled: true
+      })
+    ).toBe("stop")
   })
 
-  it("does not offer queue actions outside an active agent request", () => {
-    expect(listAgentComposerQueueActions({ canQueueMessage: false })).toEqual(
-      []
-    )
+  it("switches to submit while an agent request is pending and the prompt has content", () => {
+    expect(
+      resolveAgentComposerPrimaryAction({
+        hasPromptInputValue: true,
+        isOutputActive: true,
+        isQueueSubmitEnabled: true
+      })
+    ).toBe("submit")
+  })
+
+  it("keeps stop while queue submit is unavailable", () => {
+    expect(
+      resolveAgentComposerPrimaryAction({
+        hasPromptInputValue: true,
+        isOutputActive: true,
+        isQueueSubmitEnabled: false
+      })
+    ).toBe("stop")
+  })
+
+  it("shows submit outside an active agent request", () => {
+    expect(
+      resolveAgentComposerPrimaryAction({
+        hasPromptInputValue: false,
+        isOutputActive: false,
+        isQueueSubmitEnabled: false
+      })
+    ).toBe("submit")
   })
 })

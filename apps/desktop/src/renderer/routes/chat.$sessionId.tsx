@@ -1132,7 +1132,6 @@ const ChatRuntime = ({
   selectedSession,
   showToolTraces,
   sessionTitle,
-  snapshotId,
   streamdownAnimation,
   transport
 }: {
@@ -1168,7 +1167,6 @@ const ChatRuntime = ({
   selectedSession: ChatSessionSummary
   showToolTraces: boolean
   sessionTitle: string
-  snapshotId?: string
   streamdownAnimation: StreamdownAnimation
   transport: DefaultChatTransport<ChatUiMessage>
 }) => {
@@ -1725,13 +1723,6 @@ const ChatRuntime = ({
                   onValueChange={onModelChange}
                   value={selectedModelValue}
                 />
-                {snapshotId && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {t("chat.snapshot.ready", {
-                      snapshotId
-                    })}
-                  </span>
-                )}
               </div>
             }
             isLoadingFileItems={isLoadingFileItems}
@@ -1800,8 +1791,7 @@ const ChatPendingState = ({
   promptTemplateItems,
   selectedModelValue,
   selectedSession,
-  sessionTitle,
-  snapshotId
+  sessionTitle
 }: {
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
@@ -1828,7 +1818,6 @@ const ChatPendingState = ({
   selectedModelValue: string
   selectedSession: ChatSessionSummary
   sessionTitle: string
-  snapshotId?: string
 }) => {
   const { t } = useI18n()
 
@@ -1877,13 +1866,6 @@ const ChatPendingState = ({
                   onValueChange={onModelChange}
                   value={selectedModelValue}
                 />
-                {snapshotId && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {t("chat.snapshot.ready", {
-                      snapshotId
-                    })}
-                  </span>
-                )}
               </div>
             }
             isLoadingFileItems={isLoadingFileItems}
@@ -1979,7 +1961,7 @@ const ChatSessionPage = () => {
     ...chatSessionMessagesQueryOptions,
     enabled: sessionExists
   })
-  const snapshotStateQuery = useQuery({
+  const _snapshotStateQuery = useQuery({
     ...snapshotStateQueryOptions,
     enabled: sessionExists
   })
@@ -2242,7 +2224,6 @@ const ChatSessionPage = () => {
           selectedSession={session}
           showToolTraces={settingsQuery.data?.agents.showToolTraces ?? true}
           sessionTitle={sessionTitle}
-          snapshotId={snapshotStateQuery.data?.snapshotId}
           streamdownAnimation={getChatStreamdownAnimation(
             settingsQuery.data?.chat
           )}
@@ -2272,7 +2253,6 @@ const ChatSessionPage = () => {
           selectedModelValue={selectedModelValue}
           selectedSession={session}
           sessionTitle={sessionTitle}
-          snapshotId={snapshotStateQuery.data?.snapshotId}
         />
       )}
     </section>

@@ -62,6 +62,10 @@ const { spawnedChildren, spawnedCommands, spawnMock } = vi.hoisted(() => {
   }[] = []
   const getMockStdout = (shellCommand: string): string => {
     if (shellCommand.startsWith("rg ")) {
+      if (!shellCommand.includes("--json")) {
+        return "src/search.ts:1:export const needle = true\n"
+      }
+
       return `${JSON.stringify({
         data: {
           line_number: 1,
@@ -200,7 +204,7 @@ describe("agent command tools", () => {
       projectPath: "/tmp/etyon-agent-command-tools",
       settings
     })
-    const result = await tools.runCheck?.execute?.(
+    const result = await tools.bash?.execute?.(
       {
         command: "echo approved"
       },
@@ -208,11 +212,18 @@ describe("agent command tools", () => {
     )
 
     expect(result).toMatchObject({
-      exitCode: 0,
-      status: "success",
-      stdoutPreview: "approved\n"
+      content: [
+        {
+          text: "approved\n",
+          type: "text"
+        }
+      ],
+      details: {
+        durationMs: expect.any(Number),
+        truncated: false
+      }
     })
-    expect(spawnedCommands).toEqual(["/bin/zsh -fc rtk echo approved"])
+    expect(spawnedCommands).toEqual(["/bin/zsh -fc echo approved"])
   })
 
   it("rejects unsupported package managers before spawning", async () => {
@@ -226,7 +237,7 @@ describe("agent command tools", () => {
       projectPath: "/tmp/etyon-agent-command-tools",
       settings
     })
-    const resultPromise = tools.runCheck?.execute?.(
+    const resultPromise = tools.bash?.execute?.(
       {
         command: "pnpm install"
       },
@@ -254,7 +265,7 @@ describe("agent command tools", () => {
       settings
     })
     const abortController = new AbortController()
-    const resultPromise = tools.runCheck?.execute?.(
+    const resultPromise = tools.bash?.execute?.(
       {
         command: "echo approved"
       },
@@ -266,14 +277,11 @@ describe("agent command tools", () => {
 
     abortController.abort()
 
-    await expect(resultPromise).resolves.toMatchObject({
-      status: "failed",
-      stderrPreview: expect.stringContaining("Command aborted.")
-    })
+    await expect(resultPromise).rejects.toThrow("Command aborted.")
     expect(spawnedChildren[0]?.kill).toHaveBeenCalledWith("SIGTERM")
   })
 
-  it("returns a failed command result without spawning when already aborted", async () => {
+  it("rejects without spawning when already aborted", async () => {
     const settings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
@@ -288,7 +296,7 @@ describe("agent command tools", () => {
 
     abortController.abort()
 
-    const result = await tools.runCheck?.execute?.(
+    const resultPromise = tools.bash?.execute?.(
       {
         command: "echo skipped"
       },
@@ -298,55 +306,11 @@ describe("agent command tools", () => {
       }
     )
 
-    expect(result).toMatchObject({
-      exitCode: null,
-      status: "failed",
-      stderrPreview: "Command aborted.",
-      stdoutPreview: ""
-    })
+    await expect(resultPromise).rejects.toThrow("Command aborted.")
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
-  it("executes applyPatch through the shell adapter and passes the patch on stdin", async () => {
-    const settings = AppSettingsSchema.parse({
-      agents: {
-        defaultProfileId: "coder",
-        enabled: true
-      }
-    }).agents
-    const tools = buildAgentTools({
-      projectPath: "/tmp/etyon-agent-command-tools",
-      settings
-    })
-    const patch = [
-      "diff --git a/src/value.ts b/src/value.ts",
-      "--- a/src/value.ts",
-      "+++ b/src/value.ts",
-      "@@ -1 +1 @@",
-      "-export const value = 1",
-      "+export const value = 2",
-      ""
-    ].join("\n")
-    const result = await tools.applyPatch?.execute?.(
-      {
-        patch
-      },
-      createApprovedToolOptions()
-    )
-
-    expect(result).toMatchObject({
-      applied: true,
-      exitCode: 0,
-      stdoutPreview: "approved\n"
-    })
-    expect(spawnedCommands).toEqual([
-      "/bin/zsh -fc git apply --whitespace=nowarn"
-    ])
-    expect(spawnedChildren[0]?.stdin.write).toHaveBeenCalledWith(patch)
-    expect(spawnedChildren[0]?.stdin.end).toHaveBeenCalled()
-  })
-
-  it("executes searchFiles through the shell adapter", async () => {
+  it("executes grep through the shell adapter", async () => {
     fs.mkdirSync("/tmp/etyon-agent-command-tools/src", { recursive: true })
     fs.writeFileSync(
       "/tmp/etyon-agent-command-tools/src/search.ts",
@@ -363,9 +327,9 @@ describe("agent command tools", () => {
       projectPath: "/tmp/etyon-agent-command-tools",
       settings
     })
-    const result = await tools.searchFiles?.execute?.(
+    const result = await tools.grep?.execute?.(
       {
-        query: "needle"
+        pattern: "needle"
       },
       {
         messages: [],
@@ -374,12 +338,17 @@ describe("agent command tools", () => {
     )
 
     expect(result).toMatchObject({
-      query: "needle"
+      content: [
+        {
+          text: "src/search.ts:1:export const needle = true",
+          type: "text"
+        }
+      ]
     })
-    expect(spawnedCommands[0]).toContain("/bin/zsh -fc rg --json")
+    expect(spawnedCommands[0]).toContain("/bin/zsh -fc rg --line-number")
   })
 
-  it("returns a full output artifact ref when command output is truncated", async () => {
+  it("does not expose legacy searchFiles on the coder surface", () => {
     const settings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
@@ -390,7 +359,22 @@ describe("agent command tools", () => {
       projectPath: "/tmp/etyon-agent-command-tools",
       settings
     })
-    const result = await tools.runCheck?.execute?.(
+
+    expect(tools).not.toHaveProperty("searchFiles")
+  })
+
+  it("returns a full output artifact ref when bash output is truncated", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+    const tools = buildAgentTools({
+      projectPath: "/tmp/etyon-agent-command-tools",
+      settings
+    })
+    const result = await tools.bash?.execute?.(
       {
         command: "echo large-output"
       },
@@ -398,22 +382,23 @@ describe("agent command tools", () => {
     )
 
     expect(result).toMatchObject({
-      outputRef: expect.objectContaining({
-        kind: "command-output"
-      }),
-      truncated: true
+      details: expect.objectContaining({
+        fullOutputPath: expect.any(String),
+        truncated: true
+      })
     })
 
     if (
       typeof result !== "object" ||
       result === null ||
-      !("outputRef" in result) ||
-      !result.outputRef
+      !("details" in result) ||
+      !result.details ||
+      typeof result.details.fullOutputPath !== "string"
     ) {
       throw new Error("Expected command output artifact ref.")
     }
 
-    expect(fs.existsSync(result.outputRef.path)).toBe(true)
+    expect(fs.existsSync(result.details.fullOutputPath)).toBe(true)
   })
 
   it("preserves partial command output when a command times out", async () => {
@@ -429,21 +414,19 @@ describe("agent command tools", () => {
       projectPath: "/tmp/etyon-agent-command-tools",
       settings
     })
-    const resultPromise = tools.runCheck?.execute?.(
+    const resultPromise = tools.bash?.execute?.(
       {
         command: "echo slow-output",
-        timeoutMs: 1000
+        timeout: 1
       },
       createApprovedToolOptions()
     )
+    const resultExpectation =
+      expect(resultPromise).rejects.toThrow("Command timed out.")
 
     await Promise.resolve()
     await vi.advanceTimersByTimeAsync(1000)
 
-    await expect(resultPromise).resolves.toMatchObject({
-      status: "failed",
-      stderrPreview: expect.stringContaining("Command timed out."),
-      stdoutPreview: "partial before timeout\n"
-    })
+    await resultExpectation
   })
 })

@@ -102,15 +102,15 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
     expect(tools).not.toHaveProperty("applyPatch")
-    expect(tools).not.toHaveProperty("runCheck")
-    expect(tools).not.toHaveProperty("rtkCommand")
+    expect(tools).not.toHaveProperty("bash")
+    expect(tools).not.toHaveProperty("edit")
+    expect(tools).not.toHaveProperty("write")
   })
 
   it("narrows profile tools with selected skill capabilities", () => {
@@ -126,14 +126,10 @@ describe("agent tool registry", () => {
       skillCapabilities: ["write-fs"]
     })
 
-    expect(Object.keys(tools).toSorted()).toEqual([
-      "applyPatch",
-      "editFile",
-      "writeFile"
-    ])
+    expect(Object.keys(tools).toSorted()).toEqual(["edit", "write"])
   })
 
-  it("exposes memorySearch for read-only profiles when memory retrieval is enabled", () => {
+  it("keeps read-only profiles aligned to Pi tools even when memory retrieval is enabled", () => {
     const appSettings = AppSettingsSchema.parse({
       agents: {
         enabled: true
@@ -147,13 +143,12 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "memorySearch",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
+    expect(tools).not.toHaveProperty("memorySearch")
   })
 
   it("hides memorySearch when memory retrieval is disabled", () => {
@@ -188,25 +183,26 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
-      "applyPatch",
-      "editFile",
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "readFile",
-      "runCheck",
-      "searchFiles",
-      "webSearch",
-      "writeFile"
+      "bash",
+      "edit",
+      "find",
+      "grep",
+      "ls",
+      "read",
+      "write"
     ])
     expect(
-      resolveNeedsApproval(tools.applyPatch?.needsApproval, {
-        patch: "diff --git a/src/value.ts b/src/value.ts\n"
+      resolveNeedsApproval(tools.bash?.needsApproval, {
+        command: "echo approved"
       })
     ).toBe(true)
     expect(
-      resolveNeedsApproval(tools.editFile?.needsApproval, {
+      resolveNeedsApproval(tools.bash?.needsApproval, {
+        command: "rtk vp check"
+      })
+    ).toBe(false)
+    expect(
+      resolveNeedsApproval(tools.edit?.needsApproval, {
         edits: [
           {
             newText: "new",
@@ -216,10 +212,8 @@ describe("agent tool registry", () => {
         path: "src/value.ts"
       })
     ).toBe(true)
-    expect(typeof tools.runCheck?.needsApproval).toBe("function")
-    expect(typeof tools.webSearch?.needsApproval).toBe("function")
     expect(
-      resolveNeedsApproval(tools.writeFile?.needsApproval, {
+      resolveNeedsApproval(tools.write?.needsApproval, {
         content: "export {}\n",
         path: "src/value.ts"
       })
@@ -248,12 +242,12 @@ describe("agent tool registry", () => {
     )
 
     expect(
-      typeof tools.runCheck?.needsApproval === "function"
-        ? tools.runCheck.needsApproval(throwingInput, {
+      typeof tools.bash?.needsApproval === "function"
+        ? tools.bash.needsApproval(throwingInput, {
             messages: [],
             toolCallId: "approval-check-1"
           })
-        : tools.runCheck?.needsApproval
+        : tools.bash?.needsApproval
     ).toBe(true)
   })
 
@@ -271,12 +265,7 @@ describe("agent tool registry", () => {
     })
 
     expect(
-      resolveNeedsApproval(tools.applyPatch?.needsApproval, {
-        patch: "diff --git a/src/value.ts b/src/value.ts\n"
-      })
-    ).toBe(true)
-    expect(
-      resolveNeedsApproval(tools.editFile?.needsApproval, {
+      resolveNeedsApproval(tools.edit?.needsApproval, {
         edits: [
           {
             newText: "new",
@@ -287,11 +276,65 @@ describe("agent tool registry", () => {
       })
     ).toBe(true)
     expect(
-      resolveNeedsApproval(tools.writeFile?.needsApproval, {
+      resolveNeedsApproval(tools.write?.needsApproval, {
         content: "export {}\n",
         path: "src/value.ts"
       })
     ).toBe(true)
+  })
+
+  it("preapproves child coder tools after an approved handoff", async () => {
+    writeProjectFile("src/preapproved-edit.ts", "export const value = 1\n")
+
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+    const tools = buildAgentTools({
+      approvalMode: "preapproved",
+      includeApprovalTools: true,
+      projectPath: testProjectPath,
+      settings
+    })
+
+    expect(tools.edit?.needsApproval).toBeUndefined()
+
+    const result = await tools.edit?.execute?.(
+      {
+        edits: [
+          {
+            newText: "export const value = 2",
+            oldText: "export const value = 1"
+          }
+        ],
+        path: "src/preapproved-edit.ts"
+      },
+      {
+        messages: [],
+        toolCallId: "edit:18"
+      }
+    )
+
+    expect(result).toMatchObject({
+      content: [
+        {
+          text: "Successfully replaced 1 block(s) in src/preapproved-edit.ts.",
+          type: "text"
+        }
+      ],
+      details: {
+        path: "src/preapproved-edit.ts",
+        replacements: 1
+      }
+    })
+    expect(
+      fs.readFileSync(
+        path.join(testProjectPath, "src/preapproved-edit.ts"),
+        "utf-8"
+      )
+    ).toBe("export const value = 2\n")
   })
 
   it("exposes delegated agent tools only when delegation is enabled", async () => {
@@ -322,17 +365,13 @@ describe("agent tool registry", () => {
       "agentExplore",
       "agentPlan",
       "agentReview",
-      "applyPatch",
-      "editFile",
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "readFile",
-      "runCheck",
-      "searchFiles",
-      "webSearch",
-      "writeFile"
+      "bash",
+      "edit",
+      "find",
+      "grep",
+      "ls",
+      "read",
+      "write"
     ])
 
     const result = await tools.agentExplore?.execute?.(
@@ -497,12 +536,10 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
   })
 
@@ -523,12 +560,10 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "listDirectory",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
   })
 
@@ -547,8 +582,7 @@ describe("agent tool registry", () => {
 
     expect(Object.keys(tools).toSorted()).toEqual([
       "agentEventsSearch",
-      "agentRunInspect",
-      "gitDiff"
+      "agentRunInspect"
     ])
   })
 

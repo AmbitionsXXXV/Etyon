@@ -81,6 +81,17 @@ const AgentDelegationInputSchema = z.object({
   task: z.string().min(1)
 })
 
+const PiReadInputSchema = z.object({
+  limit: z.number().int().min(1).optional(),
+  offset: z.number().int().min(1).optional(),
+  path: z.string().min(1)
+})
+
+const PiBashInputSchema = z.object({
+  command: z.string().min(1),
+  timeout: z.number().int().min(1).max(600).optional()
+})
+
 const ApplyPatchInputSchema = z.object({
   patch: z.string().min(1),
   reason: z.string().default("")
@@ -98,8 +109,56 @@ const EditFileInputSchema = z.object({
   path: z.string().min(1)
 })
 
+const preparePiEditInput = (input: unknown): unknown => {
+  if (!isRecord(input)) {
+    return input
+  }
+
+  const nextInput = { ...input }
+
+  if (typeof nextInput.edits === "string") {
+    try {
+      const parsedEdits = JSON.parse(nextInput.edits) as unknown
+
+      if (Array.isArray(parsedEdits)) {
+        nextInput.edits = parsedEdits
+      }
+    } catch {
+      // Let the schema report the invalid edits value.
+    }
+  }
+
+  if (
+    typeof nextInput.oldText !== "string" ||
+    typeof nextInput.newText !== "string"
+  ) {
+    return nextInput
+  }
+
+  const edits = Array.isArray(nextInput.edits) ? [...nextInput.edits] : []
+  edits.push({
+    newText: nextInput.newText,
+    oldText: nextInput.oldText
+  })
+  delete nextInput.newText
+  delete nextInput.oldText
+
+  return {
+    ...nextInput,
+    edits
+  }
+}
+
+const PiEditInputSchema = z.preprocess(preparePiEditInput, EditFileInputSchema)
+
 const FileInfoInputSchema = z.object({
   path: z.string().min(1)
+})
+
+const PiFindInputSchema = z.object({
+  limit: z.number().int().min(1).max(5000).default(1000),
+  path: z.string().optional(),
+  pattern: z.string().min(1)
 })
 
 const FindFilesInputSchema = z.object({
@@ -111,6 +170,21 @@ const FindFilesInputSchema = z.object({
 const WriteFileInputSchema = z.object({
   content: z.string(),
   path: z.string().min(1)
+})
+
+const PiGrepInputSchema = z.object({
+  context: z.number().int().min(0).max(20).optional(),
+  glob: z.string().min(1).optional(),
+  ignoreCase: z.boolean().optional(),
+  limit: z.number().int().min(1).max(1000).default(100),
+  literal: z.boolean().optional(),
+  path: z.string().optional(),
+  pattern: z.string().min(1)
+})
+
+const PiLsInputSchema = z.object({
+  limit: z.number().int().min(1).max(1000).default(500),
+  path: z.string().optional()
 })
 
 const GitDiffInputSchema = z.object({
@@ -287,6 +361,18 @@ interface AgentWebSearchOutput {
   truncated: boolean
 }
 
+interface AgentPiTextContent {
+  text: string
+  type: "text"
+}
+
+interface AgentPiTextOutput {
+  content: AgentPiTextContent[]
+  details?: Record<string, unknown>
+}
+
+type AgentToolApprovalMode = "default" | "preapproved"
+
 interface AgentEventsSearchOutput {
   events: Awaited<ReturnType<typeof listAgentEvents>>
   runId: string
@@ -353,12 +439,14 @@ type AgentToolExecutionOutput =
   | AgentListDirectoryOutput
   | AgentListFilesOutput
   | AgentMemorySearchOutput
+  | AgentPiTextOutput
   | AgentReadFileOutput
   | AgentSearchFilesOutput
   | AgentWebSearchOutput
   | AgentWriteFileOutput
 
 interface BuildAgentToolsOptions {
+  approvalMode?: AgentToolApprovalMode
   chatSessionId?: string
   db?: AppDatabase
   executeDelegation?: ExecuteAgentDelegation
@@ -386,18 +474,25 @@ type ExecutableAgentToolName =
   | "agentEventsSearch"
   | "agentRunInspect"
   | "applyPatch"
+  | "bash"
+  | "edit"
   | "editFile"
   | "fileInfo"
+  | "find"
   | "findFiles"
   | "gitDiff"
+  | "grep"
   | "listDirectory"
   | "listProjectTree"
+  | "ls"
   | "memorySearch"
+  | "read"
   | "readFile"
   | "rtkCommand"
   | "runCheck"
   | "searchFiles"
   | "webSearch"
+  | "write"
   | "writeFile"
 
 type DelegationAgentToolName =
@@ -419,6 +514,7 @@ interface ExecuteAgentToolOptions {
 
 interface AgentToolApprovalContext {
   messages: ModelMessage[]
+  preapproved?: boolean
   toolCallId: string
 }
 
@@ -426,18 +522,25 @@ const EXECUTABLE_AGENT_TOOL_NAMES = [
   "agentEventsSearch",
   "agentRunInspect",
   "applyPatch",
+  "bash",
+  "edit",
   "editFile",
   "fileInfo",
+  "find",
   "findFiles",
   "gitDiff",
+  "grep",
   "listDirectory",
   "listProjectTree",
+  "ls",
   "memorySearch",
+  "read",
   "readFile",
   "rtkCommand",
   "runCheck",
   "searchFiles",
   "webSearch",
+  "write",
   "writeFile"
 ] as const satisfies readonly ExecutableAgentToolName[]
 
@@ -482,6 +585,19 @@ const canExposeMemorySearchTool = ({
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const createPiTextOutput = (
+  text: string,
+  details?: Record<string, unknown>
+): AgentPiTextOutput => ({
+  content: [
+    {
+      text,
+      type: "text"
+    }
+  ],
+  ...(details ? { details } : {})
+})
 
 const getRecordString = (
   record: Record<string, unknown>,
@@ -1670,6 +1786,295 @@ const executeSearchFiles = async (
   })
 }
 
+const executePiRead = async (
+  input: unknown,
+  projectPath: string
+): Promise<AgentPiTextOutput> => {
+  const { limit, offset, path } = PiReadInputSchema.parse(input)
+  const startLine = offset ?? 1
+  const result = await executeReadFile(
+    {
+      ...(limit ? { endLine: startLine + limit - 1 } : {}),
+      path,
+      startLine
+    },
+    projectPath
+  )
+
+  if (startLine > result.lineCount) {
+    throw new Error(
+      `Offset ${startLine} is beyond end of file (${result.lineCount} lines total).`
+    )
+  }
+
+  let text = result.content
+
+  if (limit && result.endLine < result.lineCount) {
+    const remaining = result.lineCount - result.endLine
+    text += `\n\n[${remaining} more lines in file. Use offset=${result.endLine + 1} to continue.]`
+  } else if (result.truncated) {
+    text += `\n\n[Output truncated. Use offset=${result.endLine + 1} to continue.]`
+  }
+
+  return createPiTextOutput(text, {
+    lineCount: result.lineCount,
+    path: result.path,
+    truncated: result.truncated
+  })
+}
+
+const executePiBash = async (
+  input: unknown,
+  projectPath: string,
+  abortSignal?: AbortSignal
+): Promise<AgentPiTextOutput> => {
+  const { command, timeout } = PiBashInputSchema.parse(input)
+  const result = await executeCommandTool({
+    abortSignal,
+    command,
+    cwd: "",
+    projectPath,
+    timeoutMs: timeout ? timeout * 1000 : DEFAULT_TOOL_COMMAND_TIMEOUT_MS
+  })
+  const output = [result.stdoutPreview, result.stderrPreview]
+    .filter(Boolean)
+    .join("\n")
+  const text = output || "(no output)"
+
+  if (result.status !== "success") {
+    throw new Error(
+      [text, `Command exited with code ${result.exitCode ?? "unknown"}`].join(
+        "\n\n"
+      )
+    )
+  }
+
+  return createPiTextOutput(text, {
+    durationMs: result.durationMs,
+    fullOutputPath: result.outputRef?.path,
+    truncated: result.truncated
+  })
+}
+
+const executePiEdit = async (
+  input: unknown,
+  projectPath: string
+): Promise<AgentPiTextOutput> => {
+  const parsedInput = PiEditInputSchema.parse(input)
+  const result = await executeEditFile(parsedInput, projectPath)
+
+  return createPiTextOutput(
+    `Successfully replaced ${result.replacements} block(s) in ${result.path}.`,
+    {
+      diff: result.diff,
+      path: result.path,
+      replacements: result.replacements,
+      truncated: result.truncated
+    }
+  )
+}
+
+const executePiWrite = async (
+  input: unknown,
+  projectPath: string
+): Promise<AgentPiTextOutput> => {
+  const result = await executeWriteFile(input, projectPath)
+
+  return createPiTextOutput(
+    `Successfully wrote ${result.bytesWritten} bytes to ${result.path}`,
+    {
+      bytesWritten: result.bytesWritten,
+      path: result.path
+    }
+  )
+}
+
+const executePiGrep = async (
+  input: unknown,
+  projectPath: string,
+  abortSignal?: AbortSignal
+): Promise<AgentPiTextOutput> => {
+  const {
+    context,
+    glob,
+    ignoreCase,
+    limit,
+    literal,
+    path: requestedPath,
+    pattern
+  } = PiGrepInputSchema.parse(input)
+  const searchPath = requestedPath || "."
+
+  if (requestedPath) {
+    assertNonSecretToolPath(requestedPath)
+  }
+
+  const stdout = await runRipgrepJson({
+    abortSignal,
+    args: [
+      "--line-number",
+      "--color",
+      "never",
+      "--sort",
+      "path",
+      "--max-count",
+      String(limit),
+      ...(ignoreCase ? ["--ignore-case"] : []),
+      ...(literal ? ["--fixed-strings"] : []),
+      ...(context ? ["--context", String(context)] : []),
+      ...(glob ? ["--glob", glob] : []),
+      ...SECRET_SEARCH_EXCLUDE_GLOBS.flatMap((secretGlob) => [
+        "--glob",
+        secretGlob
+      ]),
+      "--",
+      pattern,
+      searchPath
+    ],
+    projectPath,
+    requestedCwd: ""
+  })
+  const output = clampToolOutput(stdout.trimEnd() || "No matches found")
+
+  return createPiTextOutput(output.content, {
+    truncated: output.truncated
+  })
+}
+
+const escapeRegExp = (value: string): string =>
+  value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")
+
+const globToRegExp = (glob: string): RegExp => {
+  let source = ""
+
+  for (let index = 0; index < glob.length; index += 1) {
+    const char = glob[index]
+    const nextChar = glob[index + 1]
+
+    if (char === "*" && nextChar === "*") {
+      source += ".*"
+      index += 1
+      continue
+    }
+
+    if (char === "*") {
+      source += "[^/]*"
+      continue
+    }
+
+    if (char === "?") {
+      source += "[^/]"
+      continue
+    }
+
+    source += escapeRegExp(char ?? "")
+  }
+
+  return new RegExp(`^${source}$`, "u")
+}
+
+const matchesPiFindPattern = (
+  relativePath: string,
+  pattern: string
+): boolean => {
+  const normalizedRelativePath = normalizeToolPath(relativePath)
+  const normalizedPattern = normalizeToolPath(pattern)
+  const target = normalizedPattern.includes("/")
+    ? normalizedRelativePath
+    : nodePath.posix.basename(normalizedRelativePath)
+  const directPattern = globToRegExp(normalizedPattern)
+
+  if (directPattern.test(target)) {
+    return true
+  }
+
+  return (
+    normalizedPattern.includes("/") &&
+    globToRegExp(`**/${normalizedPattern}`).test(normalizedRelativePath)
+  )
+}
+
+const executePiFind = (
+  input: unknown,
+  projectPath: string
+): AgentPiTextOutput => {
+  const { limit, path: requestedPath, pattern } = PiFindInputSchema.parse(input)
+
+  if (requestedPath) {
+    assertNonSecretToolPath(requestedPath)
+  }
+
+  const env = createAgentExecutionEnv({
+    projectPath
+  })
+  const resolvedSearchPath = env.resolveCwd(requestedPath ?? "")
+  const relativeSearchPath = normalizeToolCwd(projectPath, resolvedSearchPath)
+  const searchPrefix =
+    relativeSearchPath === "." ? "" : `${relativeSearchPath}/`
+  const result = listProjectSnapshotFiles({
+    limit: FIND_FILES_SNAPSHOT_LIMIT,
+    projectPath,
+    query: ""
+  })
+  const matchingPaths = result.files
+    .filter((item) => {
+      if (item.kind !== "file" || isSecretAgentPath(item.relativePath)) {
+        return false
+      }
+
+      if (searchPrefix && !item.relativePath.startsWith(searchPrefix)) {
+        return false
+      }
+
+      const relativeCandidate = searchPrefix
+        ? item.relativePath.slice(searchPrefix.length)
+        : item.relativePath
+
+      return matchesPiFindPattern(relativeCandidate, pattern)
+    })
+    .map((item) =>
+      searchPrefix
+        ? item.relativePath.slice(searchPrefix.length)
+        : item.relativePath
+    )
+    .slice(0, limit)
+  const output =
+    matchingPaths.length > 0
+      ? matchingPaths.join("\n")
+      : "No files found matching pattern"
+  const truncated =
+    matchingPaths.length >= limit ||
+    result.files.length >= FIND_FILES_SNAPSHOT_LIMIT
+
+  return createPiTextOutput(output, {
+    truncated
+  })
+}
+
+const executePiLs = async (
+  input: unknown,
+  projectPath: string
+): Promise<AgentPiTextOutput> => {
+  const { limit, path } = PiLsInputSchema.parse(input)
+  const result = await executeListDirectory(
+    {
+      limit,
+      path: path ?? ""
+    },
+    projectPath
+  )
+  const entries = result.entries
+    .toSorted((first, second) =>
+      first.name.toLowerCase().localeCompare(second.name.toLowerCase())
+    )
+    .map((entry) => (entry.kind === "folder" ? `${entry.name}/` : entry.name))
+
+  return createPiTextOutput(entries.join("\n") || "(empty directory)", {
+    path: result.path,
+    truncated: result.truncated
+  })
+}
+
 const executeWebSearch = async (
   input: unknown,
   abortSignal?: AbortSignal
@@ -1724,6 +2129,7 @@ const assertAgentToolExecutionAllowed = ({
 
   if (
     decision.action === "ask" &&
+    !approvalContext?.preapproved &&
     !(
       approvalContext &&
       hasApprovedToolExecution({
@@ -1745,6 +2151,103 @@ const isDelegationAgentToolName = (
 ): toolName is DelegationAgentToolName =>
   toolName in DELEGATION_PROFILE_ID_BY_TOOL
 
+type ExecuteAgentToolHandlerOptions = Omit<ExecuteAgentToolOptions, "name">
+
+type ExecuteAgentToolHandler = (
+  options: ExecuteAgentToolHandlerOptions
+) => AgentToolExecutionOutput | Promise<AgentToolExecutionOutput>
+
+const EXECUTE_AGENT_TOOL_HANDLERS = {
+  agentEventsSearch: async ({
+    chatSessionId,
+    db,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeAgentEventsSearch(db, input, projectPath, chatSessionId),
+  agentRunInspect: async ({
+    chatSessionId,
+    db,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeAgentRunInspect(db, input, projectPath, chatSessionId),
+  applyPatch: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeApplyPatch(input, projectPath, abortSignal),
+  bash: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executePiBash(input, projectPath, abortSignal),
+  edit: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executePiEdit(input, projectPath),
+  editFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeEditFile(input, projectPath),
+  fileInfo: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeFileInfo(input, projectPath),
+  find: ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    executePiFind(input, projectPath),
+  findFiles: ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    executeFindFiles(input, projectPath),
+  gitDiff: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeGitDiff(input, projectPath),
+  grep: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executePiGrep(input, projectPath, abortSignal),
+  listDirectory: async ({
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeListDirectory(input, projectPath),
+  listProjectTree: ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    executeListProjectTree(input, projectPath),
+  ls: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executePiLs(input, projectPath),
+  memorySearch: async ({
+    db,
+    input,
+    memorySettings,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeMemorySearch(db, input, memorySettings, projectPath),
+  read: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executePiRead(input, projectPath),
+  readFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeReadFile(input, projectPath),
+  rtkCommand: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeRtkCommand(input, projectPath, abortSignal),
+  runCheck: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeRunCheck(input, projectPath, abortSignal),
+  searchFiles: async ({
+    abortSignal,
+    input,
+    projectPath
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeSearchFiles(input, projectPath, abortSignal),
+  webSearch: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
+    await executeWebSearch(input, abortSignal),
+  write: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executePiWrite(input, projectPath),
+  writeFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeWriteFile(input, projectPath)
+} as const satisfies Record<ExecutableAgentToolName, ExecuteAgentToolHandler>
+
 export const executeAgentTool = async ({
   abortSignal,
   approvalContext,
@@ -1762,66 +2265,15 @@ export const executeAgentTool = async ({
     projectPath
   })
 
-  switch (name) {
-    case "agentEventsSearch": {
-      return await executeAgentEventsSearch(
-        db,
-        input,
-        projectPath,
-        chatSessionId
-      )
-    }
-    case "agentRunInspect": {
-      return await executeAgentRunInspect(db, input, projectPath, chatSessionId)
-    }
-    case "applyPatch": {
-      return await executeApplyPatch(input, projectPath, abortSignal)
-    }
-    case "editFile": {
-      return await executeEditFile(input, projectPath)
-    }
-    case "fileInfo": {
-      return await executeFileInfo(input, projectPath)
-    }
-    case "findFiles": {
-      return executeFindFiles(input, projectPath)
-    }
-    case "writeFile": {
-      return await executeWriteFile(input, projectPath)
-    }
-    case "gitDiff": {
-      return await executeGitDiff(input, projectPath)
-    }
-    case "listDirectory": {
-      return await executeListDirectory(input, projectPath)
-    }
-    case "listProjectTree": {
-      return await executeListProjectTree(input, projectPath)
-    }
-    case "memorySearch": {
-      return await executeMemorySearch(db, input, memorySettings, projectPath)
-    }
-    case "readFile": {
-      return await executeReadFile(input, projectPath)
-    }
-    case "rtkCommand": {
-      return await executeRtkCommand(input, projectPath, abortSignal)
-    }
-    case "runCheck": {
-      return await executeRunCheck(input, projectPath, abortSignal)
-    }
-    case "searchFiles": {
-      return await executeSearchFiles(input, projectPath, abortSignal)
-    }
-    case "webSearch": {
-      return await executeWebSearch(input, abortSignal)
-    }
-    default: {
-      const exhaustiveToolName: never = name
-
-      throw new Error(`Unsupported agent tool: ${exhaustiveToolName}`)
-    }
-  }
+  return await EXECUTE_AGENT_TOOL_HANDLERS[name]({
+    abortSignal,
+    approvalContext,
+    chatSessionId,
+    db,
+    input,
+    memorySettings,
+    projectPath
+  })
 }
 
 const needsApprovalForTool =
@@ -1840,7 +2292,165 @@ const needsApprovalForTool =
     }
   }
 
+const getToolNeedsApproval = (
+  approvalMode: AgentToolApprovalMode,
+  name: ExecutableAgentToolName,
+  projectPath: string
+): ReturnType<typeof needsApprovalForTool> | undefined =>
+  approvalMode === "preapproved"
+    ? undefined
+    : needsApprovalForTool(name, projectPath)
+
+const getToolNeedsApprovalConfig = (
+  approvalMode: AgentToolApprovalMode,
+  name: ExecutableAgentToolName,
+  projectPath: string
+): { needsApproval?: ReturnType<typeof needsApprovalForTool> } => {
+  const needsApproval = getToolNeedsApproval(approvalMode, name, projectPath)
+
+  return needsApproval ? { needsApproval } : {}
+}
+
+interface AgentToolDefinitionConfig {
+  description: string
+  inputSchema: z.ZodType
+}
+
+const AGENT_TOOL_DEFINITION_CONFIGS = {
+  agentEventsSearch: {
+    description:
+      "Search append-only agent runtime events for a known agent run id. This is read-only harness inspection.",
+    inputSchema: AgentEventsSearchInputSchema
+  },
+  agentRunInspect: {
+    description:
+      "Inspect events and tool calls for a known agent run id. This is read-only harness diagnostics.",
+    inputSchema: AgentRunInspectInputSchema
+  },
+  applyPatch: {
+    description:
+      "Apply a unified patch inside the active project. This always requires approval before execution.",
+    inputSchema: ApplyPatchInputSchema
+  },
+  bash: {
+    description:
+      "Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide timeout in seconds.",
+    inputSchema: PiBashInputSchema
+  },
+  edit: {
+    description:
+      "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file.",
+    inputSchema: PiEditInputSchema
+  },
+  editFile: {
+    description:
+      "Apply exact oldText/newText replacements inside one project file. This always requires approval before execution.",
+    inputSchema: EditFileInputSchema
+  },
+  fileInfo: {
+    description:
+      "Read structured metadata for one project path without following symlinks.",
+    inputSchema: FileInfoInputSchema
+  },
+  find: {
+    description:
+      "Search for files by glob pattern. Returns matching file paths relative to the search directory.",
+    inputSchema: PiFindInputSchema
+  },
+  findFiles: {
+    description:
+      "Find project files by relative path query. Use this when you know part of a filename or directory name.",
+    inputSchema: FindFilesInputSchema
+  },
+  gitDiff: {
+    description:
+      "Read the current git diff for the active project. Use this for change review and implementation context.",
+    inputSchema: GitDiffInputSchema
+  },
+  grep: {
+    description:
+      "Search file contents for a pattern. Returns matching lines with file paths and line numbers.",
+    inputSchema: PiGrepInputSchema
+  },
+  listDirectory: {
+    description:
+      "List the direct children of a project directory. Use this for focused ls-style inspection.",
+    inputSchema: ListDirectoryInputSchema
+  },
+  listProjectTree: {
+    description:
+      "List project files and folders from the local snapshot. Use this to understand project structure.",
+    inputSchema: ListProjectTreeInputSchema
+  },
+  ls: {
+    description:
+      "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories.",
+    inputSchema: PiLsInputSchema
+  },
+  memorySearch: {
+    description:
+      "Search enabled long-term memory entries for relevant project and user context. This is read-only and respects memory scope settings.",
+    inputSchema: MemorySearchInputSchema
+  },
+  read: {
+    description:
+      "Read the contents of a file. For text files, output is bounded; use offset and limit for large files.",
+    inputSchema: PiReadInputSchema
+  },
+  readFile: {
+    description:
+      "Read a UTF-8 text file inside the active project by relative path. Output is bounded.",
+    inputSchema: ReadFileInputSchema
+  },
+  rtkCommand: {
+    description:
+      "Run a bounded local command through the project RTK wrapper. Risky commands require approval.",
+    inputSchema: RtkCommandInputSchema
+  },
+  runCheck: {
+    description:
+      "Run a bounded project check command such as a targeted test, lint, or typecheck.",
+    inputSchema: RunCheckInputSchema
+  },
+  searchFiles: {
+    description:
+      "Search project file contents with ripgrep and return bounded line matches.",
+    inputSchema: SearchFilesInputSchema
+  },
+  webSearch: {
+    description:
+      "Search the public web for current external information. This requires approval because the query leaves the local workspace.",
+    inputSchema: WebSearchInputSchema
+  },
+  write: {
+    description:
+      "Write content to a file. Creates the file if it does not exist, overwrites if it does, and automatically creates parent directories.",
+    inputSchema: WriteFileInputSchema
+  },
+  writeFile: {
+    description:
+      "Create or overwrite a UTF-8 text file inside the active project. This always requires approval before execution.",
+    inputSchema: WriteFileInputSchema
+  }
+} as const satisfies Record<ExecutableAgentToolName, AgentToolDefinitionConfig>
+
+const TOOL_APPROVAL_GATED_TOOL_NAMES = new Set<ExecutableAgentToolName>([
+  "applyPatch",
+  "bash",
+  "edit",
+  "editFile",
+  "rtkCommand",
+  "runCheck",
+  "webSearch",
+  "write",
+  "writeFile"
+])
+
+const shouldAttachApprovalGate = (name: ExecutableAgentToolName): boolean =>
+  TOOL_APPROVAL_GATED_TOOL_NAMES.has(name)
+
 const createAgentTool = (
+  approvalMode: AgentToolApprovalMode,
   chatSessionId: string | undefined,
   db: AppDatabase | undefined,
   memorySettings: MemorySettings | undefined,
@@ -1855,6 +2465,7 @@ const createAgentTool = (
       abortSignal: options.abortSignal,
       approvalContext: {
         messages: options.messages,
+        preapproved: approvalMode === "preapproved",
         toolCallId: options.toolCallId
       },
       chatSessionId,
@@ -1865,147 +2476,16 @@ const createAgentTool = (
       projectPath
     })
 
-  switch (name) {
-    case "agentEventsSearch": {
-      return tool({
-        description:
-          "Search append-only agent runtime events for a known agent run id. This is read-only harness inspection.",
-        execute: executeWithToolContext,
-        inputSchema: AgentEventsSearchInputSchema
-      })
-    }
-    case "agentRunInspect": {
-      return tool({
-        description:
-          "Inspect events and tool calls for a known agent run id. This is read-only harness diagnostics.",
-        execute: executeWithToolContext,
-        inputSchema: AgentRunInspectInputSchema
-      })
-    }
-    case "applyPatch": {
-      return tool({
-        description:
-          "Apply a unified patch inside the active project. This always requires approval before execution.",
-        execute: executeWithToolContext,
-        inputSchema: ApplyPatchInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    case "editFile": {
-      return tool({
-        description:
-          "Apply exact oldText/newText replacements inside one project file. This always requires approval before execution.",
-        execute: executeWithToolContext,
-        inputSchema: EditFileInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    case "fileInfo": {
-      return tool({
-        description:
-          "Read structured metadata for one project path without following symlinks.",
-        execute: executeWithToolContext,
-        inputSchema: FileInfoInputSchema
-      })
-    }
-    case "findFiles": {
-      return tool({
-        description:
-          "Find project files by relative path query. Use this when you know part of a filename or directory name.",
-        execute: executeWithToolContext,
-        inputSchema: FindFilesInputSchema
-      })
-    }
-    case "writeFile": {
-      return tool({
-        description:
-          "Create or overwrite a UTF-8 text file inside the active project. This always requires approval before execution.",
-        execute: executeWithToolContext,
-        inputSchema: WriteFileInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    case "gitDiff": {
-      return tool({
-        description:
-          "Read the current git diff for the active project. Use this for change review and implementation context.",
-        execute: executeWithToolContext,
-        inputSchema: GitDiffInputSchema
-      })
-    }
-    case "listDirectory": {
-      return tool({
-        description:
-          "List the direct children of a project directory. Use this for focused ls-style inspection.",
-        execute: executeWithToolContext,
-        inputSchema: ListDirectoryInputSchema
-      })
-    }
-    case "listProjectTree": {
-      return tool({
-        description:
-          "List project files and folders from the local snapshot. Use this to understand project structure.",
-        execute: executeWithToolContext,
-        inputSchema: ListProjectTreeInputSchema
-      })
-    }
-    case "memorySearch": {
-      return tool({
-        description:
-          "Search enabled long-term memory entries for relevant project and user context. This is read-only and respects memory scope settings.",
-        execute: executeWithToolContext,
-        inputSchema: MemorySearchInputSchema
-      })
-    }
-    case "readFile": {
-      return tool({
-        description:
-          "Read a UTF-8 text file inside the active project by relative path. Output is bounded.",
-        execute: executeWithToolContext,
-        inputSchema: ReadFileInputSchema
-      })
-    }
-    case "rtkCommand": {
-      return tool({
-        description:
-          "Run a bounded local command through the project RTK wrapper. Risky commands require approval.",
-        execute: executeWithToolContext,
-        inputSchema: RtkCommandInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    case "runCheck": {
-      return tool({
-        description:
-          "Run a bounded project check command such as a targeted test, lint, or typecheck.",
-        execute: executeWithToolContext,
-        inputSchema: RunCheckInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    case "searchFiles": {
-      return tool({
-        description:
-          "Search project file contents with ripgrep and return bounded line matches.",
-        execute: executeWithToolContext,
-        inputSchema: SearchFilesInputSchema
-      })
-    }
-    case "webSearch": {
-      return tool({
-        description:
-          "Search the public web for current external information. This requires approval because the query leaves the local workspace.",
-        execute: executeWithToolContext,
-        inputSchema: WebSearchInputSchema,
-        needsApproval: needsApprovalForTool(name, projectPath)
-      })
-    }
-    default: {
-      const exhaustiveToolName: never = name
+  const definition = AGENT_TOOL_DEFINITION_CONFIGS[name]
 
-      throw new Error(`Unsupported agent tool: ${exhaustiveToolName}`)
-    }
-  }
+  return tool({
+    description: definition.description,
+    execute: executeWithToolContext,
+    inputSchema: definition.inputSchema,
+    ...(shouldAttachApprovalGate(name)
+      ? getToolNeedsApprovalConfig(approvalMode, name, projectPath)
+      : {})
+  })
 }
 
 const createAgentDelegationTool = (
@@ -2073,6 +2553,7 @@ const canExposeDelegationTool = ({
 }
 
 export const buildAgentTools = ({
+  approvalMode = "default",
   chatSessionId,
   db,
   executeDelegation,
@@ -2104,6 +2585,7 @@ export const buildAgentTools = ({
 
     if (isExecutableAgentToolName(toolName)) {
       tools[toolName] = createAgentTool(
+        approvalMode,
         chatSessionId,
         db,
         memorySettings,

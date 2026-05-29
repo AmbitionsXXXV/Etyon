@@ -71,6 +71,16 @@ export interface PromptPlanShortcutLikeEvent {
   shiftKey?: boolean
 }
 
+export interface PromptSubmitKeyLikeEvent {
+  key: string
+  nativeEvent?: {
+    isComposing?: boolean
+    keyCode?: number
+    which?: number
+  }
+  shiftKey?: boolean
+}
+
 export interface PromptEditorJsonNode {
   attrs?: Record<string, unknown>
   content?: PromptEditorJsonNode[]
@@ -86,6 +96,7 @@ const PROMPT_TEMPLATE_COMMAND_PATTERN =
 const PROMPT_TEMPLATE_COMMAND_PREFIX = "/prompt "
 const PROMPT_TEMPLATE_SAFE_ARG_PATTERN = /^[\w./:-]+$/u
 const SKILL_QUERY_SEPARATOR = "\n"
+const IME_PROCESS_KEY_CODE = 229
 export const PROJECT_MENTION_NODE_TYPE = "projectMention"
 
 const getMentionTriggerFromPrefix = (
@@ -437,6 +448,31 @@ export const scrollActiveMentionItemIntoView = (
     inline: "nearest"
   })
 }
+
+export const isPromptSubmitKeyDown = (
+  event: PromptSubmitKeyLikeEvent
+): boolean => event.key === "Enter" && event.shiftKey !== true
+
+export const isPromptNativeCompositionKeyDown = (
+  event: PromptSubmitKeyLikeEvent
+): boolean =>
+  event.nativeEvent?.isComposing === true ||
+  event.nativeEvent?.keyCode === IME_PROCESS_KEY_CODE ||
+  event.nativeEvent?.which === IME_PROCESS_KEY_CODE
+
+export const isPromptImeConfirmKeyDown = ({
+  event,
+  isCompositionActive,
+  isCompositionEndGuardActive
+}: {
+  event: PromptSubmitKeyLikeEvent
+  isCompositionActive: boolean
+  isCompositionEndGuardActive: boolean
+}): boolean =>
+  isPromptSubmitKeyDown(event) &&
+  (isCompositionActive ||
+    isCompositionEndGuardActive ||
+    isPromptNativeCompositionKeyDown(event))
 
 export const getMentionTokenTypeLabel = (
   mention: Pick<ChatMention, "kind" | "relativePath">

@@ -54,7 +54,7 @@ const MessageActionButton = ({
     )}
     isDisabled={isDisabled}
     onPress={onPress}
-    tooltip={tooltipLabel}
+    tooltip={isDisabled ? undefined : tooltipLabel}
     type="button"
     variant={isPressed ? "secondary" : "ghost"}
   >

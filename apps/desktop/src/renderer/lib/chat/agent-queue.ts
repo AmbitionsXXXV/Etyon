@@ -1,21 +1,3 @@
-import type { AgentSessionQueuedMessageQueue } from "@etyon/rpc"
-
-export interface AgentComposerQueueAction {
-  labelKey: "chat.composer.queueFollowUp" | "chat.composer.queueSteer"
-  queue: AgentSessionQueuedMessageQueue
-}
-
-const AGENT_COMPOSER_QUEUE_ACTIONS: readonly AgentComposerQueueAction[] = [
-  {
-    labelKey: "chat.composer.queueSteer",
-    queue: "steer"
-  },
-  {
-    labelKey: "chat.composer.queueFollowUp",
-    queue: "follow-up"
-  }
-]
-
 export const resolveAgentComposerQueueState = ({
   agentsEnabled,
   isModelUpdating,
@@ -37,9 +19,18 @@ export const resolveAgentComposerQueueState = ({
   }
 }
 
-export const listAgentComposerQueueActions = ({
-  canQueueMessage
+export const resolveAgentComposerPrimaryAction = ({
+  hasPromptInputValue,
+  isOutputActive,
+  isQueueSubmitEnabled
 }: {
-  canQueueMessage: boolean
-}): AgentComposerQueueAction[] =>
-  canQueueMessage ? [...AGENT_COMPOSER_QUEUE_ACTIONS] : []
+  hasPromptInputValue: boolean
+  isOutputActive: boolean
+  isQueueSubmitEnabled: boolean
+}): "stop" | "submit" => {
+  if (!isOutputActive) {
+    return "submit"
+  }
+
+  return isQueueSubmitEnabled && hasPromptInputValue ? "submit" : "stop"
+}

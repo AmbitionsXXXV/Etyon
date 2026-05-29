@@ -1134,6 +1134,26 @@ const ProjectGroupsSection = ({
         {emptyProjectsLabel}
       </div>
     )
+  const addProjectButton = (
+    <Button
+      aria-label={addProjectLabel}
+      className={cn(
+        "text-sidebar-foreground/56 transition-[opacity,transform,color] duration-200",
+        "pointer-events-none translate-x-1 opacity-0",
+        "group-hover/projects-header:pointer-events-auto group-hover/projects-header:translate-x-0 group-hover/projects-header:opacity-100",
+        "group-focus-within/projects-header:pointer-events-auto group-focus-within/projects-header:translate-x-0 group-focus-within/projects-header:opacity-100",
+        "focus-visible:pointer-events-auto focus-visible:translate-x-0 focus-visible:opacity-100",
+        "hover:text-sidebar-accent-foreground"
+      )}
+      isDisabled={isCreatingProjectChatSession}
+      isIconOnly
+      onPress={onCreateProjectChatSession}
+      size="sm"
+      variant="ghost"
+    >
+      <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={2} />
+    </Button>
+  )
 
   return (
     <SidebarGroup className="px-3 pb-3">
@@ -1144,31 +1164,14 @@ const ProjectGroupsSection = ({
           </span>
         </div>
 
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                aria-label={addProjectLabel}
-                className={cn(
-                  "text-sidebar-foreground/56 transition-[opacity,transform,color] duration-200",
-                  "pointer-events-none translate-x-1 opacity-0",
-                  "group-hover/projects-header:pointer-events-auto group-hover/projects-header:translate-x-0 group-hover/projects-header:opacity-100",
-                  "group-focus-within/projects-header:pointer-events-auto group-focus-within/projects-header:translate-x-0 group-focus-within/projects-header:opacity-100",
-                  "focus-visible:pointer-events-auto focus-visible:translate-x-0 focus-visible:opacity-100",
-                  "hover:text-sidebar-accent-foreground"
-                )}
-                isDisabled={isCreatingProjectChatSession}
-                isIconOnly
-                onPress={onCreateProjectChatSession}
-                size="sm"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={2} />
-              </Button>
-            }
-          />
-          <TooltipContent side="bottom">{addProjectLabel}</TooltipContent>
-        </Tooltip>
+        {isCreatingProjectChatSession ? (
+          addProjectButton
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={addProjectButton} />
+            <TooltipContent side="bottom">{addProjectLabel}</TooltipContent>
+          </Tooltip>
+        )}
 
         <div
           aria-label={projectsCountLabel}
@@ -1426,12 +1429,16 @@ export const AppSidebar = () => {
             <TooltipContent side="bottom">{t("sidebar.search")}</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger render={newChatButton} />
-            <TooltipContent side="bottom">
-              {t("actions.newChat")}
-            </TooltipContent>
-          </Tooltip>
+          {isCreatingChatSession ? (
+            newChatButton
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={newChatButton} />
+              <TooltipContent side="bottom">
+                {t("actions.newChat")}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </>
       }
       onSidebarResizeCommit={persistSidebarWidth}

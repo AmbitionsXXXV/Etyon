@@ -9,11 +9,11 @@ import type { AgentToolName } from "@/main/agents/types"
 describe("agent tool policy compiler", () => {
   it("keeps tool order while removing non-safe tools for restricted scopes", () => {
     const allowedToolNames: AgentToolName[] = [
-      "findFiles",
-      "applyPatch",
+      "find",
+      "write",
       "agentExplore",
       "agentRunInspect",
-      "rtkCommand",
+      "bash",
       "gitDiff"
     ]
 
@@ -22,15 +22,11 @@ describe("agent tool policy compiler", () => {
         allowedToolNames,
         restrictToSafeTools: true
       })
-    ).toEqual(["findFiles", "agentRunInspect", "gitDiff"])
+    ).toEqual(["find", "agentRunInspect", "gitDiff"])
   })
 
   it("leaves unrestricted tool lists unchanged", () => {
-    const allowedToolNames: AgentToolName[] = [
-      "findFiles",
-      "applyPatch",
-      "agentExplore"
-    ]
+    const allowedToolNames: AgentToolName[] = ["find", "write", "agentExplore"]
 
     expect(
       compileAgentToolNames({
@@ -42,10 +38,10 @@ describe("agent tool policy compiler", () => {
 
   it("filters tools through explicit skill capabilities", () => {
     const allowedToolNames: AgentToolName[] = [
-      "readFile",
-      "editFile",
+      "read",
+      "edit",
       "gitDiff",
-      "runCheck",
+      "bash",
       "webSearch"
     ]
 
@@ -55,13 +51,13 @@ describe("agent tool policy compiler", () => {
         restrictToSafeTools: true,
         skillCapabilities: ["read-fs", "git"]
       })
-    ).toEqual(["readFile", "gitDiff"])
+    ).toEqual(["read", "gitDiff"])
   })
 
   it("does not expose tools for unsupported explicit skill capabilities", () => {
     expect(
       compileAgentToolNames({
-        allowedToolNames: ["readFile", "memorySearch"],
+        allowedToolNames: ["read", "memorySearch"],
         skillCapabilities: ["context-loaders"]
       })
     ).toEqual([])
@@ -70,6 +66,6 @@ describe("agent tool policy compiler", () => {
   it("classifies safe tools through the capability manifest", () => {
     expect(isSafeAgentTool("agentRunInspect")).toBe(true)
     expect(isSafeAgentTool("agentExplore")).toBe(false)
-    expect(isSafeAgentTool("runCheck")).toBe(false)
+    expect(isSafeAgentTool("bash")).toBe(false)
   })
 })

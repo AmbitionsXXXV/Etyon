@@ -5,6 +5,13 @@ import type {
 } from "@etyon/rpc"
 
 export const AGENT_TOOL_NAMES = [
+  "read",
+  "bash",
+  "edit",
+  "write",
+  "grep",
+  "find",
+  "ls",
   "searchFiles",
   "findFiles",
   "fileInfo",
