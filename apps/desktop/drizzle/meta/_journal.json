@@ -57,6 +57,13 @@
       "when": 1779431579794,
       "tag": "0007_nasty_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1780057052701,
+      "tag": "0008_easy_redwing",
+      "breakpoints": true
     }
   ]
 }

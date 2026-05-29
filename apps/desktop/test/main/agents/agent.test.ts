@@ -160,6 +160,100 @@ describe("agent", () => {
     })
   })
 
+  it("applies grouped settings updates to the next turn", async () => {
+    const nextModel: AgentLoopModel = vi.fn(
+      ({ availableToolNames, messages, resources, thinkingLevel }) => ({
+        content: [
+          messages[0]?.content,
+          thinkingLevel,
+          (resources as { diagnostics?: string } | undefined)?.diagnostics,
+          availableToolNames.join(",")
+        ].join(" / "),
+        toolCalls: []
+      })
+    )
+    const agent = createAgent({
+      activeToolNames: ["readFile"],
+      maxTurns: 1,
+      model: initialAgentModel,
+      resources: {
+        diagnostics: "initial"
+      },
+      systemPrompt: "Initial system.",
+      thinkingLevel: "low",
+      tools: {
+        editFile: {
+          execute: () => "edited"
+        },
+        readFile: {
+          execute: () => "file content"
+        }
+      }
+    })
+
+    await agent.prompt("Start.")
+    agent.setSettings({
+      activeToolNames: ["editFile"],
+      model: nextModel,
+      resources: {
+        diagnostics: "updated"
+      },
+      systemPrompt: "Next system.",
+      thinkingLevel: "medium",
+      tools: {
+        editFile: {
+          execute: () => "edited"
+        }
+      }
+    })
+    await agent.continue()
+
+    expect(nextModel).toHaveBeenCalledWith({
+      abortSignal: expect.any(AbortSignal),
+      availableToolNames: ["editFile"],
+      messages: [
+        {
+          content: "Next system.",
+          role: "system"
+        },
+        {
+          content: "Start.",
+          role: "user"
+        },
+        {
+          content: "initial",
+          role: "assistant",
+          toolCalls: []
+        }
+      ],
+      resources: {
+        diagnostics: "updated"
+      },
+      thinkingLevel: "medium",
+      turnIndex: 0
+    })
+    expect(agent.getSnapshot()).toMatchObject({
+      activeToolNames: ["editFile"],
+      resources: {
+        diagnostics: "updated"
+      },
+      systemPrompt: "Next system.",
+      thinkingLevel: "medium"
+    })
+
+    agent.setSettings({
+      activeToolNames: null,
+      resources: null,
+      thinkingLevel: null
+    })
+
+    expect(agent.getSnapshot()).toMatchObject({
+      activeToolNames: undefined,
+      resources: undefined,
+      thinkingLevel: undefined
+    })
+  })
+
   it("applies in-flight resource changes to the next loop turn", async () => {
     const modelResources: unknown[] = []
     const model: AgentLoopModel = vi.fn(({ resources }) => {
@@ -426,6 +520,35 @@ describe("agent", () => {
     expect(() => {
       agent.setModel(listenerSafeAgentModel)
     }).not.toThrow()
+  })
+
+  it("rejects event listener failures as typed hook errors", async () => {
+    const eventError = new Error("event sink failed")
+    const agent = createAgent({
+      maxTurns: 1,
+      model: listenerSafeAgentModel,
+      onEvent: (event) => {
+        if (event.type === "agent_turn_started") {
+          throw eventError
+        }
+      },
+      tools: {}
+    })
+    let caughtError: unknown
+
+    try {
+      await agent.prompt("Start.")
+    } catch (error) {
+      caughtError = error
+    }
+
+    expect(caughtError).toBeInstanceOf(AgentRuntimeError)
+    expect(caughtError).toMatchObject({
+      code: "hook",
+      message: "Agent event listener failed."
+    })
+    expect((caughtError as AgentRuntimeError).cause).toBe(eventError)
+    await expect(agent.waitForIdle()).resolves.toBeUndefined()
   })
 
   it("rejects concurrent structural turns without appending the rejected prompt", async () => {

@@ -136,6 +136,29 @@ export const agentToolCalls = sqliteTable(
   })
 )
 
+export const agentArtifacts = sqliteTable(
+  "agent_artifacts",
+  {
+    byteLength: integer("byte_length"),
+    createdAt: text("created_at").notNull(),
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    metadataJson: text("metadata_json").notNull(),
+    path: text("path").notNull(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    toolCallId: text("tool_call_id")
+  },
+  (table) => ({
+    runIdx: index("agent_artifacts_run_idx").on(table.runId),
+    runToolIdx: index("agent_artifacts_run_tool_idx").on(
+      table.runId,
+      table.toolCallId
+    )
+  })
+)
+
 export const chatSessionMemories = sqliteTable("chat_session_memories", {
   content: text("content").notNull(),
   createdAt: text("created_at").notNull(),
@@ -206,6 +229,7 @@ export const memoryEmbeddings = sqliteTable(
 )
 
 export const schema = {
+  agentArtifacts,
   agentEvents,
   agentRuns,
   agentToolCalls,

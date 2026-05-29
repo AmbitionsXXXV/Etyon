@@ -10,6 +10,6 @@ window.postMessage("start-orpc-client", "*", [serverPort])
 const link = new RPCLink({ port: clientPort })
 clientPort.start()
 
-export const rpcClient: RouterClient<AppRouter> = createORPCClient(link)
+export const rpcClient = createORPCClient<RouterClient<AppRouter>>(link)
 
-export const orpc = createTanstackQueryUtils(rpcClient)
+export const orpc = createTanstackQueryUtils<RouterClient<AppRouter>>(rpcClient)

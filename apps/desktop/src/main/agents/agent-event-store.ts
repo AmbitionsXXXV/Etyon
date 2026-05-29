@@ -4,6 +4,7 @@ import { and, asc, desc, eq, isNull, max, or } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import {
+  agentArtifacts,
   agentEvents,
   agentRuns,
   agentToolCalls,
@@ -11,13 +12,30 @@ import {
 } from "@/main/db/schema"
 
 export type AgentEventType =
+  | "agent_run_graph_checkpoint_created"
+  | "agent_run_graph_instantiated"
+  | "agent_run_graph_node_failed"
+  | "agent_run_graph_node_retrying"
+  | "agent_run_graph_node_resumed"
+  | "agent_run_graph_node_skipped"
+  | "agent_run_graph_node_started"
+  | "agent_run_graph_node_succeeded"
+  | "agent_run_graph_node_suspended"
+  | "agent_run_graph_stage_started"
+  | "agent_loop_event"
   | "agent_run_failed"
   | "agent_run_finished"
   | "agent_run_started"
   | "agent_session_entry_appended"
+  | "agent_session_save_point_created"
   | "agent_step_finished"
   | "agent_step_started"
+  | "lsp_diagnostics_collected"
+  | "lsp_server_started"
   | "plan_step_completed"
+  | "sandbox_command_finished"
+  | "sandbox_command_output"
+  | "sandbox_command_started"
   | "plan_validated"
   | "subagent_finished"
   | "subagent_started"
@@ -72,6 +90,17 @@ export interface AgentToolCall {
   toolName: string
 }
 
+export interface AgentArtifact {
+  byteLength: number | null
+  createdAt: string
+  id: string
+  kind: string
+  metadata: unknown
+  path: string
+  runId: string
+  toolCallId: string | null
+}
+
 export interface PendingAgentApproval extends AgentToolCall {
   approvalId: string | null
   chatSessionId: string
@@ -124,6 +153,13 @@ export interface GetAgentRunOptions {
   runId: string
 }
 
+export interface GetAgentArtifactOptions {
+  artifactId: string
+  chatSessionId?: string
+  db: AppDatabase
+  projectPath?: string
+}
+
 export interface ListAgentEventsOptions {
   db: AppDatabase
   runId: string
@@ -132,6 +168,17 @@ export interface ListAgentEventsOptions {
 export interface ListAgentToolCallsOptions {
   db: AppDatabase
   runId: string
+}
+
+export interface ListAgentArtifactsOptions {
+  db: AppDatabase
+  runId: string
+}
+
+export interface ListAgentRunsOptions {
+  chatSessionId?: string
+  db: AppDatabase
+  limit?: number
 }
 
 export interface ListPendingAgentApprovalsOptions {
@@ -162,6 +209,16 @@ export interface RecordAgentToolCallOptions {
   runId: string
   state: AgentToolCall["state"]
   toolName: string
+}
+
+export interface RecordAgentArtifactOptions {
+  byteLength?: number | null
+  db: AppDatabase
+  kind: string
+  metadata?: unknown
+  path: string
+  runId: string
+  toolCallId?: string | null
 }
 
 export interface UpdateAgentToolCallOptions {
@@ -245,6 +302,19 @@ const toAgentEvent = (row: typeof agentEvents.$inferSelect): AgentEvent => ({
   runId: row.runId,
   sequence: row.sequence,
   type: row.type
+})
+
+const toAgentArtifact = (
+  row: typeof agentArtifacts.$inferSelect
+): AgentArtifact => ({
+  byteLength: row.byteLength,
+  createdAt: row.createdAt,
+  id: row.id,
+  kind: row.kind,
+  metadata: parseJson(row.metadataJson),
+  path: row.path,
+  runId: row.runId,
+  toolCallId: row.toolCallId
 })
 
 const toAgentRun = (
@@ -581,6 +651,68 @@ export const listAgentToolCalls = async ({
     .orderBy(asc(agentToolCalls.startedAt))
 
   return rows.map(toAgentToolCall)
+}
+
+export const listAgentArtifacts = async ({
+  db,
+  runId
+}: ListAgentArtifactsOptions): Promise<AgentArtifact[]> => {
+  const rows = await db
+    .select()
+    .from(agentArtifacts)
+    .where(eq(agentArtifacts.runId, runId))
+    .orderBy(asc(agentArtifacts.createdAt), asc(agentArtifacts.id))
+
+  return rows.map(toAgentArtifact)
+}
+
+export const getAgentArtifact = async ({
+  artifactId,
+  chatSessionId,
+  db,
+  projectPath
+}: GetAgentArtifactOptions): Promise<AgentArtifact | null> => {
+  const [row] = await db
+    .select({
+      byteLength: agentArtifacts.byteLength,
+      createdAt: agentArtifacts.createdAt,
+      id: agentArtifacts.id,
+      kind: agentArtifacts.kind,
+      metadataJson: agentArtifacts.metadataJson,
+      path: agentArtifacts.path,
+      runId: agentArtifacts.runId,
+      toolCallId: agentArtifacts.toolCallId
+    })
+    .from(agentArtifacts)
+    .innerJoin(agentRuns, eq(agentArtifacts.runId, agentRuns.id))
+    .innerJoin(chatSessions, eq(agentRuns.chatSessionId, chatSessions.id))
+    .where(
+      and(
+        eq(agentArtifacts.id, artifactId),
+        ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : []),
+        ...(projectPath ? [eq(chatSessions.projectPath, projectPath)] : [])
+      )
+    )
+
+  return row ? toAgentArtifact(row) : null
+}
+
+export const listAgentRuns = async ({
+  chatSessionId,
+  db,
+  limit = 30
+}: ListAgentRunsOptions): Promise<AgentRun[]> => {
+  const conditions = chatSessionId
+    ? [eq(agentRuns.chatSessionId, chatSessionId)]
+    : []
+  const query = db.select().from(agentRuns)
+  const rows = await (
+    conditions.length > 0 ? query.where(and(...conditions)) : query
+  )
+    .orderBy(desc(agentRuns.startedAt), desc(agentRuns.id))
+    .limit(limit)
+
+  return rows.map((row) => toAgentRun(db, row))
 }
 
 export const getAgentRun = async ({
@@ -966,6 +1098,31 @@ export const recordAgentToolCall = async ({
   }
 
   return toAgentToolCall(row)
+}
+
+export const recordAgentArtifact = async ({
+  byteLength = null,
+  db,
+  kind,
+  metadata = {},
+  path,
+  runId,
+  toolCallId = null
+}: RecordAgentArtifactOptions): Promise<AgentArtifact> => {
+  const row = {
+    byteLength,
+    createdAt: getNowIsoString(),
+    id: randomUUID(),
+    kind,
+    metadataJson: serializeJson(metadata),
+    path,
+    runId,
+    toolCallId
+  } satisfies typeof agentArtifacts.$inferInsert
+
+  await db.insert(agentArtifacts).values(row)
+
+  return toAgentArtifact(row)
 }
 
 export const updateAgentToolCall = async ({

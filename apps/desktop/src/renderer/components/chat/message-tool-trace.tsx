@@ -1,4 +1,5 @@
 import { useI18n } from "@etyon/i18n/react"
+import type { InspectAgentRunOutput } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatTool, ChatToolGroup } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
@@ -605,10 +606,9 @@ const AgentChildTracePanel = ({
     }),
     enabled: isExpanded
   })
-  const preview = traceQuery.data
-    ? buildAgentRunTracePreview(traceQuery.data)
-    : null
-  const parentRunId = traceQuery.data?.run.parentRunId ?? null
+  const trace = traceQuery.data as InspectAgentRunOutput | undefined
+  const preview = trace ? buildAgentRunTracePreview(trace) : null
+  const parentRunId = trace?.run.parentRunId ?? null
   const parentTraceQuery = useQuery({
     ...orpc.agents.inspectRun.queryOptions({
       input: {
@@ -618,13 +618,10 @@ const AgentChildTracePanel = ({
     }),
     enabled: isExpanded && parentRunId !== null
   })
-  const graphPreview = traceQuery.data
+  const parentTrace = parentTraceQuery.data as InspectAgentRunOutput | undefined
+  const graphPreview = trace
     ? buildAgentRunGraphPreviewDisplay(
-        buildAgentRunGraphPreview(
-          parentTraceQuery.data
-            ? [parentTraceQuery.data, traceQuery.data]
-            : [traceQuery.data]
-        )
+        buildAgentRunGraphPreview(parentTrace ? [parentTrace, trace] : [trace])
       )
     : null
 
@@ -678,6 +675,9 @@ const AgentChildTracePanel = ({
                 items={[
                   `${t("chat.toolTrace.profile")}: ${preview.profileId}`,
                   `${t("chat.toolTrace.status")}: ${preview.status}`,
+                  t("chat.toolTrace.childTraceArtifacts", {
+                    count: preview.artifactCount
+                  }),
                   t("chat.toolTrace.childTraceEvents", {
                     count: preview.eventCount
                   }),
@@ -686,11 +686,19 @@ const AgentChildTracePanel = ({
                   })
                 ]}
               />
-              {preview.events.length === 0 && preview.toolCalls.length === 0 ? (
+              {preview.artifacts.length === 0 &&
+              preview.events.length === 0 &&
+              preview.toolCalls.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   {t("chat.toolTrace.childTraceEmpty")}
                 </p>
               ) : null}
+              <AgentTracePreviewList
+                items={preview.artifacts}
+                label={t("chat.toolTrace.childTraceArtifacts", {
+                  count: preview.artifactCount
+                })}
+              />
               <AgentTracePreviewList
                 items={preview.toolCalls}
                 label={t("chat.toolTrace.childTraceTools", {
@@ -800,13 +808,15 @@ const ToolCallShellLine = ({
   </div>
 )
 
+const EMPTY_TOOL_TRACE_META_ITEMS: string[] = []
+
 const CommandToolCallCard = ({
   actions,
   command,
   defaultExpanded = false,
   detail,
   isStreaming = false,
-  metaItems = [],
+  metaItems = EMPTY_TOOL_TRACE_META_ITEMS,
   output,
   state,
   statusClassName,

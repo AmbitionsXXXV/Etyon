@@ -1,82 +1,33 @@
+import ultracite from "ultracite/oxfmt"
 import ultraciteCoreConfig from "ultracite/oxlint/core"
 import ultraciteReactConfig from "ultracite/oxlint/react"
+import ultraciteTanstackConfig from "ultracite/oxlint/tanstack"
 import { defineConfig } from "vite-plus"
-import type { DummyRuleMap } from "vite-plus/lint"
-
-const unsupportedLintRules = new Set([
-  "func-name-matching",
-  "jsx-a11y/interactive-supports-focus",
-  "logical-assignment-operators",
-  "no-restricted-properties",
-  "no-underscore-dangle",
-  "react/forbid-component-props",
-  "require-unicode-regexp"
-])
-
-const omitUnsupportedRules = (rules: DummyRuleMap | undefined): DummyRuleMap =>
-  Object.fromEntries(
-    Object.entries(rules ?? {}).filter(
-      ([ruleName]) => !unsupportedLintRules.has(ruleName)
-    )
-  ) as DummyRuleMap
-
-const lintPlugins = [
-  ...new Set([
-    ...(ultraciteCoreConfig.plugins ?? []),
-    ...(ultraciteReactConfig.plugins ?? [])
-  ])
-]
-const lintRules = {
-  ...omitUnsupportedRules(ultraciteCoreConfig.rules),
-  ...omitUnsupportedRules(ultraciteReactConfig.rules),
-  "eslint/func-style": "off",
-  "eslint/no-use-before-define": "off",
-  "eslint/sort-keys": "off",
-  "eslint-plugin-unicorn/number-literal-case": "off",
-  "unicorn/numeric-separators-style": "off"
-} satisfies DummyRuleMap
 
 export default defineConfig({
-  // Preserve the existing Ultracite formatter behavior inside Vite+.
   fmt: {
-    arrowParens: "always",
-    bracketSameLine: false,
-    bracketSpacing: true,
-    endOfLine: "lf",
-    experimentalSortImports: {
-      ignoreCase: true,
-      newlinesBetween: true,
-      order: "asc"
-    },
-    experimentalSortPackageJson: true,
+    ...ultracite,
     ignorePatterns: [
+      ...(ultracite.ignorePatterns ?? []),
       ".agents/**/*",
       ".claude/**/*",
       ".cursor/**/*",
       "**/.vite/**",
       "**/dist/**",
       "**/out/**",
-      "**/routeTree.gen.ts",
-      "**/.agents/**/*",
-      "**/.claude/**/*"
+      "**/routeTree.gen.ts"
     ],
-    jsxSingleQuote: false,
-    printWidth: 80,
-    quoteProps: "as-needed",
     semi: false,
-    singleQuote: false,
     sortTailwindcss: {
       attributes: ["className"],
       stylesheet: "packages/ui/src/styles/globals.css"
     },
-    tabWidth: 2,
-    trailingComma: "none",
-    useTabs: false
+    trailingComma: "none"
   },
   lint: {
-    categories: ultraciteCoreConfig.categories,
     env: ultraciteCoreConfig.env,
     ignorePatterns: [
+      ...(ultraciteCoreConfig.ignorePatterns ?? []),
       ".agents/**/*",
       ".claude/**/*",
       ".cursor/**/*",
@@ -86,9 +37,24 @@ export default defineConfig({
       "**/routeTree.gen.ts",
       "**/cursor-auth/proto/**"
     ],
-    overrides: ultraciteCoreConfig.overrides,
-    plugins: lintPlugins,
-    rules: lintRules
+    overrides: [
+      ...(ultraciteCoreConfig.overrides ?? []),
+      ...(ultraciteTanstackConfig.overrides ?? [])
+    ],
+    plugins: [
+      ...(ultraciteCoreConfig.plugins ?? []),
+      ...(ultraciteReactConfig.plugins ?? [])
+    ],
+    rules: {
+      ...ultraciteCoreConfig.rules,
+      ...ultraciteReactConfig.rules,
+      ...ultraciteTanstackConfig.rules,
+      "eslint/func-style": "off",
+      "eslint/no-use-before-define": "off",
+      "eslint/sort-keys": "off",
+      "eslint-plugin-unicorn/number-literal-case": "off",
+      "unicorn/numeric-separators-style": "off"
+    }
   },
   staged: {
     "*.{css,js,json,jsonc,jsx,ts,tsx}": "vp check --fix",

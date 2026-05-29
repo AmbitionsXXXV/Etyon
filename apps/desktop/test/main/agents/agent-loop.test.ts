@@ -179,6 +179,84 @@ describe("agent loop", () => {
     ])
   })
 
+  it("retries failed tool execution before appending the final tool result", async () => {
+    const events: AgentLoopEvent[] = []
+    const execute = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error("network timeout")
+      })
+      .mockReturnValueOnce("file content")
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will read the file.",
+          toolCalls: [
+            {
+              input: {
+                path: "src/main.ts"
+              },
+              toolCallId: "tool-call-1",
+              toolName: "readFile"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    const result = await runAgentLoop({
+      maxTurns: 2,
+      messages: [
+        {
+          content: "Read src/main.ts.",
+          role: "user"
+        }
+      ],
+      model,
+      onEvent: (event) => {
+        events.push(event)
+      },
+      toolRetry: {
+        maxRetries: 1
+      },
+      tools: {
+        readFile: {
+          execute
+        }
+      }
+    })
+
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(events.map((event) => event.type)).toEqual([
+      "agent_turn_started",
+      "assistant_message_appended",
+      "tool_execution_started",
+      "tool_execution_retrying",
+      "tool_execution_started",
+      "tool_execution_finished",
+      "tool_result_appended",
+      "agent_turn_started",
+      "assistant_message_appended",
+      "agent_loop_finished"
+    ])
+    expect(modelMessages[1]?.at(-1)).toEqual({
+      isError: false,
+      output: "file content",
+      role: "tool",
+      toolCallId: "tool-call-1",
+      toolName: "readFile"
+    })
+    expect(result.stopReason).toBe("final")
+  })
+
   it("passes the abort signal into model turns", async () => {
     const abortController = new AbortController()
     const model: AgentLoopModel = vi.fn(({ abortSignal }) => ({

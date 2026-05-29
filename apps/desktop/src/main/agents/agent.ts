@@ -1,3 +1,4 @@
+import { toAgentRuntimeError } from "@/main/agents/agent-errors"
 import { runAgentLoop } from "@/main/agents/agent-loop"
 import type {
   AgentLoopEvent,
@@ -59,6 +60,15 @@ export interface CreateAgentOptions {
   tools: Readonly<Record<string, AgentLoopTool>>
 }
 
+export interface AgentSettingsUpdate {
+  activeToolNames?: null | readonly string[]
+  model?: AgentLoopModel
+  resources?: AgentLoopResources | null
+  systemPrompt?: string
+  thinkingLevel?: null | string
+  tools?: Readonly<Record<string, AgentLoopTool>>
+}
+
 export interface Agent {
   abort: () => void
   continue: () => Promise<RunAgentLoopResult>
@@ -72,6 +82,7 @@ export interface Agent {
   setActiveToolNames: (activeToolNames?: readonly string[]) => void
   setModel: (model: AgentLoopModel) => void
   setResources: (resources?: AgentLoopResources) => void
+  setSettings: (settings: AgentSettingsUpdate) => void
   setSystemPrompt: (systemPrompt: string) => void
   setThinkingLevel: (thinkingLevel?: string) => void
   setTools: (tools: Readonly<Record<string, AgentLoopTool>>) => void
@@ -275,6 +286,18 @@ export const createAgent = ({
     trackNotification(notifyListeners())
   }
 
+  const emitAgentLoopEvent = async (event: AgentLoopEvent): Promise<void> => {
+    try {
+      await onEvent?.(event)
+    } catch (error) {
+      throw toAgentRuntimeError({
+        cause: error,
+        code: "hook",
+        message: "Agent event listener failed."
+      })
+    }
+  }
+
   const notifyQueuedMessage = async (
     queuedMessage: AgentQueuedMessage
   ): Promise<void> => {
@@ -288,6 +311,44 @@ export const createAgent = ({
   const trackQueuedMessageWrite = (queuedMessage: AgentQueuedMessage): void => {
     if (onQueuedMessage) {
       trackNotification(notifyQueuedMessage(queuedMessage))
+    }
+  }
+
+  const applySettingsUpdate = ({
+    notify,
+    settings
+  }: {
+    notify: boolean
+    settings: AgentSettingsUpdate
+  }): void => {
+    if ("activeToolNames" in settings) {
+      state.activeToolNames = cloneActiveToolNames(
+        settings.activeToolNames ?? undefined
+      )
+    }
+
+    if (settings.model) {
+      state.model = settings.model
+    }
+
+    if ("resources" in settings) {
+      state.resources = cloneAgentResources(settings.resources ?? undefined)
+    }
+
+    if (settings.systemPrompt !== undefined) {
+      state.systemPrompt = settings.systemPrompt
+    }
+
+    if ("thinkingLevel" in settings) {
+      state.thinkingLevel = settings.thinkingLevel ?? undefined
+    }
+
+    if (settings.tools) {
+      state.tools = settings.tools
+    }
+
+    if (notify) {
+      notifyListenersWithoutAwait()
     }
   }
 
@@ -336,7 +397,7 @@ export const createAgent = ({
           systemPrompt: turnSystemPrompt
         }),
         model: turnModel,
-        onEvent,
+        onEvent: emitAgentLoopEvent,
         prepareNextTurn: ({ messages: loopMessages }) => {
           const nextMessagesWithoutSystem = stripSystemPrompt({
             messages: loopMessages,
@@ -475,6 +536,12 @@ export const createAgent = ({
     setResources: (nextResources) => {
       state.resources = cloneAgentResources(nextResources)
       notifyListenersWithoutAwait()
+    },
+    setSettings: (settings) => {
+      applySettingsUpdate({
+        notify: true,
+        settings
+      })
     },
     setSystemPrompt: (nextSystemPrompt) => {
       state.systemPrompt = nextSystemPrompt

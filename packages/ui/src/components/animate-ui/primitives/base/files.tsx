@@ -169,10 +169,12 @@ type FolderIconProps = HTMLMotionProps<"span"> & {
   openIcon: React.ReactNode
 }
 
+const DEFAULT_FOLDER_ICON_TRANSITION = { duration: 0.15 }
+
 function FolderIcon({
   closeIcon,
   openIcon,
-  transition = { duration: 0.15 },
+  transition = DEFAULT_FOLDER_ICON_TRANSITION,
   ...props
 }: FolderIconProps) {
   const { isOpen } = useFolder()

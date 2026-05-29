@@ -14,7 +14,10 @@ import {
 import { DEFAULT_EMBEDDING_MODEL_LABEL } from "@/shared/memory/embedding-model-catalog"
 
 export interface MemoryEmbeddingProvider {
-  embed: (input: string) => Promise<number[]>
+  embed: (
+    input: string,
+    options?: { abortSignal?: AbortSignal }
+  ) => Promise<number[]>
   model: string
 }
 
@@ -51,8 +54,9 @@ const createOpenAiEmbeddingProvider = (
   const model = openai.embedding(modelId)
 
   return {
-    async embed(input: string) {
+    async embed(input: string, options) {
       const result = await embed({
+        abortSignal: options?.abortSignal,
         model,
         value: input
       })
@@ -97,14 +101,16 @@ export const createMemoryEmbeddingProvider = (
 }
 
 export const embedMemoryQuery = ({
+  abortSignal,
   input,
   settings
 }: {
+  abortSignal?: AbortSignal
   input: string
   settings: AppSettings
 }): Promise<number[]> => {
   try {
-    return createMemoryEmbeddingProvider(settings).embed(input)
+    return createMemoryEmbeddingProvider(settings).embed(input, { abortSignal })
   } catch (error) {
     return Promise.reject(error)
   }

@@ -1,19 +1,15 @@
 import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatMessage, ChatMessageActions } from "@heroui-pro/react"
-import {
-  ArrowReloadHorizontalIcon,
-  CheckmarkCircle01Icon,
-  Copy01Icon,
-  PencilEdit02Icon,
-  ThumbsDownIcon,
-  ThumbsUpIcon
-} from "@hugeicons/core-free-icons"
+import { PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import type { IconSvgElement } from "@hugeicons/react"
 import { useCallback, useEffect, useState } from "react"
 
 const COPY_FEEDBACK_RESET_MS = 1600
+// HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
+const FOCUSABLE_TAB_INDEX = { tabIndex: 0 } as Record<string, unknown>
+const MESSAGE_ACTION_CLASS_NAME =
+  "size-7 min-w-7 text-muted-foreground hover:text-foreground"
 
 type ResponseAction = "bad" | "good" | null
 type MessageActionKind = "bad" | "copy" | "edit" | "good" | "regenerate"
@@ -29,38 +25,6 @@ const USER_MESSAGE_ACTIONS = [
   "regenerate",
   "edit"
 ] satisfies MessageActionKind[]
-
-const MessageActionButton = ({
-  ariaLabel,
-  icon,
-  isDisabled = false,
-  isPressed,
-  onPress,
-  tooltipLabel
-}: {
-  ariaLabel: string
-  icon: IconSvgElement
-  isDisabled?: boolean
-  isPressed?: boolean
-  onPress: () => void
-  tooltipLabel: string
-}) => (
-  <ChatMessage.Action
-    aria-label={ariaLabel}
-    aria-pressed={isPressed}
-    className={cn(
-      "size-7 min-w-7 text-muted-foreground hover:text-foreground",
-      isPressed && "text-foreground"
-    )}
-    isDisabled={isDisabled}
-    onPress={onPress}
-    tooltip={isDisabled ? undefined : tooltipLabel}
-    type="button"
-    variant={isPressed ? "secondary" : "ghost"}
-  >
-    <HugeiconsIcon icon={icon} size={15} strokeWidth={2} />
-  </ChatMessage.Action>
-)
 
 export const MessageActions = ({
   align = "start",
@@ -138,63 +102,86 @@ export const MessageActions = ({
       {actions.map((action) => {
         if (action === "copy") {
           return (
-            <MessageActionButton
-              ariaLabel={copied ? t("copied") : t("copy")}
-              icon={copied ? CheckmarkCircle01Icon : Copy01Icon}
+            <ChatMessageActions.Copy
+              aria-label={copied ? t("copied") : t("copy")}
+              className={MESSAGE_ACTION_CLASS_NAME}
+              isCopied={copied}
               key={action}
               onPress={handleCopy}
-              tooltipLabel={copied ? t("copied") : t("copy")}
+              tooltip={copied ? t("copied") : t("copy")}
+              type="button"
             />
           )
         }
 
         if (action === "good") {
           return (
-            <MessageActionButton
-              ariaLabel={t("goodResponse")}
-              icon={ThumbsUpIcon}
-              isPressed={responseAction === "good"}
+            <ChatMessageActions.ThumbsUp
+              aria-label={t("goodResponse")}
+              aria-pressed={responseAction === "good"}
+              className={cn(
+                MESSAGE_ACTION_CLASS_NAME,
+                responseAction === "good" && "text-foreground"
+              )}
               key={action}
               onPress={handleGoodResponse}
-              tooltipLabel={t("goodResponse")}
+              tooltip={t("goodResponse")}
+              type="button"
+              variant={responseAction === "good" ? "secondary" : "ghost"}
+              {...FOCUSABLE_TAB_INDEX}
             />
           )
         }
 
         if (action === "bad") {
           return (
-            <MessageActionButton
-              ariaLabel={t("badResponse")}
-              icon={ThumbsDownIcon}
-              isPressed={responseAction === "bad"}
+            <ChatMessageActions.ThumbsDown
+              aria-label={t("badResponse")}
+              aria-pressed={responseAction === "bad"}
+              className={cn(
+                MESSAGE_ACTION_CLASS_NAME,
+                responseAction === "bad" && "text-foreground"
+              )}
               key={action}
               onPress={handleBadResponse}
-              tooltipLabel={t("badResponse")}
+              tooltip={t("badResponse")}
+              type="button"
+              variant={responseAction === "bad" ? "secondary" : "ghost"}
+              {...FOCUSABLE_TAB_INDEX}
             />
           )
         }
 
         if (action === "edit") {
           return (
-            <MessageActionButton
-              ariaLabel={t("edit")}
-              icon={PencilEdit02Icon}
+            <ChatMessage.Action
+              aria-label={t("edit")}
+              className={MESSAGE_ACTION_CLASS_NAME}
               isDisabled={!onEdit || isRegenerating}
               key={action}
               onPress={() => onEdit?.()}
-              tooltipLabel={t("edit")}
-            />
+              tooltip={!onEdit || isRegenerating ? undefined : t("edit")}
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                icon={PencilEdit02Icon}
+                size={15}
+                strokeWidth={2}
+              />
+            </ChatMessage.Action>
           )
         }
 
         return (
-          <MessageActionButton
-            ariaLabel={t("regenerate")}
-            icon={ArrowReloadHorizontalIcon}
+          <ChatMessageActions.Regenerate
+            aria-label={t("regenerate")}
+            className={MESSAGE_ACTION_CLASS_NAME}
             isDisabled={isRegenerating}
             key={action}
             onPress={onRegenerate}
-            tooltipLabel={t("regenerate")}
+            tooltip={isRegenerating ? undefined : t("regenerate")}
+            type="button"
           />
         )
       })}

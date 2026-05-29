@@ -2,6 +2,11 @@ import { AppSettingsSchema } from "@etyon/rpc"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  CODE_AGENT_LSP_TOOL_ALIASES,
+  CODE_AGENT_READONLY_TOOL_ALIASES,
+  CODE_AGENT_TOOL_ALIASES
+} from "@/main/agents/code-agent-tool-aliases"
+import {
   BUILT_IN_AGENT_PROFILE_IDS,
   getAgentProfileById,
   resolveActiveAgentProfile
@@ -30,12 +35,30 @@ describe("agent profiles", () => {
       readonly: true
     })
     expect(profile.toolPolicy.allowedToolNames).toEqual([
-      "read",
-      "grep",
-      "find",
-      "ls"
+      ...CODE_AGENT_READONLY_TOOL_ALIASES
     ])
     expect(profile.toolPolicy.allowWrites).toBe(false)
+  })
+
+  it("adds inspect to code-oriented profiles without changing general chat", () => {
+    expect(
+      getAgentProfileById("general-purpose").toolPolicy.allowedToolNames
+    ).not.toContain("inspect")
+    expect(getAgentProfileById("explore").toolPolicy.allowedToolNames).toEqual([
+      ...CODE_AGENT_READONLY_TOOL_ALIASES,
+      ...CODE_AGENT_LSP_TOOL_ALIASES
+    ])
+    expect(getAgentProfileById("review").toolPolicy.allowedToolNames).toEqual([
+      ...CODE_AGENT_READONLY_TOOL_ALIASES,
+      ...CODE_AGENT_LSP_TOOL_ALIASES
+    ])
+    expect(getAgentProfileById("coder").toolPolicy.allowedToolNames).toEqual([
+      ...CODE_AGENT_TOOL_ALIASES,
+      ...CODE_AGENT_LSP_TOOL_ALIASES,
+      "agentExplore",
+      "agentPlan",
+      "agentReview"
+    ])
   })
 
   it("falls back to the default profile when settings point to an unavailable profile", () => {

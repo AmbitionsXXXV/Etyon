@@ -4,9 +4,11 @@ import { AGENT_TOOL_NAMES } from "@/main/agents/types"
 export type AgentToolCapability =
   | "agent-run"
   | "git"
+  | "lsp"
   | "memory"
   | "network"
   | "read-fs"
+  | "sandbox"
   | "shell"
   | "ui"
   | "write-fs"
@@ -23,9 +25,11 @@ export type AgentToolRiskLevel = "high" | "medium" | "safe"
 export const AGENT_TOOL_CAPABILITIES = [
   "agent-run",
   "git",
+  "lsp",
   "memory",
   "network",
   "read-fs",
+  "sandbox",
   "shell",
   "ui",
   "write-fs"
@@ -119,6 +123,13 @@ const AGENT_TOOL_MANIFESTS = {
     owner: "builtin",
     riskLevel: "safe",
     summary: "Search project file contents for a pattern."
+  }),
+  inspect: createManifest({
+    capabilities: ["lsp", "read-fs", "sandbox"],
+    id: "inspect",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Inspect one source position through a sandboxed LSP server."
   }),
   ls: createManifest({
     capabilities: ["read-fs"],

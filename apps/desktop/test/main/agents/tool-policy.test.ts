@@ -67,5 +67,6 @@ describe("agent tool policy compiler", () => {
     expect(isSafeAgentTool("agentRunInspect")).toBe(true)
     expect(isSafeAgentTool("agentExplore")).toBe(false)
     expect(isSafeAgentTool("bash")).toBe(false)
+    expect(isSafeAgentTool("inspect")).toBe(true)
   })
 })

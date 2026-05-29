@@ -1,5 +1,10 @@
 import type { AgentProfile } from "@etyon/rpc"
 
+import {
+  CODE_AGENT_LSP_TOOL_ALIASES,
+  CODE_AGENT_READONLY_TOOL_ALIASES,
+  CODE_AGENT_TOOL_ALIASES
+} from "@/main/agents/code-agent-tool-aliases"
 import { compileAgentToolNames } from "@/main/agents/tool-policy"
 import type { AgentProfileId, ManagedAgentProfile } from "@/main/agents/types"
 
@@ -12,15 +17,8 @@ export const BUILT_IN_AGENT_PROFILE_IDS = [
   "harness-operator"
 ] as const satisfies readonly AgentProfileId[]
 
-const READONLY_AGENT_TOOL_NAMES = [
-  "read",
-  "grep",
-  "find",
-  "ls"
-] as const satisfies ManagedAgentProfile["toolPolicy"]["allowedToolNames"]
-
 const createReadonlyAgentToolPolicy = (
-  allowedToolNames: readonly ManagedAgentProfile["toolPolicy"]["allowedToolNames"][number][] = READONLY_AGENT_TOOL_NAMES
+  allowedToolNames: readonly ManagedAgentProfile["toolPolicy"]["allowedToolNames"][number][] = CODE_AGENT_READONLY_TOOL_ALIASES
 ): ManagedAgentProfile["toolPolicy"] => ({
   allowWrites: false,
   allowedToolNames: compileAgentToolNames({
@@ -55,7 +53,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["read", "grep", "find", "ls"],
+      allowedToolNames: [...CODE_AGENT_READONLY_TOOL_ALIASES],
       requireApprovalForWrites: true
     }
   },
@@ -83,7 +81,10 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["read", "grep", "find", "ls"],
+      allowedToolNames: [
+        ...CODE_AGENT_READONLY_TOOL_ALIASES,
+        ...CODE_AGENT_LSP_TOOL_ALIASES
+      ],
       requireApprovalForWrites: true
     }
   },
@@ -112,10 +113,7 @@ export const BUILT_IN_AGENT_PROFILES = [
     toolPolicy: {
       allowWrites: false,
       allowedToolNames: [
-        "read",
-        "grep",
-        "find",
-        "ls",
+        ...CODE_AGENT_READONLY_TOOL_ALIASES,
         "agentCoder",
         "agentExplore"
       ],
@@ -147,13 +145,8 @@ export const BUILT_IN_AGENT_PROFILES = [
     toolPolicy: {
       allowWrites: true,
       allowedToolNames: [
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "grep",
-        "find",
-        "ls",
+        ...CODE_AGENT_TOOL_ALIASES,
+        ...CODE_AGENT_LSP_TOOL_ALIASES,
         "agentExplore",
         "agentPlan",
         "agentReview"
@@ -185,7 +178,10 @@ export const BUILT_IN_AGENT_PROFILES = [
     readonly: true,
     toolPolicy: {
       allowWrites: false,
-      allowedToolNames: ["read", "grep", "find", "ls"],
+      allowedToolNames: [
+        ...CODE_AGENT_READONLY_TOOL_ALIASES,
+        ...CODE_AGENT_LSP_TOOL_ALIASES
+      ],
       requireApprovalForWrites: true
     }
   },

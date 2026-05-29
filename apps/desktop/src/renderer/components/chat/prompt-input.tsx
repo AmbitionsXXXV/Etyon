@@ -66,6 +66,8 @@ import type {
 } from "@/renderer/lib/chat/prompt-input"
 
 const COMPOSITION_SUBMIT_GUARD_MS = 100
+const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
+const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -698,13 +700,13 @@ export const PromptInput = ({
   placeholder,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
-  promptTemplateItems = [],
+  promptTemplateItems = EMPTY_PROMPT_TEMPLATE_ITEMS,
   queueEditLabel,
   queueFollowUpLabel,
   queueRemoveLabel,
   queueReorderLabel,
   queueSteerLabel,
-  queuedMessages = [],
+  queuedMessages = EMPTY_QUEUED_MESSAGES,
   queuedMessagesLabel,
   status = "ready",
   stopLabel,
@@ -1229,7 +1231,7 @@ export const PromptInput = ({
   return (
     <HeroPromptInput
       allowSubmitWhileRunning={isQueueSubmitEnabled}
-      className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none"
+      className="relative shadow-none"
       isDisabled={disabled}
       lockInputOnRun={false}
       onStop={onStop}
@@ -1274,7 +1276,7 @@ export const PromptInput = ({
         titleLabel={queuedMessagesLabel}
       />
 
-      <HeroPromptInput.Shell className="block">
+      <HeroPromptInput.Shell className="block rounded-[1.75rem]! hover:bg-default!">
         <HeroPromptInput.Content className="p-4">
           <div
             className={cn(

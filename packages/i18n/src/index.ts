@@ -44,7 +44,7 @@ export type CliLocaleParseResult =
     }
 
 const SINGLE_BRACE_INTERPOLATION_PATTERN =
-  /(?<!\{)\{([A-Za-z][A-Za-z0-9_]*)\}(?!\})/g
+  /(?<!\{)\{([A-Za-z][A-Za-z0-9_]*)\}(?!\})/gu
 
 export const normalizeInterpolationSyntax = (value: string): string =>
   value.replace(SINGLE_BRACE_INTERPOLATION_PATTERN, "{{$1}}")

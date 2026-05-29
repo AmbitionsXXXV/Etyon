@@ -194,16 +194,38 @@ const SIDEBAR_SETTINGS_DEFAULT = {
   mode: "simple" as const
 } as const
 
+const AGENT_LSP_SETTINGS_DEFAULT = {
+  diagnosticTimeoutMs: 5000,
+  enabled: false,
+  initTimeoutMs: 15_000,
+  requireSandbox: true
+} as const
+
+const AGENT_RETRY_SETTINGS_DEFAULT = {
+  maxAutomaticRetries: 1,
+  retryTransientFailures: true
+} as const
+
+const AGENT_SANDBOX_SETTINGS_DEFAULT = {
+  allowNetwork: false,
+  autoAllowSandboxedShell: false,
+  enabled: false,
+  failIfUnavailable: true
+} as const
+
 const AGENT_SETTINGS_DEFAULT = {
   allowSubagentDelegation: false,
   defaultProfileId: "general-purpose",
   enabled: false,
+  lsp: AGENT_LSP_SETTINGS_DEFAULT,
   maxConcurrentSubagents: 2,
   maxSteps: 8,
-  profiles: [],
+  profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
+  retry: AGENT_RETRY_SETTINGS_DEFAULT,
+  sandbox: AGENT_SANDBOX_SETTINGS_DEFAULT,
   showToolTraces: true
-}
+} as const
 
 const AUTO_COMPACT_SETTINGS_DEFAULT = {
   enabled: true,
@@ -295,14 +317,36 @@ export const ChatSettingsSchema = z.object({
   streamdown: StreamdownSettingsSchema.default(STREAMDOWN_SETTINGS_DEFAULT)
 })
 
+export const AgentLspSettingsSchema = z.object({
+  diagnosticTimeoutMs: z.number().int().min(100).default(5000),
+  enabled: z.boolean().default(false),
+  initTimeoutMs: z.number().int().min(100).default(15_000),
+  requireSandbox: z.boolean().default(true)
+})
+
+export const AgentRetrySettingsSchema = z.object({
+  maxAutomaticRetries: z.number().int().min(0).max(5).default(1),
+  retryTransientFailures: z.boolean().default(true)
+})
+
+export const AgentSandboxSettingsSchema = z.object({
+  allowNetwork: z.boolean().default(false),
+  autoAllowSandboxedShell: z.boolean().default(false),
+  enabled: z.boolean().default(false),
+  failIfUnavailable: z.boolean().default(true)
+})
+
 export const AgentSettingsSchema = z.object({
   allowSubagentDelegation: z.boolean().default(false),
   defaultProfileId: z.string().default("general-purpose"),
   enabled: z.boolean().default(false),
+  lsp: AgentLspSettingsSchema.default(AGENT_LSP_SETTINGS_DEFAULT),
   maxConcurrentSubagents: z.number().int().min(1).max(4).default(2),
   maxSteps: z.number().int().min(1).max(20).default(8),
   profiles: z.array(AgentProfileSchema).default([]),
   requireApprovalForWrites: z.boolean().default(true),
+  retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),
+  sandbox: AgentSandboxSettingsSchema.default(AGENT_SANDBOX_SETTINGS_DEFAULT),
   showToolTraces: z.boolean().default(true)
 })
 
@@ -367,7 +411,10 @@ export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>
 export type AiProviderName = z.infer<typeof AiProviderNameSchema>
 export type AiSettings = z.infer<typeof AiSettingsSchema>
 export type AgentExecutionMode = z.infer<typeof AgentExecutionModeSchema>
+export type AgentLspSettings = z.infer<typeof AgentLspSettingsSchema>
 export type AgentProfile = z.infer<typeof AgentProfileSchema>
+export type AgentRetrySettings = z.infer<typeof AgentRetrySettingsSchema>
+export type AgentSandboxSettings = z.infer<typeof AgentSandboxSettingsSchema>
 export type AgentSettings = z.infer<typeof AgentSettingsSchema>
 export type AppIcon = z.infer<typeof AppIconSchema>
 export type AppSettings = z.infer<typeof AppSettingsSchema>

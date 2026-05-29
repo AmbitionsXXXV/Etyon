@@ -109,8 +109,9 @@ chatRoute.post("/chat", async (c) => {
 
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
-    buildLongTermMemorySystem: () =>
+    buildLongTermMemorySystem: ({ abortSignal }) =>
       buildMemorySystemPrompt({
+        abortSignal,
         db,
         projectPath: session.projectPath,
         query: memoryQuery,

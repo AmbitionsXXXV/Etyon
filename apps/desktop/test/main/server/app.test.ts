@@ -502,6 +502,7 @@ describe("hono app", () => {
       projectPath: "/tmp/project-a"
     })
     expect(buildMemorySystemPromptMock).toHaveBeenCalledWith({
+      abortSignal: expect.any(AbortSignal),
       db: expect.anything(),
       projectPath: "/tmp/project-a",
       query: "",
@@ -583,7 +584,7 @@ describe("hono app", () => {
     expect(stepCountIsMock).not.toHaveBeenCalled()
   })
 
-  it("injects read-only agent tools and step budget when agents are enabled", async () => {
+  it("injects read-only agent tool aliases through the provider adapter", async () => {
     getSettingsMock.mockReturnValueOnce(
       buildAgentSettings({
         enabled: true,
@@ -618,17 +619,15 @@ describe("hono app", () => {
       | undefined
 
     expect(Object.keys(streamOptions?.tools ?? {}).toSorted()).toEqual([
-      "fileInfo",
-      "findFiles",
-      "gitDiff",
-      "memorySearch",
-      "readFile",
-      "searchFiles"
+      "find",
+      "grep",
+      "ls",
+      "read"
     ])
-    expect(stepCountIsMock).toHaveBeenCalledWith(6)
+    expect(stepCountIsMock).toHaveBeenCalledWith(1)
     expect(streamOptions?.stopWhen).toEqual({
       kind: "step-count",
-      stepCount: 6
+      stepCount: 1
     })
   })
 

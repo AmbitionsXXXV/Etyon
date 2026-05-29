@@ -70,6 +70,38 @@ describe("agent permission engine", () => {
     })
   })
 
+  it("keeps LSP inspect inside read-only workspace permission boundaries", () => {
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          line: 12,
+          match: "const value = <<<source",
+          path: "src/source.ts"
+        },
+        name: "inspect",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "allow",
+      ruleId: "readonly-project-tool"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          line: 1,
+          match: "AWS_SECRET_ACCESS_KEY=<<<value",
+          path: ".env.local"
+        },
+        name: "inspect",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "deny",
+      ruleId: "secret-path"
+    })
+  })
+
   it("asks before applying patches or running raw shell commands", () => {
     expect(
       evaluateAgentToolPermission({

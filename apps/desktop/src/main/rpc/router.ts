@@ -1,16 +1,35 @@
 import {
+  AdvanceAgentRunGraphInputSchema,
+  AdvanceAgentRunGraphOutputSchema,
+  AgentSessionSnapshotOutputSchema,
+  AgentRunsOutputSchema,
+  AppendAgentSessionCompactionSummaryInputSchema,
   InspectAgentRunInputSchema,
   InspectAgentRunOutputSchema,
+  InspectAgentSessionInputSchema,
+  InstantiateAgentRunGraphTemplateInputSchema,
+  InstantiateAgentRunGraphTemplateOutputSchema,
+  ListAgentRunsInputSchema,
+  ListAgentRunGraphTemplatesOutputSchema,
   ListPendingAgentApprovalsInputSchema,
   ListQueuedAgentMessagesInputSchema,
   ListRecoverableAgentRunsInputSchema,
+  MoveAgentSessionLeafInputSchema,
   PendingAgentApprovalsOutputSchema,
+  PreviewAgentRunGraphTemplateInputSchema,
+  PreviewAgentRunGraphTemplateOutputSchema,
   QueuedAgentMessagesOutputSchema,
   QueueAgentMessageInputSchema,
   QueueAgentMessageOutputSchema,
+  ReadAgentArtifactInputSchema,
+  ReadAgentArtifactOutputSchema,
   RecoverableAgentRunsOutputSchema,
   RemoveQueuedAgentMessageInputSchema,
   ReorderQueuedAgentMessagesInputSchema,
+  RespondAgentRunGraphApprovalInputSchema,
+  RespondAgentRunGraphApprovalOutputSchema,
+  RetryAgentRunGraphNodeInputSchema,
+  RetryAgentRunGraphNodeOutputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -58,6 +77,8 @@ import {
   SetPinnedChatSessionInputSchema,
   ServerUrlOutputSchema,
   SidebarUiStateSchema,
+  StartAgentRunGraphNextStageInputSchema,
+  StartAgentRunGraphNextStageOutputSchema,
   SkillsListOutputSchema,
   PromptTemplatesListOutputSchema,
   TelegramTestConnectionInputSchema,
@@ -70,19 +91,29 @@ import {
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
+import { readAgentArtifactTextContent } from "@/main/agents/agent-artifacts"
 import {
   getActiveAgentRunForSession,
+  getAgentArtifact,
   getAgentRun,
   getLatestCompletedAgentRunForSession,
+  listAgentArtifacts,
   listAgentEvents,
+  listAgentRuns,
   listAgentToolCalls,
   listPendingAgentApprovals,
   listRecoverableAgentRuns
 } from "@/main/agents/agent-event-store"
+import type { AgentRun } from "@/main/agents/agent-event-store"
+import { createAgentKernel } from "@/main/agents/agent-kernel"
+import type { AgentRunGraphTemplate } from "@/main/agents/agent-run-graph-templates"
 import {
+  appendAgentSessionCompactionSummaryEvent,
+  appendAgentSessionMoveEvent,
   appendAgentSessionQueuedMessageRemoveEvent,
   appendAgentSessionQueuedMessageUpdateEvent,
   appendAgentSessionQueuedMessagesReorderEvent,
+  buildAgentSessionTreeFromEvents,
   createAgentSessionQueuedMessageWriter,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
@@ -130,6 +161,7 @@ import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
 import { getRtkTokenSavings } from "@/main/rtk-token-savings"
+import { resolveModel } from "@/main/server/lib/providers"
 import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import {
@@ -186,6 +218,18 @@ const cursorAuthStatus = rpc
   .output(CursorAuthStatusOutputSchema)
   .handler(() => getCursorAuthStatus())
 
+const toAgentRunTraceRunOutput = (run: AgentRun) => ({
+  chatSessionId: run.chatSessionId,
+  errorMessage: run.errorMessage,
+  finishedAt: run.finishedAt,
+  id: run.id,
+  modelId: run.modelId,
+  parentRunId: run.parentRunId,
+  profileId: run.profileId,
+  startedAt: run.startedAt,
+  status: run.status
+})
+
 const agentsInspectRun = rpc
   .input(InspectAgentRunInputSchema)
   .output(InspectAgentRunOutputSchema)
@@ -200,7 +244,11 @@ const agentsInspectRun = rpc
       throw new Error(`Agent run not found: ${input.runId}`)
     }
 
-    const [events, toolCalls] = await Promise.all([
+    const [artifacts, events, toolCalls] = await Promise.all([
+      listAgentArtifacts({
+        db: context.db,
+        runId: input.runId
+      }),
       listAgentEvents({
         db: context.db,
         runId: input.runId
@@ -212,19 +260,35 @@ const agentsInspectRun = rpc
     ])
 
     return {
+      artifacts,
       events,
-      run: {
-        chatSessionId: run.chatSessionId,
-        errorMessage: run.errorMessage,
-        finishedAt: run.finishedAt,
-        id: run.id,
-        modelId: run.modelId,
-        parentRunId: run.parentRunId,
-        profileId: run.profileId,
-        startedAt: run.startedAt,
-        status: run.status
-      },
+      run: toAgentRunTraceRunOutput(run),
       toolCalls
+    }
+  })
+
+const agentsReadArtifact = rpc
+  .input(ReadAgentArtifactInputSchema)
+  .output(ReadAgentArtifactOutputSchema)
+  .handler(async ({ context, input }) => {
+    const artifact = await getAgentArtifact({
+      artifactId: input.artifactId,
+      chatSessionId: input.sessionId,
+      db: context.db
+    })
+
+    if (!artifact) {
+      throw new Error(`Agent artifact not found: ${input.artifactId}`)
+    }
+
+    const content = await readAgentArtifactTextContent({
+      artifact,
+      maxChars: input.maxChars
+    })
+
+    return {
+      artifact,
+      ...content
     }
   })
 
@@ -238,6 +302,21 @@ const agentsListPendingApprovals = rpc
     })
   }))
 
+const agentsListRuns = rpc
+  .input(ListAgentRunsInputSchema)
+  .output(AgentRunsOutputSchema)
+  .handler(async ({ context, input }) => {
+    const runs = await listAgentRuns({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      limit: input.limit
+    })
+
+    return {
+      runs: runs.map(toAgentRunTraceRunOutput)
+    }
+  })
+
 const agentsListRecoverableRuns = rpc
   .input(ListRecoverableAgentRunsInputSchema)
   .output(RecoverableAgentRunsOutputSchema)
@@ -248,17 +327,7 @@ const agentsListRecoverableRuns = rpc
     })
 
     return {
-      runs: runs.map((run) => ({
-        chatSessionId: run.chatSessionId,
-        errorMessage: run.errorMessage,
-        finishedAt: run.finishedAt,
-        id: run.id,
-        modelId: run.modelId,
-        parentRunId: run.parentRunId,
-        profileId: run.profileId,
-        startedAt: run.startedAt,
-        status: run.status
-      }))
+      runs: runs.map(toAgentRunTraceRunOutput)
     }
   })
 
@@ -277,6 +346,180 @@ const getAgentQueueRunForSession = async ({
     chatSessionId: sessionId,
     db
   }))
+
+const getAgentSessionRunForSession = async ({
+  db,
+  runId,
+  sessionId
+}: {
+  db: AppDatabase
+  runId?: string
+  sessionId: string
+}) => {
+  const session = await getChatSessionById(db, sessionId)
+
+  if (!session) {
+    throw new Error(`Chat session not found: ${sessionId}`)
+  }
+
+  if (runId) {
+    const run = await getAgentRun({
+      chatSessionId: sessionId,
+      db,
+      runId
+    })
+
+    if (!run) {
+      throw new Error(`Agent run not found: ${runId}`)
+    }
+
+    return run
+  }
+
+  return getAgentQueueRunForSession({
+    db,
+    sessionId
+  })
+}
+
+const getRequiredAgentSessionRun = async ({
+  db,
+  runId,
+  sessionId
+}: {
+  db: AppDatabase
+  runId?: string
+  sessionId: string
+}) => {
+  const run = await getAgentSessionRunForSession({
+    db,
+    runId,
+    sessionId
+  })
+
+  if (!run) {
+    throw new Error(`Agent session run not found: ${sessionId}`)
+  }
+
+  return run
+}
+
+const createEmptyAgentSessionSnapshot = () => ({
+  context: [],
+  entries: [],
+  events: [],
+  run: null
+})
+
+const getAgentSessionSnapshotForRun = async ({
+  db,
+  run
+}: {
+  db: AppDatabase
+  run: AgentRun
+}) => {
+  const events = await listAgentEvents({
+    db,
+    runId: run.id
+  })
+  const sessionTree = buildAgentSessionTreeFromEvents(events)
+
+  return {
+    context: sessionTree.buildContext(),
+    entries: sessionTree.listEntries(),
+    events,
+    run: toAgentRunTraceRunOutput(run)
+  }
+}
+
+const ensureAgentSessionEntryExists = ({
+  entryId,
+  snapshot
+}: {
+  entryId: null | string
+  snapshot: Awaited<ReturnType<typeof getAgentSessionSnapshotForRun>>
+}): void => {
+  if (entryId === null) {
+    return
+  }
+
+  const hasEntry = snapshot.entries.some((entry) => entry.id === entryId)
+
+  if (!hasEntry) {
+    throw new Error(`Agent session entry not found: ${entryId}`)
+  }
+}
+
+const agentsInspectSession = rpc
+  .input(InspectAgentSessionInputSchema)
+  .output(AgentSessionSnapshotOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentSessionRunForSession({
+      db: context.db,
+      runId: input.runId,
+      sessionId: input.sessionId
+    })
+
+    if (!run) {
+      return createEmptyAgentSessionSnapshot()
+    }
+
+    return getAgentSessionSnapshotForRun({
+      db: context.db,
+      run
+    })
+  })
+
+const agentsMoveSessionLeaf = rpc
+  .input(MoveAgentSessionLeafInputSchema)
+  .output(AgentSessionSnapshotOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getRequiredAgentSessionRun({
+      db: context.db,
+      runId: input.runId,
+      sessionId: input.sessionId
+    })
+    const snapshot = await getAgentSessionSnapshotForRun({
+      db: context.db,
+      run
+    })
+
+    ensureAgentSessionEntryExists({
+      entryId: input.entryId,
+      snapshot
+    })
+    await appendAgentSessionMoveEvent({
+      ...(input.branchSummary ? { branchSummary: input.branchSummary } : {}),
+      entryId: input.entryId,
+      run
+    })
+
+    return getAgentSessionSnapshotForRun({
+      db: context.db,
+      run
+    })
+  })
+
+const agentsAppendSessionCompactionSummary = rpc
+  .input(AppendAgentSessionCompactionSummaryInputSchema)
+  .output(AgentSessionSnapshotOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getRequiredAgentSessionRun({
+      db: context.db,
+      runId: input.runId,
+      sessionId: input.sessionId
+    })
+
+    await appendAgentSessionCompactionSummaryEvent({
+      run,
+      summary: input.summary
+    })
+
+    return getAgentSessionSnapshotForRun({
+      db: context.db,
+      run
+    })
+  })
 
 const listQueuedMessagesForRun = async ({
   db,
@@ -329,6 +572,190 @@ const agentsListQueuedMessages = rpc
       messages: messages.map((message) =>
         toQueuedMessageOutput(run.chatSessionId, message)
       )
+    }
+  })
+
+const toAgentRunGraphTemplateOutput = (template: AgentRunGraphTemplate) => ({
+  description: template.description,
+  id: template.id,
+  name: template.name,
+  nodes: template.nodes.map((node) => ({
+    dependsOn: [...node.dependsOn],
+    id: node.id,
+    label: node.label,
+    outputContract: node.outputContract,
+    ...(node.parallelGroup ? { parallelGroup: node.parallelGroup } : {}),
+    profileId: node.profileId,
+    role: node.role,
+    toolScope: node.toolScope
+  }))
+})
+
+const agentsListRunGraphTemplates = rpc
+  .output(ListAgentRunGraphTemplatesOutputSchema)
+  .handler(() => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+
+    return {
+      templates: kernel
+        .listRunGraphTemplates()
+        .map(toAgentRunGraphTemplateOutput)
+    }
+  })
+
+const agentsPreviewRunGraphTemplate = rpc
+  .input(PreviewAgentRunGraphTemplateInputSchema)
+  .output(PreviewAgentRunGraphTemplateOutputSchema)
+  .handler(({ input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+
+    return {
+      plan: kernel.previewRunGraphTemplate(input.templateId)
+    }
+  })
+
+const agentsInstantiateRunGraphTemplate = rpc
+  .input(InstantiateAgentRunGraphTemplateInputSchema)
+  .output(InstantiateAgentRunGraphTemplateOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      modelId: input.modelId ?? null,
+      task: input.task,
+      templateId: input.templateId
+    })
+
+    return {
+      plan: instance.plan,
+      run: toAgentRunTraceRunOutput(instance.rootRun)
+    }
+  })
+
+const agentsStartRunGraphNextStage = rpc
+  .input(StartAgentRunGraphNextStageInputSchema)
+  .output(StartAgentRunGraphNextStageOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const result = await kernel.startNextRunGraphStage({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      rootRunId: input.runId
+    })
+
+    return {
+      plan: result.plan,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsAdvanceRunGraph = rpc
+  .input(AdvanceAgentRunGraphInputSchema)
+  .output(AdvanceAgentRunGraphOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const result = await kernel.advanceRunGraph({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      rootRunId: input.runId
+    })
+
+    return {
+      plan: result.plan,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      settledNodeIds: result.settledNodeIds,
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsRetryRunGraphNode = rpc
+  .input(RetryAgentRunGraphNodeInputSchema)
+  .output(RetryAgentRunGraphNodeOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const result = await kernel.retryRunGraphNode({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      nodeId: input.nodeId,
+      rootRunId: input.runId
+    })
+
+    return {
+      plan: result.plan,
+      retriedNodeId: result.retriedNodeId,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsRespondToRunGraphApproval = rpc
+  .input(RespondAgentRunGraphApprovalInputSchema)
+  .output(RespondAgentRunGraphApprovalOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    const rootRun = await getAgentRun({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      runId: input.rootRunId
+    })
+
+    if (!rootRun) {
+      throw new Error(`Agent run not found: ${input.rootRunId}`)
+    }
+
+    const settings = getSettings()
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const result = await kernel.resumeRunGraphNodeApprovalWithAiSdk({
+      approvalId: input.approvalId,
+      approved: input.approved,
+      chatSessionId: input.sessionId,
+      db: context.db,
+      memorySettings: settings.memory,
+      model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
+      projectPath: session.projectPath,
+      ...(input.reason ? { reason: input.reason } : {}),
+      rootRunId: rootRun.id,
+      toolCallId: input.toolCallId
+    })
+
+    return {
+      childRun: toAgentRunTraceRunOutput(result.childRun),
+      nodeId: result.nodeId,
+      plan: result.plan,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      settledNodeIds: result.settledNodeIds,
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput),
+      stopReason: result.stopReason,
+      turns: result.turns
     }
   })
 
@@ -800,13 +1227,25 @@ const sidebarStateSetWidth = rpc
 
 export const router = {
   agents: {
+    advanceRunGraph: agentsAdvanceRunGraph,
+    appendSessionCompactionSummary: agentsAppendSessionCompactionSummary,
     inspectRun: agentsInspectRun,
+    inspectSession: agentsInspectSession,
+    instantiateRunGraphTemplate: agentsInstantiateRunGraphTemplate,
     listPendingApprovals: agentsListPendingApprovals,
     listQueuedMessages: agentsListQueuedMessages,
     listRecoverableRuns: agentsListRecoverableRuns,
+    listRuns: agentsListRuns,
+    listRunGraphTemplates: agentsListRunGraphTemplates,
+    moveSessionLeaf: agentsMoveSessionLeaf,
+    previewRunGraphTemplate: agentsPreviewRunGraphTemplate,
     queueMessage: agentsQueueMessage,
+    readArtifact: agentsReadArtifact,
     removeQueuedMessage: agentsRemoveQueuedMessage,
     reorderQueuedMessages: agentsReorderQueuedMessages,
+    respondToRunGraphApproval: agentsRespondToRunGraphApproval,
+    retryRunGraphNode: agentsRetryRunGraphNode,
+    startRunGraphNextStage: agentsStartRunGraphNextStage,
     updateQueuedMessage: agentsUpdateQueuedMessage
   },
   chatSessions: {

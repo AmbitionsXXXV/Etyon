@@ -1,4 +1,8 @@
-import type { InspectAgentRunOutput } from "@etyon/rpc"
+import { AgentRunGraphExecutionPlanSchema } from "@etyon/rpc"
+import type {
+  AgentRunGraphExecutionPlan,
+  InspectAgentRunOutput
+} from "@etyon/rpc"
 
 export interface AgentRunTracePreviewItem {
   detail: string
@@ -7,6 +11,8 @@ export interface AgentRunTracePreviewItem {
 }
 
 export interface AgentRunTracePreview {
+  artifactCount: number
+  artifacts: AgentRunTracePreviewItem[]
   eventCount: number
   events: AgentRunTracePreviewItem[]
   profileId: string
@@ -16,6 +22,7 @@ export interface AgentRunTracePreview {
 }
 
 export interface AgentRunGraphPreviewNode {
+  artifactCount: number
   depth: number
   eventCount: number
   id: string
@@ -57,6 +64,7 @@ export interface AgentRunGraphPreviewDisplay {
 
 const DEFAULT_TRACE_ITEM_LIMIT = 6
 const TRACE_DETAIL_MAX_LENGTH = 180
+const BYTES_PER_KIB = 1024
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -77,6 +85,25 @@ const formatTraceDetail = (value: unknown): string => {
   }
 }
 
+const formatArtifactSize = (byteLength: number | null): string => {
+  if (byteLength === null) {
+    return ""
+  }
+
+  if (byteLength < BYTES_PER_KIB) {
+    return `${byteLength} B`
+  }
+
+  return `${(byteLength / BYTES_PER_KIB).toFixed(1)} KiB`
+}
+
+const getArtifactFileName = (path: string): string => {
+  const normalizedPath = path.replaceAll("\\", "/")
+  const fileName = normalizedPath.split("/").at(-1)
+
+  return fileName && fileName.trim() ? fileName : path
+}
+
 export const getAgentRunIdFromToolOutput = (output: unknown): string | null => {
   if (!isRecord(output) || typeof output.subRunId !== "string") {
     return null
@@ -85,6 +112,33 @@ export const getAgentRunIdFromToolOutput = (output: unknown): string | null => {
   const runId = output.subRunId.trim()
 
   return runId.length > 0 ? runId : null
+}
+
+export const getAgentRunGraphPlanFromTrace = (
+  trace: InspectAgentRunOutput
+): AgentRunGraphExecutionPlan | null => {
+  for (const event of trace.events.toReversed()) {
+    if (
+      event.type !== "agent_run_graph_instantiated" &&
+      event.type !== "agent_run_graph_checkpoint_created"
+    ) {
+      continue
+    }
+
+    if (!isRecord(event.payload)) {
+      continue
+    }
+
+    const result = AgentRunGraphExecutionPlanSchema.safeParse(
+      event.payload.plan
+    )
+
+    if (result.success) {
+      return result.data
+    }
+  }
+
+  return null
 }
 
 export const buildAgentRunTracePreview = (
@@ -97,6 +151,15 @@ export const buildAgentRunTracePreview = (
     id: event.id,
     label: `#${event.sequence} ${event.type}`
   }))
+  const artifacts = trace.artifacts.slice(-boundedLimit).map((artifact) => {
+    const size = formatArtifactSize(artifact.byteLength)
+
+    return {
+      detail: [artifact.path, size].filter(Boolean).join(" · "),
+      id: artifact.id,
+      label: `${artifact.kind}: ${getArtifactFileName(artifact.path)}`
+    }
+  })
   const toolCalls = trace.toolCalls.slice(-boundedLimit).map((toolCall) => ({
     detail: toolCall.state,
     id: toolCall.id,
@@ -104,6 +167,8 @@ export const buildAgentRunTracePreview = (
   }))
 
   return {
+    artifactCount: trace.artifacts.length,
+    artifacts,
     eventCount: trace.events.length,
     events,
     profileId: trace.run.profileId,
@@ -126,6 +191,7 @@ export const buildAgentRunGraphPreview = (
 
     nodeOrder.set(trace.run.id, index)
     nodesById.set(trace.run.id, {
+      artifactCount: trace.artifacts.length,
       depth: 0,
       eventCount: trace.events.length,
       id: trace.run.id,
@@ -200,6 +266,10 @@ export const buildAgentRunGraphPreviewDisplay = (
     depth: node.depth,
     detailItems: [
       node.status,
+      formatCountLabel({
+        count: node.artifactCount,
+        singular: "artifact"
+      }),
       formatCountLabel({
         count: node.eventCount,
         singular: "event"

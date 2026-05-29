@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { once } from "node:events"
 import fsSync from "node:fs"
@@ -7,11 +8,19 @@ import os from "node:os"
 import path from "node:path"
 import { StringDecoder } from "node:string_decoder"
 
+import type { AgentSandboxSettings } from "@etyon/rpc"
+
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
   clampToolOutput,
-  summarizeToolResult
+  summarizeToolResult,
+  truncateHead
 } from "@/main/agents/truncate"
+import { createWorkspaceSandbox } from "@/main/agents/workspace-sandbox"
+import type {
+  WorkspaceSandbox,
+  WorkspaceSandboxSpawnConfig
+} from "@/main/agents/workspace-sandbox"
 
 export {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
@@ -31,6 +40,7 @@ const DEFAULT_AGENT_SHELL_TIMEOUT_MS = 120_000
 const DEFAULT_FILE_SYSTEM_TEMP_PREFIX = "tmp-"
 const DELETE_CONTROL_CODE = 0x7f
 const FILE_OPERATION_ABORTED_MESSAGE = "File operation aborted."
+const FORCE_KILL_GRACE_MS = 250
 const REPLACEMENT_CHARACTER_CODE = 0xfffd
 const SPACE_CONTROL_CODE = 0x20
 const TEMP_NAME_UNSAFE_PATTERN = /[^A-Za-z0-9._-]/gu
@@ -54,6 +64,7 @@ export interface AgentCommandOutput {
 
 export type AgentExecutionErrorCode =
   | "aborted"
+  | "process-not-found"
   | "spawn"
   | "timeout"
   | "unknown"
@@ -193,10 +204,52 @@ export interface AgentShellOutputEvent {
   sequence: number
 }
 
+interface AgentShellEventBase {
+  command: string
+  cwd: string
+  sandboxed: boolean
+  sequence: number
+}
+
+export interface AgentShellStartedEvent extends AgentShellEventBase {
+  args: readonly string[]
+  pid: number | null
+  startedAt: string
+  type: "started"
+}
+
+export interface AgentShellLifecycleOutputEvent extends AgentShellEventBase {
+  channel: AgentShellOutputChannel
+  chunk: string
+  outputSequence: number
+  type: "output"
+}
+
+export type AgentShellFinishedStatus =
+  | "aborted"
+  | "exited"
+  | "spawn_error"
+  | "timed_out"
+
+export interface AgentShellFinishedEvent extends AgentShellEventBase {
+  durationMs: number
+  exitCode: number | null
+  status: AgentShellFinishedStatus
+  stderrChars: number
+  stdoutChars: number
+  type: "finished"
+}
+
+export type AgentShellEvent =
+  | AgentShellFinishedEvent
+  | AgentShellLifecycleOutputEvent
+  | AgentShellStartedEvent
+
 export interface AgentShellExecOptions {
   abortSignal?: AbortSignal
   cwd?: string
   env?: Record<string, string>
+  onEvent?: (event: AgentShellEvent) => void
   onOutput?: (event: AgentShellOutputEvent) => void
   stdin?: string
   onStderr?: (chunk: string) => void
@@ -205,7 +258,9 @@ export interface AgentShellExecOptions {
 }
 
 export interface AgentShellResult {
+  durationMs: number
   exitCode: number | null
+  sandboxed: boolean
   stderr: string
   stdout: string
 }
@@ -218,19 +273,75 @@ export interface AgentShell {
   ) => Promise<AgentResult<AgentShellResult, AgentExecutionError>>
 }
 
+export type AgentBackgroundProcessStatus =
+  | "exited"
+  | "running"
+  | "spawn_error"
+  | "stopped"
+
+export interface AgentBackgroundProcessOutputEvent {
+  channel: AgentShellOutputChannel
+  chunk: string
+  processId: string
+  sequence: number
+}
+
+export interface AgentBackgroundProcessSnapshot {
+  command: string
+  cwd: string
+  durationMs: number
+  errorMessage?: string
+  exitCode: number | null
+  finishedAt: string | null
+  id: string
+  pid: number | null
+  sandboxed: boolean
+  startedAt: string
+  status: AgentBackgroundProcessStatus
+  stderrChars: number
+  stderrPreview: string
+  stdoutChars: number
+  stdoutPreview: string
+  truncated: boolean
+}
+
+export interface AgentBackgroundProcessStartOptions {
+  cwd?: string
+  env?: Record<string, string>
+  onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
+  stdin?: string
+}
+
+export interface AgentBackgroundProcesses {
+  cleanup: () => Promise<void>
+  get: (processId: string) => AgentBackgroundProcessSnapshot | null
+  list: () => AgentBackgroundProcessSnapshot[]
+  start: (
+    command: string,
+    options?: AgentBackgroundProcessStartOptions
+  ) => Promise<AgentResult<AgentBackgroundProcessSnapshot, AgentExecutionError>>
+  stop: (
+    processId: string
+  ) => Promise<AgentResult<AgentBackgroundProcessSnapshot, AgentExecutionError>>
+}
+
 export interface AgentExecutionEnv {
+  backgroundProcesses: AgentBackgroundProcesses
   fileSystem: AgentFileSystem
   projectPath: string
   resolveCwd: (cwd: string) => string
   runShellCommand: (
     options: RunShellCommandOptions
   ) => Promise<AgentCommandOutput>
+  sandbox: WorkspaceSandbox
   shell: AgentShell
 }
 
 export interface CreateAgentExecutionEnvOptions {
   outputMaxChars?: number
   projectPath: string
+  sandbox?: WorkspaceSandbox
+  sandboxSettings?: AgentSandboxSettings
 }
 
 export interface RunShellCommandOptions {
@@ -277,6 +388,74 @@ const sanitizeCommandOutput = (content: string): string => {
   return sanitized
 }
 
+const killChildProcessTree = (
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals
+): void => {
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, signal)
+      return
+    } catch {
+      // Fall back to the direct child when process-group signaling is unavailable.
+    }
+  }
+
+  child.kill(signal)
+}
+
+const createChildProcessTerminator = (
+  child: ChildProcessWithoutNullStreams
+): {
+  cleanup: () => void
+  terminate: () => void
+} => {
+  let forceKillTimeout: NodeJS.Timeout | undefined
+
+  return {
+    cleanup: () => {
+      if (forceKillTimeout) {
+        clearTimeout(forceKillTimeout)
+      }
+    },
+    terminate: () => {
+      killChildProcessTree(child, "SIGTERM")
+      forceKillTimeout = setTimeout(() => {
+        killChildProcessTree(child, "SIGKILL")
+      }, FORCE_KILL_GRACE_MS)
+    }
+  }
+}
+
+const emitShellOutputEvent = ({
+  channel,
+  chunk,
+  onOutput,
+  sequenceRef
+}: {
+  channel: AgentShellOutputChannel
+  chunk: string
+  onOutput?: (event: AgentShellOutputEvent) => void
+  sequenceRef: {
+    value: number
+  }
+}): number | null => {
+  if (chunk.length === 0) {
+    return null
+  }
+
+  const sequence = sequenceRef.value
+
+  onOutput?.({
+    channel,
+    chunk,
+    sequence
+  })
+  sequenceRef.value += 1
+
+  return sequence
+}
+
 const createCommandOutputDecoder = () => {
   const decoder = new StringDecoder("utf-8")
 
@@ -285,6 +464,171 @@ const createCommandOutputDecoder = () => {
     write: (chunk: Buffer): string =>
       sanitizeCommandOutput(decoder.write(chunk))
   }
+}
+
+interface AgentBackgroundProcessRecord {
+  child: ChildProcessWithoutNullStreams
+  cleanupPreparedCommand: () => Promise<void>
+  closed: Promise<void>
+  command: string
+  cwd: string
+  errorMessage?: string
+  exitCode: number | null
+  finishedAtMs: number | null
+  id: string
+  onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
+  outputSequence: number
+  pid: number | null
+  sandboxed: boolean
+  startedAtMs: number
+  status: AgentBackgroundProcessStatus
+  stderr: string
+  stderrDecoder: ReturnType<typeof createCommandOutputDecoder>
+  stdout: string
+  stdoutDecoder: ReturnType<typeof createCommandOutputDecoder>
+  stopRequested: boolean
+  terminator: ReturnType<typeof createChildProcessTerminator>
+}
+
+const countTextChars = (content: string): number => [...content].length
+
+const createCleanupOnce = (
+  cleanup: () => Promise<void>
+): (() => Promise<void>) => {
+  let cleanupPromise: Promise<void> | null = null
+
+  return () => {
+    cleanupPromise ??= cleanup()
+
+    return cleanupPromise
+  }
+}
+
+const waitForChildProcessClose = async (
+  child: ChildProcessWithoutNullStreams
+): Promise<void> => {
+  try {
+    await once(child, "close")
+  } catch {
+    // The close listener can be rejected by a spawn error; the error handler
+    // settles the process record separately.
+  }
+}
+
+const appendBackgroundProcessOutput = ({
+  channel,
+  chunk,
+  record
+}: {
+  channel: AgentShellOutputChannel
+  chunk: Buffer | string
+  record: AgentBackgroundProcessRecord
+}): void => {
+  let text: string
+
+  if (typeof chunk === "string") {
+    text = sanitizeCommandOutput(chunk)
+  } else if (channel === "stdout") {
+    text = record.stdoutDecoder.write(chunk)
+  } else {
+    text = record.stderrDecoder.write(chunk)
+  }
+
+  if (text.length === 0) {
+    return
+  }
+
+  if (channel === "stdout") {
+    record.stdout = `${record.stdout}${text}`
+  } else {
+    record.stderr = `${record.stderr}${text}`
+  }
+
+  record.onOutput?.({
+    channel,
+    chunk: text,
+    processId: record.id,
+    sequence: record.outputSequence
+  })
+  record.outputSequence += 1
+}
+
+const finishBackgroundProcessOutput = (
+  record: AgentBackgroundProcessRecord
+): void => {
+  appendBackgroundProcessOutput({
+    channel: "stdout",
+    chunk: record.stdoutDecoder.end(),
+    record
+  })
+  appendBackgroundProcessOutput({
+    channel: "stderr",
+    chunk: record.stderrDecoder.end(),
+    record
+  })
+}
+
+const createBackgroundProcessSnapshot = ({
+  outputMaxChars,
+  record
+}: {
+  outputMaxChars: number
+  record: AgentBackgroundProcessRecord
+}): AgentBackgroundProcessSnapshot => {
+  const stderrPreview = truncateHead(record.stderr, outputMaxChars)
+  const stdoutPreview = truncateHead(record.stdout, outputMaxChars)
+  const { finishedAtMs } = record
+  const finishedAt = finishedAtMs ? new Date(finishedAtMs).toISOString() : null
+
+  return {
+    command: record.command,
+    cwd: record.cwd,
+    durationMs: (finishedAtMs ?? Date.now()) - record.startedAtMs,
+    ...(record.errorMessage ? { errorMessage: record.errorMessage } : {}),
+    exitCode: record.exitCode,
+    finishedAt,
+    id: record.id,
+    pid: record.pid,
+    sandboxed: record.sandboxed,
+    startedAt: new Date(record.startedAtMs).toISOString(),
+    status: record.status,
+    stderrChars: countTextChars(record.stderr),
+    stderrPreview: stderrPreview.content,
+    stdoutChars: countTextChars(record.stdout),
+    stdoutPreview: stdoutPreview.content,
+    truncated: stderrPreview.truncated || stdoutPreview.truncated
+  }
+}
+
+const isBackgroundProcessTerminal = (
+  status: AgentBackgroundProcessStatus
+): boolean => status !== "running"
+
+const settleBackgroundProcess = async ({
+  errorMessage,
+  exitCode,
+  record,
+  status
+}: {
+  errorMessage?: string
+  exitCode: number | null
+  record: AgentBackgroundProcessRecord
+  status: AgentBackgroundProcessStatus
+}): Promise<void> => {
+  if (record.finishedAtMs !== null) {
+    return
+  }
+
+  finishBackgroundProcessOutput(record)
+  if (errorMessage) {
+    record.errorMessage = errorMessage
+  }
+  record.exitCode = exitCode
+  record.finishedAtMs = Date.now()
+  record.status = record.stopRequested ? "stopped" : status
+  record.terminator.cleanup()
+
+  await record.cleanupPreparedCommand()
 }
 
 const isPathInsideRoot = (rootPath: string, targetPath: string): boolean => {
@@ -427,6 +771,246 @@ const getShellExecutionError = ({
   }
 
   return null
+}
+
+const getShellFinishedStatus = ({
+  abortSignal,
+  spawnError,
+  timedOut
+}: {
+  abortSignal?: AbortSignal
+  spawnError: Error | null
+  timedOut: boolean
+}): AgentShellFinishedStatus => {
+  if (spawnError) {
+    return "spawn_error"
+  }
+
+  if (abortSignal?.aborted) {
+    return "aborted"
+  }
+
+  if (timedOut) {
+    return "timed_out"
+  }
+
+  return "exited"
+}
+
+const createCommandAbortedExecutionError = (): AgentResult<
+  never,
+  AgentExecutionError
+> =>
+  createExecutionError({
+    code: "aborted",
+    message: "Command aborted."
+  })
+
+const createShellOutputCapture = ({
+  command,
+  cwd,
+  eventSequenceRef,
+  options,
+  sandboxed
+}: {
+  command: string
+  cwd: string
+  eventSequenceRef: {
+    value: number
+  }
+  options?: AgentShellExecOptions
+  sandboxed: boolean
+}): {
+  appendStderr: (chunk: Buffer) => void
+  appendStdout: (chunk: Buffer) => void
+  finish: () => {
+    stderr: string
+    stdout: string
+  }
+} => {
+  let stderr = ""
+  let stdout = ""
+  const stderrDecoder = createCommandOutputDecoder()
+  const stdoutDecoder = createCommandOutputDecoder()
+  const outputSequenceRef = {
+    value: 0
+  }
+  const emitOutput = (
+    channel: AgentShellOutputChannel,
+    chunk: string
+  ): void => {
+    const outputSequence = emitShellOutputEvent({
+      channel,
+      chunk,
+      onOutput: options?.onOutput,
+      sequenceRef: outputSequenceRef
+    })
+
+    if (outputSequence === null) {
+      return
+    }
+
+    options?.onEvent?.({
+      channel,
+      chunk,
+      command,
+      cwd,
+      outputSequence,
+      sandboxed,
+      sequence: eventSequenceRef.value,
+      type: "output"
+    })
+    eventSequenceRef.value += 1
+  }
+
+  return {
+    appendStderr: (chunk) => {
+      const text = stderrDecoder.write(chunk)
+
+      stderr = `${stderr}${text}`
+      emitOutput("stderr", text)
+      options?.onStderr?.(text)
+    },
+    appendStdout: (chunk) => {
+      const text = stdoutDecoder.write(chunk)
+
+      stdout = `${stdout}${text}`
+      emitOutput("stdout", text)
+      options?.onStdout?.(text)
+    },
+    finish: () => {
+      const stdoutRemainder = stdoutDecoder.end()
+      const stderrRemainder = stderrDecoder.end()
+
+      stdout = `${stdout}${stdoutRemainder}`
+      stderr = `${stderr}${stderrRemainder}`
+      emitOutput("stdout", stdoutRemainder)
+      emitOutput("stderr", stderrRemainder)
+      options?.onStdout?.(stdoutRemainder)
+      options?.onStderr?.(stderrRemainder)
+
+      return {
+        stderr,
+        stdout
+      }
+    }
+  }
+}
+
+const executePreparedShellCommand = async ({
+  abortSignal,
+  command,
+  options,
+  preparedCommand,
+  timeoutMs
+}: {
+  abortSignal?: AbortSignal
+  command: string
+  options?: AgentShellExecOptions
+  preparedCommand: WorkspaceSandboxSpawnConfig
+  timeoutMs: number
+}): Promise<AgentResult<AgentShellResult, AgentExecutionError>> => {
+  let timedOut = false
+  const startedAt = Date.now()
+  const eventSequenceRef = {
+    value: 0
+  }
+  const child = spawn(preparedCommand.command, preparedCommand.args, {
+    cwd: preparedCommand.cwd,
+    detached: true,
+    env: preparedCommand.env,
+    stdio: ["pipe", "pipe", "pipe"]
+  })
+  const childTerminator = createChildProcessTerminator(child)
+  const outputCapture = createShellOutputCapture({
+    command,
+    cwd: preparedCommand.cwd,
+    eventSequenceRef,
+    options,
+    sandboxed: preparedCommand.sandboxed
+  })
+  const spawnErrorRef: { value: Error | null } = { value: null }
+  const timeout = setTimeout(() => {
+    timedOut = true
+    childTerminator.terminate()
+  }, timeoutMs)
+  const abortCommand = (): void => {
+    childTerminator.terminate()
+  }
+
+  options?.onEvent?.({
+    args: preparedCommand.args,
+    command,
+    cwd: preparedCommand.cwd,
+    pid: child.pid ?? null,
+    sandboxed: preparedCommand.sandboxed,
+    sequence: eventSequenceRef.value,
+    startedAt: new Date(startedAt).toISOString(),
+    type: "started"
+  })
+  eventSequenceRef.value += 1
+  child.once("error", (error) => {
+    spawnErrorRef.value = error
+  })
+  child.stderr.on("data", outputCapture.appendStderr)
+  child.stdout.on("data", outputCapture.appendStdout)
+  abortSignal?.addEventListener("abort", abortCommand, {
+    once: true
+  })
+
+  child.stdin.write(options?.stdin ?? "")
+  child.stdin.end()
+
+  const [exitCode] = (await once(child, "close")) as [number | null]
+  const { stderr, stdout } = outputCapture.finish()
+
+  await preparedCommand.cleanup()
+  clearTimeout(timeout)
+  childTerminator.cleanup()
+  abortSignal?.removeEventListener("abort", abortCommand)
+  const durationMs = Date.now() - startedAt
+  const status = getShellFinishedStatus({
+    abortSignal,
+    spawnError: spawnErrorRef.value,
+    timedOut
+  })
+
+  options?.onEvent?.({
+    command,
+    cwd: preparedCommand.cwd,
+    durationMs,
+    exitCode,
+    sandboxed: preparedCommand.sandboxed,
+    sequence: eventSequenceRef.value,
+    status,
+    stderrChars: [...stderr].length,
+    stdoutChars: [...stdout].length,
+    type: "finished"
+  })
+  eventSequenceRef.value += 1
+
+  const executionError = getShellExecutionError({
+    abortSignal,
+    spawnError: spawnErrorRef.value,
+    stderr,
+    stdout,
+    timedOut
+  })
+
+  if (executionError) {
+    return executionError
+  }
+
+  return {
+    ok: true,
+    value: {
+      durationMs,
+      exitCode,
+      sandboxed: preparedCommand.sandboxed,
+      stderr,
+      stdout
+    }
+  }
 }
 
 const createAbortedFileError = (
@@ -583,7 +1167,9 @@ export const writeAgentCommandOutputArtifact = async ({
 
 export const createAgentExecutionEnv = ({
   outputMaxChars = AGENT_TOOL_OUTPUT_MAX_CHARS,
-  projectPath
+  projectPath,
+  sandbox: providedSandbox,
+  sandboxSettings
 }: CreateAgentExecutionEnvOptions): AgentExecutionEnv => {
   const normalizedProjectPath = path.resolve(projectPath)
   const realProjectPath = realpathIfExists(normalizedProjectPath)
@@ -592,6 +1178,12 @@ export const createAgentExecutionEnv = ({
     normalizedProjectPath,
     fileSystemTempRootRelativePath
   )
+  const sandbox =
+    providedSandbox ??
+    createWorkspaceSandbox({
+      projectPath: normalizedProjectPath,
+      settings: sandboxSettings
+    })
   const resolveCwd = (cwd: string): string => {
     const resolvedCwd = path.resolve(normalizedProjectPath, cwd || ".")
     const realResolvedCwd = resolveRealCwd({
@@ -1458,78 +2050,143 @@ export const createAgentExecutionEnv = ({
     }
   }
 
-  const shell: AgentShell = {
-    cleanup: () => Promise.resolve(),
-    exec: async (command, options) => {
-      const abortSignal = options?.abortSignal
+  const backgroundProcessRecords = new Map<
+    string,
+    AgentBackgroundProcessRecord
+  >()
+  const backgroundProcesses: AgentBackgroundProcesses = {
+    cleanup: async () => {
+      const closePromises: Promise<void>[] = []
 
-      if (abortSignal?.aborted) {
-        return createExecutionError({
-          code: "aborted",
-          message: "Command aborted."
-        })
+      for (const record of backgroundProcessRecords.values()) {
+        if (isBackgroundProcessTerminal(record.status)) {
+          continue
+        }
+
+        record.stopRequested = true
+        record.terminator.terminate()
+        closePromises.push(record.closed)
       }
 
-      const timeoutMs = options?.timeout ?? DEFAULT_AGENT_SHELL_TIMEOUT_MS
-      let stderr = ""
-      let stdout = ""
-      let timedOut = false
-      const stderrDecoder = createCommandOutputDecoder()
-      const stdoutDecoder = createCommandOutputDecoder()
-      let outputSequence = 0
-      const child = spawn("/bin/zsh", ["-fc", command], {
-        cwd: resolveCwd(options?.cwd ?? ""),
+      await Promise.all(closePromises)
+      await sandbox.cleanup()
+    },
+    get: (processId) => {
+      const record = backgroundProcessRecords.get(processId)
+
+      return record
+        ? createBackgroundProcessSnapshot({
+            outputMaxChars,
+            record
+          })
+        : null
+    },
+    list: () =>
+      Array.from(backgroundProcessRecords.values(), (record) =>
+        createBackgroundProcessSnapshot({
+          outputMaxChars,
+          record
+        })
+      ),
+    start: async (command, options) => {
+      const resolvedCwd = resolveCwd(options?.cwd ?? "")
+      const preparedCommand = await sandbox.prepareShellCommand({
+        command,
+        cwd: resolvedCwd,
         env: {
           ...process.env,
           ...options?.env
-        },
-        stdio: ["pipe", "pipe", "pipe"]
-      })
-      const spawnErrorRef: { value: Error | null } = { value: null }
-      const emitOutput = (
-        channel: AgentShellOutputChannel,
-        chunk: string
-      ): void => {
-        if (chunk.length === 0) {
-          return
         }
-
-        options?.onOutput?.({
-          channel,
-          chunk,
-          sequence: outputSequence
-        })
-        outputSequence += 1
-      }
-      const appendStderr = (chunk: Buffer): void => {
-        const text = stderrDecoder.write(chunk)
-
-        stderr = `${stderr}${text}`
-        emitOutput("stderr", text)
-        options?.onStderr?.(text)
-      }
-      const appendStdout = (chunk: Buffer): void => {
-        const text = stdoutDecoder.write(chunk)
-
-        stdout = `${stdout}${text}`
-        emitOutput("stdout", text)
-        options?.onStdout?.(text)
-      }
-      const timeout = setTimeout(() => {
-        timedOut = true
-        child.kill("SIGTERM")
-      }, timeoutMs)
-      const abortCommand = (): void => {
-        child.kill("SIGTERM")
-      }
-
-      child.once("error", (error) => {
-        spawnErrorRef.value = error
       })
-      child.stderr.on("data", appendStderr)
-      child.stdout.on("data", appendStdout)
-      abortSignal?.addEventListener("abort", abortCommand, {
-        once: true
+
+      if (!preparedCommand.ok) {
+        return createExecutionError({
+          code: "spawn",
+          message: preparedCommand.error.message
+        })
+      }
+
+      const cleanupPreparedCommand = createCleanupOnce(
+        preparedCommand.value.cleanup
+      )
+      let child: ChildProcessWithoutNullStreams
+
+      try {
+        child = spawn(
+          preparedCommand.value.command,
+          preparedCommand.value.args,
+          {
+            cwd: preparedCommand.value.cwd,
+            detached: true,
+            env: preparedCommand.value.env,
+            stdio: ["pipe", "pipe", "pipe"]
+          }
+        )
+      } catch (error) {
+        await cleanupPreparedCommand()
+
+        return createExecutionError({
+          code: "spawn",
+          message:
+            error instanceof Error ? error.message : "Failed to spawn process."
+        })
+      }
+
+      const closed = waitForChildProcessClose(child)
+      const id = randomUUID()
+      const record: AgentBackgroundProcessRecord = {
+        child,
+        cleanupPreparedCommand,
+        closed,
+        command,
+        cwd: preparedCommand.value.cwd,
+        exitCode: null,
+        finishedAtMs: null,
+        id,
+        ...(options?.onOutput ? { onOutput: options.onOutput } : {}),
+        outputSequence: 0,
+        pid: child.pid ?? null,
+        sandboxed: preparedCommand.value.sandboxed,
+        startedAtMs: Date.now(),
+        status: "running",
+        stderr: "",
+        stderrDecoder: createCommandOutputDecoder(),
+        stdout: "",
+        stdoutDecoder: createCommandOutputDecoder(),
+        stopRequested: false,
+        terminator: createChildProcessTerminator(child)
+      }
+
+      backgroundProcessRecords.set(id, record)
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        appendBackgroundProcessOutput({
+          channel: "stderr",
+          chunk,
+          record
+        })
+      })
+      child.stdout.on("data", (chunk: Buffer) => {
+        appendBackgroundProcessOutput({
+          channel: "stdout",
+          chunk,
+          record
+        })
+      })
+      child.once("error", (error) => {
+        void settleBackgroundProcess({
+          errorMessage: error.message,
+          exitCode: null,
+          record,
+          status: "spawn_error"
+        })
+      })
+      child.once("close", (exitCode) => {
+        void settleBackgroundProcess({
+          exitCode,
+          record,
+          status: "exited"
+        })
       })
 
       if (options?.stdin) {
@@ -1538,40 +2195,80 @@ export const createAgentExecutionEnv = ({
 
       child.stdin.end()
 
-      const [exitCode] = (await once(child, "close")) as [number | null]
-      const stdoutRemainder = stdoutDecoder.end()
-      const stderrRemainder = stderrDecoder.end()
+      return {
+        ok: true,
+        value: createBackgroundProcessSnapshot({
+          outputMaxChars,
+          record
+        })
+      }
+    },
+    stop: async (processId) => {
+      const record = backgroundProcessRecords.get(processId)
 
-      stdout = `${stdout}${stdoutRemainder}`
-      stderr = `${stderr}${stderrRemainder}`
-      emitOutput("stdout", stdoutRemainder)
-      emitOutput("stderr", stderrRemainder)
-      options?.onStdout?.(stdoutRemainder)
-      options?.onStderr?.(stderrRemainder)
+      if (!record) {
+        return createExecutionError({
+          code: "process-not-found",
+          message: `Background process ${processId} was not found.`
+        })
+      }
 
-      clearTimeout(timeout)
-      abortSignal?.removeEventListener("abort", abortCommand)
-
-      const executionError = getShellExecutionError({
-        abortSignal,
-        spawnError: spawnErrorRef.value,
-        stderr,
-        stdout,
-        timedOut
-      })
-
-      if (executionError) {
-        return executionError
+      if (!isBackgroundProcessTerminal(record.status)) {
+        record.stopRequested = true
+        record.terminator.terminate()
+        await record.closed
       }
 
       return {
         ok: true,
-        value: {
-          exitCode,
-          stderr,
-          stdout
-        }
+        value: createBackgroundProcessSnapshot({
+          outputMaxChars,
+          record
+        })
       }
+    }
+  }
+
+  const shell: AgentShell = {
+    cleanup: () => Promise.resolve(),
+    exec: async (command, options) => {
+      const abortSignal = options?.abortSignal
+
+      if (abortSignal?.aborted) {
+        return createCommandAbortedExecutionError()
+      }
+
+      const timeoutMs = options?.timeout ?? DEFAULT_AGENT_SHELL_TIMEOUT_MS
+      const resolvedCwd = resolveCwd(options?.cwd ?? "")
+      const sandboxedCommand = await sandbox.prepareShellCommand({
+        command,
+        cwd: resolvedCwd,
+        env: {
+          ...process.env,
+          ...options?.env
+        }
+      })
+
+      if (!sandboxedCommand.ok) {
+        return createExecutionError({
+          code: "spawn",
+          message: sandboxedCommand.error.message
+        })
+      }
+
+      if (abortSignal?.aborted) {
+        await sandboxedCommand.value.cleanup()
+
+        return createCommandAbortedExecutionError()
+      }
+
+      return executePreparedShellCommand({
+        abortSignal,
+        command,
+        options,
+        preparedCommand: sandboxedCommand.value,
+        timeoutMs
+      })
     }
   }
 
@@ -1592,10 +2289,55 @@ export const createAgentExecutionEnv = ({
     let timedOut = false
     const stderrDecoder = createCommandOutputDecoder()
     const stdoutDecoder = createCommandOutputDecoder()
-    const child = spawn("/bin/zsh", ["-lc", command], {
-      cwd: resolveCwd(cwd),
-      stdio: ["pipe", "pipe", "pipe"]
+    const resolvedCwd = resolveCwd(cwd)
+    const sandboxedCommand = await sandbox.prepareShellCommand({
+      command,
+      cwd: resolvedCwd,
+      env: process.env
     })
+
+    if (!sandboxedCommand.ok) {
+      const stderrOutput = clampToolOutput(
+        sandboxedCommand.error.message,
+        outputMaxChars
+      )
+
+      return {
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        outputRef: null,
+        stderrPreview: stderrOutput.content,
+        stdoutPreview: "",
+        status: "failed",
+        truncated: stderrOutput.truncated
+      }
+    }
+
+    if (abortSignal?.aborted) {
+      await sandboxedCommand.value.cleanup()
+
+      return {
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        outputRef: null,
+        stderrPreview: "Command aborted.",
+        stdoutPreview: "",
+        status: "failed",
+        truncated: false
+      }
+    }
+
+    const child = spawn(
+      sandboxedCommand.value.command,
+      sandboxedCommand.value.args,
+      {
+        cwd: sandboxedCommand.value.cwd,
+        detached: true,
+        env: sandboxedCommand.value.env,
+        stdio: ["pipe", "pipe", "pipe"]
+      }
+    )
+    const childTerminator = createChildProcessTerminator(child)
     const appendStderr = (chunk: Buffer): void => {
       stderr = `${stderr}${stderrDecoder.write(chunk)}`
     }
@@ -1604,10 +2346,10 @@ export const createAgentExecutionEnv = ({
     }
     const timeout = setTimeout(() => {
       timedOut = true
-      child.kill("SIGTERM")
+      childTerminator.terminate()
     }, timeoutMs)
     const abortCommand = (): void => {
-      child.kill("SIGTERM")
+      childTerminator.terminate()
     }
 
     child.stderr.on("data", appendStderr)
@@ -1625,7 +2367,10 @@ export const createAgentExecutionEnv = ({
     stdout = `${stdout}${stdoutDecoder.end()}`
     stderr = `${stderr}${stderrDecoder.end()}`
 
+    await sandboxedCommand.value.cleanup()
+
     clearTimeout(timeout)
+    childTerminator.cleanup()
     abortSignal?.removeEventListener("abort", abortCommand)
 
     let stderrText = stderr
@@ -1636,7 +2381,6 @@ export const createAgentExecutionEnv = ({
       stderrText = `${stderr}\nCommand timed out.`
     }
 
-    const resolvedCwd = resolveCwd(cwd)
     const stderrOutput = clampToolOutput(stderrText, outputMaxChars)
     const stdoutOutput = clampToolOutput(stdout, outputMaxChars)
     const truncated = stderrOutput.truncated || stdoutOutput.truncated
@@ -1665,10 +2409,12 @@ export const createAgentExecutionEnv = ({
   }
 
   return {
+    backgroundProcesses,
     fileSystem,
     projectPath: normalizedProjectPath,
     resolveCwd,
     runShellCommand,
+    sandbox,
     shell
   }
 }

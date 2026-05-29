@@ -159,7 +159,8 @@ const ChatComponent = () => {
 - 请求提交后、assistant 第一段内容到达前，chat viewport 会显示轻量 live 状态行，使用 [`tw-shimmer`](https://www.assistant-ui.com/tw-shimmer) 文本动画，而不是 spinner。
 - live 状态会根据当前流式内容切换文案：`memory-loading`（长期 memory 检索）、`model-start`（连接模型）、`waiting`（已提交）、`thinking`（`reasoning` part 或未闭合的 `<antThinking>`）、`tool-running`（终端类 tool 正在执行）、`receiving`（正文流式输出）。
 - `/api/chat` 通过 `createUIMessageStream` 发送 transient `data-chat-request-phase` 事件；renderer 的 `useChat({ onData })` 接收后更新 live 状态，不再把 memory 准备时间算进「无反馈等待」。
-- 长期 memory 检索在 UI stream 开始后异步执行（`buildMemorySystemPrompt`），完成后再 `writer.merge(result.toUIMessageStream())`；session memory、skills、`@` snapshot 仍在 route 层与 `convertToModelMessages` 并行准备。
+- 长期 memory 检索在 UI stream 开始后异步执行（`buildMemorySystemPrompt`），但仍必须在主模型调用前完成才能注入 system prompt；chat route 会给长期 memory 准备阶段设置短超时预算，超时或请求取消时跳过本轮长期 memory 注入，然后继续 `writer.merge(result.toUIMessageStream())`。
+- session memory、skills、`@` snapshot 仍在 route 层与 `convertToModelMessages` 并行准备，避免把本地确定性上下文也放进长期 memory 的慢路径。
 - 每次 `/api/chat` 请求会在服务端记录 `workTimeMs`，并写入最新 assistant 消息的 `metadata.workTimeMs`；renderer 在 assistant 回复开头展示用时，并在流式过程中实时刷新。
 - 命令输出使用 HeroUI + `TerminalOutput` 组件渲染，参考 [AI Elements Terminal](https://elements.ai-sdk.dev/components/terminal)，支持 ANSI 颜色、自动滚动、复制与流式光标。
 
@@ -201,7 +202,7 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 - `Capture`：chat session 与 Telegram chatbot 在 main process 捕获可持久化的文本上下文
 - `Summarize`：`settings.memory.autoSummarize` 开启后，使用 `settings.memory.memoryToolModel` 抽取长期有效的 summary、decision、fact 与 procedure；模型失败时回退到当前确定性压缩
 - `Embed`：`settings.memory.embeddingModel` 控制 semantic search 使用的 embedding model；空字符串表示默认 `text-embedding-3-small`，`local:*` 表示本地 embedding catalog
-- `Retrieve`：`settings.memory.autoRetrieve` 控制是否自动检索；`queryRewriting` 使用同一个 Memory Tool Model 改写用户消息；`maxRetrievedMemories` 与 `similarityThreshold` 控制注入预算和匹配严格度
+- `Retrieve`：`settings.memory.autoRetrieve` 控制是否自动检索；检索先走本地 lexical 快路径，只有没有命中时才进入 `queryRewriting` 与 embedding 慢路径；`queryRewriting` 使用同一个 Memory Tool Model 改写用户消息；`maxRetrievedMemories` 与 `similarityThreshold` 控制注入预算和匹配严格度
 - `Inject`：chat route 与 Telegram bridge 在构造 system prompt 时注入 long-term memory；位置保持在 session memory 之后、project snapshot / skills 之前
 - `Maintain`：main process 提供 dedupe、decay、archive 与 stale embedding diagnostics，后续可接入定时维护入口
 
@@ -213,7 +214,7 @@ assistant 消息下方固定展示一组本地 action，顺序为复制、好评
 - 写入层：`replaceChatMessages()` 在长期 memory 开启时，把当前 chat session 的最近文本消息 upsert 为 `source=chat-session`、`scope=project`
 - chatbot 写入：Telegram bridge 在 `settings.memory.includeChatbot` 开启时，把每个 Telegram chat 的最近消息 upsert 为 `source=chatbot`、`scope=chatbot`
 - embedding 层：`settings.memory.embeddingModel` 为空时使用默认 `text-embedding-3-small`；`local:*` 状态从本地模型目录实时推导，Settings 可触发模型文件安装，缺少本地 inference runtime 时仍返回明确失败
-- 检索层：`buildMemorySystemPrompt()` 结合 lexical score、embedding similarity、recency、scope 与 access count 做 hybrid ranking，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
+- 检索层：`buildMemorySystemPrompt()` 先用本地 lexical score、recency、scope 与 access count 尝试快速命中；如果没有可用条目，再结合 query rewrite、embedding similarity、recency、scope 与 access count 做 hybrid ranking，并按 `settings.memory.maxRetrievedMemories` 控制注入条数
 - 控制层：`settings.memory.enabled` 关闭长期 memory；`autoRetrieve` 控制是否自动检索与注入；`shareAcrossProjects` 控制 project memory 是否跨 project；`includeChatbot` 控制 chatbot memory 是否读写同一套存储
 - 注入层：`/api/chat` 会把 long-term memory 放在 session memory 与 project snapshot context 之间；Telegram bridge 会把 long-term memory 追加到 Telegram system prompt 后
 

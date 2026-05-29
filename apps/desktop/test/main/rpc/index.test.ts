@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
+import { AppSettingsSchema } from "@etyon/rpc"
 import { createORPCClient } from "@orpc/client"
 import { RPCLink } from "@orpc/client/message-port"
 import type { RouterClient } from "@orpc/server"
@@ -11,22 +12,38 @@ import {
   appendAgentEvent,
   createAgentRun,
   listAgentEvents,
+  listPendingAgentApprovals,
+  listAgentToolCalls,
+  recordAgentArtifact,
   recordAgentToolCall,
   updateAgentRun
 } from "@/main/agents/agent-event-store"
-import { listPendingAgentSessionQueuedMessages } from "@/main/agents/agent-session-events"
+import { createAgentKernel } from "@/main/agents/agent-kernel"
+import type { AgentLoopModel } from "@/main/agents/agent-loop"
+import {
+  appendAgentSessionModelMessageEvents,
+  listPendingAgentSessionQueuedMessages
+} from "@/main/agents/agent-session-events"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { createMessagePortRpcContext } from "@/main/rpc/context"
 import type { AppRouter } from "@/main/rpc/router"
 import { router } from "@/main/rpc/router"
+import { updateSettings } from "@/main/settings"
 
-const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
+import {
+  createFauxGenerateTextResponse,
+  createFauxGenerateToolCallResponse,
+  createFauxProvider
+} from "../agents/faux-provider"
+
+const { mockedAppPath, mockedHomeDir, mockedResolveModel } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
     ? process.cwd()
     : `${process.cwd()}/apps/desktop`,
-  mockedHomeDir: `/tmp/etyon-rpc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  mockedHomeDir: `/tmp/etyon-rpc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  mockedResolveModel: vi.fn()
 }))
 
 vi.mock("@electron-toolkit/utils", () => ({
@@ -84,6 +101,10 @@ vi.mock("electron", () => {
     default: electronMock
   }
 })
+
+vi.mock("@/main/server/lib/providers", () => ({
+  resolveModel: mockedResolveModel
+}))
 
 describe("message-port rpc", () => {
   afterAll(() => {
@@ -415,6 +436,1070 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("lists agent runs for a chat session workbench", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-workbench")
+    })
+    const otherSession = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-workbench-other")
+    })
+    const rootRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const childRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      parentRunId: rootRun.id,
+      profileId: "review"
+    })
+    const otherRun = await createAgentRun({
+      chatSessionId: otherSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.listRuns({
+      limit: 10,
+      sessionId: session.id
+    })
+    const runIds = result.runs.map((run) => run.id)
+
+    expect(runIds).toContain(rootRun.id)
+    expect(runIds).toContain(childRun.id)
+    expect(runIds).not.toContain(otherRun.id)
+    expect(result.runs).toContainEqual(
+      expect.objectContaining({
+        chatSessionId: session.id,
+        id: childRun.id,
+        parentRunId: rootRun.id,
+        profileId: "review"
+      })
+    )
+
+    port1.close()
+    port2.close()
+  })
+
+  it("exposes agent run graph template previews over the message-port adapter", async () => {
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const templates = await client.agents.listRunGraphTemplates()
+    const preview = await client.agents.previewRunGraphTemplate({
+      templateId: "plan-execute-review"
+    })
+
+    expect(templates.templates.map((template) => template.id)).toEqual([
+      "solo-coder",
+      "plan-execute-review",
+      "investigation",
+      "harness-debug"
+    ])
+    expect(preview.plan.stages).toEqual([
+      expect.objectContaining({
+        nodeIds: ["plan"],
+        parallel: false
+      }),
+      expect.objectContaining({
+        nodeIds: ["explore-code", "explore-tests"],
+        parallel: true
+      }),
+      expect.objectContaining({
+        nodeIds: ["coder"],
+        parallel: false
+      }),
+      expect.objectContaining({
+        nodeIds: ["review"],
+        parallel: false
+      }),
+      expect.objectContaining({
+        nodeIds: ["final"],
+        parallel: false
+      })
+    ])
+    expect(
+      preview.plan.nodes.find((node) => node.id === "coder")
+    ).toMatchObject({
+      activeToolNames: expect.arrayContaining([
+        "read",
+        "bash",
+        "edit",
+        "write"
+      ]),
+      status: "pending",
+      toolScope: "approval-gated"
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("instantiates agent run graph templates over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-run-graph")
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.instantiateRunGraphTemplate({
+      modelId: "openai/gpt-4.1",
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const events = await listAgentEvents({
+      db: getDb(),
+      runId: result.run.id
+    })
+
+    expect(result.run).toMatchObject({
+      chatSessionId: session.id,
+      modelId: "openai/gpt-4.1",
+      parentRunId: null,
+      profileId: "general-purpose",
+      status: "running"
+    })
+    expect(result.plan).toMatchObject({
+      id: "investigation",
+      stages: [
+        expect.objectContaining({
+          nodeIds: ["plan"],
+          parallel: false
+        }),
+        expect.objectContaining({
+          nodeIds: ["explore"],
+          parallel: false
+        }),
+        expect.objectContaining({
+          nodeIds: ["synthesize"],
+          parallel: false
+        })
+      ]
+    })
+    expect(events).toEqual([
+      expect.objectContaining({
+        payload: {
+          plan: result.plan,
+          templateId: "investigation"
+        },
+        runId: result.run.id,
+        sequence: 1,
+        type: "agent_run_graph_instantiated"
+      })
+    ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("starts ready agent run graph stages over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-run-graph-start")
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "plan-execute-review"
+    })
+    const firstStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const secondAttempt = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(firstStage.stage).toMatchObject({
+      nodeIds: ["plan"],
+      parallel: false
+    })
+    expect(firstStage.startedNodeIds).toEqual(["plan"])
+    expect(firstStage.startedRuns).toEqual([
+      expect.objectContaining({
+        parentRunId: instance.run.id,
+        profileId: "plan",
+        status: "running"
+      })
+    ])
+    expect(
+      firstStage.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      childRunId: firstStage.startedRuns[0]?.id,
+      status: "running"
+    })
+    expect(secondAttempt).toMatchObject({
+      stage: null,
+      startedNodeIds: [],
+      startedRuns: []
+    })
+
+    await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        nodeId: "plan"
+      },
+      runId: instance.run.id,
+      type: "agent_run_graph_node_succeeded"
+    })
+
+    const exploreStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(exploreStage.stage).toMatchObject({
+      nodeIds: ["explore-code", "explore-tests"],
+      parallel: true
+    })
+    expect(exploreStage.startedNodeIds).toEqual([
+      "explore-code",
+      "explore-tests"
+    ])
+    expect(exploreStage.startedRuns).toEqual([
+      expect.objectContaining({
+        parentRunId: instance.run.id,
+        profileId: "explore",
+        status: "running"
+      }),
+      expect.objectContaining({
+        parentRunId: instance.run.id,
+        profileId: "explore",
+        status: "running"
+      })
+    ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("advances agent run graphs from finished child runs", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-run-graph-advance"
+      )
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "plan-execute-review"
+    })
+    const firstStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const planChildRunId = firstStage.startedRuns[0]?.id
+
+    if (!planChildRunId) {
+      throw new Error("Expected graph plan child run to start.")
+    }
+
+    await updateAgentRun({
+      db: getDb(),
+      id: planChildRunId,
+      status: "succeeded"
+    })
+
+    const advanced = await client.agents.advanceRunGraph({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(advanced.settledNodeIds).toEqual(["plan"])
+    expect(
+      advanced.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      childRunId: planChildRunId,
+      status: "succeeded"
+    })
+    expect(advanced.stage).toMatchObject({
+      nodeIds: ["explore-code", "explore-tests"],
+      parallel: true
+    })
+    expect(advanced.startedNodeIds).toEqual(["explore-code", "explore-tests"])
+    expect(advanced.startedRuns).toEqual([
+      expect.objectContaining({
+        parentRunId: instance.run.id,
+        profileId: "explore",
+        status: "running"
+      }),
+      expect.objectContaining({
+        parentRunId: instance.run.id,
+        profileId: "explore",
+        status: "running"
+      })
+    ])
+
+    const secondAdvance = await client.agents.advanceRunGraph({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(secondAdvance).toMatchObject({
+      settledNodeIds: [],
+      stage: null,
+      startedNodeIds: [],
+      startedRuns: []
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("executes a running agent graph node with the self-managed loop", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-run-graph-execute"
+      )
+    })
+    const kernel = createAgentKernel({
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      }).agents
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db: getDb(),
+      task: "Find the files related to provider settings.",
+      templateId: "plan-execute-review"
+    })
+    const firstStage = await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db: getDb(),
+      rootRunId: instance.rootRun.id
+    })
+    const modelMessages: string[] = []
+    const model: AgentLoopModel = ({ availableToolNames, messages }) => {
+      const [firstMessage] = messages
+
+      modelMessages.push(
+        firstMessage?.role === "user" || firstMessage?.role === "system"
+          ? firstMessage.content
+          : ""
+      )
+
+      return {
+        content: `Plan references provider settings with ${availableToolNames.length} executable tools.`,
+        toolCalls: []
+      }
+    }
+
+    expect(firstStage.startedNodeIds).toEqual(["plan"])
+
+    const executed = await kernel.executeRunGraphNode({
+      chatSessionId: session.id,
+      db: getDb(),
+      model,
+      rootRunId: instance.rootRun.id
+    })
+    const events = await listAgentEvents({
+      db: getDb(),
+      runId: instance.rootRun.id
+    })
+
+    expect(modelMessages[0]).toContain(
+      "Find the files related to provider settings."
+    )
+    expect(modelMessages[0]).toContain("Output contract:")
+    expect(executed).toMatchObject({
+      nodeId: "plan",
+      settledNodeIds: ["plan"],
+      stopReason: "final",
+      turns: 1
+    })
+    expect(executed.childRun).toMatchObject({
+      id: firstStage.startedRuns[0]?.id,
+      parentRunId: instance.rootRun.id,
+      status: "succeeded"
+    })
+    expect(
+      executed.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      childRunId: firstStage.startedRuns[0]?.id,
+      status: "succeeded"
+    })
+    expect(executed.startedNodeIds).toEqual(["explore-code", "explore-tests"])
+    expect(events.map((event) => event.type)).toContain(
+      "agent_run_graph_node_succeeded"
+    )
+
+    const explorePrompts: string[] = []
+    const exploreModel: AgentLoopModel = ({ messages }) => {
+      const [firstMessage] = messages
+
+      explorePrompts.push(
+        firstMessage?.role === "user" || firstMessage?.role === "system"
+          ? firstMessage.content
+          : ""
+      )
+
+      return {
+        content: "Explored provider settings references.",
+        toolCalls: []
+      }
+    }
+
+    await kernel.executeRunGraphNode({
+      chatSessionId: session.id,
+      db: getDb(),
+      model: exploreModel,
+      nodeId: "explore-code",
+      rootRunId: instance.rootRun.id
+    })
+
+    expect(explorePrompts[0]).toContain("Dependency outputs:")
+    expect(explorePrompts[0]).toContain("Dependency plan output:")
+    expect(explorePrompts[0]).toContain("Plan references provider settings")
+  })
+
+  it("retries failed agent graph nodes over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-run-graph-retry")
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const firstStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const planChildRunId = firstStage.startedRuns[0]?.id
+
+    if (!planChildRunId) {
+      throw new Error("Expected graph plan child run to start.")
+    }
+
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "non-retryable assertion mismatch",
+      id: planChildRunId,
+      status: "failed"
+    })
+
+    const advanced = await client.agents.advanceRunGraph({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const retried = await client.agents.retryRunGraphNode({
+      nodeId: "plan",
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const retryEvents = await listAgentEvents({
+      db: getDb(),
+      runId: instance.run.id
+    })
+
+    expect(
+      advanced.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      attempt: 1,
+      errorMessage: "non-retryable assertion mismatch",
+      status: "failed"
+    })
+    expect(retried).toMatchObject({
+      retriedNodeId: "plan",
+      startedNodeIds: ["plan"]
+    })
+    expect(retried.plan.nodes.find((node) => node.id === "plan")).toMatchObject(
+      {
+        attempt: 2,
+        errorMessage: "non-retryable assertion mismatch",
+        status: "running"
+      }
+    )
+    expect(retried.startedRuns[0]?.id).not.toBe(planChildRunId)
+    expect(retryEvents.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "agent_run_graph_checkpoint_created",
+        "agent_run_graph_node_retrying"
+      ])
+    )
+
+    port1.close()
+    port2.close()
+  })
+
+  it("automatically retries transient failed agent graph nodes once", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-run-graph-auto-retry"
+      )
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const firstStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const planChildRunId = firstStage.startedRuns[0]?.id
+
+    if (!planChildRunId) {
+      throw new Error("Expected graph plan child run to start.")
+    }
+
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "provider timeout while generating plan",
+      id: planChildRunId,
+      status: "failed"
+    })
+
+    const advanced = await client.agents.advanceRunGraph({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const retryEvents = await listAgentEvents({
+      db: getDb(),
+      runId: instance.run.id
+    })
+    const retryingEvent = retryEvents.find(
+      (event) => event.type === "agent_run_graph_node_retrying"
+    )
+
+    expect(advanced).toMatchObject({
+      settledNodeIds: ["plan"],
+      startedNodeIds: ["plan"]
+    })
+    expect(
+      advanced.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      attempt: 2,
+      errorMessage: "provider timeout while generating plan",
+      status: "running"
+    })
+    expect(advanced.startedRuns[0]?.id).not.toBe(planChildRunId)
+    expect(retryingEvent?.payload).toMatchObject({
+      automatic: true,
+      nodeId: "plan"
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("executes a running agent graph node through an AI SDK provider", async () => {
+    await ensureDatabaseReady()
+
+    const projectPath = path.join(
+      mockedHomeDir,
+      ".config",
+      "etyon-run-graph-ai-sdk"
+    )
+
+    fs.mkdirSync(path.join(projectPath, "src"), {
+      recursive: true
+    })
+    fs.writeFileSync(
+      path.join(projectPath, "src", "provider-settings.ts"),
+      "export const providerFlag = true\n"
+    )
+
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      }
+    })
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const faux = createFauxProvider({
+      modelId: "mock-model"
+    })
+
+    faux.setGenerateResponses([
+      createFauxGenerateToolCallResponse({
+        input: {
+          path: "src/provider-settings.ts"
+        },
+        modelId: "mock-model",
+        toolCallId: "read-call-1",
+        toolName: "read"
+      }),
+      createFauxGenerateTextResponse("Provider settings file inspected.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db: getDb(),
+      task: "Inspect provider settings.",
+      templateId: "investigation"
+    })
+
+    await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db: getDb(),
+      rootRunId: instance.rootRun.id
+    })
+
+    const executed = await kernel.executeRunGraphNodeWithAiSdk({
+      chatSessionId: session.id,
+      db: getDb(),
+      maxTurns: 2,
+      memorySettings: settings.memory,
+      model: faux.model,
+      projectPath,
+      rootRunId: instance.rootRun.id
+    })
+    const childEvents = await listAgentEvents({
+      db: getDb(),
+      runId: executed.childRun.id
+    })
+    const childToolCalls = await listAgentToolCalls({
+      db: getDb(),
+      runId: executed.childRun.id
+    })
+    const secondProviderPrompt = JSON.stringify(
+      faux.model.doGenerateCalls[1]?.prompt
+    )
+
+    expect(faux.model.doGenerateCalls).toHaveLength(2)
+    expect(
+      faux.model.doGenerateCalls[0]?.tools?.map((item) => item.name).toSorted()
+    ).toEqual(["find", "grep", "ls", "read"])
+    expect(secondProviderPrompt).toContain("providerFlag")
+    expect(executed).toMatchObject({
+      nodeId: "plan",
+      settledNodeIds: ["plan"],
+      stopReason: "final",
+      turns: 2
+    })
+    expect(childToolCalls).toEqual([
+      expect.objectContaining({
+        id: "read-call-1",
+        runId: executed.childRun.id,
+        state: "finished",
+        toolName: "read"
+      })
+    ])
+    expect(childEvents.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "agent_loop_event",
+        "agent_run_finished",
+        "agent_run_started",
+        "agent_step_started",
+        "tool_call_finished",
+        "tool_call_started"
+      ])
+    )
+  })
+
+  it("suspends and resumes AI SDK agent graph node tool approvals", async () => {
+    await ensureDatabaseReady()
+
+    const projectPath = path.join(
+      mockedHomeDir,
+      ".config",
+      "etyon-run-graph-ai-sdk-approval"
+    )
+
+    fs.mkdirSync(path.join(projectPath, "src"), {
+      recursive: true
+    })
+
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      }
+    })
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const faux = createFauxProvider({
+      modelId: "mock-model"
+    })
+
+    faux.setGenerateResponses([
+      createFauxGenerateToolCallResponse({
+        input: {
+          content: "approved write\n",
+          path: "src/generated.txt"
+        },
+        modelId: "mock-model",
+        toolCallId: "write-call-1",
+        toolName: "write"
+      }),
+      createFauxGenerateTextResponse("Write completed.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db: getDb(),
+      task: "Create a generated file.",
+      templateId: "solo-coder"
+    })
+
+    await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db: getDb(),
+      rootRunId: instance.rootRun.id
+    })
+
+    const suspended = await kernel.executeRunGraphNodeWithAiSdk({
+      chatSessionId: session.id,
+      db: getDb(),
+      maxTurns: 1,
+      memorySettings: settings.memory,
+      model: faux.model,
+      projectPath,
+      rootRunId: instance.rootRun.id
+    })
+    const approvals = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db: getDb()
+    })
+    const [approval] = approvals
+
+    expect(suspended).toMatchObject({
+      nodeId: "coder",
+      settledNodeIds: [],
+      stopReason: "suspended",
+      turns: 1
+    })
+    expect(suspended.childRun).toMatchObject({
+      parentRunId: instance.rootRun.id,
+      status: "suspended"
+    })
+    expect(
+      suspended.plan.nodes.find((node) => node.id === "coder")
+    ).toMatchObject({
+      childRunId: suspended.childRun.id,
+      status: "suspended"
+    })
+    expect(fs.existsSync(path.join(projectPath, "src", "generated.txt"))).toBe(
+      false
+    )
+    expect(approval).toMatchObject({
+      approvalId: expect.stringMatching(/^graph-tool-approval-/u),
+      id: "write-call-1",
+      runId: suspended.childRun.id,
+      runStatus: "suspended",
+      state: "approval_requested",
+      toolName: "write"
+    })
+
+    const resumed = await kernel.resumeRunGraphNodeApprovalWithAiSdk({
+      approvalId: approval?.approvalId ?? "",
+      approved: true,
+      chatSessionId: session.id,
+      db: getDb(),
+      maxTurns: 1,
+      memorySettings: settings.memory,
+      model: faux.model,
+      projectPath,
+      rootRunId: instance.rootRun.id,
+      toolCallId: "write-call-1"
+    })
+    const childToolCalls = await listAgentToolCalls({
+      db: getDb(),
+      runId: suspended.childRun.id
+    })
+    const childEvents = await listAgentEvents({
+      db: getDb(),
+      runId: suspended.childRun.id
+    })
+    const rootEvents = await listAgentEvents({
+      db: getDb(),
+      runId: instance.rootRun.id
+    })
+    const pendingAfterResume = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db: getDb()
+    })
+
+    expect(
+      fs.readFileSync(path.join(projectPath, "src", "generated.txt"), "utf-8")
+    ).toBe("approved write\n")
+    expect(faux.model.doGenerateCalls).toHaveLength(2)
+    expect(resumed).toMatchObject({
+      nodeId: "coder",
+      settledNodeIds: ["coder"],
+      startedNodeIds: ["review"],
+      stopReason: "final",
+      turns: 1
+    })
+    expect(
+      resumed.plan.nodes.find((node) => node.id === "coder")
+    ).toMatchObject({
+      status: "succeeded"
+    })
+    expect(childToolCalls).toEqual([
+      expect.objectContaining({
+        approvalState: "approved",
+        id: "write-call-1",
+        runId: suspended.childRun.id,
+        state: "finished",
+        toolName: "write"
+      })
+    ])
+    expect(childEvents.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "agent_run_finished",
+        "tool_call_approval_requested",
+        "tool_call_approved",
+        "tool_call_finished"
+      ])
+    )
+    expect(rootEvents.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "agent_run_graph_node_resumed",
+        "agent_run_graph_node_succeeded",
+        "agent_run_graph_node_suspended"
+      ])
+    )
+    expect(pendingAfterResume).toEqual([])
+  })
+
+  it("responds to suspended run graph approvals over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const projectPath = path.join(
+      mockedHomeDir,
+      ".config",
+      "etyon-run-graph-rpc-approval"
+    )
+
+    fs.mkdirSync(path.join(projectPath, "src"), {
+      recursive: true
+    })
+
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      }
+    })
+
+    updateSettings({
+      agents: settings.agents
+    })
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath
+    })
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const faux = createFauxProvider({
+      modelId: "mock-model"
+    })
+
+    faux.setGenerateResponses([
+      createFauxGenerateToolCallResponse({
+        input: {
+          content: "rpc approved write\n",
+          path: "src/rpc-generated.txt"
+        },
+        modelId: "mock-model",
+        toolCallId: "write-call-rpc",
+        toolName: "write"
+      }),
+      createFauxGenerateTextResponse("RPC write completed.", {
+        modelId: "mock-model"
+      })
+    ])
+    mockedResolveModel.mockReturnValue(faux.model)
+
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db: getDb(),
+      task: "Create a generated file through RPC approval.",
+      templateId: "solo-coder"
+    })
+
+    await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db: getDb(),
+      rootRunId: instance.rootRun.id
+    })
+    const suspended = await kernel.executeRunGraphNodeWithAiSdk({
+      chatSessionId: session.id,
+      db: getDb(),
+      maxTurns: 1,
+      memorySettings: settings.memory,
+      model: faux.model,
+      projectPath,
+      rootRunId: instance.rootRun.id
+    })
+    const [approval] = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db: getDb()
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const result = await client.agents.respondToRunGraphApproval({
+      approvalId: approval?.approvalId ?? "",
+      approved: true,
+      rootRunId: instance.rootRun.id,
+      sessionId: session.id,
+      toolCallId: approval?.id ?? ""
+    })
+    const pendingAfterResume = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db: getDb()
+    })
+
+    expect(suspended.stopReason).toBe("suspended")
+    expect(result).toMatchObject({
+      childRun: {
+        id: suspended.childRun.id,
+        status: "succeeded"
+      },
+      nodeId: "coder",
+      run: {
+        id: instance.rootRun.id
+      },
+      settledNodeIds: ["coder"]
+    })
+    expect(
+      fs.readFileSync(
+        path.join(projectPath, "src", "rpc-generated.txt"),
+        "utf-8"
+      )
+    ).toBe("rpc approved write\n")
+    expect(pendingAfterResume).toEqual([])
+
+    port1.close()
+    port2.close()
+  })
+
   it("queues agent steering over the message-port adapter", async () => {
     await ensureDatabaseReady()
 
@@ -555,6 +1640,145 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("manages agent session tree navigation over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-session-tree")
+    })
+    const otherSession = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-session-tree-other"
+      )
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await appendAgentSessionModelMessageEvents({
+      messages: [
+        {
+          content: "Start.",
+          role: "user"
+        },
+        {
+          content: "Old branch.",
+          role: "assistant"
+        }
+      ],
+      run
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const afterMove = await client.agents.moveSessionLeaf({
+      branchSummary: "Forked after start.",
+      entryId: "entry-1",
+      runId: run.id,
+      sessionId: session.id
+    })
+
+    expect(afterMove.context).toEqual([
+      {
+        content: "Start.",
+        role: "user",
+        type: "model"
+      },
+      {
+        content: "Branch summary:\nForked after start.",
+        role: "system",
+        type: "model"
+      }
+    ])
+    expect(afterMove.entries.map((entry) => entry.type)).toEqual([
+      "message",
+      "leaf",
+      "message",
+      "leaf",
+      "branch_summary",
+      "leaf"
+    ])
+    expect(afterMove.run).toEqual(
+      expect.objectContaining({
+        chatSessionId: session.id,
+        id: run.id
+      })
+    )
+
+    await appendAgentSessionModelMessageEvents({
+      messages: [
+        {
+          content: "New branch.",
+          role: "assistant"
+        }
+      ],
+      run
+    })
+
+    const afterCompaction = await client.agents.appendSessionCompactionSummary({
+      runId: run.id,
+      sessionId: session.id,
+      summary: "The new branch has enough context to continue."
+    })
+
+    expect(afterCompaction.context).toEqual([
+      {
+        content:
+          "Compaction summary:\nThe new branch has enough context to continue.",
+        role: "system",
+        type: "model"
+      }
+    ])
+    expect(afterCompaction.entries.map((entry) => entry.type)).toContain(
+      "compaction_summary"
+    )
+    expect(
+      await client.agents.inspectSession({
+        runId: run.id,
+        sessionId: session.id
+      })
+    ).toEqual(afterCompaction)
+    await expect(
+      client.agents.moveSessionLeaf({
+        entryId: "missing-entry",
+        runId: run.id,
+        sessionId: session.id
+      })
+    ).rejects.toThrow()
+    await expect(
+      client.agents.inspectSession({
+        runId: run.id,
+        sessionId: otherSession.id
+      })
+    ).rejects.toThrow()
+    expect(
+      await client.agents.inspectSession({
+        runId: run.id,
+        sessionId: session.id
+      })
+    ).toEqual(afterCompaction)
+
+    port1.close()
+    port2.close()
+  })
+
   it("inspects an agent run trace over the message-port adapter", async () => {
     await ensureDatabaseReady()
 
@@ -588,6 +1812,21 @@ describe("message-port rpc", () => {
       runId: run.id,
       state: "finished",
       toolName: "readFile"
+    })
+    const artifactPath = path.join(mockedHomeDir, "rpc-tool-output.json")
+    const artifactContent = "abcdef"
+    fs.mkdirSync(mockedHomeDir, { recursive: true })
+    fs.writeFileSync(artifactPath, artifactContent)
+    const artifact = await recordAgentArtifact({
+      byteLength: Buffer.byteLength(artifactContent),
+      db: getDb(),
+      kind: "command-output",
+      metadata: {
+        toolName: "readFile"
+      },
+      path: artifactPath,
+      runId: run.id,
+      toolCallId: "rpc-tool-call-1"
     })
 
     const { port1, port2 } = new MessageChannel()
@@ -635,6 +1874,35 @@ describe("message-port rpc", () => {
         toolName: "readFile"
       })
     ])
+    expect(result.artifacts).toEqual([
+      expect.objectContaining({
+        byteLength: Buffer.byteLength(artifactContent),
+        kind: "command-output",
+        metadata: {
+          toolName: "readFile"
+        },
+        path: artifactPath,
+        runId: run.id,
+        toolCallId: "rpc-tool-call-1"
+      })
+    ])
+    await expect(
+      client.agents.readArtifact({
+        artifactId: artifact.id,
+        maxChars: 4,
+        sessionId: session.id
+      })
+    ).resolves.toMatchObject({
+      artifact: expect.objectContaining({
+        id: artifact.id,
+        path: artifactPath,
+        runId: run.id
+      }),
+      content: "abcd",
+      omittedChars: 2,
+      totalChars: 6,
+      truncated: true
+    })
 
     port1.close()
     port2.close()

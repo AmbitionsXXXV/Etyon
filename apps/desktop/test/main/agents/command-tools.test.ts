@@ -60,41 +60,6 @@ const { spawnedChildren, spawnedCommands, spawnMock } = vi.hoisted(() => {
       write: ReturnType<typeof vi.fn>
     }
   }[] = []
-  const getMockStdout = (shellCommand: string): string => {
-    if (shellCommand.startsWith("rg ")) {
-      if (!shellCommand.includes("--json")) {
-        return "src/search.ts:1:export const needle = true\n"
-      }
-
-      return `${JSON.stringify({
-        data: {
-          line_number: 1,
-          lines: {
-            text: "export const needle = true\n"
-          },
-          path: {
-            text: "src/search.ts"
-          },
-          submatches: [
-            {
-              start: 13
-            }
-          ]
-        },
-        type: "match"
-      })}\n`
-    }
-
-    if (shellCommand.includes("large-output")) {
-      return "x".repeat(AGENT_TOOL_OUTPUT_MAX_CHARS + 1)
-    }
-
-    if (shellCommand.includes("slow-output")) {
-      return "partial before timeout\n"
-    }
-
-    return "approved\n"
-  }
   const childProcessSpawnMock = vi.fn((command: string, args: string[]) => {
     commandLog.push([command, ...args].join(" "))
 
@@ -121,7 +86,35 @@ const { spawnedChildren, spawnedCommands, spawnMock } = vi.hoisted(() => {
 
     queueMicrotask(() => {
       const shellCommand = args[1] ?? ""
-      const stdout = getMockStdout(shellCommand)
+      let stdout = "approved\n"
+
+      if (shellCommand.startsWith("fd ")) {
+        stdout = "/tmp/etyon-agent-command-tools/src/search.ts\n"
+      } else if (shellCommand.startsWith("rg ")) {
+        stdout = shellCommand.includes("--json")
+          ? `${JSON.stringify({
+              data: {
+                line_number: 1,
+                lines: {
+                  text: "export const needle = true\n"
+                },
+                path: {
+                  text: "src/search.ts"
+                },
+                submatches: [
+                  {
+                    start: 13
+                  }
+                ]
+              },
+              type: "match"
+            })}\n`
+          : "src/search.ts:1:export const needle = true\n"
+      } else if (shellCommand.includes("large-output")) {
+        stdout = "x".repeat(AGENT_TOOL_OUTPUT_MAX_CHARS + 1)
+      } else if (shellCommand.includes("slow-output")) {
+        stdout = "partial before timeout\n"
+      }
 
       child.stdout.emit("data", Buffer.from(stdout))
       if (shellCommand.includes("slow-output")) {
@@ -267,7 +260,7 @@ describe("agent command tools", () => {
     const abortController = new AbortController()
     const resultPromise = tools.bash?.execute?.(
       {
-        command: "echo approved"
+        command: "slow-output"
       },
       {
         abortSignal: abortController.signal,
@@ -275,6 +268,9 @@ describe("agent command tools", () => {
       }
     )
 
+    await vi.waitFor(() => {
+      expect(spawnedChildren).toHaveLength(1)
+    })
     abortController.abort()
 
     await expect(resultPromise).rejects.toThrow("Command aborted.")
@@ -310,7 +306,41 @@ describe("agent command tools", () => {
     expect(spawnMock).not.toHaveBeenCalled()
   })
 
-  it("executes grep through the shell adapter", async () => {
+  it("executes find through fd", async () => {
+    fs.mkdirSync("/tmp/etyon-agent-command-tools", { recursive: true })
+
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+    const tools = buildAgentTools({
+      projectPath: "/tmp/etyon-agent-command-tools",
+      settings
+    })
+    const result = await tools.find?.execute?.(
+      {
+        pattern: "*.ts"
+      },
+      {
+        messages: [],
+        toolCallId: "tool-call-1"
+      }
+    )
+
+    expect(result).toMatchObject({
+      content: [
+        {
+          text: "src/search.ts",
+          type: "text"
+        }
+      ]
+    })
+    expect(spawnedCommands[0]).toContain("/bin/zsh -fc fd --glob")
+  })
+
+  it("executes grep through ripgrep", async () => {
     fs.mkdirSync("/tmp/etyon-agent-command-tools/src", { recursive: true })
     fs.writeFileSync(
       "/tmp/etyon-agent-command-tools/src/search.ts",
@@ -340,12 +370,12 @@ describe("agent command tools", () => {
     expect(result).toMatchObject({
       content: [
         {
-          text: "src/search.ts:1:export const needle = true",
+          text: "src/search.ts:1: export const needle = true",
           type: "text"
         }
       ]
     })
-    expect(spawnedCommands[0]).toContain("/bin/zsh -fc rg --line-number")
+    expect(spawnedCommands[0]).toContain("/bin/zsh -fc rg --json")
   })
 
   it("does not expose legacy searchFiles on the coder surface", () => {

@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises"
+
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { LanguageModel } from "ai"
 import { describe, expect, it, vi } from "vite-plus/test"
@@ -85,6 +87,60 @@ describe("buildChatStreamResponse", () => {
     })
     expect(streamOptions?.skillCapabilities).toEqual(["write-fs"])
     expect(responseText).toContain("agent-turn")
+  })
+
+  it("starts the model stream when long-term memory retrieval times out", async () => {
+    const streamResult = {
+      toUIMessageStream: () =>
+        new ReadableStream({
+          start(controller) {
+            controller.close()
+          }
+        })
+    } as Awaited<ReturnType<typeof streamAgentChat>>
+    const streamAgentChatMock = vi.fn(
+      (_options: Parameters<typeof streamAgentChat>[0]) =>
+        Promise.resolve(streamResult)
+    )
+    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
+
+    const response = buildChatStreamResponse({
+      abortSignal: new AbortController().signal,
+      buildLongTermMemorySystem: async ({ abortSignal }) => {
+        await delay(50, undefined, { signal: abortSignal })
+
+        return "late memory"
+      },
+      db,
+      memoryRetrievalTimeoutMs: 1,
+      messages: [
+        {
+          id: "message-1",
+          parts: [],
+          role: "user"
+        }
+      ],
+      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
+      modelId: "openai/gpt-4.1",
+      modelMessages: [],
+      moonshotReasoningForAssistantToolCalls: [],
+      onFinishPersist: () => Promise.resolve(),
+      projectPath: "/tmp/project-a",
+      requestStartedAt: Date.now(),
+      sessionId: "session-1",
+      settings: AppSettingsSchema.parse({}),
+      shouldRetrieveLongTermMemory: true,
+      streamAgentChat: streamAgentChatMock,
+      systemPrompts: []
+    })
+
+    const responseText = await readResponseText(response)
+    const streamOptions = streamAgentChatMock.mock.calls[0]?.[0]
+
+    expect(responseText).toContain("memory-loading")
+    expect(responseText).toContain("model-start")
+    expect(streamAgentChatMock).toHaveBeenCalledTimes(1)
+    expect(streamOptions?.systemPrompts).toEqual([])
   })
 
   it("routes /plan requests through the plan profile without sending the command token to the model", async () => {

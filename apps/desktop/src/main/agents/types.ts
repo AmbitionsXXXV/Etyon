@@ -12,6 +12,7 @@ export const AGENT_TOOL_NAMES = [
   "grep",
   "find",
   "ls",
+  "inspect",
   "searchFiles",
   "findFiles",
   "fileInfo",

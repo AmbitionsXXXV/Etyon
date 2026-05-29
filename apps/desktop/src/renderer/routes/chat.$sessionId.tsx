@@ -2,6 +2,7 @@ import { useChat } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type {
   AgentSessionQueuedMessageQueue,
+  AgentRetrySettings,
   ChatMention,
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
@@ -38,6 +39,7 @@ import { isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
+import { AgentWorkbenchPanel } from "@/renderer/components/chat/agent-workbench-panel"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import {
   MessageActions,
@@ -91,6 +93,7 @@ import type {
 } from "@/renderer/lib/chat/prompt-input"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
 import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
+import { respondToAssistantToolApproval } from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
@@ -1103,6 +1106,7 @@ const ChatMessageItem = ({
 }
 
 const ChatRuntime = ({
+  agentRetrySettings,
   agentsEnabled,
   gitDiff,
   isLoadingFileItems,
@@ -1136,6 +1140,7 @@ const ChatRuntime = ({
   transport
 }: {
   agentsEnabled: boolean
+  agentRetrySettings?: AgentRetrySettings
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
@@ -1361,15 +1366,12 @@ const ChatRuntime = ({
 
   const handleToolApprovalResponse = useCallback(
     (part: ChatToolPart, approved: boolean) => {
-      if (part.state !== "approval-requested") {
-        return
-      }
-
-      void addToolApprovalResponse({
+      respondToAssistantToolApproval({
+        addToolApprovalResponse,
         approved,
-        id: part.approval.id,
-        options: buildChatRequestOptions(latestUserMentions),
-        reason: approved ? undefined : "Denied in chat UI."
+        buildChatRequestOptions,
+        latestUserMentions,
+        part
       })
     },
     [addToolApprovalResponse, buildChatRequestOptions, latestUserMentions]
@@ -1593,6 +1595,16 @@ const ChatRuntime = ({
           selectedSession={selectedSession}
           sessionTitle={sessionTitle}
         />
+
+        {agentsEnabled ? (
+          <AgentWorkbenchPanel
+            gitDiff={gitDiff}
+            isRequestPending={isRequestPending}
+            isProjectDiffLoading={isProjectDiffLoading}
+            retrySettings={agentRetrySettings}
+            sessionId={selectedSession.id}
+          />
+        ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="relative min-h-0 flex-1">
@@ -2196,6 +2208,7 @@ const ChatSessionPage = () => {
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
           agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
+          agentRetrySettings={settingsQuery.data?.agents.retry}
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}

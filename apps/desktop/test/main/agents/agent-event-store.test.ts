@@ -3,16 +3,20 @@ import fs from "node:fs"
 import { eq } from "drizzle-orm"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
+import { recordAgentToolOutputArtifacts } from "@/main/agents/agent-artifacts"
 import {
   createAgentRun,
   getActiveAgentRunForSession,
+  getAgentArtifact,
   getAgentRun,
   getAgentRunForToolApproval,
   getAgentRunForToolCall,
+  listAgentArtifacts,
   listAgentEvents,
-  listPendingAgentApprovals,
   listRecoverableAgentRuns,
+  listPendingAgentApprovals,
   listAgentToolCalls,
+  recordAgentArtifact,
   recordAgentToolCall,
   recoverInterruptedAgentRuns,
   updateAgentRun,
@@ -29,6 +33,10 @@ import {
   buildAgentSessionTreeFromEvents,
   createAgentSessionQueuedMessageWriter
 } from "@/main/agents/agent-session-events"
+import type {
+  AgentSessionCustomMessageEntry,
+  AgentSessionTreeEntry
+} from "@/main/agents/agent-session-tree"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -71,6 +79,10 @@ vi.mock("electron", () => ({
     on: vi.fn()
   }
 }))
+
+const isAgentSessionCustomMessageEntry = (
+  entry: AgentSessionTreeEntry
+): entry is AgentSessionCustomMessageEntry => entry.type === "custom_message"
 
 describe("agent event store", () => {
   afterAll(() => {
@@ -255,7 +267,7 @@ describe("agent event store", () => {
     )
     const customMessages = sessionTree
       .listEntries()
-      .filter((entry) => entry.type === "custom_message")
+      .filter(isAgentSessionCustomMessageEntry)
       .map((entry) => entry.message)
 
     expect(sessionTree.buildContext()).toEqual([
@@ -313,7 +325,7 @@ describe("agent event store", () => {
         })
       )
         .listEntries()
-        .filter((entry) => entry.type === "custom_message")
+        .filter(isAgentSessionCustomMessageEntry)
         .map((entry) => entry.message)
     ).toEqual([
       {
@@ -379,7 +391,7 @@ describe("agent event store", () => {
     expect(
       sessionTree
         .listEntries()
-        .filter((entry) => entry.type === "custom_message")
+        .filter(isAgentSessionCustomMessageEntry)
         .map((entry) => entry.message)
     ).toEqual([
       {
@@ -1221,5 +1233,144 @@ describe("agent event store", () => {
 
     expect(updatedRun.finishedAt).toBeTruthy()
     expect(updatedRun.status).toBe("succeeded")
+  })
+
+  it("persists tool output artifact metadata for a run", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const otherSession = await createChatSession({ db })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "not_required",
+      db,
+      id: "artifact-tool-call-1",
+      input: {
+        command: "vp test run"
+      },
+      runId: run.id,
+      state: "finished",
+      toolName: "bash"
+    })
+
+    const artifact = await recordAgentArtifact({
+      byteLength: 42,
+      db,
+      kind: "command-output",
+      metadata: {
+        toolName: "bash"
+      },
+      path: "/tmp/etyon-agent-output.json",
+      runId: run.id,
+      toolCallId: "artifact-tool-call-1"
+    })
+    const artifacts = await listAgentArtifacts({
+      db,
+      runId: run.id
+    })
+
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        byteLength: 42,
+        id: artifact.id,
+        kind: "command-output",
+        metadata: {
+          toolName: "bash"
+        },
+        path: "/tmp/etyon-agent-output.json",
+        runId: run.id,
+        toolCallId: "artifact-tool-call-1"
+      })
+    ])
+    await expect(
+      getAgentArtifact({
+        artifactId: artifact.id,
+        chatSessionId: otherSession.id,
+        db
+      })
+    ).resolves.toBeNull()
+    await expect(
+      getAgentArtifact({
+        artifactId: artifact.id,
+        chatSessionId: session.id,
+        db
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: artifact.id,
+        runId: run.id
+      })
+    )
+  })
+
+  it("catalogs referenced tool output artifacts from tool results", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const artifactContent = "full stdout"
+    const artifactPath = `${mockedHomeDir}/referenced-tool-output.json`
+    fs.mkdirSync(mockedHomeDir, { recursive: true })
+    fs.writeFileSync(artifactPath, artifactContent)
+
+    const session = await createChatSession({ db })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "not_required",
+      db,
+      id: "artifact-tool-call-2",
+      input: {
+        command: "vp check"
+      },
+      runId: run.id,
+      state: "finished",
+      toolName: "bash"
+    })
+
+    const artifacts = await recordAgentToolOutputArtifacts({
+      db,
+      output: {
+        details: {
+          fullOutputPath: artifactPath
+        }
+      },
+      runId: run.id,
+      toolCallId: "artifact-tool-call-2",
+      toolName: "bash"
+    })
+
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        byteLength: Buffer.byteLength(artifactContent),
+        kind: "command-output",
+        metadata: {
+          details: {
+            fullOutputPath: artifactPath
+          },
+          toolName: "bash"
+        },
+        path: artifactPath,
+        runId: run.id,
+        toolCallId: "artifact-tool-call-2"
+      })
+    ])
+    await expect(
+      listAgentArtifacts({
+        db,
+        runId: run.id
+      })
+    ).resolves.toEqual(artifacts)
   })
 })

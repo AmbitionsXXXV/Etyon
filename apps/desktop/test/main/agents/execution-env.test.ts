@@ -1,15 +1,22 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
   createAgentExecutionEnv
 } from "@/main/agents/execution-env"
-import type { AgentShellOutputEvent } from "@/main/agents/execution-env"
+import type {
+  AgentBackgroundProcessOutputEvent,
+  AgentShellEvent,
+  AgentShellOutputEvent
+} from "@/main/agents/execution-env"
+import type { WorkspaceSandbox } from "@/main/agents/workspace-sandbox"
 
 const testProjectPath = `/tmp/etyon-agent-execution-env-test-${Date.now()}`
+const createNodeCommand = (source: string): string =>
+  `${JSON.stringify(process.execPath)} -e ${JSON.stringify(source)}`
 
 describe("agent execution env", () => {
   beforeAll(() => {
@@ -519,7 +526,9 @@ describe("agent execution env", () => {
     ).resolves.toEqual({
       ok: true,
       value: {
+        durationMs: expect.any(Number),
         exitCode: 7,
+        sandboxed: false,
         stderr: "err",
         stdout: "out"
       }
@@ -569,6 +578,298 @@ describe("agent execution env", () => {
         }
       ])
     )
+  })
+
+  it("emits structured shell lifecycle telemetry", async () => {
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const shellEvents: AgentShellEvent[] = []
+    const command =
+      "node -e \"process.stdout.write('out'); process.stderr.write('err')\""
+    const result = await env.shell.exec(command, {
+      cwd: "",
+      onEvent: (event) => {
+        shellEvents.push(event)
+      },
+      timeout: 10_000
+    })
+    const outputEvents = shellEvents.filter((event) => event.type === "output")
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        exitCode: 0,
+        sandboxed: false,
+        stderr: "err",
+        stdout: "out"
+      }
+    })
+    expect(shellEvents[0]).toMatchObject({
+      command,
+      cwd: testProjectPath,
+      pid: expect.any(Number),
+      sandboxed: false,
+      sequence: 0,
+      type: "started"
+    })
+    expect(
+      outputEvents.map(({ channel, chunk, outputSequence }) => ({
+        channel,
+        chunk,
+        outputSequence
+      }))
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          channel: "stderr",
+          chunk: "err",
+          outputSequence: expect.any(Number)
+        },
+        {
+          channel: "stdout",
+          chunk: "out",
+          outputSequence: expect.any(Number)
+        }
+      ])
+    )
+    expect(outputEvents.map((event) => event.outputSequence)).toEqual(
+      outputEvents.map((_, index) => index)
+    )
+    expect(shellEvents.at(-1)).toMatchObject({
+      command,
+      cwd: testProjectPath,
+      durationMs: expect.any(Number),
+      exitCode: 0,
+      sandboxed: false,
+      status: "exited",
+      stderrChars: 3,
+      stdoutChars: 3,
+      type: "finished"
+    })
+  })
+
+  it("routes shell exec through the workspace sandbox when provided", async () => {
+    let preparedCommand = ""
+    const sandbox: WorkspaceSandbox = {
+      cleanup: () => Promise.resolve(),
+      enabled: true,
+      prepareShellCommand: (input) => {
+        preparedCommand = input.command
+
+        return Promise.resolve({
+          ok: true,
+          value: {
+            args: ["-fc", input.command],
+            cleanup: () => Promise.resolve(),
+            command: "/bin/zsh",
+            cwd: input.cwd,
+            env: input.env,
+            sandboxed: true
+          }
+        })
+      }
+    }
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath,
+      sandbox
+    })
+
+    const result = await env.shell.exec("printf sandboxed")
+
+    expect(preparedCommand).toBe("printf sandboxed")
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        sandboxed: true,
+        stdout: "sandboxed"
+      }
+    })
+  })
+
+  it("fails shell exec when the workspace sandbox is unavailable", async () => {
+    const sandbox: WorkspaceSandbox = {
+      cleanup: () => Promise.resolve(),
+      enabled: true,
+      prepareShellCommand: () =>
+        Promise.resolve({
+          error: {
+            code: "unavailable",
+            message: "sandbox unavailable"
+          },
+          ok: false
+        })
+    }
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath,
+      sandbox
+    })
+
+    await expect(env.shell.exec("printf skipped")).resolves.toEqual({
+      error: {
+        code: "spawn",
+        message: "sandbox unavailable"
+      },
+      ok: false
+    })
+  })
+
+  it("starts background processes through the workspace sandbox", async () => {
+    let preparedCommand = ""
+    const outputEvents: AgentBackgroundProcessOutputEvent[] = []
+    const sandbox: WorkspaceSandbox = {
+      cleanup: () => Promise.resolve(),
+      enabled: true,
+      prepareShellCommand: (input) => {
+        preparedCommand = input.command
+
+        return Promise.resolve({
+          ok: true,
+          value: {
+            args: [
+              "-e",
+              "process.stdout.write('ready'); setInterval(() => {}, 1000)"
+            ],
+            cleanup: () => Promise.resolve(),
+            command: process.execPath,
+            cwd: input.cwd,
+            env: input.env,
+            sandboxed: true
+          }
+        })
+      }
+    }
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath,
+      sandbox
+    })
+    const started = await env.backgroundProcesses.start("start-dev-server", {
+      onOutput: (event) => {
+        outputEvents.push(event)
+      }
+    })
+
+    if (!started.ok) {
+      throw new Error(started.error.message)
+    }
+
+    await vi.waitFor(() => {
+      expect(outputEvents).toEqual([
+        {
+          channel: "stdout",
+          chunk: "ready",
+          processId: started.value.id,
+          sequence: 0
+        }
+      ])
+    })
+
+    expect(preparedCommand).toBe("start-dev-server")
+    expect(started.value).toMatchObject({
+      sandboxed: true,
+      status: "running"
+    })
+    expect(env.backgroundProcesses.get(started.value.id)).toMatchObject({
+      id: started.value.id,
+      sandboxed: true,
+      status: "running",
+      stdoutChars: 5,
+      stdoutPreview: "ready"
+    })
+
+    const stopped = await env.backgroundProcesses.stop(started.value.id)
+
+    expect(stopped).toMatchObject({
+      ok: true,
+      value: {
+        id: started.value.id,
+        status: "stopped"
+      }
+    })
+  })
+
+  it("lists and cleans up active background processes", async () => {
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const first = await env.backgroundProcesses.start(
+      createNodeCommand("setInterval(() => {}, 1000)")
+    )
+    const second = await env.backgroundProcesses.start(
+      createNodeCommand("setInterval(() => {}, 1000)")
+    )
+
+    if (!first.ok) {
+      throw new Error(first.error.message)
+    }
+
+    if (!second.ok) {
+      throw new Error(second.error.message)
+    }
+
+    expect(env.backgroundProcesses.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.value.id,
+          status: "running"
+        }),
+        expect.objectContaining({
+          id: second.value.id,
+          status: "running"
+        })
+      ])
+    )
+
+    await env.backgroundProcesses.cleanup()
+
+    expect(env.backgroundProcesses.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.value.id,
+          status: "stopped"
+        }),
+        expect.objectContaining({
+          id: second.value.id,
+          status: "stopped"
+        })
+      ])
+    )
+  })
+
+  it("fails background process start when the workspace sandbox is unavailable", async () => {
+    const sandbox: WorkspaceSandbox = {
+      cleanup: () => Promise.resolve(),
+      enabled: true,
+      prepareShellCommand: () =>
+        Promise.resolve({
+          error: {
+            code: "unavailable",
+            message: "sandbox unavailable"
+          },
+          ok: false
+        })
+    }
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath,
+      sandbox
+    })
+
+    await expect(
+      env.backgroundProcesses.start("start-dev-server")
+    ).resolves.toEqual({
+      error: {
+        code: "spawn",
+        message: "sandbox unavailable"
+      },
+      ok: false
+    })
+    await expect(env.backgroundProcesses.stop("missing")).resolves.toEqual({
+      error: {
+        code: "process-not-found",
+        message: "Background process missing was not found."
+      },
+      ok: false
+    })
   })
 
   it("returns typed shell Result errors for pre-aborted and timed-out commands", async () => {

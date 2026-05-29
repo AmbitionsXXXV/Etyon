@@ -31,6 +31,11 @@ describe("agent tool manifests", () => {
       owner: "builtin",
       riskLevel: "high"
     })
+    expect(getAgentToolManifest("inspect")).toMatchObject({
+      capabilities: ["lsp", "read-fs", "sandbox"],
+      owner: "builtin",
+      riskLevel: "safe"
+    })
     expect(getAgentToolManifest("agentExplore")).toMatchObject({
       capabilities: ["agent-run"],
       owner: "builtin",

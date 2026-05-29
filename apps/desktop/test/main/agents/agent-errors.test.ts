@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import { AgentRuntimeError } from "@/main/agents/agent-errors"
+import {
+  AgentRuntimeError,
+  getAgentRuntimeErrorMessage,
+  toAgentRuntimeError
+} from "@/main/agents/agent-errors"
 import type { AgentRuntimeErrorCode } from "@/main/agents/agent-errors"
 
 describe("agent runtime errors", () => {
@@ -31,5 +35,34 @@ describe("agent runtime errors", () => {
     expect(codes.map((code) => new AgentRuntimeError(code, code).code)).toEqual(
       codes
     )
+  })
+
+  it("extracts tool error messages from structured outputs", () => {
+    expect(
+      getAgentRuntimeErrorMessage({
+        error: "File does not exist."
+      })
+    ).toBe("File does not exist.")
+    expect(
+      getAgentRuntimeErrorMessage({
+        message: "Session context is invalid."
+      })
+    ).toBe("Session context is invalid.")
+  })
+
+  it("wraps unknown causes in typed runtime errors", () => {
+    const cause = {
+      error: "Tool execution failed."
+    }
+    const error = toAgentRuntimeError({
+      cause,
+      code: "tool"
+    })
+
+    expect(error).toBeInstanceOf(AgentRuntimeError)
+    expect(error.code).toBe("tool")
+    expect(error.cause).toBe(cause)
+    expect(error.message).toBe("Tool execution failed.")
+    expect(toAgentRuntimeError({ cause: error, code: "provider" })).toBe(error)
   })
 })

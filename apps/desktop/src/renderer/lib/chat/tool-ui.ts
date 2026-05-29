@@ -1,7 +1,15 @@
+import type { ChatMention } from "@etyon/rpc"
 import type { ToolPartState } from "@heroui-pro/react"
+import type {
+  ChatAddToolApproveResponseFunction,
+  ChatRequestOptions,
+  DynamicToolUIPart,
+  ToolUIPart
+} from "ai"
 
 export const ANT_THINKING_CLOSE_TAG = "</antThinking>"
 export const ANT_THINKING_OPEN_TAG = "<antThinking>"
+const CHAT_TOOL_DENIAL_REASON = "Denied in chat UI."
 const EXECUTED_IN_PREFIX = "Executed in "
 const EXIT_CODE_PATTERN = /^-?\d+$/u
 const FUNCTION_CALLS_CLOSE_TAG = "</function_calls>"
@@ -52,6 +60,16 @@ export type AssistantTextSegment =
   | AssistantPlainTextSegment
   | AssistantThinkingTextSegment
 
+type ChatToolPart = DynamicToolUIPart | ToolUIPart
+
+interface RespondToAssistantToolApprovalInput {
+  addToolApprovalResponse: ChatAddToolApproveResponseFunction
+  approved: boolean
+  buildChatRequestOptions: (mentions: ChatMention[]) => ChatRequestOptions
+  latestUserMentions: ChatMention[]
+  part: ChatToolPart
+}
+
 export const shouldRenderAssistantToolPart = ({
   showToolTraces,
   state
@@ -59,6 +77,27 @@ export const shouldRenderAssistantToolPart = ({
   showToolTraces: boolean
   state: string
 }): boolean => showToolTraces || state === "approval-requested"
+
+export const respondToAssistantToolApproval = ({
+  addToolApprovalResponse,
+  approved,
+  buildChatRequestOptions,
+  latestUserMentions,
+  part
+}: RespondToAssistantToolApprovalInput): boolean => {
+  if (part.state !== "approval-requested") {
+    return false
+  }
+
+  void addToolApprovalResponse({
+    approved,
+    id: part.approval.id,
+    options: buildChatRequestOptions(latestUserMentions),
+    reason: approved ? undefined : CHAT_TOOL_DENIAL_REASON
+  })
+
+  return true
+}
 
 export const mapAssistantToolPartStateToChatToolState = (
   state: string

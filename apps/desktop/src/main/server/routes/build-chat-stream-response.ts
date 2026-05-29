@@ -16,6 +16,7 @@ import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
 
 type StreamAgentChatResult = Awaited<ReturnType<typeof streamAgentChat>>
 
+const LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS = 2500
 const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
 const PLAN_MODE_FALLBACK_PROMPT = "Create a structured implementation plan."
 const PLAN_MODE_ACTIVE_TOOL_NAMES = [
@@ -336,10 +337,58 @@ const writeAgentRuntimePhase = (
     }
   })
 
+interface BuildLongTermMemorySystemOptions {
+  abortSignal: AbortSignal
+}
+
+const createAbortSignalAny = (signals: readonly AbortSignal[]): AbortSignal => {
+  const abortSignal = AbortSignal as typeof AbortSignal & {
+    any: (signals: readonly AbortSignal[]) => AbortSignal
+  }
+
+  return abortSignal.any(signals)
+}
+
+const readLongTermMemorySystem = async ({
+  abortSignal,
+  buildLongTermMemorySystem,
+  timeoutMs
+}: {
+  abortSignal: AbortSignal
+  buildLongTermMemorySystem: (
+    options: BuildLongTermMemorySystemOptions
+  ) => Promise<string>
+  timeoutMs: number
+}): Promise<string> => {
+  if (abortSignal.aborted || timeoutMs <= 0) {
+    return ""
+  }
+
+  const memoryAbortSignal = createAbortSignalAny([
+    abortSignal,
+    AbortSignal.timeout(timeoutMs)
+  ])
+
+  try {
+    return await buildLongTermMemorySystem({
+      abortSignal: memoryAbortSignal
+    })
+  } catch (error) {
+    if (memoryAbortSignal.aborted) {
+      return ""
+    }
+
+    throw error
+  }
+}
+
 export interface BuildChatStreamResponseOptions {
   abortSignal: AbortSignal
-  buildLongTermMemorySystem: () => Promise<string>
+  buildLongTermMemorySystem: (
+    options: BuildLongTermMemorySystemOptions
+  ) => Promise<string>
   messages: UIMessage[]
+  memoryRetrievalTimeoutMs?: number
   model: LanguageModel
   modelId: string | null
   modelMessages: ModelMessage[]
@@ -377,7 +426,8 @@ export const buildChatStreamResponse = ({
   shouldRetrieveLongTermMemory,
   skillCapabilities,
   streamAgentChat: runStreamAgentChat,
-  systemPrompts
+  systemPrompts,
+  memoryRetrievalTimeoutMs = LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS
 }: BuildChatStreamResponseOptions): Response => {
   const planModeRequest = applyPlanModeRequest({
     messages,
@@ -397,7 +447,11 @@ export const buildChatStreamResponse = ({
         }
 
         const longTermMemorySystem = shouldRetrieveLongTermMemory
-          ? await buildLongTermMemorySystem()
+          ? await readLongTermMemorySystem({
+              abortSignal,
+              buildLongTermMemorySystem,
+              timeoutMs: memoryRetrievalTimeoutMs
+            })
           : ""
         const effectiveSystemPrompts = [
           ...planModeRequest.systemPrompts,

@@ -1,3 +1,4 @@
+import { AgentRuntimeError } from "@/main/agents/agent-errors"
 import type {
   AgentCustomMessage,
   AgentMessage
@@ -199,7 +200,10 @@ export const createAgentSessionTree = (): AgentSessionTree => {
     listEntries: () => [...entries],
     moveTo: (entryId, branchSummary) => {
       if (entryId !== null && !entriesById.has(entryId)) {
-        throw new Error(`Unknown agent session tree entry: ${entryId}`)
+        throw new AgentRuntimeError(
+          "session",
+          `Unknown agent session tree entry: ${entryId}`
+        )
       }
 
       leafEntryId = entryId

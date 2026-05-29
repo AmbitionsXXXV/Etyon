@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import type { ModelMessage } from "ai"
 
+import { AgentRuntimeError } from "@/main/agents/agent-errors"
 import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
 import type {
   AgentCustomMessage,
@@ -12,6 +13,8 @@ import { createAgentSessionTree } from "@/main/agents/agent-session-tree"
 import type { AgentSessionTree } from "@/main/agents/agent-session-tree"
 
 export const AGENT_SESSION_ENTRY_EVENT_TYPE = "agent_session_entry_appended"
+export const AGENT_SESSION_SAVE_POINT_EVENT_TYPE =
+  "agent_session_save_point_created"
 
 type AgentSessionEventAction =
   | "appendCompactionSummary"
@@ -27,10 +30,30 @@ interface AppendAgentSessionEntryEventPayload {
   summary?: string
 }
 
+interface AgentSessionSavePointEventPayload {
+  label?: string
+  messages: AgentModelMessage[]
+}
+
 export interface AppendAgentSessionModelMessageEventsOptions {
   existingMessages?: readonly ModelMessage[]
   messages: readonly ModelMessage[]
   run: AgentRun
+}
+
+export interface AppendAgentSessionSavePointEventOptions {
+  label?: string
+  messages: readonly ModelMessage[]
+  run: AgentRun
+}
+
+export interface AgentSessionSavePoint {
+  createdAt: string
+  eventId: string
+  label?: string
+  messages: readonly AgentModelMessage[]
+  runId: string
+  sequence: number
 }
 
 export interface AppendAgentSessionCompactionSummaryEventOptions {
@@ -129,6 +152,12 @@ const normalizeComparableJsonValue = (value: unknown): unknown => {
 
 const getModelMessageSignature = (message: ModelMessage): string =>
   JSON.stringify(normalizeComparableJsonValue(message))
+
+const createAgentModelMessage = (message: ModelMessage): AgentModelMessage => ({
+  content: message.content,
+  role: message.role,
+  type: "model"
+})
 
 const getMissingModelMessages = ({
   existingMessages,
@@ -391,6 +420,48 @@ const getSessionEventPayload = (
   }
 }
 
+const getSavePointEventPayload = (
+  payload: unknown
+): AgentSessionSavePointEventPayload | null => {
+  if (!isRecord(payload) || !Array.isArray(payload.messages)) {
+    return null
+  }
+
+  const { messages } = payload
+
+  if (!messages.every(isAgentModelMessage)) {
+    return null
+  }
+
+  return {
+    ...(typeof payload.label === "string" ? { label: payload.label } : {}),
+    messages
+  }
+}
+
+const getAgentSessionSavePointFromEvent = (
+  event: AgentEvent
+): AgentSessionSavePoint | null => {
+  if (event.type !== AGENT_SESSION_SAVE_POINT_EVENT_TYPE) {
+    return null
+  }
+
+  const payload = getSavePointEventPayload(event.payload)
+
+  if (!payload) {
+    return null
+  }
+
+  return {
+    createdAt: event.createdAt,
+    eventId: event.id,
+    ...(payload.label ? { label: payload.label } : {}),
+    messages: payload.messages,
+    runId: event.runId,
+    sequence: event.sequence
+  }
+}
+
 export const appendAgentSessionModelMessageEvents = async ({
   existingMessages = [],
   messages,
@@ -403,14 +474,33 @@ export const appendAgentSessionModelMessageEvents = async ({
     await run.appendEvent({
       payload: {
         action: "appendMessage",
-        message: {
-          content: message.content,
-          role: message.role,
-          type: "model"
-        }
+        message: createAgentModelMessage(message)
       },
       type: AGENT_SESSION_ENTRY_EVENT_TYPE
     })
+  }
+}
+
+export const appendAgentSessionSavePointEvent = async ({
+  label,
+  messages,
+  run
+}: AppendAgentSessionSavePointEventOptions): Promise<AgentSessionSavePoint> => {
+  const event = await run.appendEvent({
+    payload: {
+      ...(label ? { label } : {}),
+      messages: messages.map(createAgentModelMessage)
+    },
+    type: AGENT_SESSION_SAVE_POINT_EVENT_TYPE
+  })
+
+  return {
+    createdAt: event.createdAt,
+    eventId: event.id,
+    ...(label ? { label } : {}),
+    messages: messages.map(createAgentModelMessage),
+    runId: event.runId,
+    sequence: event.sequence
   }
 }
 
@@ -604,7 +694,10 @@ export const createAgentSessionQueuedMessageWriter =
       default: {
         const exhaustiveQueue: never = queue
 
-        throw new Error(`Unknown queued message queue: ${exhaustiveQueue}`)
+        throw new AgentRuntimeError(
+          "session",
+          `Unknown queued message queue: ${exhaustiveQueue}`
+        )
       }
     }
   }
@@ -687,6 +780,17 @@ export const listPendingAgentSessionQueuedMessages = (
   return queuedMessages
 }
 
+export const getLatestAgentSessionSavePoint = (
+  events: readonly AgentEvent[]
+): AgentSessionSavePoint | null =>
+  events
+    .map(getAgentSessionSavePointFromEvent)
+    .filter(
+      (savePoint): savePoint is AgentSessionSavePoint => savePoint !== null
+    )
+    .toSorted((left, right) => left.sequence - right.sequence)
+    .at(-1) ?? null
+
 export const buildAgentSessionTreeFromEvents = (
   events: readonly AgentEvent[]
 ): AgentSessionTree => {
@@ -726,10 +830,26 @@ export const buildAgentSessionTreeFromEvents = (
       default: {
         const exhaustiveAction: never = payload.action
 
-        throw new Error(`Unknown agent session action: ${exhaustiveAction}`)
+        throw new AgentRuntimeError(
+          "session",
+          `Unknown agent session action: ${exhaustiveAction}`
+        )
       }
     }
   }
 
   return session
+}
+
+export const buildAgentSessionModelContextFromLatestSavePoint = (
+  events: readonly AgentEvent[]
+): readonly AgentModelMessage[] => {
+  const savePoint = getLatestAgentSessionSavePoint(events)
+
+  return (
+    savePoint?.messages ??
+    buildAgentSessionTreeFromEvents(events)
+      .buildContext()
+      .filter(isAgentModelMessage)
+  )
 }

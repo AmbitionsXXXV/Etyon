@@ -5,9 +5,7 @@ const { defaultChatTransportMock, getUrlMock, transportOptions } = vi.hoisted(
     const capturedTransportOptions: unknown[] = []
 
     return {
-      defaultChatTransportMock: vi.fn(function DefaultChatTransport(
-        options: unknown
-      ) {
+      defaultChatTransportMock: vi.fn((options: unknown) => {
         capturedTransportOptions.push(options)
       }),
       getUrlMock: vi.fn(() =>

@@ -1,9 +1,29 @@
-import type { AppSettings } from "@etyon/rpc"
-import type { LanguageModel, ModelMessage, ToolSet } from "ai"
-import { generateText, stepCountIs, streamText } from "ai"
+import { randomUUID } from "node:crypto"
 
-import { AgentRuntimeError } from "@/main/agents/agent-errors"
-import type { AgentRuntimeErrorCode } from "@/main/agents/agent-errors"
+import type { AppSettings } from "@etyon/rpc"
+import type {
+  FinishReason,
+  InferUIMessageChunk,
+  LanguageModel,
+  ModelMessage,
+  ToolExecutionOptions,
+  ToolSet,
+  UIMessage,
+  UIMessageStreamOptions
+} from "ai"
+import {
+  createUIMessageStream,
+  generateText,
+  stepCountIs,
+  streamText
+} from "ai"
+
+import { recordAgentToolOutputArtifacts } from "@/main/agents/agent-artifacts"
+import {
+  AgentRuntimeError,
+  getAgentRuntimeErrorMessage,
+  toAgentRuntimeError
+} from "@/main/agents/agent-errors"
 import {
   createAgentRun,
   getLatestCompletedAgentRunForSession,
@@ -16,21 +36,39 @@ import {
   updateAgentToolCall
 } from "@/main/agents/agent-event-store"
 import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
+import type {
+  AgentLoopExecutedToolResult,
+  AgentLoopMessage,
+  AgentLoopStopReason,
+  AgentLoopToolCall,
+  AgentLoopToolRetryPolicy,
+  AgentLoopUserMessage
+} from "@/main/agents/agent-loop"
+import { runAgentLoop } from "@/main/agents/agent-loop"
+import {
+  convertAgentLoopMessagesToModelMessages,
+  convertModelMessagesToAgentLoopMessages,
+  createAiSdkAgentLoopModel,
+  createAiSdkAgentLoopTools
+} from "@/main/agents/agent-loop-ai-sdk"
 import {
   completeUnresolvedToolCallsInModelMessages,
   convertAgentMessagesToLlm
 } from "@/main/agents/agent-messages"
 import {
+  isRetryableAgentFailure,
   parseStructuredPlanFromText,
   stripPlanProgressMarkers,
   summarizePlanProgress
 } from "@/main/agents/agent-plan-progress"
 import {
+  appendAgentSessionSavePointEvent,
   appendAgentSessionPlanModeEvent,
   appendAgentSessionModelMessageEvents,
-  buildAgentSessionTreeFromEvents,
+  buildAgentSessionModelContextFromLatestSavePoint,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
+import type { AgentSessionQueuedMessageQueue } from "@/main/agents/agent-session-events"
 import type { AgentRuntimeState as AgentPhaseRuntimeState } from "@/main/agents/agent-state"
 import {
   applyAgentStreamResponseHooks,
@@ -98,6 +136,7 @@ interface ToolApprovalRequestRecord {
 interface ToolApprovalResponseRecord {
   approvalId: string
   approved: boolean
+  input?: unknown
   reason?: string
   toolCallId: string
   toolName?: string
@@ -123,6 +162,27 @@ interface AgentRequestModelMessagesContext {
 }
 
 type AgentRunFinishStatus = "succeeded" | "suspended"
+
+interface PendingLoopApprovalRequest {
+  approvalId: string
+  toolCall: AgentLoopToolCall
+}
+
+interface MainAgentLoopExecutionResult {
+  finishReason: FinishReason
+  generatedMessages: ModelMessage[]
+  status: AgentRunFinishStatus
+  text: string
+}
+
+interface AgentChatStreamResult {
+  consumeStream: (options?: {
+    onError?: (error: unknown) => void
+  }) => PromiseLike<void>
+  toUIMessageStream: <UI_MESSAGE extends UIMessage>(
+    options?: UIMessageStreamOptions<UI_MESSAGE>
+  ) => ReadableStream<InferUIMessageChunk<UI_MESSAGE>>
+}
 
 const DELEGATION_SUMMARY_MAX_CHARS = 6_000
 const ANT_THINKING_BLOCK_PATTERN = /<antThinking>[\s\S]*?<\/antThinking>/gu
@@ -153,6 +213,105 @@ const filterActiveAgentTools = <TTool>({
   ) as Record<string, TTool>
 }
 
+const AGENT_TOOL_PROMPT_SNIPPETS: Record<string, string> = {
+  agentCoder: "Delegate approved implementation work to a coder child agent",
+  agentEventsSearch: "Search append-only agent runtime events",
+  agentExplore: "Delegate focused read-only exploration to a child agent",
+  agentPlan: "Delegate read-only planning to a child agent",
+  agentReview: "Delegate code review to a child agent",
+  agentRunInspect: "Inspect an agent run trace",
+  applyPatch: "Apply a unified patch inside the active project",
+  bash: "Execute bash commands",
+  edit: "Make surgical edits to files with exact replacements",
+  editFile: "Apply exact oldText/newText replacements",
+  fileInfo: "Read file metadata without following symlinks",
+  find: "Find files by glob pattern",
+  findFiles: "Find project files by path query",
+  gitDiff: "Read the current git diff",
+  grep: "Search file contents with ripgrep",
+  inspect: "Inspect source positions with sandboxed LSP",
+  listDirectory: "List direct directory children",
+  listProjectTree: "List project files and folders",
+  ls: "List directory contents",
+  memorySearch: "Search enabled long-term memory",
+  read: "Read file contents",
+  readFile: "Read a UTF-8 text file",
+  rtkCommand: "Run a command through the project RTK wrapper",
+  runCheck: "Run a bounded project check command",
+  searchFiles: "Search project file contents with ripgrep",
+  webSearch: "Search the public web",
+  write: "Create or overwrite files",
+  writeFile: "Create or overwrite a UTF-8 text file"
+}
+
+const getToolPromptSnippet = (toolName: string): string =>
+  AGENT_TOOL_PROMPT_SNIPPETS[toolName] ?? "Use this tool only when needed"
+
+const buildAgentToolPromptSection = (toolNames: readonly string[]): string => {
+  if (toolNames.length === 0) {
+    return "- none"
+  }
+
+  return toolNames
+    .map((toolName) => `- ${toolName}: ${getToolPromptSnippet(toolName)}`)
+    .join("\n")
+}
+
+const buildAgentToolGuidelines = (toolNames: readonly string[]): string[] => {
+  const toolNameSet = new Set(toolNames)
+  const hasBash = toolNameSet.has("bash")
+  const hasEdit = toolNameSet.has("edit")
+  const hasFind = toolNameSet.has("find")
+  const hasGrep = toolNameSet.has("grep")
+  const hasLs = toolNameSet.has("ls")
+  const hasRead = toolNameSet.has("read")
+  const hasWrite = toolNameSet.has("write")
+  const guidelines: string[] = []
+
+  if (!(hasBash || hasEdit || hasWrite)) {
+    guidelines.push(
+      "You are in READ-ONLY mode - you cannot modify files or execute arbitrary commands."
+    )
+  }
+
+  if (hasBash && !(hasEdit || hasWrite)) {
+    guidelines.push(
+      "Use bash only for read-only operations; do not modify files."
+    )
+  }
+
+  if (hasBash && (hasGrep || hasFind || hasLs)) {
+    guidelines.push("Prefer grep/find/ls tools over bash for file exploration.")
+  } else if (hasBash) {
+    guidelines.push("Use bash for file operations like ls, grep, and find.")
+  }
+
+  if (hasRead && hasEdit) {
+    guidelines.push("Use read to examine files before editing.")
+  }
+
+  if (hasEdit) {
+    guidelines.push(
+      "Use edit for precise changes; each oldText must match exactly."
+    )
+  }
+
+  if (hasWrite) {
+    guidelines.push("Use write only for new files or complete rewrites.")
+  }
+
+  if (hasEdit || hasWrite) {
+    guidelines.push(
+      "When summarizing your actions, output plain text directly; do not run commands only to display what you did."
+    )
+  }
+
+  guidelines.push("Be concise in your responses.")
+  guidelines.push("Show file paths clearly when working with files.")
+
+  return guidelines
+}
+
 const buildAgentSystemPrompt = ({
   profileId,
   toolNames
@@ -162,33 +321,55 @@ const buildAgentSystemPrompt = ({
 }): string =>
   [
     `Active agent profile: ${profileId}.`,
-    `Available agent tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"}.`,
-    "Use tools only when they reduce uncertainty. Keep the final response concise and grounded in tool results."
+    "",
+    "Available tools:",
+    buildAgentToolPromptSection(toolNames),
+    "",
+    "Guidelines:",
+    ...buildAgentToolGuidelines(toolNames).map((guideline) => `- ${guideline}`),
+    "- Use tools only when they reduce uncertainty, and ground final answers in tool results."
   ].join("\n")
 
-const getErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
-const toAgentRuntimeError = ({
-  cause,
-  code,
-  message
-}: {
-  cause: unknown
-  code: AgentRuntimeErrorCode
-  message: string
-}): AgentRuntimeError => {
-  if (cause instanceof AgentRuntimeError) {
-    return cause
-  }
-
-  return new AgentRuntimeError(code, message, {
-    cause
-  })
-}
+const getErrorMessage = getAgentRuntimeErrorMessage
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const getToolRetryErrorMessage = (output: unknown): string => {
+  if (isRecord(output) && typeof output.error === "string") {
+    return output.error
+  }
+
+  if (typeof output === "string") {
+    return output
+  }
+
+  return getErrorMessage(output)
+}
+
+const createAgentLoopToolRetryPolicy = (
+  retry: AppSettings["agents"]["retry"]
+): AgentLoopToolRetryPolicy => ({
+  maxRetries: retry.maxAutomaticRetries,
+  shouldRetry: ({ result }) =>
+    retry.retryTransientFailures &&
+    isRetryableAgentFailure(getToolRetryErrorMessage(result.output))
+})
+
+const isAsyncIterable = (value: unknown): value is AsyncIterable<unknown> =>
+  isRecord(value) && Symbol.asyncIterator in value
+
+const collectAsyncIterable = async (
+  iterable: AsyncIterable<unknown>
+): Promise<unknown[]> => {
+  const values: unknown[] = []
+
+  for await (const value of iterable) {
+    values.push(value)
+  }
+
+  return values
+}
 
 const isModelMessage = (value: unknown): value is ModelMessage =>
   isRecord(value) &&
@@ -198,27 +379,6 @@ const isModelMessage = (value: unknown): value is ModelMessage =>
 
 const isModelMessageArray = (value: unknown): value is ModelMessage[] =>
   Array.isArray(value) && value.every(isModelMessage)
-
-const getProviderResponseModelMessages = (event: unknown): ModelMessage[] => {
-  if (!isRecord(event)) {
-    return []
-  }
-
-  if (isRecord(event.response) && Array.isArray(event.response.messages)) {
-    return event.response.messages.filter(isModelMessage)
-  }
-
-  if (typeof event.text === "string" && event.text.length > 0) {
-    return [
-      {
-        content: event.text,
-        role: "assistant"
-      }
-    ]
-  }
-
-  return []
-}
 
 const getModelMessageText = (message: ModelMessage): string => {
   if (typeof message.content === "string") {
@@ -256,6 +416,352 @@ const getProviderResponseText = ({
     .map(getModelMessageText)
     .filter(Boolean)
     .join("\n")
+}
+
+const toMainLoopFinishReason = (
+  stopReason: AgentLoopStopReason
+): FinishReason => {
+  if (stopReason === "max_turns") {
+    return "length"
+  }
+
+  if (stopReason === "suspended") {
+    return "tool-calls"
+  }
+
+  if (stopReason === "error") {
+    return "error"
+  }
+
+  return "stop"
+}
+
+const isMainLoopSuspended = (stopReason: AgentLoopStopReason): boolean =>
+  stopReason === "suspended"
+
+const toMainLoopRunStatus = (
+  stopReason: AgentLoopStopReason
+): AgentRunFinishStatus =>
+  isMainLoopSuspended(stopReason) ? "suspended" : "succeeded"
+
+const getToolResultOutputValue = (output: unknown): unknown => {
+  if (!isRecord(output) || typeof output.type !== "string") {
+    return output
+  }
+
+  if ("value" in output) {
+    return output.value
+  }
+
+  return output
+}
+
+const getToolResultErrorText = (output: unknown): string => {
+  const value = getToolResultOutputValue(output)
+
+  return typeof value === "string" ? value : JSON.stringify(value)
+}
+
+const injectApprovalRequestsIntoModelMessages = ({
+  approvalRequests,
+  messages
+}: {
+  approvalRequests: readonly PendingLoopApprovalRequest[]
+  messages: readonly ModelMessage[]
+}): ModelMessage[] => {
+  if (approvalRequests.length === 0) {
+    return [...messages]
+  }
+
+  const approvalByToolCallId = new Map(
+    approvalRequests.map((request) => [request.toolCall.toolCallId, request])
+  )
+
+  return messages.map((message) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      return message
+    }
+
+    const contentParts: unknown[] = [...message.content]
+    const nextContent: unknown[] = []
+
+    for (const part of contentParts) {
+      nextContent.push(part)
+
+      if (
+        !isRecord(part) ||
+        part.type !== "tool-call" ||
+        typeof part.toolCallId !== "string"
+      ) {
+        continue
+      }
+
+      const approval = approvalByToolCallId.get(part.toolCallId)
+
+      if (!approval) {
+        continue
+      }
+
+      nextContent.push({
+        approvalId: approval.approvalId,
+        input: approval.toolCall.input,
+        toolCallId: approval.toolCall.toolCallId,
+        toolName: approval.toolCall.toolName,
+        type: "tool-approval-request"
+      })
+    }
+
+    return {
+      ...message,
+      content: nextContent as ModelMessage["content"]
+    } as ModelMessage
+  })
+}
+
+interface UiMessageChunkWriter<UI_MESSAGE extends UIMessage> {
+  write: (part: InferUIMessageChunk<UI_MESSAGE>) => void
+}
+
+const writeTextToUiStream = <UI_MESSAGE extends UIMessage>({
+  text,
+  writer
+}: {
+  text: string
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (text.length === 0) {
+    return
+  }
+
+  const textId = `agent-text-${randomUUID()}`
+
+  writer.write({
+    id: textId,
+    type: "text-start"
+  } as InferUIMessageChunk<UI_MESSAGE>)
+  writer.write({
+    delta: text,
+    id: textId,
+    type: "text-delta"
+  } as InferUIMessageChunk<UI_MESSAGE>)
+  writer.write({
+    id: textId,
+    type: "text-end"
+  } as InferUIMessageChunk<UI_MESSAGE>)
+}
+
+const writeAssistantPartToUiStream = <UI_MESSAGE extends UIMessage>({
+  part,
+  writer
+}: {
+  part: unknown
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (
+    isRecord(part) &&
+    part.type === "tool-call" &&
+    typeof part.toolCallId === "string" &&
+    typeof part.toolName === "string"
+  ) {
+    writer.write({
+      input: part.input,
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      type: "tool-input-available"
+    } as InferUIMessageChunk<UI_MESSAGE>)
+    return
+  }
+
+  if (
+    isRecord(part) &&
+    part.type === "tool-approval-request" &&
+    typeof part.approvalId === "string" &&
+    typeof part.toolCallId === "string"
+  ) {
+    writer.write({
+      approvalId: part.approvalId,
+      toolCallId: part.toolCallId,
+      type: "tool-approval-request"
+    } as InferUIMessageChunk<UI_MESSAGE>)
+  }
+}
+
+const writeAssistantMessageToUiStream = <UI_MESSAGE extends UIMessage>({
+  message,
+  writer
+}: {
+  message: ModelMessage
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  writeTextToUiStream({
+    text: getModelMessageText(message),
+    writer
+  })
+
+  if (!Array.isArray(message.content)) {
+    return
+  }
+
+  for (const part of message.content) {
+    writeAssistantPartToUiStream({
+      part,
+      writer
+    })
+  }
+}
+
+const writeToolPartToUiStream = <UI_MESSAGE extends UIMessage>({
+  part,
+  writer
+}: {
+  part: unknown
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (
+    !isRecord(part) ||
+    part.type !== "tool-result" ||
+    typeof part.toolCallId !== "string"
+  ) {
+    return
+  }
+
+  if (
+    isRecord(part.output) &&
+    typeof part.output.type === "string" &&
+    part.output.type.startsWith("error-")
+  ) {
+    writer.write({
+      errorText: getToolResultErrorText(part.output),
+      toolCallId: part.toolCallId,
+      type: "tool-output-error"
+    } as InferUIMessageChunk<UI_MESSAGE>)
+    return
+  }
+
+  writer.write({
+    output: getToolResultOutputValue(part.output),
+    toolCallId: part.toolCallId,
+    type: "tool-output-available"
+  } as InferUIMessageChunk<UI_MESSAGE>)
+}
+
+const writeToolMessageToUiStream = <UI_MESSAGE extends UIMessage>({
+  message,
+  writer
+}: {
+  message: ModelMessage
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (!Array.isArray(message.content)) {
+    return
+  }
+
+  for (const part of message.content) {
+    writeToolPartToUiStream({
+      part,
+      writer
+    })
+  }
+}
+
+const writeModelMessageToUiStream = <UI_MESSAGE extends UIMessage>({
+  message,
+  writer
+}: {
+  message: ModelMessage
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (message.role === "assistant") {
+    writeAssistantMessageToUiStream({
+      message,
+      writer
+    })
+    return
+  }
+
+  if (message.role === "tool") {
+    writeToolMessageToUiStream({
+      message,
+      writer
+    })
+  }
+}
+
+const writeModelMessagesToUiStream = <UI_MESSAGE extends UIMessage>({
+  finishReason,
+  messages,
+  options,
+  writer
+}: {
+  finishReason: FinishReason
+  messages: readonly ModelMessage[]
+  options?: UIMessageStreamOptions<UI_MESSAGE>
+  writer: UiMessageChunkWriter<UI_MESSAGE>
+}): void => {
+  if (options?.sendStart !== false) {
+    writer.write({ type: "start" } as InferUIMessageChunk<UI_MESSAGE>)
+  }
+
+  for (const message of messages) {
+    writeModelMessageToUiStream({
+      message,
+      writer
+    })
+  }
+
+  if (options?.sendFinish !== false) {
+    writer.write({
+      finishReason,
+      type: "finish"
+    } as InferUIMessageChunk<UI_MESSAGE>)
+  }
+}
+
+const createMainLoopStreamResult = (
+  execution: Promise<MainAgentLoopExecutionResult>
+): AgentChatStreamResult => {
+  void (async () => {
+    try {
+      await execution
+    } catch {
+      // Consumers observe the same promise through consumeStream() or the UI stream.
+    }
+  })()
+
+  return {
+    consumeStream: async (options) => {
+      try {
+        await execution
+      } catch (error) {
+        options?.onError?.(error)
+      }
+    },
+    toUIMessageStream: <UI_MESSAGE extends UIMessage>(
+      options?: UIMessageStreamOptions<UI_MESSAGE>
+    ) =>
+      createUIMessageStream<UI_MESSAGE>({
+        execute: async ({ writer }) => {
+          try {
+            const result = await execution
+
+            writeModelMessagesToUiStream({
+              finishReason: result.finishReason,
+              messages: result.generatedMessages,
+              options,
+              writer
+            })
+          } catch (error) {
+            writer.write({
+              errorText: options?.onError?.(error) ?? getErrorMessage(error),
+              type: "error"
+            } as InferUIMessageChunk<UI_MESSAGE>)
+          }
+        },
+        onError: options?.onError,
+        onFinish: options?.onFinish,
+        originalMessages: options?.originalMessages
+      })
+  }
 }
 
 const stripPlanProgressFromModelMessages = ({
@@ -477,6 +983,7 @@ const collectToolApprovalResponseRecords = (
       responseRecords.push({
         approvalId: part.approvalId,
         approved: part.approved,
+        ...(request.input === undefined ? {} : { input: request.input }),
         reason: typeof part.reason === "string" ? part.reason : undefined,
         toolCallId: request.toolCallId,
         ...(request.toolName ? { toolName: request.toolName } : {})
@@ -668,6 +1175,178 @@ const recordToolApprovalResponses = async ({
   }
 }
 
+const executeApprovedToolApprovalResponses = async ({
+  abortSignal,
+  agentTools,
+  db,
+  lifecycleHandlers,
+  messages,
+  metadata,
+  responseRecords,
+  run
+}: {
+  abortSignal?: AbortSignal
+  agentTools: ToolSet
+  db: AppDatabase
+  lifecycleHandlers: AgentToolLifecycleHandlers
+  messages: readonly ModelMessage[]
+  metadata?: Readonly<Record<string, unknown>>
+  responseRecords: readonly ToolApprovalResponseRecord[]
+  run: AgentRun
+}): Promise<ModelMessage[]> => {
+  const resultMessages: ModelMessage[] = []
+
+  for (const response of responseRecords) {
+    if (!response.approved) {
+      continue
+    }
+
+    const toolName = response.toolName ?? "unknown"
+    const toolCall = {
+      input: response.input,
+      toolCallId: response.toolCallId,
+      toolName
+    }
+    const execute = agentTools[toolName]?.execute
+
+    await updateAgentToolCall({
+      db,
+      id: response.toolCallId,
+      runId: run.id,
+      state: "running"
+    })
+
+    if (!execute) {
+      const error = toAgentRuntimeError({
+        cause: `Tool is not executable: ${toolName}`,
+        code: "tool"
+      })
+      const errorMessage = getErrorMessage(error)
+
+      await lifecycleHandlers.onToolCallFinish({
+        error,
+        success: false,
+        toolCall
+      })
+      resultMessages.push({
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value: errorMessage
+            },
+            toolCallId: response.toolCallId,
+            toolName,
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      })
+      continue
+    }
+
+    try {
+      const outputOrStream = await execute(response.input, {
+        abortSignal,
+        experimental_context: {
+          approvalId: response.approvalId,
+          approved: true,
+          ...metadata,
+          ...(response.reason === undefined ? {} : { reason: response.reason }),
+          toolName
+        },
+        messages: [...messages],
+        toolCallId: response.toolCallId
+      } satisfies ToolExecutionOptions)
+      const output = isAsyncIterable(outputOrStream)
+        ? await collectAsyncIterable(outputOrStream)
+        : outputOrStream
+
+      await lifecycleHandlers.onToolCallFinish({
+        output,
+        success: true,
+        toolCall
+      })
+      resultMessages.push({
+        content: [
+          {
+            output: {
+              type: "json",
+              value: output
+            },
+            toolCallId: response.toolCallId,
+            toolName,
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      })
+    } catch (error) {
+      const runtimeError = toAgentRuntimeError({
+        cause: error,
+        code: "tool"
+      })
+      const errorMessage = getErrorMessage(runtimeError)
+
+      await lifecycleHandlers.onToolCallFinish({
+        error: runtimeError,
+        success: false,
+        toolCall
+      })
+      resultMessages.push({
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value: errorMessage
+            },
+            toolCallId: response.toolCallId,
+            toolName,
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      })
+    }
+  }
+
+  return resultMessages
+}
+
+const getMainLoopToolNeedsApproval = async ({
+  input,
+  messages,
+  metadata,
+  toolCallId,
+  toolName,
+  tools
+}: {
+  input: unknown
+  messages: readonly AgentLoopMessage[]
+  metadata?: Readonly<Record<string, unknown>>
+  toolCallId: string
+  toolName: string
+  tools: ToolSet
+}): Promise<boolean> => {
+  const needsApproval = tools[toolName]?.needsApproval
+
+  if (!needsApproval) {
+    return false
+  }
+
+  if (typeof needsApproval === "boolean") {
+    return needsApproval
+  }
+
+  return Boolean(
+    await needsApproval(input, {
+      experimental_context: metadata,
+      messages: convertAgentLoopMessagesToModelMessages(messages),
+      toolCallId
+    })
+  )
+}
+
 const buildApprovalResponseModelMessages = (
   responseRecords: ToolApprovalResponseRecord[]
 ): ModelMessage[] =>
@@ -764,6 +1443,40 @@ const buildQueuedSessionModelMessages = (
     role: "user"
   }))
 
+const createRunQueuedMessageDrainer = ({
+  db,
+  queue,
+  run
+}: {
+  db: AppDatabase
+  queue: AgentSessionQueuedMessageQueue
+  run: AgentRun
+}): (() => Promise<AgentLoopUserMessage[]>) => {
+  const consumedMessageIds = new Set<string>()
+
+  return async () => {
+    const events = await listAgentEvents({
+      db,
+      runId: run.id
+    })
+    const pendingMessages = listPendingAgentSessionQueuedMessages(events)
+      .filter(
+        (message) =>
+          message.queue === queue && !consumedMessageIds.has(message.id)
+      )
+      .toSorted((left, right) => left.sequence - right.sequence)
+
+    for (const message of pendingMessages) {
+      consumedMessageIds.add(message.id)
+    }
+
+    return pendingMessages.map((message) => ({
+      content: message.message,
+      role: "user"
+    }))
+  }
+}
+
 const loadPersistedAgentSessionContext = async ({
   db,
   run
@@ -778,7 +1491,7 @@ const loadPersistedAgentSessionContext = async ({
 
   return {
     messages: convertAgentMessagesToLlm(
-      buildAgentSessionTreeFromEvents(events).buildContext()
+      buildAgentSessionModelContextFromLatestSavePoint(events)
     ),
     queuedMessages: buildQueuedSessionModelMessages(events)
   }
@@ -900,6 +1613,7 @@ const markAgentRunFailed = async ({
   run: AgentRun
 }): Promise<void> => {
   const errorMessage = getErrorMessage(error)
+  const errorCode = error instanceof AgentRuntimeError ? error.code : undefined
 
   await updateAgentRun({
     db,
@@ -909,6 +1623,7 @@ const markAgentRunFailed = async ({
   })
   await run.appendEvent({
     payload: {
+      ...(errorCode ? { code: errorCode } : {}),
       error: errorMessage
     },
     type: "agent_run_failed"
@@ -977,9 +1692,15 @@ const findRunForApprovalResponses = async ({
         matchedRunToolCalls?.find(
           (toolCall) => toolCall.id === response.toolCallId
         )?.toolName
+      const input =
+        response.input ??
+        matchedRunToolCalls?.find(
+          (toolCall) => toolCall.id === response.toolCallId
+        )?.input
 
       matchedResponses.push({
         ...response,
+        ...(input === undefined ? {} : { input }),
         ...(toolName ? { toolName } : {})
       })
     }
@@ -1079,6 +1800,14 @@ const createAgentToolLifecycleHandlers = ({
     toolCall
   }: AgentToolCallFinishEvent): Promise<void> => {
     if (success) {
+      const artifacts = await recordAgentToolOutputArtifacts({
+        db,
+        output,
+        runId: run.id,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName
+      })
+
       await updateAgentToolCall({
         db,
         id: toolCall.toolCallId,
@@ -1089,6 +1818,9 @@ const createAgentToolLifecycleHandlers = ({
       await run.appendEvent({
         payload: {
           output,
+          ...(artifacts.length > 0
+            ? { artifactIds: artifacts.map((artifact) => artifact.id) }
+            : {}),
           ...parentToolPayload,
           toolCallId: toolCall.toolCallId,
           toolName: toolCall.toolName
@@ -1098,16 +1830,23 @@ const createAgentToolLifecycleHandlers = ({
       return
     }
 
+    const runtimeError = toAgentRuntimeError({
+      cause: error,
+      code: "tool"
+    })
+    const errorMessage = getErrorMessage(runtimeError)
+
     await updateAgentToolCall({
       db,
-      errorMessage: getErrorMessage(error),
+      errorMessage,
       id: toolCall.toolCallId,
       runId: run.id,
       state: "failed"
     })
     await run.appendEvent({
       payload: {
-        error: getErrorMessage(error),
+        code: runtimeError.code,
+        error: errorMessage,
         ...parentToolPayload,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName
@@ -1137,7 +1876,7 @@ export const streamAgentChat = async ({
   streamHooks,
   streamOptions,
   systemPrompts
-}: StreamAgentChatOptions): Promise<ReturnType<typeof streamText>> => {
+}: StreamAgentChatOptions): Promise<AgentChatStreamResult> => {
   if (!settings.agents.enabled) {
     return streamText({
       abortSignal: requestAbortSignal,
@@ -1226,6 +1965,9 @@ export const streamAgentChat = async ({
       approvalMode: includeApprovalTools ? "preapproved" : "default",
       chatSessionId: sessionId,
       db,
+      eventSink: async (event) => {
+        await childRun.appendEvent(event)
+      },
       includeApprovalTools,
       memorySettings: settings.memory,
       projectPath,
@@ -1326,6 +2068,11 @@ export const streamAgentChat = async ({
       })
 
       await appendAgentSessionModelMessageEvents({
+        messages: childPreparedMessages,
+        run: childRun
+      })
+      await appendAgentSessionSavePointEvent({
+        label: "provider-request-prepared",
         messages: childPreparedMessages,
         run: childRun
       })
@@ -1432,6 +2179,9 @@ export const streamAgentChat = async ({
     tools: buildAgentTools({
       chatSessionId: sessionId,
       db,
+      eventSink: async (event) => {
+        await run.appendEvent(event)
+      },
       executeDelegation,
       memorySettings: settings.memory,
       projectPath,
@@ -1469,6 +2219,40 @@ export const streamAgentChat = async ({
     responseRecords: approvalResumeMatch?.responseRecords ?? [],
     run
   })
+
+  if (modelMessages.length === 0) {
+    const finishReason: FinishReason = "stop"
+
+    await updateAgentRun({
+      db,
+      id: run.id,
+      status: "succeeded"
+    })
+    await run.appendEvent({
+      payload: {
+        finishReason,
+        usage: null
+      },
+      type: "agent_run_finished"
+    })
+    await applyMainProviderResponseHooks({
+      finishReason,
+      runId: run.id,
+      status: "succeeded",
+      streamHooks,
+      usage: null
+    })
+
+    return createMainLoopStreamResult(
+      Promise.resolve({
+        finishReason,
+        generatedMessages: [],
+        status: "succeeded",
+        text: ""
+      })
+    )
+  }
+
   const runtimeState: AgentRunRuntimeState = {
     hasPendingApproval: false
   }
@@ -1552,130 +2336,219 @@ export const streamAgentChat = async ({
     payload: preparedProviderRequest.payload
   })
 
-  try {
-    await appendAgentSessionModelMessageEvents({
-      existingMessages: persistedSessionContext.messages,
-      messages: preparedMessages,
-      run
-    })
-
+  const execution = (async (): Promise<MainAgentLoopExecutionResult> => {
     try {
-      return streamText({
-        abortSignal: requestAbortSignal,
-        experimental_onToolCallFinish: lifecycleHandlers.onToolCallFinish,
-        experimental_onToolCallStart: lifecycleHandlers.onToolCallStart,
-        experimental_context: preparedProviderRequest.requestOptions.metadata,
-        headers: preparedProviderRequest.requestOptions.headers,
+      await appendAgentSessionModelMessageEvents({
+        existingMessages: persistedSessionContext.messages,
         messages: preparedMessages,
+        run
+      })
+      await appendAgentSessionSavePointEvent({
+        label: "provider-request-prepared",
+        messages: preparedMessages,
+        run
+      })
+
+      const approvedToolResultMessages =
+        await executeApprovedToolApprovalResponses({
+          abortSignal: requestAbortSignal,
+          agentTools,
+          db,
+          lifecycleHandlers,
+          messages: preparedMessages,
+          metadata: preparedProviderRequest.requestOptions.metadata,
+          responseRecords: approvalResumeMatch?.responseRecords ?? [],
+          run
+        })
+      const initialModelMessages = [
+        ...preparedMessages,
+        ...approvedToolResultMessages
+      ]
+      const initialLoopMessages =
+        convertModelMessagesToAgentLoopMessages(initialModelMessages)
+      const pendingApprovalRequests: PendingLoopApprovalRequest[] = []
+      const loopModel = createAiSdkAgentLoopModel({
+        headers: preparedProviderRequest.requestOptions.headers,
+        metadata: preparedProviderRequest.requestOptions.metadata,
+        mode: "stream",
         model,
-        onError: async ({ error }) => {
-          try {
-            await markAgentRunFailed({
-              db,
-              error,
-              run
-            })
-          } finally {
-            phaseHandle?.end()
-          }
-        },
-        onFinish: async (event) => {
-          const { finishReason, usage } = event
-
-          try {
-            const providerResponseMessages =
-              getProviderResponseModelMessages(event)
-            const providerResponseText = getProviderResponseText({
-              event,
-              messages: providerResponseMessages
-            })
-
-            await appendAgentSessionModelMessageEvents({
-              messages: stripPlanProgressFromModelMessages({
-                executionMode: profile.executionMode,
-                messages: providerResponseMessages
-              }),
-              run
-            })
-            await appendPlanModeSessionEvents({
-              executionMode: profile.executionMode,
-              responseText: providerResponseText,
-              run
-            })
-
-            if (
-              runtimeState.hasPendingApproval ||
-              (await hasPendingApprovalsForRun({
-                db,
-                runId: run.id,
-                sessionId
-              }))
-            ) {
-              await updateAgentRun({
-                db,
-                id: run.id,
-                status: "suspended"
-              })
-              await run.appendEvent({
-                payload: {
-                  finishReason,
-                  status: "suspended",
-                  usage
-                },
-                type: "agent_run_finished"
-              })
-              await applyMainProviderResponseHooks({
-                finishReason,
-                runId: run.id,
-                status: "suspended",
-                streamHooks,
-                usage
-              })
-              return
-            }
-
-            await updateAgentRun({
-              db,
-              id: run.id,
-              status: "succeeded"
-            })
-            await run.appendEvent({
-              payload: {
-                finishReason,
-                usage
-              },
-              type: "agent_run_finished"
-            })
-            await applyMainProviderResponseHooks({
-              finishReason,
-              runId: run.id,
-              status: "succeeded",
-              streamHooks,
-              usage
-            })
-          } finally {
-            phaseHandle?.end()
-          }
-        },
-        onStepFinish,
-        stopWhen: stepCountIs(settings.agents.maxSteps),
         system: preparedSystemPrompt,
         tools: agentTools
       })
+      const drainQueuedFollowUpMessages = createRunQueuedMessageDrainer({
+        db,
+        queue: "follow-up",
+        run
+      })
+      const drainQueuedSteeringMessages = createRunQueuedMessageDrainer({
+        db,
+        queue: "steer",
+        run
+      })
+      const loopResult = await runAgentLoop({
+        abortSignal: requestAbortSignal,
+        activeToolNames: toolNames,
+        afterToolCall: async (result: AgentLoopExecutedToolResult) => {
+          const toolError = result.isError
+            ? toAgentRuntimeError({
+                cause: result.output,
+                code: "tool"
+              })
+            : null
+
+          await lifecycleHandlers.onToolCallFinish({
+            ...(toolError ? { error: toolError } : { output: result.output }),
+            success: !result.isError,
+            toolCall: result.toolCall
+          })
+
+          return {}
+        },
+        beforeToolCall: async (toolCall, context) => {
+          if (
+            await getMainLoopToolNeedsApproval({
+              input: toolCall.input,
+              messages: context.messages,
+              metadata: preparedProviderRequest.requestOptions.metadata,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              tools: agentTools
+            })
+          ) {
+            const approvalId = `tool-approval-${randomUUID()}`
+
+            pendingApprovalRequests.push({
+              approvalId,
+              toolCall
+            })
+            await onStepFinish({
+              content: [
+                {
+                  approvalId,
+                  input: toolCall.input,
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  type: "tool-approval-request"
+                }
+              ]
+            })
+
+            return {
+              reason: `${toolCall.toolName} requires approval before execution.`,
+              suspend: true
+            }
+          }
+
+          await lifecycleHandlers.onToolCallStart({
+            toolCall
+          })
+
+          return {}
+        },
+        getFollowUpMessages: drainQueuedFollowUpMessages,
+        getSteeringMessages: drainQueuedSteeringMessages,
+        maxTurns: settings.agents.maxSteps,
+        messages: initialLoopMessages,
+        model: loopModel,
+        onEvent: async (event) => {
+          await run.appendEvent({
+            payload: {
+              event
+            },
+            type: "agent_loop_event"
+          })
+        },
+        toolRetry: createAgentLoopToolRetryPolicy(settings.agents.retry),
+        tools: createAiSdkAgentLoopTools({
+          metadata: preparedProviderRequest.requestOptions.metadata,
+          tools: agentTools
+        })
+      })
+      const loopResponseMessages = loopResult.messages.slice(
+        initialLoopMessages.length
+      )
+      const providerResponseMessages = injectApprovalRequestsIntoModelMessages({
+        approvalRequests: pendingApprovalRequests,
+        messages: convertAgentLoopMessagesToModelMessages(loopResponseMessages)
+      })
+      const generatedMessages = stripPlanProgressFromModelMessages({
+        executionMode: profile.executionMode,
+        messages: [...approvedToolResultMessages, ...providerResponseMessages]
+      })
+      const providerResponseText = getProviderResponseText({
+        event: {},
+        messages: providerResponseMessages
+      })
+      const finishReason = toMainLoopFinishReason(loopResult.stopReason)
+      const hasPendingApproval =
+        runtimeState.hasPendingApproval ||
+        (await hasPendingApprovalsForRun({
+          db,
+          runId: run.id,
+          sessionId
+        }))
+      const status = hasPendingApproval
+        ? "suspended"
+        : toMainLoopRunStatus(loopResult.stopReason)
+
+      await appendAgentSessionModelMessageEvents({
+        messages: generatedMessages,
+        run
+      })
+      await appendPlanModeSessionEvents({
+        executionMode: profile.executionMode,
+        responseText: providerResponseText,
+        run
+      })
+      await appendAgentSessionSavePointEvent({
+        label: "provider-response-committed",
+        messages: [...preparedMessages, ...generatedMessages],
+        run
+      })
+      await updateAgentRun({
+        db,
+        id: run.id,
+        status
+      })
+      await run.appendEvent({
+        payload: {
+          finishReason,
+          ...(status === "suspended" ? { status } : {}),
+          usage: null
+        },
+        type: "agent_run_finished"
+      })
+      await applyMainProviderResponseHooks({
+        finishReason,
+        runId: run.id,
+        status,
+        streamHooks,
+        usage: null
+      })
+
+      return {
+        finishReason,
+        generatedMessages,
+        status,
+        text: providerResponseText
+      }
     } catch (error) {
-      throw toAgentRuntimeError({
+      const runtimeError = toAgentRuntimeError({
         cause: error,
         code: "provider",
         message: "Agent provider stream failed."
       })
+
+      await markAgentRunFailed({
+        db,
+        error: runtimeError,
+        run
+      })
+      throw runtimeError
+    } finally {
+      phaseHandle?.end()
     }
-  } catch (error) {
-    await markAgentRunFailed({
-      db,
-      error,
-      run
-    })
-    phaseHandle?.end()
-    throw error
-  }
+  })()
+
+  return createMainLoopStreamResult(execution)
 }

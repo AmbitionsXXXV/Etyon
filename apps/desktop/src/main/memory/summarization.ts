@@ -19,6 +19,7 @@ interface MemorySummarizationInput {
 }
 
 interface MemoryQueryRewriteInput {
+  abortSignal?: AbortSignal
   query: string
   settings: AppSettings
 }
@@ -155,10 +156,12 @@ const formatStructuredMemorySummary = ({
 }
 
 const generateMemoryToolText = async ({
+  abortSignal,
   prompt,
   settings,
   system
 }: {
+  abortSignal?: AbortSignal
   prompt: string
   settings: AppSettings
   system: string
@@ -171,6 +174,7 @@ const generateMemoryToolText = async ({
 
   const { resolveModel } = await import("@/main/server/lib/providers")
   const result = await generateText({
+    abortSignal,
     model: resolveModel(resolution.modelId),
     prompt,
     system
@@ -239,6 +243,7 @@ export const summarizeMemoryContent = async ({
 }
 
 export const rewriteMemoryQuery = async ({
+  abortSignal,
   query,
   settings
 }: MemoryQueryRewriteInput): Promise<string> => {
@@ -250,6 +255,7 @@ export const rewriteMemoryQuery = async ({
 
   try {
     const text = await generateMemoryToolText({
+      abortSignal,
       prompt: buildMemoryQueryRewritePrompt(fallbackQuery),
       settings,
       system: MEMORY_QUERY_REWRITE_SYSTEM_PROMPT

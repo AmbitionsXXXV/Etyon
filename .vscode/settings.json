@@ -76,6 +76,7 @@
     "ipinfo",
     "jscoverage",
     "libsql",
+    "mastracode",
     "minilm",
     "mouve",
     "nowarn",

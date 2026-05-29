@@ -1,21 +1,26 @@
 import { describe, expect, it } from "vite-plus/test"
 
-import type { AgentEvent } from "@/main/agents/agent-event-store"
+import { AgentRuntimeError } from "@/main/agents/agent-errors"
+import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
 import {
+  appendAgentSessionSavePointEvent,
+  buildAgentSessionModelContextFromLatestSavePoint,
   buildAgentSessionTreeFromEvents,
+  getLatestAgentSessionSavePoint,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
 
 const createAgentEvent = (
   sequence: number,
-  payload: AgentEvent["payload"]
+  payload: AgentEvent["payload"],
+  type = "agent_session_entry_appended"
 ): AgentEvent => ({
   createdAt: "2026-05-24T06:00:00.000Z",
   id: `event-${sequence}`,
   payload,
   runId: "run-1",
   sequence,
-  type: "agent_session_entry_appended"
+  type
 })
 
 describe("agent session events", () => {
@@ -59,6 +64,180 @@ describe("agent session events", () => {
         role: "assistant",
         type: "model"
       }
+    ])
+  })
+
+  it("uses the latest save point as durable model context", () => {
+    const events = [
+      createAgentEvent(1, {
+        action: "appendMessage",
+        message: {
+          content: "Start.",
+          role: "user",
+          type: "model"
+        }
+      }),
+      createAgentEvent(
+        2,
+        {
+          label: "provider-request-prepared",
+          messages: [
+            {
+              content: "Start.",
+              role: "user",
+              type: "model"
+            }
+          ]
+        },
+        "agent_session_save_point_created"
+      ),
+      createAgentEvent(3, {
+        action: "appendMessage",
+        message: {
+          content: "Intermediary response.",
+          role: "assistant",
+          type: "model"
+        }
+      }),
+      createAgentEvent(
+        4,
+        {
+          label: "provider-response-committed",
+          messages: [
+            {
+              content: "Start.",
+              role: "user",
+              type: "model"
+            },
+            {
+              content: "Committed response.",
+              role: "assistant",
+              type: "model"
+            }
+          ]
+        },
+        "agent_session_save_point_created"
+      ),
+      createAgentEvent(5, {
+        action: "appendMessage",
+        message: {
+          content: "After latest save point.",
+          role: "assistant",
+          type: "model"
+        }
+      })
+    ]
+
+    expect(getLatestAgentSessionSavePoint(events)).toMatchObject({
+      eventId: "event-4",
+      label: "provider-response-committed",
+      sequence: 4
+    })
+    expect(buildAgentSessionModelContextFromLatestSavePoint(events)).toEqual([
+      {
+        content: "Start.",
+        role: "user",
+        type: "model"
+      },
+      {
+        content: "Committed response.",
+        role: "assistant",
+        type: "model"
+      }
+    ])
+  })
+
+  it("falls back to replaying session entries when no save point exists", () => {
+    expect(
+      buildAgentSessionModelContextFromLatestSavePoint([
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Start.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: "Done.",
+            role: "assistant",
+            type: "model"
+          }
+        })
+      ])
+    ).toEqual([
+      {
+        content: "Start.",
+        role: "user",
+        type: "model"
+      },
+      {
+        content: "Done.",
+        role: "assistant",
+        type: "model"
+      }
+    ])
+  })
+
+  it("appends session save point events", async () => {
+    const appendedEvents: AgentEvent[] = []
+    const fakeRun = {
+      appendEvent: ({ payload, type }) => {
+        const event = createAgentEvent(appendedEvents.length + 1, payload, type)
+        appendedEvents.push(event)
+
+        return Promise.resolve(event)
+      },
+      chatSessionId: "session-1",
+      errorMessage: null,
+      finishedAt: null,
+      id: "run-1",
+      modelId: "model-1",
+      parentRunId: null,
+      profileId: "default",
+      startedAt: "2026-05-24T06:00:00.000Z",
+      status: "running"
+    } satisfies AgentRun
+
+    await expect(
+      appendAgentSessionSavePointEvent({
+        label: "provider-request-prepared",
+        messages: [
+          {
+            content: "Start.",
+            role: "user"
+          }
+        ],
+        run: fakeRun
+      })
+    ).resolves.toMatchObject({
+      eventId: "event-1",
+      label: "provider-request-prepared",
+      messages: [
+        {
+          content: "Start.",
+          role: "user",
+          type: "model"
+        }
+      ]
+    })
+    expect(appendedEvents).toEqual([
+      createAgentEvent(
+        1,
+        {
+          label: "provider-request-prepared",
+          messages: [
+            {
+              content: "Start.",
+              role: "user",
+              type: "model"
+            }
+          ]
+        },
+        "agent_session_save_point_created"
+      )
     ])
   })
 
@@ -225,5 +404,30 @@ describe("agent session events", () => {
         sequence: 2
       }
     ])
+  })
+
+  it("rejects corrupted move events with a typed session error", () => {
+    expect(() => {
+      buildAgentSessionTreeFromEvents([
+        createAgentEvent(1, {
+          action: "moveTo",
+          entryId: "missing-entry"
+        })
+      ])
+    }).toThrow(AgentRuntimeError)
+
+    try {
+      buildAgentSessionTreeFromEvents([
+        createAgentEvent(1, {
+          action: "moveTo",
+          entryId: "missing-entry"
+        })
+      ])
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "session",
+        message: "Unknown agent session tree entry: missing-entry"
+      })
+    }
   })
 })

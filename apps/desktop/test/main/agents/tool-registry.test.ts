@@ -6,11 +6,22 @@ import { AppSettingsSchema } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
+import type {
+  AgentWorkspace,
+  AgentWorkspaceEvent
+} from "@/main/agents/agent-workspace"
+import {
+  CODE_AGENT_LSP_TOOL_ALIASES,
+  CODE_AGENT_TOOL_ALIASES,
+  ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES
+} from "@/main/agents/code-agent-tool-aliases"
+import { createAgentExecutionEnv } from "@/main/agents/execution-env"
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
   buildAgentTools,
   executeAgentTool
 } from "@/main/agents/tool-registry"
+import type { WorkspaceSandbox } from "@/main/agents/workspace-sandbox"
 import type { AppDatabase } from "@/main/db"
 
 const testProjectPath = `/tmp/etyon-agent-tool-registry-test-${Date.now()}`
@@ -60,6 +71,97 @@ const createApprovedToolContext = (toolCallId = "tool-call-1") => ({
   toolCallId
 })
 
+const createFakeSandboxedWorkspace = ({
+  events
+}: {
+  events: AgentWorkspaceEvent[]
+}): AgentWorkspace => {
+  const sandbox: WorkspaceSandbox = {
+    cleanup: () => Promise.resolve(),
+    enabled: true,
+    prepareShellCommand: (input) =>
+      Promise.resolve({
+        ok: true,
+        value: {
+          args: ["-fc", input.command],
+          cleanup: () => Promise.resolve(),
+          command: "/bin/zsh",
+          cwd: input.cwd,
+          env: input.env,
+          sandboxed: true
+        }
+      })
+  }
+  const executionEnv = createAgentExecutionEnv({
+    projectPath: testProjectPath,
+    sandbox
+  })
+
+  return {
+    eventSink: (event) => {
+      events.push(event)
+    },
+    executionEnv,
+    fileSystem: executionEnv.fileSystem,
+    lsp: null,
+    projectPath: executionEnv.projectPath,
+    sandbox
+  }
+}
+
+const createFakeWorkspaceCommandOutput = ({
+  commands,
+  getStdout
+}: {
+  commands: string[]
+  getStdout: (command: string) => string
+}): AgentWorkspace => {
+  const sandbox: WorkspaceSandbox = {
+    cleanup: () => Promise.resolve(),
+    enabled: true,
+    prepareShellCommand: (input) => {
+      commands.push(input.command)
+
+      return Promise.resolve({
+        ok: true,
+        value: {
+          args: [
+            "-e",
+            `process.stdout.write(${JSON.stringify(getStdout(input.command))})`
+          ],
+          cleanup: () => Promise.resolve(),
+          command: process.execPath,
+          cwd: input.cwd,
+          env: input.env,
+          sandboxed: true
+        }
+      })
+    }
+  }
+  const executionEnv = createAgentExecutionEnv({
+    projectPath: testProjectPath,
+    sandbox
+  })
+
+  return {
+    executionEnv,
+    fileSystem: executionEnv.fileSystem,
+    lsp: null,
+    projectPath: executionEnv.projectPath,
+    sandbox
+  }
+}
+
+const getCodeAgentTextContent = (
+  result: Awaited<ReturnType<typeof executeAgentTool>>
+): string => {
+  if (!("content" in result) || !Array.isArray(result.content)) {
+    throw new Error("Expected code-agent text output.")
+  }
+
+  return result.content[0]?.text ?? ""
+}
+
 const resolveNeedsApproval = (
   needsApproval: ReturnType<typeof buildAgentTools>[string]["needsApproval"],
   input: unknown
@@ -90,6 +192,53 @@ describe("agent tool registry", () => {
     expect(Object.keys(tools)).toEqual([])
   })
 
+  it("keeps model-facing code agent aliases mapped to Etyon workspace tools", () => {
+    expect(CODE_AGENT_TOOL_ALIASES).toEqual([
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "bash",
+      "edit",
+      "write"
+    ])
+    expect(CODE_AGENT_LSP_TOOL_ALIASES).toEqual(["inspect"])
+    expect(ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES).toEqual({
+      bash: {
+        etyonName: "execute_command",
+        etyonWorkspaceTool: "etyon_workspace_execute_command"
+      },
+      edit: {
+        etyonName: "string_replace_lsp",
+        etyonWorkspaceTool: "etyon_workspace_edit_file"
+      },
+      find: {
+        etyonName: "find_files",
+        etyonWorkspaceTool: "etyon_workspace_list_files"
+      },
+      grep: {
+        etyonName: "search_content",
+        etyonWorkspaceTool: "etyon_workspace_grep"
+      },
+      inspect: {
+        etyonName: "lsp_inspect",
+        etyonWorkspaceTool: "etyon_workspace_lsp_inspect"
+      },
+      ls: {
+        etyonName: "find_files",
+        etyonWorkspaceTool: "etyon_workspace_list_files"
+      },
+      read: {
+        etyonName: "view",
+        etyonWorkspaceTool: "etyon_workspace_read_file"
+      },
+      write: {
+        etyonName: "write_file",
+        etyonWorkspaceTool: "etyon_workspace_write_file"
+      }
+    })
+  })
+
   it("exposes only read-only tools for the default profile", () => {
     const settings = AppSettingsSchema.parse({
       agents: {
@@ -113,6 +262,60 @@ describe("agent tool registry", () => {
     expect(tools).not.toHaveProperty("write")
   })
 
+  it("exposes inspect only when both LSP and sandbox are enabled", () => {
+    const lspOnlySettings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "explore",
+        enabled: true,
+        lsp: {
+          enabled: true
+        }
+      }
+    }).agents
+    const sandboxOnlySettings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "explore",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const sandboxedLspSettings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "explore",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: lspOnlySettings
+      })
+    ).not.toHaveProperty("inspect")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: sandboxOnlySettings
+      })
+    ).not.toHaveProperty("inspect")
+    expect(
+      Object.keys(
+        buildAgentTools({
+          projectPath: testProjectPath,
+          settings: sandboxedLspSettings
+        })
+      ).toSorted()
+    ).toEqual(["find", "grep", "inspect", "ls", "read"])
+  })
+
   it("narrows profile tools with selected skill capabilities", () => {
     const settings = AppSettingsSchema.parse({
       agents: {
@@ -129,7 +332,7 @@ describe("agent tool registry", () => {
     expect(Object.keys(tools).toSorted()).toEqual(["edit", "write"])
   })
 
-  it("keeps read-only profiles aligned to Pi tools even when memory retrieval is enabled", () => {
+  it("keeps read-only profiles aligned to Etyon aliases even when memory retrieval is enabled", () => {
     const appSettings = AppSettingsSchema.parse({
       agents: {
         enabled: true
@@ -403,6 +606,150 @@ describe("agent tool registry", () => {
       messages: [],
       parentToolCallId: "delegate-call-1",
       profileId: "explore"
+    })
+  })
+
+  it("emits sandbox command lifecycle events through the workspace event sink", async () => {
+    const events: AgentWorkspaceEvent[] = []
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        command: "printf out"
+      },
+      name: "bash",
+      projectPath: testProjectPath,
+      settings,
+      workspace: createFakeSandboxedWorkspace({
+        events
+      })
+    })
+
+    expect(result).toMatchObject({
+      content: [
+        {
+          text: "out",
+          type: "text"
+        }
+      ]
+    })
+    expect(events.map((event) => event.type)).toEqual([
+      "sandbox_command_started",
+      "sandbox_command_output",
+      "sandbox_command_finished"
+    ])
+    expect(events[0]?.payload).toMatchObject({
+      command: "printf out",
+      cwd: testProjectPath,
+      pid: expect.any(Number),
+      sandboxed: true
+    })
+    expect(events[1]?.payload).toMatchObject({
+      channel: "stdout",
+      chunk: "out",
+      sequence: 0
+    })
+    expect(events[2]?.payload).toMatchObject({
+      command: "printf out",
+      exitCode: 0,
+      shellStatus: "exited",
+      status: "success"
+    })
+  })
+
+  it("routes code-agent search commands through the provided workspace sandbox", async () => {
+    writeProjectFile(
+      "src/sandbox-grep.ts",
+      "export const sandboxNeedle = true\n"
+    )
+
+    const commands: string[] = []
+    const grepStdout = `${JSON.stringify({
+      data: {
+        line_number: 1,
+        lines: {
+          text: "export const sandboxNeedle = true\n"
+        },
+        path: {
+          text: "src/sandbox-grep.ts"
+        },
+        submatches: [
+          {
+            start: 13
+          }
+        ]
+      },
+      type: "match"
+    })}\n`
+    const workspace = createFakeWorkspaceCommandOutput({
+      commands,
+      getStdout: (command) =>
+        command.startsWith("rg ")
+          ? grepStdout
+          : `${path.join(testProjectPath, "src/sandbox-grep.ts")}\n`
+    })
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+
+    const grepResult = await executeAgentTool({
+      input: {
+        pattern: "sandboxNeedle"
+      },
+      name: "grep",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+    const findResult = await executeAgentTool({
+      input: {
+        pattern: "sandbox-grep.ts"
+      },
+      name: "find",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+    const searchResult = await executeAgentTool({
+      input: {
+        query: "sandboxNeedle"
+      },
+      name: "searchFiles",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(commands).toHaveLength(3)
+    expect(commands[0]).toContain("rg ")
+    expect(commands[1]).toContain("fd ")
+    expect(commands[2]).toContain("rg ")
+    expect(getCodeAgentTextContent(grepResult)).toContain(
+      "src/sandbox-grep.ts:1: export const sandboxNeedle = true"
+    )
+    expect(getCodeAgentTextContent(findResult)).toBe("src/sandbox-grep.ts")
+    expect(searchResult).toMatchObject({
+      matches: [
+        {
+          column: 14,
+          lineNumber: 1,
+          path: "src/sandbox-grep.ts"
+        }
+      ]
     })
   })
 

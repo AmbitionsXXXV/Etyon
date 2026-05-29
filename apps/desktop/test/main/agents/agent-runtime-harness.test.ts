@@ -4,8 +4,15 @@ import { AppSettingsSchema } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
-import { createAgentRun, updateAgentRun } from "@/main/agents/agent-event-store"
-import { appendAgentSessionQueuedFollowUpEvent } from "@/main/agents/agent-session-events"
+import {
+  createAgentRun,
+  getAgentRun,
+  updateAgentRun
+} from "@/main/agents/agent-event-store"
+import {
+  appendAgentSessionQueuedFollowUpEvent,
+  appendAgentSessionQueuedSteeringEvent
+} from "@/main/agents/agent-session-events"
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
 import type { AgentStreamHooks } from "@/main/agents/agent-stream-hooks"
 
@@ -138,7 +145,11 @@ describe("agent runtime harness", () => {
     const events = await harness.session.listEvents()
 
     expect(events.map((event) => event.type)).toEqual(
-      expect.arrayContaining(["agent_run_started", "agent_run_finished"])
+      expect.arrayContaining([
+        "agent_loop_event",
+        "agent_run_started",
+        "agent_run_finished"
+      ])
     )
     expect(liveEventTypes).toEqual(
       expect.arrayContaining(["agent_run_started", "agent_run_finished"])
@@ -238,6 +249,53 @@ describe("agent runtime harness", () => {
         })
       ])
     )
+  })
+
+  it("passes Etyon code tool definitions and guidelines to the provider", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("coded", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Inspect and edit.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    const promptJson = JSON.stringify(
+      harness.faux.model.doStreamCalls[0]?.prompt
+    )
+
+    expect(promptJson).toContain("Active agent profile: coder.")
+    expect(promptJson).toContain("Available tools:")
+    expect(promptJson).toContain("read: Read file contents")
+    expect(promptJson).toContain("bash: Execute bash commands")
+    expect(promptJson).toContain(
+      "edit: Make surgical edits to files with exact replacements"
+    )
+    expect(promptJson).toContain("write: Create or overwrite files")
+    expect(promptJson).toContain(
+      "Prefer grep/find/ls tools over bash for file exploration."
+    )
+    expect(promptJson).toContain("Use read to examine files before editing.")
   })
 
   it("bounds provider turns with the configured agent step budget", async () => {
@@ -475,6 +533,199 @@ describe("agent runtime harness", () => {
     )
   })
 
+  it("drains queued follow-up messages appended during the active run", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+    let queued = false
+
+    harness.faux.setResponses([
+      createFauxTextResponse("Initial answer.", {
+        modelId: "mock-model"
+      }),
+      createFauxTextResponse("Follow-up answer.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Start the active run.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      streamHooks: {
+        beforeProviderRequest: async ({ payload }) => {
+          if (queued) {
+            return
+          }
+
+          queued = true
+
+          const runId = typeof payload.runId === "string" ? payload.runId : null
+
+          if (!runId) {
+            throw new Error("Expected runId in provider payload.")
+          }
+
+          const run = await getAgentRun({
+            chatSessionId: harness.session.id,
+            db: harness.db,
+            runId
+          })
+
+          if (!run) {
+            throw new Error("Expected active agent run.")
+          }
+
+          await appendAgentSessionQueuedFollowUpEvent({
+            message: "Continue with the active follow-up.",
+            run
+          })
+        }
+      }
+    })
+
+    await result.consumeStream()
+
+    const events = await harness.session.listEvents()
+    const promptJson = JSON.stringify(
+      harness.faux.model.doStreamCalls[1]?.prompt
+    )
+
+    expect(harness.faux.model.doStreamCalls).toHaveLength(2)
+    expect(promptJson).toContain("Continue with the active follow-up.")
+    expect(await harness.session.listModelMessages()).toEqual(
+      expect.arrayContaining([
+        {
+          content: "Continue with the active follow-up.",
+          role: "user",
+          type: "model"
+        }
+      ])
+    )
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: {
+            event: expect.objectContaining({
+              type: "follow_up_message_appended"
+            })
+          },
+          type: "agent_loop_event"
+        })
+      ])
+    )
+  })
+
+  it("drains queued steering messages after active run tool batches", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+    let queued = false
+
+    fs.writeFileSync(
+      `${harness.projectPath}/package.json`,
+      '{ "name": "@etyon/desktop" }'
+    )
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          path: "package.json"
+        },
+        modelId: "mock-model",
+        toolCallId: "tool-call-steer",
+        toolName: "read"
+      }),
+      createFauxTextResponse("Steered answer.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Read package metadata.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      streamHooks: {
+        beforeProviderRequest: async ({ payload }) => {
+          if (queued) {
+            return
+          }
+
+          queued = true
+
+          const runId = typeof payload.runId === "string" ? payload.runId : null
+
+          if (!runId) {
+            throw new Error("Expected runId in provider payload.")
+          }
+
+          const run = await getAgentRun({
+            chatSessionId: harness.session.id,
+            db: harness.db,
+            runId
+          })
+
+          if (!run) {
+            throw new Error("Expected active agent run.")
+          }
+
+          await appendAgentSessionQueuedSteeringEvent({
+            message: "Prefer the active steering note.",
+            run
+          })
+        }
+      }
+    })
+
+    await result.consumeStream()
+
+    const events = await harness.session.listEvents()
+    const promptJson = JSON.stringify(
+      harness.faux.model.doStreamCalls[1]?.prompt
+    )
+
+    expect(harness.faux.model.doStreamCalls).toHaveLength(2)
+    expect(promptJson).toContain("Prefer the active steering note.")
+    expect(await harness.session.listModelMessages()).toEqual(
+      expect.arrayContaining([
+        {
+          content: "Prefer the active steering note.",
+          role: "user",
+          type: "model"
+        }
+      ])
+    )
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: {
+            event: expect.objectContaining({
+              type: "steering_message_appended"
+            })
+          },
+          type: "agent_loop_event"
+        })
+      ])
+    )
+  })
+
   it("runs stream response hooks after finishing the main provider stream", async () => {
     const afterProviderResponseMock = vi.fn()
     const harness = await createAgentRuntimeHarness({
@@ -559,6 +810,7 @@ describe("agent runtime harness", () => {
       expect.arrayContaining([
         expect.objectContaining({
           payload: {
+            code: "hook",
             error: "Agent stream hook failed."
           },
           type: "agent_run_failed"
@@ -591,7 +843,7 @@ describe("agent runtime harness", () => {
 
     expect(await harness.session.listRuns()).toEqual([
       expect.objectContaining({
-        errorMessage: "Faux provider response queue is empty.",
+        errorMessage: "Agent provider stream failed.",
         status: "failed"
       })
     ])
@@ -599,7 +851,8 @@ describe("agent runtime harness", () => {
       expect.arrayContaining([
         expect.objectContaining({
           payload: {
-            error: "Faux provider response queue is empty."
+            code: "provider",
+            error: "Agent provider stream failed."
           },
           type: "agent_run_failed"
         })
@@ -997,6 +1250,65 @@ describe("agent runtime harness", () => {
         toolName: "read"
       })
     ])
+  })
+
+  it("records structured tool failures as typed runtime errors", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          path: "src/missing.ts"
+        },
+        modelId: "mock-model",
+        toolCallId: "tool-call-missing",
+        toolName: "read"
+      }),
+      createFauxTextResponse("The file is missing.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      activeToolNames: ["read"],
+      messages: [
+        {
+          content: "Read a missing file.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    expect(await harness.session.listToolCalls()).toEqual([
+      expect.objectContaining({
+        errorMessage: "The requested file path does not exist.",
+        id: "tool-call-missing",
+        state: "failed",
+        toolName: "read"
+      })
+    ])
+
+    const events = await harness.session.listEvents()
+    const failedEvent = events.find(
+      (event) => event.type === "tool_call_failed"
+    )
+
+    expect(failedEvent?.payload).toMatchObject({
+      code: "tool",
+      error: "The requested file path does not exist.",
+      toolCallId: "tool-call-missing",
+      toolName: "read"
+    })
   })
 
   it("records approval requests emitted during a model step", async () => {

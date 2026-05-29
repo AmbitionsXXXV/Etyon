@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test"
 
+import { AgentRuntimeError } from "@/main/agents/agent-errors"
 import { createAgentSessionTree } from "@/main/agents/agent-session-tree"
 
 describe("agent session tree", () => {
@@ -91,7 +92,17 @@ describe("agent session tree", () => {
 
     expect(() => {
       session.moveTo("missing-entry")
-    }).toThrow("Unknown agent session tree entry")
+    }).toThrow(AgentRuntimeError)
+
+    try {
+      session.moveTo("missing-entry")
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "session",
+        message: "Unknown agent session tree entry: missing-entry"
+      })
+    }
+
     expect(session.buildContext()).toEqual([
       {
         content: "Start.",

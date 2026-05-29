@@ -61,7 +61,12 @@ vi.mock("@/main/agents/agent-event-store", () => ({
 
 const db = {} as AppDatabase
 const model = { modelId: "openai/gpt-4.1" } as unknown as LanguageModel
-const modelMessages: ModelMessage[] = []
+const modelMessages: ModelMessage[] = [
+  {
+    content: "Trigger provider.",
+    role: "user"
+  }
+]
 describe("agent runtime", () => {
   afterEach(() => {
     vi.clearAllMocks()
@@ -74,22 +79,36 @@ describe("agent runtime", () => {
       throw providerError
     })
 
-    await expect(
-      streamAgentChat({
-        db,
-        messages: modelMessages,
-        model,
-        modelId: "openai/gpt-4.1",
-        projectPath: "/tmp/project-a",
-        sessionId: "session-1",
-        settings: AppSettingsSchema.parse({
-          agents: {
-            enabled: true
-          }
-        }),
-        systemPrompts: ["base system"]
+    const result = await streamAgentChat({
+      db,
+      messages: modelMessages,
+      model,
+      modelId: "openai/gpt-4.1",
+      projectPath: "/tmp/project-a",
+      sessionId: "session-1",
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      }),
+      systemPrompts: ["base system"]
+    })
+    const errors: unknown[] = []
+
+    await result.consumeStream({
+      onError: (error) => {
+        errors.push(error)
+      }
+    })
+
+    expect(errors).toEqual([
+      expect.objectContaining({
+        cause: providerError,
+        code: "provider",
+        message: "Agent provider stream failed."
       })
-    ).rejects.toMatchObject({
+    ])
+    expect(errors[0]).toMatchObject({
       cause: providerError,
       code: "provider",
       message: "Agent provider stream failed."

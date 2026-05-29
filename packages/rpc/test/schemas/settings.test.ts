@@ -162,10 +162,26 @@ describe("AppSettingsSchema", () => {
       allowSubagentDelegation: false,
       defaultProfileId: "general-purpose",
       enabled: false,
+      lsp: {
+        diagnosticTimeoutMs: 5000,
+        enabled: false,
+        initTimeoutMs: 15_000,
+        requireSandbox: true
+      },
       maxConcurrentSubagents: 2,
       maxSteps: 8,
       profiles: [],
       requireApprovalForWrites: true,
+      retry: {
+        maxAutomaticRetries: 1,
+        retryTransientFailures: true
+      },
+      sandbox: {
+        allowNetwork: false,
+        autoAllowSandboxedShell: false,
+        enabled: false,
+        failIfUnavailable: true
+      },
       showToolTraces: true
     })
   })
@@ -183,10 +199,26 @@ describe("AppSettingsSchema", () => {
       allowSubagentDelegation: false,
       defaultProfileId: "coder",
       enabled: true,
+      lsp: {
+        diagnosticTimeoutMs: 5000,
+        enabled: false,
+        initTimeoutMs: 15_000,
+        requireSandbox: true
+      },
       maxConcurrentSubagents: 2,
       maxSteps: 12,
       profiles: [],
       requireApprovalForWrites: true,
+      retry: {
+        maxAutomaticRetries: 1,
+        retryTransientFailures: true
+      },
+      sandbox: {
+        allowNetwork: false,
+        autoAllowSandboxedShell: false,
+        enabled: false,
+        failIfUnavailable: true
+      },
       showToolTraces: true
     })
   })

@@ -3,6 +3,7 @@ export type AgentLoopStopReason =
   | "error"
   | "final"
   | "max_turns"
+  | "suspended"
   | "terminated"
   | "user_stopped"
 
@@ -107,9 +108,11 @@ export interface AgentLoopBeforeToolCallResult {
   block?: boolean
   input?: unknown
   reason?: string
+  suspend?: boolean
 }
 
 export interface AgentLoopExecutedToolResult {
+  deferred?: boolean
   isError: boolean
   output: unknown
   sourceIndex: number
@@ -128,6 +131,21 @@ export interface AgentLoopAfterToolCallResult {
   terminate?: boolean
 }
 
+export interface AgentLoopToolRetryContext {
+  attempt: number
+  maxRetries: number
+  messages: readonly AgentLoopMessage[]
+  result: AgentLoopExecutedToolResult
+  toolCall: AgentLoopToolCall
+}
+
+export interface AgentLoopToolRetryPolicy {
+  maxRetries: number
+  shouldRetry?: (
+    context: AgentLoopToolRetryContext
+  ) => Promise<boolean> | boolean
+}
+
 export type AgentLoopEventType =
   | "agent_loop_finished"
   | "agent_turn_started"
@@ -135,11 +153,14 @@ export type AgentLoopEventType =
   | "follow_up_message_appended"
   | "steering_message_appended"
   | "tool_execution_finished"
+  | "tool_execution_retrying"
   | "tool_execution_started"
   | "tool_result_appended"
 
 export interface AgentLoopEvent {
+  attempt?: number
   isError?: boolean
+  maxRetries?: number
   output?: unknown
   sourceIndex?: number
   stopReason?: AgentLoopStopReason
@@ -210,6 +231,7 @@ export interface RunAgentLoopOptions {
     turnIndex: number
   }) => Promise<boolean> | boolean
   thinkingLevel?: string
+  toolRetry?: AgentLoopToolRetryPolicy
   tools: Record<string, AgentLoopTool>
 }
 
@@ -586,6 +608,19 @@ const prepareToolCall = async ({
       })
     }
 
+    if (hookResult.suspend) {
+      return {
+        deferred: true,
+        isError: false,
+        output: {
+          reason: hookResult.reason ?? "Tool call was suspended."
+        },
+        sourceIndex,
+        terminate: true,
+        toolCall
+      }
+    }
+
     return {
       input: hookResult.input ?? toolCall.input,
       sourceIndex,
@@ -642,95 +677,167 @@ const finalizeToolResult = async ({
   }
 }
 
+const getBoundedToolRetryMaxRetries = (
+  toolRetry: AgentLoopToolRetryPolicy | undefined
+): number => Math.max(0, Math.floor(toolRetry?.maxRetries ?? 0))
+
+const shouldRetryToolResult = async ({
+  attempt,
+  messages,
+  result,
+  toolRetry
+}: {
+  attempt: number
+  messages: readonly AgentLoopMessage[]
+  result: AgentLoopExecutedToolResult
+  toolRetry: AgentLoopToolRetryPolicy | undefined
+}): Promise<boolean> => {
+  if (!result.isError) {
+    return false
+  }
+
+  const maxRetries = getBoundedToolRetryMaxRetries(toolRetry)
+
+  if (attempt > maxRetries) {
+    return false
+  }
+
+  if (!toolRetry?.shouldRetry) {
+    return true
+  }
+
+  try {
+    return await toolRetry.shouldRetry({
+      attempt,
+      maxRetries,
+      messages,
+      result,
+      toolCall: result.toolCall
+    })
+  } catch {
+    return false
+  }
+}
+
 const executePreparedToolCall = async ({
   abortSignal,
   afterToolCall,
   messages,
   onEvent,
-  prepared
+  prepared,
+  toolRetry
 }: {
   abortSignal: AbortSignal | undefined
   afterToolCall: RunAgentLoopOptions["afterToolCall"]
   messages: readonly AgentLoopMessage[]
   onEvent: RunAgentLoopOptions["onEvent"]
   prepared: PreparedToolCall
+  toolRetry: RunAgentLoopOptions["toolRetry"]
 }): Promise<AgentLoopExecutedToolResult> => {
   const { input, sourceIndex, tool, toolCall } = prepared
+  let attempt = 0
 
-  if (abortSignal?.aborted) {
-    return buildErrorResult({
-      message: AGENT_LOOP_ABORTED_MESSAGE,
-      sourceIndex,
-      toolCall: {
-        ...toolCall,
-        input
-      }
-    })
-  }
+  while (true) {
+    attempt += 1
 
-  await emitAgentLoopEvent(onEvent, {
-    sourceIndex,
-    toolCallId: toolCall.toolCallId,
-    toolName: toolCall.toolName,
-    type: "tool_execution_started"
-  })
-
-  let result: AgentLoopExecutedToolResult
-
-  try {
-    const outputOrPromise = tool.execute(input, {
-      abortSignal,
-      messages,
-      toolCall: {
-        ...toolCall,
-        input
-      }
-    })
-    const output = isPromiseLike<unknown>(outputOrPromise)
-      ? await waitForPromiseWithAbortSignal({
-          abortSignal,
-          promise: outputOrPromise
-        })
-      : outputOrPromise
-
-    result = {
-      isError: false,
-      output,
-      sourceIndex,
-      terminate: false,
-      toolCall: {
-        ...toolCall,
-        input
-      }
+    if (abortSignal?.aborted) {
+      return buildErrorResult({
+        message: AGENT_LOOP_ABORTED_MESSAGE,
+        sourceIndex,
+        toolCall: {
+          ...toolCall,
+          input
+        }
+      })
     }
-  } catch (error) {
-    result = buildErrorResult({
-      message: getErrorMessage(error),
+
+    await emitAgentLoopEvent(onEvent, {
+      attempt,
       sourceIndex,
-      toolCall: {
-        ...toolCall,
-        input
-      }
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      type: "tool_execution_started"
     })
+
+    let result: AgentLoopExecutedToolResult
+
+    try {
+      const outputOrPromise = tool.execute(input, {
+        abortSignal,
+        messages,
+        toolCall: {
+          ...toolCall,
+          input
+        }
+      })
+      const output = isPromiseLike<unknown>(outputOrPromise)
+        ? await waitForPromiseWithAbortSignal({
+            abortSignal,
+            promise: outputOrPromise
+          })
+        : outputOrPromise
+
+      result = {
+        isError: false,
+        output,
+        sourceIndex,
+        terminate: false,
+        toolCall: {
+          ...toolCall,
+          input
+        }
+      }
+    } catch (error) {
+      result = buildErrorResult({
+        message: getErrorMessage(error),
+        sourceIndex,
+        toolCall: {
+          ...toolCall,
+          input
+        }
+      })
+    }
+
+    if (
+      await shouldRetryToolResult({
+        attempt,
+        messages,
+        result,
+        toolRetry
+      })
+    ) {
+      await emitAgentLoopEvent(onEvent, {
+        attempt,
+        isError: result.isError,
+        maxRetries: getBoundedToolRetryMaxRetries(toolRetry),
+        output: result.output,
+        sourceIndex,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        type: "tool_execution_retrying"
+      })
+      continue
+    }
+
+    const finalizedResult = await finalizeToolResult({
+      afterToolCall,
+      messages,
+      result
+    })
+
+    await emitAgentLoopEvent(onEvent, {
+      attempt,
+      isError: finalizedResult.isError,
+      output: finalizedResult.output,
+      sourceIndex,
+      terminate: finalizedResult.terminate,
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      type: "tool_execution_finished"
+    })
+
+    return finalizedResult
   }
-
-  const finalizedResult = await finalizeToolResult({
-    afterToolCall,
-    messages,
-    result
-  })
-
-  await emitAgentLoopEvent(onEvent, {
-    isError: finalizedResult.isError,
-    output: finalizedResult.output,
-    sourceIndex,
-    terminate: finalizedResult.terminate,
-    toolCallId: toolCall.toolCallId,
-    toolName: toolCall.toolName,
-    type: "tool_execution_finished"
-  })
-
-  return finalizedResult
 }
 
 const executeToolBatch = async ({
@@ -741,6 +848,7 @@ const executeToolBatch = async ({
   messages,
   onEvent,
   toolCalls,
+  toolRetry,
   tools
 }: {
   activeToolNames: readonly string[] | undefined
@@ -750,6 +858,7 @@ const executeToolBatch = async ({
   messages: readonly AgentLoopMessage[]
   onEvent: RunAgentLoopOptions["onEvent"]
   toolCalls: readonly AgentLoopToolCall[]
+  toolRetry: RunAgentLoopOptions["toolRetry"]
   tools: Record<string, AgentLoopTool>
 }): Promise<AgentLoopExecutedToolResult[]> => {
   const preparedResults: (AgentLoopExecutedToolResult | PreparedToolCall)[] = []
@@ -778,7 +887,8 @@ const executeToolBatch = async ({
       afterToolCall,
       messages,
       onEvent,
-      prepared
+      prepared,
+      toolRetry
     })
   const results = [...preparedResults]
 
@@ -813,6 +923,10 @@ const appendToolResults = async ({
   results: readonly AgentLoopExecutedToolResult[]
 }): Promise<void> => {
   for (const result of results) {
+    if (result.deferred) {
+      continue
+    }
+
     const toolMessage: AgentLoopToolMessage = {
       isError: result.isError,
       output: result.output,
@@ -974,6 +1088,7 @@ export const runAgentLoop = async ({
   resources,
   shouldStopAfterTurn,
   thinkingLevel,
+  toolRetry,
   tools
 }: RunAgentLoopOptions): Promise<RunAgentLoopResult> => {
   let activeLoopToolNames = activeToolNames
@@ -1070,6 +1185,7 @@ export const runAgentLoop = async ({
       messages,
       onEvent,
       toolCalls,
+      toolRetry,
       tools: activeTools
     })
 
@@ -1084,6 +1200,15 @@ export const runAgentLoop = async ({
         messages,
         onEvent,
         stopReason: "aborted",
+        turns: turnIndex + 1
+      })
+    }
+
+    if (toolResults.some((result) => result.deferred)) {
+      return finishAgentLoop({
+        messages,
+        onEvent,
+        stopReason: "suspended",
         turns: turnIndex + 1
       })
     }

@@ -44,6 +44,23 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const normalizeText = (value: string): string =>
   value.replace(WHITESPACE_PATTERN, " ").trim()
 
+const throwIfAborted = (abortSignal?: AbortSignal): void => {
+  if (!abortSignal?.aborted) {
+    return
+  }
+
+  throw abortSignal.reason instanceof Error
+    ? abortSignal.reason
+    : new Error("Memory retrieval aborted.")
+}
+
+const formatMemorySystemPrompt = (entries: MemoryEntry[]): string =>
+  [
+    "Long-term memory retrieved from Etyon:",
+    ...entries.map(formatMemoryPromptEntry),
+    "Use these memories only when relevant. Prefer the current request and live session messages when they conflict."
+  ].join("\n\n")
+
 const truncateEnd = (content: string, maxChars: number): string => {
   if (content.length <= maxChars) {
     return content
@@ -276,28 +293,57 @@ export const getMemoryStats = async (
 }
 
 export const buildMemorySystemPrompt = async ({
+  abortSignal,
   db,
   projectPath,
   query,
   settings
 }: {
+  abortSignal?: AbortSignal
   db: AppDatabase
   projectPath: string | null
   query: string
   settings: MemorySettings
 }): Promise<string> => {
+  if (!settings.enabled || !settings.autoRetrieve) {
+    return ""
+  }
+
   const appSettings = {
     ...getSettings(),
     memory: settings
   }
+  const lexicalEntries = await retrieveMemoryEntries({
+    db,
+    embeddingModel: appSettings.memory.embeddingModel,
+    projectPath,
+    query,
+    queryEmbedding: null,
+    settings
+  })
+
+  if (lexicalEntries.length > 0) {
+    return formatMemorySystemPrompt(lexicalEntries)
+  }
+
+  throwIfAborted(abortSignal)
+
   const effectiveQuery = await rewriteMemoryQuery({
+    abortSignal,
     query,
     settings: appSettings
   })
+
+  throwIfAborted(abortSignal)
+
   const queryEmbedding = await embedMemoryQuery({
+    abortSignal,
     input: effectiveQuery,
     settings: appSettings
   }).catch(() => null)
+
+  throwIfAborted(abortSignal)
+
   const entries = await retrieveMemoryEntries({
     db,
     embeddingModel: appSettings.memory.embeddingModel,
@@ -311,11 +357,7 @@ export const buildMemorySystemPrompt = async ({
     return ""
   }
 
-  return [
-    "Long-term memory retrieved from Etyon:",
-    ...entries.map(formatMemoryPromptEntry),
-    "Use these memories only when relevant. Prefer the current request and live session messages when they conflict."
-  ].join("\n\n")
+  return formatMemorySystemPrompt(entries)
 }
 
 export const upsertChatSessionMemoryEntry = async ({
