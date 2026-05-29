@@ -247,6 +247,7 @@
       "task": "Task",
       "taskPlaceholder": "可选 graph task",
       "template": "Template",
+      "subtitle": "Runs、graphs、session tree 和审批",
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },

@@ -247,6 +247,7 @@
       "task": "Task",
       "taskPlaceholder": "Optional graph task",
       "template": "Template",
+      "subtitle": "Runs, graphs, session tree, and approvals",
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },

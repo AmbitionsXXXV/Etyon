@@ -247,6 +247,7 @@
       "task": "Task",
       "taskPlaceholder": "任意の graph task",
       "template": "Template",
+      "subtitle": "Runs、graphs、session tree、承認",
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },

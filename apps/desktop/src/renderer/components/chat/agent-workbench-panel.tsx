@@ -12,7 +12,7 @@ import type {
   ReadAgentArtifactOutput
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, ScrollShadow } from "@heroui/react"
+import { Button, Chip, Disclosure, ScrollShadow } from "@heroui/react"
 import {
   Add01Icon,
   ArrowReloadHorizontalIcon,
@@ -135,23 +135,25 @@ const EMPTY_AGENT_RUNS: AgentRunTraceRun[] = []
 const EMPTY_GRAPH_RETRIES: AgentWorkbenchGraphRetryPreview[] = []
 const EMPTY_RUN_GRAPH_TEMPLATES: AgentRunGraphTemplate[] = []
 
-const runStatusClassNames: Record<AgentRunTraceRun["status"], string> = {
-  failed: "border-destructive/35 bg-destructive/10 text-destructive",
-  running: "border-amber-500/35 bg-amber-500/10 text-amber-700",
-  succeeded: "border-emerald-500/35 bg-emerald-500/10 text-emerald-700",
-  suspended: "border-sky-500/35 bg-sky-500/10 text-sky-700"
+type ChipColor = "danger" | "default" | "success" | "warning"
+
+const runStatusChipColor: Record<AgentRunTraceRun["status"], ChipColor> = {
+  failed: "danger",
+  running: "warning",
+  succeeded: "success",
+  suspended: "default"
 }
 
-const graphNodeStatusClassNames: Record<
+const graphNodeStatusChipColor: Record<
   AgentRunGraphExecutionNode["status"],
-  string
+  ChipColor
 > = {
-  failed: "border-destructive/35 bg-destructive/10 text-destructive",
-  pending: "border-border bg-muted text-muted-foreground",
-  running: "border-amber-500/35 bg-amber-500/10 text-amber-700",
-  skipped: "border-zinc-400/35 bg-zinc-500/10 text-muted-foreground",
-  succeeded: "border-emerald-500/35 bg-emerald-500/10 text-emerald-700",
-  suspended: "border-sky-500/35 bg-sky-500/10 text-sky-700"
+  failed: "danger",
+  pending: "default",
+  running: "warning",
+  skipped: "default",
+  succeeded: "success",
+  suspended: "default"
 }
 
 const runTimeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -251,14 +253,9 @@ const refreshAgentWorkbenchQueries = ({
 }
 
 const RunStatusBadge = ({ status }: { status: AgentRunTraceRun["status"] }) => (
-  <span
-    className={cn(
-      "rounded-sm border px-1.5 py-0.5 text-[0.625rem] font-medium",
-      runStatusClassNames[status]
-    )}
-  >
-    {status}
-  </span>
+  <Chip color={runStatusChipColor[status]} size="sm" variant="soft">
+    <Chip.Label>{status}</Chip.Label>
+  </Chip>
 )
 
 const GraphNodeStatusBadge = ({
@@ -266,14 +263,9 @@ const GraphNodeStatusBadge = ({
 }: {
   status: AgentRunGraphExecutionNode["status"]
 }) => (
-  <span
-    className={cn(
-      "rounded-sm border px-1.5 py-0.5 text-[0.625rem] font-medium",
-      graphNodeStatusClassNames[status]
-    )}
-  >
-    {status}
-  </span>
+  <Chip color={graphNodeStatusChipColor[status]} size="sm" variant="soft">
+    <Chip.Label>{status}</Chip.Label>
+  </Chip>
 )
 
 const WorkbenchPreviewList = ({
@@ -488,20 +480,19 @@ const AgentWorkbenchRetryPolicyPanel = ({
         <p className="truncate text-[0.6875rem] font-medium text-muted-foreground">
           {t("chat.workbench.graphRetryStrategy")}
         </p>
-        <span
-          className={cn(
-            "shrink-0 rounded-sm border px-1.5 py-0.5 text-[0.625rem] font-medium",
-            retryPolicy.automaticRetryEnabled
-              ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-700"
-              : "border-zinc-400/35 bg-zinc-500/10 text-muted-foreground"
-          )}
+        <Chip
+          color={retryPolicy.automaticRetryEnabled ? "success" : "default"}
+          size="sm"
+          variant="soft"
         >
-          {t(
-            retryPolicy.automaticRetryEnabled
-              ? "chat.workbench.graphRetryStrategyAuto"
-              : "chat.workbench.graphRetryStrategyDisabled"
-          )}
-        </span>
+          <Chip.Label>
+            {t(
+              retryPolicy.automaticRetryEnabled
+                ? "chat.workbench.graphRetryStrategyAuto"
+                : "chat.workbench.graphRetryStrategyDisabled"
+            )}
+          </Chip.Label>
+        </Chip>
       </div>
       <div className="flex flex-wrap gap-1 text-[0.625rem] text-muted-foreground">
         <span className="rounded-sm bg-muted px-1.5 py-0.5">
@@ -653,7 +644,7 @@ const AgentRunGraphList = ({
   }
 
   return (
-    <ScrollShadow className="max-h-52 pr-1">
+    <ScrollShadow className="h-full pr-1">
       <div className="space-y-1">
         {runs.map((run) => {
           const depth = getAgentWorkbenchRunDepth({
@@ -1259,6 +1250,49 @@ const shouldInspectAgentWorkbenchSelectedRun = (
   selectedRun: AgentRunTraceRun | null
 ): boolean => selectedRun !== null
 
+const AgentWorkbenchTriggerChips = ({
+  approvalCount,
+  runs
+}: {
+  approvalCount: number
+  runs: AgentRunTraceRun[]
+}) => {
+  const { t } = useI18n()
+  const runningCount = runs.filter((r) => r.status === "running").length
+  const failedCount = runs.filter((r) => r.status === "failed").length
+
+  return (
+    <>
+      {runs.length > 0 ? (
+        <Chip color="default" size="sm" variant="secondary">
+          <Chip.Label>
+            {t("chat.workbench.runCount", { count: runs.length })}
+          </Chip.Label>
+        </Chip>
+      ) : null}
+      {runningCount > 0 ? (
+        <Chip color="warning" size="sm" variant="soft">
+          <Chip.Label>{runningCount} running</Chip.Label>
+        </Chip>
+      ) : null}
+      {failedCount > 0 ? (
+        <Chip color="danger" size="sm" variant="soft">
+          <Chip.Label>{failedCount} failed</Chip.Label>
+        </Chip>
+      ) : null}
+      {approvalCount > 0 ? (
+        <Chip color="accent" size="sm" variant="soft">
+          <Chip.Label>
+            {t("chat.workbench.approvals", {
+              count: approvalCount
+            })}
+          </Chip.Label>
+        </Chip>
+      ) : null}
+    </>
+  )
+}
+
 const SelectedRunDetails = ({
   artifactContent,
   isArtifactContentLoading,
@@ -1287,8 +1321,8 @@ const SelectedRunDetails = ({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex min-w-0 items-center justify-between gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex min-w-0 shrink-0 items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-foreground">
             {run.profileId}
@@ -1316,8 +1350,8 @@ const SelectedRunDetails = ({
         </p>
       ) : null}
       {preview ? (
-        <div className="grid min-w-0 gap-2 md:grid-cols-3">
-          <div className="min-w-0 space-y-1.5">
+        <div className="grid min-h-0 min-w-0 flex-1 gap-2 md:grid-cols-3">
+          <div className="min-h-0 min-w-0 space-y-1.5">
             <p className="text-[0.6875rem] font-medium text-muted-foreground">
               {t("chat.workbench.artifacts", {
                 count: preview.artifactCount
@@ -1353,16 +1387,20 @@ const SelectedRunDetails = ({
             ) : null}
           </div>
           <AgentWorkbenchToolCallsPanel preview={preview} />
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-[0.6875rem] font-medium text-muted-foreground">
+          <div className="flex min-h-0 min-w-0 flex-col gap-1.5">
+            <p className="shrink-0 text-[0.6875rem] font-medium text-muted-foreground">
               {t("chat.workbench.events", {
                 count: preview.eventCount
               })}
             </p>
-            <WorkbenchPreviewList
-              emptyLabel={t("chat.workbench.emptyEvents")}
-              items={preview.events}
-            />
+            <ScrollShadow className="min-h-0 flex-1 pr-1">
+              <div className="space-y-1">
+                <WorkbenchPreviewList
+                  emptyLabel={t("chat.workbench.emptyEvents")}
+                  items={preview.events}
+                />
+              </div>
+            </ScrollShadow>
           </div>
         </div>
       ) : null}
@@ -1773,99 +1811,126 @@ export const AgentWorkbenchPanel = ({
   })
 
   return (
-    <section className="min-h-0 rounded-lg border border-border/60 bg-background/70 p-3 shadow-sm">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">
-            {t("chat.workbench.title")}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {t("chat.workbench.runCount", { count: runs.length })}
-          </p>
-        </div>
-        <Button
-          aria-label={t("chat.workbench.refresh")}
-          className="shrink-0"
-          isIconOnly
-          onPress={handleRefresh}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
-        </Button>
-      </div>
+    <Disclosure className="min-h-0 overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
+      <Disclosure.Heading>
+        <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <HugeiconsIcon
+              className="shrink-0 text-muted-foreground"
+              icon={WorkflowSquare02Icon}
+              size={18}
+            />
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-semibold">
+                {t("chat.workbench.title")}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("chat.workbench.subtitle")}
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <AgentWorkbenchTriggerChips
+              approvalCount={pendingApprovals.length}
+              runs={runs}
+            />
+            <Disclosure.Indicator />
+          </div>
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      <Disclosure.Content className="min-h-0 overflow-hidden">
+        <Disclosure.Body>
+          <ScrollShadow className="max-h-[50vh] px-4 pb-4">
+            <div className="flex min-w-0 items-center justify-end">
+              <Button
+                aria-label={t("chat.workbench.refresh")}
+                isIconOnly
+                onPress={handleRefresh}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
+              </Button>
+            </div>
 
-      <AgentWorkbenchControls
-        failedNode={failedNode}
-        graphPlan={graphPlan}
-        isAdvanceGraphPending={advanceGraphMutation.isPending}
-        isApprovalResponsePending={respondApprovalMutation.isPending}
-        isCreateGraphPending={instantiateGraphMutation.isPending}
-        isRetryNodePending={retryNodeMutation.isPending}
-        isStartStagePending={startStageMutation.isPending}
-        onAdvanceGraph={() => advanceGraphMutation.mutate()}
-        onCreateGraph={() => instantiateGraphMutation.mutate()}
-        onRetryNode={() => retryNodeMutation.mutate()}
-        onSelectedTemplateIdChange={setSelectedTemplateId}
-        onStartStage={() => startStageMutation.mutate()}
-        onTaskTextChange={setTaskText}
-        operationErrorMessage={graphOperationErrorMessage}
-        selectedTemplateId={selectedTemplateId}
-        taskText={taskText}
-        templates={templates}
-      />
+            <AgentWorkbenchControls
+              failedNode={failedNode}
+              graphPlan={graphPlan}
+              isAdvanceGraphPending={advanceGraphMutation.isPending}
+              isApprovalResponsePending={respondApprovalMutation.isPending}
+              isCreateGraphPending={instantiateGraphMutation.isPending}
+              isRetryNodePending={retryNodeMutation.isPending}
+              isStartStagePending={startStageMutation.isPending}
+              onAdvanceGraph={() => advanceGraphMutation.mutate()}
+              onCreateGraph={() => instantiateGraphMutation.mutate()}
+              onRetryNode={() => retryNodeMutation.mutate()}
+              onSelectedTemplateIdChange={setSelectedTemplateId}
+              onStartStage={() => startStageMutation.mutate()}
+              onTaskTextChange={setTaskText}
+              operationErrorMessage={graphOperationErrorMessage}
+              selectedTemplateId={selectedTemplateId}
+              taskText={taskText}
+              templates={templates}
+            />
 
-      <AgentWorkbenchApprovalInbox
-        approvals={pendingApprovals}
-        isPending={respondApprovalMutation.isPending}
-        onRespond={(input) => respondApprovalMutation.mutate(input)}
-      />
+            <AgentWorkbenchApprovalInbox
+              approvals={pendingApprovals}
+              isPending={respondApprovalMutation.isPending}
+              onRespond={(input) => respondApprovalMutation.mutate(input)}
+            />
 
-      <AgentWorkbenchGraphPlanPanel
-        graphPlan={graphPlan}
-        onSelectRun={setSelectedRunId}
-        retryPolicy={retryPolicy}
-        retries={graphRetries}
-      />
+            <AgentWorkbenchGraphPlanPanel
+              graphPlan={graphPlan}
+              onSelectRun={setSelectedRunId}
+              retryPolicy={retryPolicy}
+              retries={graphRetries}
+            />
 
-      <AgentWorkbenchSessionPanel
-        isLoading={sessionQuery.isFetching}
-        isPending={isSessionMutationPending}
-        onAppendCompactionSummary={(summary) =>
-          appendSessionCompactionSummaryMutation.mutate(summary)
-        }
-        onMoveLeaf={(input) => moveSessionLeafMutation.mutate(input)}
-        operationErrorMessage={sessionOperationErrorMessage}
-        snapshot={sessionQuery.data ?? null}
-      />
+            <AgentWorkbenchSessionPanel
+              isLoading={sessionQuery.isFetching}
+              isPending={isSessionMutationPending}
+              onAppendCompactionSummary={(summary) =>
+                appendSessionCompactionSummaryMutation.mutate(summary)
+              }
+              onMoveLeaf={(input) => moveSessionLeafMutation.mutate(input)}
+              operationErrorMessage={sessionOperationErrorMessage}
+              snapshot={sessionQuery.data ?? null}
+            />
 
-      <AgentWorkbenchDiffPanel
-        gitDiff={gitDiff}
-        isLoading={isProjectDiffLoading}
-      />
+            <AgentWorkbenchDiffPanel
+              gitDiff={gitDiff}
+              isLoading={isProjectDiffLoading}
+            />
 
-      <div className="mt-3 grid min-h-0 gap-3 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.2fr)]">
-        <AgentRunGraphList
-          emptyLabel={t("chat.workbench.emptyRuns")}
-          onSelectRun={setSelectedRunId}
-          runs={runs}
-          runsById={runsById}
-          selectedRunId={selectedRunId}
-        />
+            <div className="mt-3 grid max-h-[min(24rem,40vh)] min-h-0 gap-3 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.2fr)]">
+              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
+                <div className="min-h-0 flex-1">
+                  <AgentRunGraphList
+                    emptyLabel={t("chat.workbench.emptyRuns")}
+                    onSelectRun={setSelectedRunId}
+                    runs={runs}
+                    runsById={runsById}
+                    selectedRunId={selectedRunId}
+                  />
+                </div>
+              </div>
 
-        <div className="min-w-0 rounded-md border border-border/50 bg-muted/20 p-2">
-          <SelectedRunDetails
-            artifactContent={artifactContentQuery.data ?? null}
-            isArtifactContentLoading={artifactContentQuery.isFetching}
-            isLoading={inspectRunQuery.isFetching}
-            onSelectArtifact={setSelectedArtifactId}
-            preview={preview}
-            run={selectedRun}
-            selectedArtifactId={selectedArtifactId}
-          />
-        </div>
-      </div>
-    </section>
+              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
+                <SelectedRunDetails
+                  artifactContent={artifactContentQuery.data ?? null}
+                  isArtifactContentLoading={artifactContentQuery.isFetching}
+                  isLoading={inspectRunQuery.isFetching}
+                  onSelectArtifact={setSelectedArtifactId}
+                  preview={preview}
+                  run={selectedRun}
+                  selectedArtifactId={selectedArtifactId}
+                />
+              </div>
+            </div>
+          </ScrollShadow>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
   )
 }
