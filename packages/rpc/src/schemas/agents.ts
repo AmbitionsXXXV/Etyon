@@ -107,6 +107,23 @@ export const AgentSessionQueuedMessageQueueSchema = z.enum([
   "steer"
 ])
 
+export const AgentSessionQueuedMessageSchema = z.object({
+  chatSessionId: z.string(),
+  content: z.string(),
+  createdAt: z.string(),
+  id: z.string(),
+  queue: AgentSessionQueuedMessageQueueSchema,
+  runId: z.string()
+})
+
+export const ListQueuedAgentMessagesInputSchema = z.object({
+  sessionId: z.string()
+})
+
+export const QueuedAgentMessagesOutputSchema = z.object({
+  messages: z.array(AgentSessionQueuedMessageSchema)
+})
+
 export const QueueAgentMessageInputSchema = z.object({
   content: z.string().trim().min(1),
   queue: AgentSessionQueuedMessageQueueSchema.default("steer"),
@@ -114,14 +131,33 @@ export const QueueAgentMessageInputSchema = z.object({
 })
 
 export const QueueAgentMessageOutputSchema = z.object({
-  message: z.object({
-    chatSessionId: z.string(),
-    content: z.string(),
-    queue: AgentSessionQueuedMessageQueueSchema,
-    runId: z.string()
-  })
+  message: AgentSessionQueuedMessageSchema
 })
 
+export const UpdateQueuedAgentMessageInputSchema = z
+  .object({
+    content: z.string().trim().min(1).optional(),
+    id: z.string(),
+    queue: AgentSessionQueuedMessageQueueSchema.optional(),
+    sessionId: z.string()
+  })
+  .refine((input) => input.content !== undefined || input.queue !== undefined, {
+    message: "Expected content or queue to update."
+  })
+
+export const RemoveQueuedAgentMessageInputSchema = z.object({
+  id: z.string(),
+  sessionId: z.string()
+})
+
+export const ReorderQueuedAgentMessagesInputSchema = z.object({
+  ids: z.array(z.string()),
+  sessionId: z.string()
+})
+
+export type AgentSessionQueuedMessage = z.infer<
+  typeof AgentSessionQueuedMessageSchema
+>
 export type AgentSessionQueuedMessageQueue = z.infer<
   typeof AgentSessionQueuedMessageQueueSchema
 >
@@ -138,6 +174,9 @@ export type InspectAgentRunOutput = z.infer<typeof InspectAgentRunOutputSchema>
 export type ListPendingAgentApprovalsInput = z.infer<
   typeof ListPendingAgentApprovalsInputSchema
 >
+export type ListQueuedAgentMessagesInput = z.infer<
+  typeof ListQueuedAgentMessagesInputSchema
+>
 export type ListRecoverableAgentRunsInput = z.infer<
   typeof ListRecoverableAgentRunsInputSchema
 >
@@ -145,12 +184,24 @@ export type PendingAgentApproval = z.infer<typeof PendingAgentApprovalSchema>
 export type PendingAgentApprovalsOutput = z.infer<
   typeof PendingAgentApprovalsOutputSchema
 >
+export type QueuedAgentMessagesOutput = z.infer<
+  typeof QueuedAgentMessagesOutputSchema
+>
 export type QueueAgentMessageInput = z.infer<
   typeof QueueAgentMessageInputSchema
 >
 export type QueueAgentMessageOutput = z.infer<
   typeof QueueAgentMessageOutputSchema
 >
+export type RemoveQueuedAgentMessageInput = z.infer<
+  typeof RemoveQueuedAgentMessageInputSchema
+>
+export type ReorderQueuedAgentMessagesInput = z.infer<
+  typeof ReorderQueuedAgentMessagesInputSchema
+>
 export type RecoverableAgentRunsOutput = z.infer<
   typeof RecoverableAgentRunsOutputSchema
+>
+export type UpdateQueuedAgentMessageInput = z.infer<
+  typeof UpdateQueuedAgentMessageInputSchema
 >

@@ -104,8 +104,125 @@ describe("agent session events", () => {
       ])
     ).toEqual([
       {
+        createdAt: "2026-05-24T06:00:00.000Z",
+        id: "event-3",
         message: "Continue after the final answer.",
-        queue: "follow-up"
+        queue: "follow-up",
+        runId: "run-1",
+        sequence: 3
+      }
+    ])
+  })
+
+  it("applies queued message update, remove, and reorder events", () => {
+    expect(
+      listPendingAgentSessionQueuedMessages([
+        createAgentEvent(1, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-1",
+              message: "First instruction.",
+              queue: "steer"
+            },
+            type: "steering"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-2",
+              message: "Second instruction.",
+              queue: "follow-up"
+            },
+            type: "follow-up"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-1",
+              message: "Updated first instruction.",
+              queue: "follow-up"
+            },
+            type: "queued-message-updated"
+          }
+        }),
+        createAgentEvent(4, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              ids: ["queue-2", "queue-1"]
+            },
+            type: "queued-messages-reordered"
+          }
+        }),
+        createAgentEvent(5, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-2"
+            },
+            type: "queued-message-removed"
+          }
+        })
+      ])
+    ).toEqual([
+      {
+        createdAt: "2026-05-24T06:00:00.000Z",
+        id: "queue-1",
+        message: "Updated first instruction.",
+        queue: "follow-up",
+        runId: "run-1",
+        sequence: 1
+      }
+    ])
+  })
+
+  it("consumes duplicate queued messages one item at a time by content", () => {
+    expect(
+      listPendingAgentSessionQueuedMessages([
+        createAgentEvent(1, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-1",
+              message: "Same content.",
+              queue: "steer"
+            },
+            type: "steering"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              id: "queue-2",
+              message: "Same content.",
+              queue: "follow-up"
+            },
+            type: "follow-up"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: "Same content.",
+            role: "user",
+            type: "model"
+          }
+        })
+      ])
+    ).toEqual([
+      {
+        createdAt: "2026-05-24T06:00:00.000Z",
+        id: "queue-2",
+        message: "Same content.",
+        queue: "follow-up",
+        runId: "run-1",
+        sequence: 2
       }
     ])
   })

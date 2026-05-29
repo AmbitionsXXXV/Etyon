@@ -36,7 +36,7 @@
     "@commitlint/config-conventional": "^21.0.1",
     "cz-git": "^1.13.1",
     "sherif": "^1.11.1",
-    "turbo": "^2.9.14",
+    "turbo": "^2.9.16",
     "typescript": "catalog:",
     "ultracite": "7.7.0",
     "vite-plus": "catalog:"
@@ -44,5 +44,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.2.2"
+  "packageManager": "pnpm@11.4.0"
 }

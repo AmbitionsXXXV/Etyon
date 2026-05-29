@@ -8,6 +8,9 @@ export type AgentCustomMessageType =
   | "compaction-summary"
   | "follow-up"
   | "plan-mode"
+  | "queued-message-removed"
+  | "queued-message-updated"
+  | "queued-messages-reordered"
   | "steering"
 
 export interface CustomAgentMessages {

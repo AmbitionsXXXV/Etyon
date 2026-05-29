@@ -20,8 +20,12 @@
     "composer": {
       "placeholder": "メッセージを入力するか、@ でプロジェクトファイルを参照します",
       "queue": "キューに追加",
+      "queueEdit": "キュー済みメッセージを編集",
       "queueFollowUp": "フォローアップに追加",
+      "queueRemove": "キュー済みメッセージを削除",
+      "queueReorder": "キュー済みメッセージを並べ替え",
       "queueSteer": "現在の実行を調整",
+      "queuedMessages": "キュー済みメッセージ",
       "send": "送信",
       "stop": "出力を停止"
     },

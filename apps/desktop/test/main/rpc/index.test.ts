@@ -454,15 +454,102 @@ describe("message-port rpc", () => {
     expect(result.message).toEqual({
       chatSessionId: session.id,
       content: "Prefer the existing helper.",
+      createdAt: expect.any(String),
+      id: expect.any(String),
       queue: "steer",
       runId: run.id
     })
     expect(listPendingAgentSessionQueuedMessages(events)).toEqual([
       {
+        createdAt: expect.any(String),
+        id: result.message.id,
         message: "Prefer the existing helper.",
-        queue: "steer"
+        queue: "steer",
+        runId: run.id,
+        sequence: expect.any(Number)
       }
     ])
+
+    port1.close()
+    port2.close()
+  })
+
+  it("manages queued agent messages over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-queue-control")
+    })
+    await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const first = await client.agents.queueMessage({
+      content: "Prefer the existing helper.",
+      queue: "steer",
+      sessionId: session.id
+    })
+    const second = await client.agents.queueMessage({
+      content: "Add a follow-up summary.",
+      queue: "follow-up",
+      sessionId: session.id
+    })
+    const third = await client.agents.queueMessage({
+      content: "Check tests before finishing.",
+      queue: "steer",
+      sessionId: session.id
+    })
+
+    await client.agents.updateQueuedMessage({
+      content: "Prefer the shared helper.",
+      id: first.message.id,
+      queue: "follow-up",
+      sessionId: session.id
+    })
+    await client.agents.reorderQueuedMessages({
+      ids: [third.message.id, first.message.id, second.message.id],
+      sessionId: session.id
+    })
+    const afterRemove = await client.agents.removeQueuedMessage({
+      id: second.message.id,
+      sessionId: session.id
+    })
+
+    expect(afterRemove.messages).toEqual([
+      expect.objectContaining({
+        chatSessionId: session.id,
+        content: "Check tests before finishing.",
+        id: third.message.id,
+        queue: "steer"
+      }),
+      expect.objectContaining({
+        chatSessionId: session.id,
+        content: "Prefer the shared helper.",
+        id: first.message.id,
+        queue: "follow-up"
+      })
+    ])
+    expect(
+      await client.agents.listQueuedMessages({
+        sessionId: session.id
+      })
+    ).toEqual(afterRemove)
 
     port1.close()
     port2.close()

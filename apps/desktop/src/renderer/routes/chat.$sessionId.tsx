@@ -11,7 +11,7 @@ import type {
   StreamdownAnimation
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Resizable } from "@heroui-pro/react"
+import { ChatLoader, ChatMessage, Resizable } from "@heroui-pro/react"
 import type { PanelImperativeHandle } from "@heroui-pro/react"
 import { Button, Chip, ScrollShadow, TextArea } from "@heroui/react"
 import {
@@ -124,6 +124,12 @@ const getChatSessionMessagesQueryOptions = (sessionId: string) =>
       sessionId
     }
   })
+const getQueuedAgentMessagesQueryOptions = (sessionId: string) =>
+  orpc.agents.listQueuedMessages.queryOptions({
+    input: {
+      sessionId
+    }
+  })
 const MENTION_ITEM_LIMIT = 50
 const MENTION_SEARCH_DEBOUNCE_WAIT_MS = 180
 const MENTION_SKILL_ITEM_LIMIT = 20
@@ -135,6 +141,10 @@ const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
+const getQueuedMessagesRefetchInterval = (
+  isRequestPending: boolean
+): false | number =>
+  isRequestPending ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS : false
 const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
   {
     icon: FolderGitIcon,
@@ -826,14 +836,25 @@ const AssistantLiveStatus = ({
   })
 
   return (
-    <div className="group/message flex justify-start outline-none">
-      <div className="flex w-full max-w-3xl flex-col gap-1 px-1 py-2 text-xs">
-        <span className="shimmer text-muted-foreground/80">
-          {t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
-        </span>
-        <AssistantWorkTime liveStartedAt={requestStartedAt} />
-      </div>
-    </div>
+    <ChatMessage.Assistant className="group/message flex justify-start outline-none">
+      <ChatMessage.Bubble className="w-full max-w-3xl bg-transparent px-1 py-2 shadow-none">
+        <ChatMessage.Body>
+          <ChatMessage.Content className="flex flex-col gap-1 text-xs">
+            <span className="flex items-center gap-2 text-muted-foreground/80">
+              <ChatLoader.Dots
+                className="text-muted-foreground"
+                label={t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
+                size="sm"
+              />
+              <span className="shimmer">
+                {t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
+              </span>
+            </span>
+            <AssistantWorkTime liveStartedAt={requestStartedAt} />
+          </ChatMessage.Content>
+        </ChatMessage.Body>
+      </ChatMessage.Bubble>
+    </ChatMessage.Assistant>
   )
 }
 
@@ -929,55 +950,65 @@ const ChatMessageBubble = ({
 
   if (isAssistant) {
     return (
-      <div className="w-full min-w-0 px-1 py-1 text-sm leading-6 text-foreground">
-        <AssistantWorkTime
-          liveStartedAt={
-            isLatestAssistantMessage && isRequestPending
-              ? liveWorkTimeStartedAt
-              : undefined
-          }
-          workTimeMs={metadata?.workTimeMs}
-        />
+      <ChatMessage.Bubble className="w-full min-w-0 bg-transparent px-1 py-1 shadow-none">
+        <ChatMessage.Body>
+          <ChatMessage.Content className="text-sm leading-6 text-foreground">
+            <AssistantWorkTime
+              liveStartedAt={
+                isLatestAssistantMessage && isRequestPending
+                  ? liveWorkTimeStartedAt
+                  : undefined
+              }
+              workTimeMs={metadata?.workTimeMs}
+            />
 
-        {mentions.length > 0 && !hasInlineMentions ? (
-          <MessageMentionChips
-            isAssistant
-            mentions={mentions}
-            messageId={message.id}
-          />
-        ) : null}
+            {mentions.length > 0 && !hasInlineMentions ? (
+              <MessageMentionChips
+                isAssistant
+                mentions={mentions}
+                messageId={message.id}
+              />
+            ) : null}
 
-        <AssistantMessageTimeline
-          chatSessionId={chatSessionId}
-          isStreamdownAnimating={isLatestAssistantMessage && isRequestPending}
-          isApprovalActionDisabled={isRequestPending}
-          message={message}
-          onApprovalResponse={onApprovalResponse}
-          showToolTraces={showToolTraces}
-          streamdownAnimation={streamdownAnimation}
-        />
-      </div>
+            <AssistantMessageTimeline
+              chatSessionId={chatSessionId}
+              isStreamdownAnimating={
+                isLatestAssistantMessage && isRequestPending
+              }
+              isApprovalActionDisabled={isRequestPending}
+              message={message}
+              onApprovalResponse={onApprovalResponse}
+              showToolTraces={showToolTraces}
+              streamdownAnimation={streamdownAnimation}
+            />
+          </ChatMessage.Content>
+        </ChatMessage.Body>
+      </ChatMessage.Bubble>
     )
   }
 
   return (
-    <div className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground">
-      {mentions.length > 0 && !hasInlineMentions ? (
-        <MessageMentionChips
-          isAssistant={isAssistant}
-          mentions={mentions}
-          messageId={message.id}
-        />
-      ) : null}
+    <ChatMessage.Bubble className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground">
+      <ChatMessage.Body>
+        <ChatMessage.Content>
+          {mentions.length > 0 && !hasInlineMentions ? (
+            <MessageMentionChips
+              isAssistant={isAssistant}
+              mentions={mentions}
+              messageId={message.id}
+            />
+          ) : null}
 
-      <MessageSegmentContent
-        mentions={mentions}
-        messageId={message.id}
-        segments={segments}
-        text={messageText}
-        usesStructuredSegments={usesStructuredSegments}
-      />
-    </div>
+          <MessageSegmentContent
+            mentions={mentions}
+            messageId={message.id}
+            segments={segments}
+            text={messageText}
+            usesStructuredSegments={usesStructuredSegments}
+          />
+        </ChatMessage.Content>
+      </ChatMessage.Body>
+    </ChatMessage.Bubble>
   )
 }
 
@@ -1018,9 +1049,10 @@ const ChatMessageItem = ({
   const isUser = message.role === "user"
   const isEditingMessage = isUser && editingMessageId === message.id
   const messageText = getMessageText(message)
+  const MessageRoot = isAssistant ? ChatMessage.Assistant : ChatMessage.User
 
   return (
-    <div
+    <MessageRoot
       className={cn(
         "group/message flex outline-none",
         isAssistant ? "justify-start" : "justify-end"
@@ -1066,7 +1098,7 @@ const ChatMessageItem = ({
           />
         ) : null}
       </div>
-    </div>
+    </MessageRoot>
   )
 }
 
@@ -1141,6 +1173,7 @@ const ChatRuntime = ({
   transport: DefaultChatTransport<ChatUiMessage>
 }) => {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -1153,6 +1186,10 @@ const ChatRuntime = ({
     Set<string>
   >(() => new Set())
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const queuedMessagesQueryOptions = useMemo(
+    () => getQueuedAgentMessagesQueryOptions(selectedSession.id),
+    [selectedSession.id]
+  )
   const {
     addToolApprovalResponse,
     clearError,
@@ -1172,6 +1209,9 @@ const ChatRuntime = ({
     },
     onFinish: () => {
       setRequestPhase(null)
+      void queryClient.invalidateQueries({
+        queryKey: queuedMessagesQueryOptions.queryKey
+      })
       onChatFinish()
     },
     sendAutomaticallyWhen: shouldSendChatAutomatically,
@@ -1270,6 +1310,11 @@ const ChatRuntime = ({
       isModelUpdating,
       isRequestPending
     })
+  const queuedMessagesQuery = useQuery({
+    ...queuedMessagesQueryOptions,
+    enabled: agentsEnabled,
+    refetchInterval: getQueuedMessagesRefetchInterval(isRequestPending)
+  })
   const recoverableRunsQuery = useQuery({
     ...orpc.agents.listRecoverableRuns.queryOptions({
       input: {
@@ -1348,6 +1393,9 @@ const ChatRuntime = ({
           queue: queue ?? "steer",
           sessionId: selectedSession.id
         })
+        void queryClient.invalidateQueries({
+          queryKey: queuedMessagesQueryOptions.queryKey
+        })
         return
       }
 
@@ -1358,7 +1406,7 @@ const ChatRuntime = ({
             }
           : undefined
 
-      await sendMessage(
+      void sendMessage(
         {
           metadata,
           text
@@ -1366,7 +1414,60 @@ const ChatRuntime = ({
         buildChatRequestOptions(mentions)
       )
     },
-    [buildChatRequestOptions, canQueueMessage, selectedSession.id, sendMessage]
+    [
+      buildChatRequestOptions,
+      canQueueMessage,
+      queryClient,
+      queuedMessagesQueryOptions.queryKey,
+      selectedSession.id,
+      sendMessage
+    ]
+  )
+
+  const handleQueuedMessageRemove = useCallback(
+    async (id: string) => {
+      const nextQueue = await rpcClient.agents.removeQueuedMessage({
+        id,
+        sessionId: selectedSession.id
+      })
+
+      queryClient.setQueryData(queuedMessagesQueryOptions.queryKey, nextQueue)
+    },
+    [queryClient, queuedMessagesQueryOptions.queryKey, selectedSession.id]
+  )
+
+  const handleQueuedMessageReorder = useCallback(
+    async (ids: string[]) => {
+      const nextQueue = await rpcClient.agents.reorderQueuedMessages({
+        ids,
+        sessionId: selectedSession.id
+      })
+
+      queryClient.setQueryData(queuedMessagesQueryOptions.queryKey, nextQueue)
+    },
+    [queryClient, queuedMessagesQueryOptions.queryKey, selectedSession.id]
+  )
+
+  const handleQueuedMessageUpdate = useCallback(
+    async ({
+      content,
+      id,
+      queue
+    }: {
+      content?: string
+      id: string
+      queue?: AgentSessionQueuedMessageQueue
+    }) => {
+      const nextQueue = await rpcClient.agents.updateQueuedMessage({
+        ...(content ? { content } : {}),
+        id,
+        ...(queue ? { queue } : {}),
+        sessionId: selectedSession.id
+      })
+
+      queryClient.setQueryData(queuedMessagesQueryOptions.queryKey, nextQueue)
+    },
+    [queryClient, queuedMessagesQueryOptions.queryKey, selectedSession.id]
   )
 
   const getMessageRegenerateMentions = useCallback(
@@ -1651,14 +1752,23 @@ const ChatRuntime = ({
             isQueueSubmitEnabled={canQueueMessage}
             onMentionQueryChange={onMentionQueryChange}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
+            onQueuedMessageRemove={handleQueuedMessageRemove}
+            onQueuedMessageReorder={handleQueuedMessageReorder}
+            onQueuedMessageUpdate={handleQueuedMessageUpdate}
             onStop={handleStop}
             onSubmit={handleSubmit}
             placeholder={t("chat.composer.placeholder")}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
+            queueEditLabel={t("chat.composer.queueEdit")}
             queueFollowUpLabel={t("chat.composer.queueFollowUp")}
+            queueRemoveLabel={t("chat.composer.queueRemove")}
+            queueReorderLabel={t("chat.composer.queueReorder")}
             queueSteerLabel={t("chat.composer.queueSteer")}
+            queuedMessages={queuedMessagesQuery.data?.messages ?? []}
+            queuedMessagesLabel={t("chat.composer.queuedMessages")}
+            status={status}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -1797,8 +1907,12 @@ const ChatPendingState = ({
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
+            queueEditLabel={t("chat.composer.queueEdit")}
             queueFollowUpLabel={t("chat.composer.queueFollowUp")}
+            queueRemoveLabel={t("chat.composer.queueRemove")}
+            queueReorderLabel={t("chat.composer.queueReorder")}
             queueSteerLabel={t("chat.composer.queueSteer")}
+            queuedMessagesLabel={t("chat.composer.queuedMessages")}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />

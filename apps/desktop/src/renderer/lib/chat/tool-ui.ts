@@ -1,3 +1,5 @@
+import type { ToolPartState } from "@heroui-pro/react"
+
 export const ANT_THINKING_CLOSE_TAG = "</antThinking>"
 export const ANT_THINKING_OPEN_TAG = "<antThinking>"
 const EXECUTED_IN_PREFIX = "Executed in "
@@ -57,6 +59,31 @@ export const shouldRenderAssistantToolPart = ({
   showToolTraces: boolean
   state: string
 }): boolean => showToolTraces || state === "approval-requested"
+
+export const mapAssistantToolPartStateToChatToolState = (
+  state: string
+): ToolPartState => {
+  switch (state) {
+    case "approval-requested": {
+      return "requires-action"
+    }
+    case "input-available":
+    case "input-streaming":
+    case "output-available":
+    case "output-error": {
+      return state
+    }
+    case "approval-responded": {
+      return "output-available"
+    }
+    case "output-denied": {
+      return "output-error"
+    }
+    default: {
+      return "input-available"
+    }
+  }
+}
 
 interface ParsedCommandBlock {
   nextIndex: number

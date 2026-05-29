@@ -41,6 +41,8 @@ allowBuilds:
   electron-winstaller: true
   esbuild: true
   fs-xattr: true
+  heroui-native-pro: true
+  heroui-pro: true
   macos-alias: true
   msw: true
 minimumReleaseAgeExclude:
@@ -95,3 +97,19 @@ minimumReleaseAgeExclude:
   - font-list@2.0.4
   - hono@4.12.21
   - shiki@4.1.0
+  - "@heroui-pro/react@1.0.0-beta.5"
+  - "@turbo/darwin-64@2.9.16"
+  - "@turbo/darwin-arm64@2.9.16"
+  - "@turbo/gen@2.9.16"
+  - "@turbo/linux-64@2.9.16"
+  - "@turbo/linux-arm64@2.9.16"
+  - "@turbo/windows-64@2.9.16"
+  - "@turbo/windows-arm64@2.9.16"
+  - turbo@2.9.16
+  - "@internationalized/date@3.12.2"
+  - "@internationalized/number@3.6.7"
+  - "@internationalized/string@3.2.9"
+  - "@react-types/shared@3.35.0"
+  - react-aria-components@1.18.0
+  - react-aria@3.49.0
+  - react-stately@3.47.0

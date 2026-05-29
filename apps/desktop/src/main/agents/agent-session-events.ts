@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+
 import type { ModelMessage } from "ai"
 
 import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
@@ -57,6 +59,7 @@ export interface AppendAgentSessionPlanModeEventOptions {
 }
 
 export interface AppendAgentSessionQueuedMessageEventOptions {
+  id?: string
   message: string
   run: AgentRun
 }
@@ -64,8 +67,29 @@ export interface AppendAgentSessionQueuedMessageEventOptions {
 export type AgentSessionQueuedMessageQueue = "follow-up" | "steer"
 
 export interface AgentSessionQueuedMessage {
+  createdAt: string
+  id: string
   message: string
   queue: AgentSessionQueuedMessageQueue
+  runId: string
+  sequence: number
+}
+
+export interface AppendAgentSessionQueuedMessageUpdateEventOptions {
+  id: string
+  message?: string
+  queue?: AgentSessionQueuedMessageQueue
+  run: AgentRun
+}
+
+export interface AppendAgentSessionQueuedMessageRemoveEventOptions {
+  id: string
+  run: AgentRun
+}
+
+export interface AppendAgentSessionQueuedMessageReorderEventOptions {
+  ids: readonly string[]
+  run: AgentRun
 }
 
 export interface CreateAgentSessionQueuedMessageWriterOptions {
@@ -79,7 +103,7 @@ export interface AgentSessionQueuedMessageWriteInput {
 
 export type AgentSessionQueuedMessageWriter = (
   message: AgentSessionQueuedMessageWriteInput
-) => Promise<void>
+) => Promise<AgentSessionQueuedMessage>
 
 const MODEL_MESSAGE_ROLES = new Set(["assistant", "system", "tool", "user"])
 const QUEUED_MESSAGE_QUEUES = new Set(["follow-up", "steer"])
@@ -153,9 +177,13 @@ const isAgentSessionQueuedMessageQueue = (
 ): value is AgentSessionQueuedMessageQueue =>
   typeof value === "string" && QUEUED_MESSAGE_QUEUES.has(value)
 
-const getQueuedMessageFromCustomMessage = (
+const getQueuedMessageFromCustomMessage = ({
+  event,
+  message
+}: {
+  event: AgentEvent
   message: AgentCustomMessage
-): AgentSessionQueuedMessage | null => {
+}): AgentSessionQueuedMessage | null => {
   const queuedMessage = message.data.message
   const { queue } = message.data
 
@@ -174,9 +202,127 @@ const getQueuedMessageFromCustomMessage = (
   }
 
   return {
+    createdAt: event.createdAt,
+    id: typeof message.data.id === "string" ? message.data.id : event.id,
     message: queuedMessage,
-    queue
+    queue,
+    runId: event.runId,
+    sequence: event.sequence
   }
+}
+
+const getQueuedMessageUpdateFromCustomMessage = (
+  message: AgentCustomMessage
+): {
+  id: string
+  message?: string
+  queue?: AgentSessionQueuedMessageQueue
+} | null => {
+  if (message.type !== "queued-message-updated") {
+    return null
+  }
+
+  const { id, queue } = message.data
+  const queuedMessage = message.data.message
+
+  if (typeof id !== "string") {
+    return null
+  }
+
+  return {
+    id,
+    ...(typeof queuedMessage === "string" ? { message: queuedMessage } : {}),
+    ...(isAgentSessionQueuedMessageQueue(queue) ? { queue } : {})
+  }
+}
+
+const getQueuedMessageRemoveIdFromCustomMessage = (
+  message: AgentCustomMessage
+): null | string =>
+  message.type === "queued-message-removed" &&
+  typeof message.data.id === "string"
+    ? message.data.id
+    : null
+
+const getQueuedMessageReorderIdsFromCustomMessage = (
+  message: AgentCustomMessage
+): readonly string[] | null =>
+  message.type === "queued-messages-reordered" &&
+  Array.isArray(message.data.ids) &&
+  message.data.ids.every((id) => typeof id === "string")
+    ? (message.data.ids as string[])
+    : null
+
+const updateQueuedMessage = ({
+  queuedMessages,
+  update
+}: {
+  queuedMessages: AgentSessionQueuedMessage[]
+  update: {
+    id: string
+    message?: string
+    queue?: AgentSessionQueuedMessageQueue
+  }
+}): void => {
+  const index = queuedMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === update.id
+  )
+  const queuedMessage = queuedMessages[index]
+
+  if (!queuedMessage) {
+    return
+  }
+
+  queuedMessages[index] = {
+    ...queuedMessage,
+    ...(update.message ? { message: update.message } : {}),
+    ...(update.queue ? { queue: update.queue } : {})
+  }
+}
+
+const removeQueuedMessageById = ({
+  id,
+  queuedMessages
+}: {
+  id: string
+  queuedMessages: AgentSessionQueuedMessage[]
+}): void => {
+  const removedIndex = queuedMessages.findIndex(
+    (queuedMessage) => queuedMessage.id === id
+  )
+
+  if (removedIndex !== -1) {
+    queuedMessages.splice(removedIndex, 1)
+  }
+}
+
+const reorderQueuedMessages = ({
+  ids,
+  queuedMessages
+}: {
+  ids: readonly string[]
+  queuedMessages: AgentSessionQueuedMessage[]
+}): void => {
+  const orderById = new Map(ids.map((id, index) => [id, index]))
+
+  queuedMessages.sort((left, right) => {
+    const leftOrder = orderById.get(left.id)
+    const rightOrder = orderById.get(right.id)
+
+    if (leftOrder === undefined && rightOrder === undefined) {
+      return left.sequence - right.sequence
+    }
+
+    if (leftOrder === undefined) {
+      return 1
+    }
+
+    if (rightOrder === undefined) {
+      return -1
+    }
+
+    return leftOrder - rightOrder
+  })
 }
 
 const consumeFirstQueuedMessage = ({
@@ -295,32 +441,109 @@ export const appendAgentSessionCustomMessageEvent = async ({
 }
 
 export const appendAgentSessionQueuedFollowUpEvent = async ({
+  id = randomUUID(),
   message,
   run
-}: AppendAgentSessionQueuedMessageEventOptions): Promise<void> => {
+}: AppendAgentSessionQueuedMessageEventOptions): Promise<AgentSessionQueuedMessage> => {
+  const event = await run.appendEvent({
+    payload: {
+      action: "appendCustomMessage",
+      message: {
+        data: {
+          id,
+          message,
+          queue: "follow-up"
+        },
+        type: "follow-up"
+      }
+    },
+    type: AGENT_SESSION_ENTRY_EVENT_TYPE
+  })
+
+  return {
+    createdAt: event.createdAt,
+    id,
+    message,
+    queue: "follow-up",
+    runId: event.runId,
+    sequence: event.sequence
+  }
+}
+
+export const appendAgentSessionQueuedSteeringEvent = async ({
+  id = randomUUID(),
+  message,
+  run
+}: AppendAgentSessionQueuedMessageEventOptions): Promise<AgentSessionQueuedMessage> => {
+  const event = await run.appendEvent({
+    payload: {
+      action: "appendCustomMessage",
+      message: {
+        data: {
+          id,
+          message,
+          queue: "steer"
+        },
+        type: "steering"
+      }
+    },
+    type: AGENT_SESSION_ENTRY_EVENT_TYPE
+  })
+
+  return {
+    createdAt: event.createdAt,
+    id,
+    message,
+    queue: "steer",
+    runId: event.runId,
+    sequence: event.sequence
+  }
+}
+
+export const appendAgentSessionQueuedMessageUpdateEvent = async ({
+  id,
+  message,
+  queue,
+  run
+}: AppendAgentSessionQueuedMessageUpdateEventOptions): Promise<void> => {
   await appendAgentSessionCustomMessageEvent({
     message: {
       data: {
-        message,
-        queue: "follow-up"
+        id,
+        ...(message ? { message } : {}),
+        ...(queue ? { queue } : {})
       },
-      type: "follow-up"
+      type: "queued-message-updated"
     },
     run
   })
 }
 
-export const appendAgentSessionQueuedSteeringEvent = async ({
-  message,
+export const appendAgentSessionQueuedMessageRemoveEvent = async ({
+  id,
   run
-}: AppendAgentSessionQueuedMessageEventOptions): Promise<void> => {
+}: AppendAgentSessionQueuedMessageRemoveEventOptions): Promise<void> => {
   await appendAgentSessionCustomMessageEvent({
     message: {
       data: {
-        message,
-        queue: "steer"
+        id
       },
-      type: "steering"
+      type: "queued-message-removed"
+    },
+    run
+  })
+}
+
+export const appendAgentSessionQueuedMessagesReorderEvent = async ({
+  ids,
+  run
+}: AppendAgentSessionQueuedMessageReorderEventOptions): Promise<void> => {
+  await appendAgentSessionCustomMessageEvent({
+    message: {
+      data: {
+        ids: [...ids]
+      },
+      type: "queued-messages-reordered"
     },
     run
   })
@@ -364,21 +587,19 @@ export const createAgentSessionQueuedMessageWriter =
   ({
     run
   }: CreateAgentSessionQueuedMessageWriterOptions): AgentSessionQueuedMessageWriter =>
-  async ({ content, queue }) => {
+  ({ content, queue }) => {
     switch (queue) {
       case "follow-up": {
-        await appendAgentSessionQueuedFollowUpEvent({
+        return appendAgentSessionQueuedFollowUpEvent({
           message: content,
           run
         })
-        break
       }
       case "steer": {
-        await appendAgentSessionQueuedSteeringEvent({
+        return appendAgentSessionQueuedSteeringEvent({
           message: content,
           run
         })
-        break
       }
       default: {
         const exhaustiveQueue: never = queue
@@ -408,10 +629,44 @@ export const listPendingAgentSessionQueuedMessages = (
       payload.message &&
       isAgentCustomMessage(payload.message)
     ) {
-      const queuedMessage = getQueuedMessageFromCustomMessage(payload.message)
+      const queuedMessage = getQueuedMessageFromCustomMessage({
+        event,
+        message: payload.message
+      })
 
       if (queuedMessage) {
         queuedMessages.push(queuedMessage)
+      }
+
+      const update = getQueuedMessageUpdateFromCustomMessage(payload.message)
+
+      if (update) {
+        updateQueuedMessage({
+          queuedMessages,
+          update
+        })
+      }
+
+      const removeId = getQueuedMessageRemoveIdFromCustomMessage(
+        payload.message
+      )
+
+      if (removeId) {
+        removeQueuedMessageById({
+          id: removeId,
+          queuedMessages
+        })
+      }
+
+      const reorderIds = getQueuedMessageReorderIdsFromCustomMessage(
+        payload.message
+      )
+
+      if (reorderIds) {
+        reorderQueuedMessages({
+          ids: reorderIds,
+          queuedMessages
+        })
       }
     }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  mapAssistantToolPartStateToChatToolState,
   splitAssistantRenderableTextSegments,
   shouldRenderAssistantToolPart,
   splitAssistantTextSegments
@@ -26,6 +27,18 @@ describe("chat tool ui helpers", () => {
         state: "output-available"
       })
     ).toBe(true)
+  })
+
+  it("maps approval tool parts to HeroUI Pro requires-action state", () => {
+    expect(mapAssistantToolPartStateToChatToolState("approval-requested")).toBe(
+      "requires-action"
+    )
+    expect(mapAssistantToolPartStateToChatToolState("input-streaming")).toBe(
+      "input-streaming"
+    )
+    expect(mapAssistantToolPartStateToChatToolState("output-denied")).toBe(
+      "output-error"
+    )
   })
 
   it("extracts thinking blocks from assistant text", () => {

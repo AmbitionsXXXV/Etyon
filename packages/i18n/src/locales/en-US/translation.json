@@ -20,8 +20,12 @@
     "composer": {
       "placeholder": "Type a message or use @ to reference project files",
       "queue": "Queue message",
+      "queueEdit": "Edit queued message",
       "queueFollowUp": "Queue follow-up",
+      "queueRemove": "Remove queued message",
+      "queueReorder": "Reorder queued message",
       "queueSteer": "Steer current run",
+      "queuedMessages": "Queued messages",
       "send": "Send",
       "stop": "Stop output"
     },

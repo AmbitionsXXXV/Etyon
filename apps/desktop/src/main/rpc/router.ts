@@ -2,11 +2,15 @@ import {
   InspectAgentRunInputSchema,
   InspectAgentRunOutputSchema,
   ListPendingAgentApprovalsInputSchema,
+  ListQueuedAgentMessagesInputSchema,
   ListRecoverableAgentRunsInputSchema,
   PendingAgentApprovalsOutputSchema,
+  QueuedAgentMessagesOutputSchema,
   QueueAgentMessageInputSchema,
   QueueAgentMessageOutputSchema,
   RecoverableAgentRunsOutputSchema,
+  RemoveQueuedAgentMessageInputSchema,
+  ReorderQueuedAgentMessagesInputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -61,6 +65,7 @@ import {
   TestProxyInputSchema,
   TestProxyOutputSchema,
   RtkTokenSavingsOutputSchema,
+  UpdateQueuedAgentMessageInputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
@@ -68,12 +73,19 @@ import { BrowserWindow } from "electron"
 import {
   getActiveAgentRunForSession,
   getAgentRun,
+  getLatestCompletedAgentRunForSession,
   listAgentEvents,
   listAgentToolCalls,
   listPendingAgentApprovals,
   listRecoverableAgentRuns
 } from "@/main/agents/agent-event-store"
-import { createAgentSessionQueuedMessageWriter } from "@/main/agents/agent-session-events"
+import {
+  appendAgentSessionQueuedMessageRemoveEvent,
+  appendAgentSessionQueuedMessageUpdateEvent,
+  appendAgentSessionQueuedMessagesReorderEvent,
+  createAgentSessionQueuedMessageWriter,
+  listPendingAgentSessionQueuedMessages
+} from "@/main/agents/agent-session-events"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -94,6 +106,7 @@ import {
   pollCursorAuthLogin,
   startCursorAuthLogin
 } from "@/main/cursor-auth/service"
+import type { AppDatabase } from "@/main/db"
 import { listSystemFonts } from "@/main/fonts"
 import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
@@ -249,6 +262,76 @@ const agentsListRecoverableRuns = rpc
     }
   })
 
+const getAgentQueueRunForSession = async ({
+  db,
+  sessionId
+}: {
+  db: AppDatabase
+  sessionId: string
+}) =>
+  (await getActiveAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  })) ??
+  (await getLatestCompletedAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  }))
+
+const listQueuedMessagesForRun = async ({
+  db,
+  runId
+}: {
+  db: AppDatabase
+  runId: string
+}) => {
+  const events = await listAgentEvents({
+    db,
+    runId
+  })
+
+  return listPendingAgentSessionQueuedMessages(events)
+}
+
+const toQueuedMessageOutput = (
+  chatSessionId: string,
+  message: Awaited<ReturnType<typeof listQueuedMessagesForRun>>[number]
+) => ({
+  chatSessionId,
+  content: message.message,
+  createdAt: message.createdAt,
+  id: message.id,
+  queue: message.queue,
+  runId: message.runId
+})
+
+const agentsListQueuedMessages = rpc
+  .input(ListQueuedAgentMessagesInputSchema)
+  .output(QueuedAgentMessagesOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentQueueRunForSession({
+      db: context.db,
+      sessionId: input.sessionId
+    })
+
+    if (!run) {
+      return {
+        messages: []
+      }
+    }
+
+    const messages = await listQueuedMessagesForRun({
+      db: context.db,
+      runId: run.id
+    })
+
+    return {
+      messages: messages.map((message) =>
+        toQueuedMessageOutput(run.chatSessionId, message)
+      )
+    }
+  })
+
 const agentsQueueMessage = rpc
   .input(QueueAgentMessageInputSchema)
   .output(QueueAgentMessageOutputSchema)
@@ -264,7 +347,7 @@ const agentsQueueMessage = rpc
       )
     }
 
-    await createAgentSessionQueuedMessageWriter({ run })({
+    const message = await createAgentSessionQueuedMessageWriter({ run })({
       content: input.content,
       queue: input.queue
     })
@@ -272,10 +355,110 @@ const agentsQueueMessage = rpc
     return {
       message: {
         chatSessionId: run.chatSessionId,
-        content: input.content,
-        queue: input.queue,
-        runId: run.id
+        content: message.message,
+        createdAt: message.createdAt,
+        id: message.id,
+        queue: message.queue,
+        runId: message.runId
       }
+    }
+  })
+
+const agentsUpdateQueuedMessage = rpc
+  .input(UpdateQueuedAgentMessageInputSchema)
+  .output(QueuedAgentMessagesOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentQueueRunForSession({
+      db: context.db,
+      sessionId: input.sessionId
+    })
+
+    if (!run) {
+      throw new Error(
+        `Agent queue run not found for chat session: ${input.sessionId}`
+      )
+    }
+
+    await appendAgentSessionQueuedMessageUpdateEvent({
+      id: input.id,
+      ...(input.content ? { message: input.content } : {}),
+      ...(input.queue ? { queue: input.queue } : {}),
+      run
+    })
+
+    const messages = await listQueuedMessagesForRun({
+      db: context.db,
+      runId: run.id
+    })
+
+    return {
+      messages: messages.map((message) =>
+        toQueuedMessageOutput(run.chatSessionId, message)
+      )
+    }
+  })
+
+const agentsRemoveQueuedMessage = rpc
+  .input(RemoveQueuedAgentMessageInputSchema)
+  .output(QueuedAgentMessagesOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentQueueRunForSession({
+      db: context.db,
+      sessionId: input.sessionId
+    })
+
+    if (!run) {
+      throw new Error(
+        `Agent queue run not found for chat session: ${input.sessionId}`
+      )
+    }
+
+    await appendAgentSessionQueuedMessageRemoveEvent({
+      id: input.id,
+      run
+    })
+
+    const messages = await listQueuedMessagesForRun({
+      db: context.db,
+      runId: run.id
+    })
+
+    return {
+      messages: messages.map((message) =>
+        toQueuedMessageOutput(run.chatSessionId, message)
+      )
+    }
+  })
+
+const agentsReorderQueuedMessages = rpc
+  .input(ReorderQueuedAgentMessagesInputSchema)
+  .output(QueuedAgentMessagesOutputSchema)
+  .handler(async ({ context, input }) => {
+    const run = await getAgentQueueRunForSession({
+      db: context.db,
+      sessionId: input.sessionId
+    })
+
+    if (!run) {
+      throw new Error(
+        `Agent queue run not found for chat session: ${input.sessionId}`
+      )
+    }
+
+    await appendAgentSessionQueuedMessagesReorderEvent({
+      ids: input.ids,
+      run
+    })
+
+    const messages = await listQueuedMessagesForRun({
+      db: context.db,
+      runId: run.id
+    })
+
+    return {
+      messages: messages.map((message) =>
+        toQueuedMessageOutput(run.chatSessionId, message)
+      )
     }
   })
 
@@ -619,8 +802,12 @@ export const router = {
   agents: {
     inspectRun: agentsInspectRun,
     listPendingApprovals: agentsListPendingApprovals,
+    listQueuedMessages: agentsListQueuedMessages,
     listRecoverableRuns: agentsListRecoverableRuns,
-    queueMessage: agentsQueueMessage
+    queueMessage: agentsQueueMessage,
+    removeQueuedMessage: agentsRemoveQueuedMessage,
+    reorderQueuedMessages: agentsReorderQueuedMessages,
+    updateQueuedMessage: agentsUpdateQueuedMessage
   },
   chatSessions: {
     archive: chatSessionsArchive,

@@ -20,8 +20,12 @@
     "composer": {
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
       "queue": "加入队列",
+      "queueEdit": "编辑队列消息",
       "queueFollowUp": "作为后续任务",
+      "queueRemove": "移除队列消息",
+      "queueReorder": "重排队列消息",
       "queueSteer": "转向当前运行",
+      "queuedMessages": "队列消息",
       "send": "发送",
       "stop": "停止输出"
     },

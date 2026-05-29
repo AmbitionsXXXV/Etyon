@@ -1,11 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { ChatMessage, ChatMessageActions } from "@heroui-pro/react"
 import {
   ArrowReloadHorizontalIcon,
   CheckmarkCircle01Icon,
@@ -50,29 +45,21 @@ const MessageActionButton = ({
   onPress: () => void
   tooltipLabel: string
 }) => (
-  <Tooltip>
-    <TooltipTrigger
-      render={
-        <Button
-          aria-label={ariaLabel}
-          aria-pressed={isPressed}
-          className={cn(
-            "size-7 min-w-7 text-muted-foreground hover:text-foreground",
-            isPressed && "text-foreground"
-          )}
-          isDisabled={isDisabled}
-          isIconOnly
-          onPress={onPress}
-          size="sm"
-          type="button"
-          variant={isPressed ? "secondary" : "ghost"}
-        >
-          <HugeiconsIcon icon={icon} size={15} strokeWidth={2} />
-        </Button>
-      }
-    />
-    <TooltipContent side="bottom">{tooltipLabel}</TooltipContent>
-  </Tooltip>
+  <ChatMessage.Action
+    aria-label={ariaLabel}
+    aria-pressed={isPressed}
+    className={cn(
+      "size-7 min-w-7 text-muted-foreground hover:text-foreground",
+      isPressed && "text-foreground"
+    )}
+    isDisabled={isDisabled}
+    onPress={onPress}
+    tooltip={tooltipLabel}
+    type="button"
+    variant={isPressed ? "secondary" : "ghost"}
+  >
+    <HugeiconsIcon icon={icon} size={15} strokeWidth={2} />
+  </ChatMessage.Action>
 )
 
 export const MessageActions = ({
@@ -140,7 +127,7 @@ export const MessageActions = ({
   }, [])
 
   return (
-    <div
+    <ChatMessageActions
       aria-label={t("label")}
       className={cn(
         "invisible mt-1.5 flex h-8 items-center gap-0.5 px-1 opacity-0 transition-opacity group-hover/message:visible group-hover/message:opacity-100 group-focus-within/message:visible group-focus-within/message:opacity-100",
@@ -211,7 +198,7 @@ export const MessageActions = ({
           />
         )
       })}
-    </div>
+    </ChatMessageActions>
   )
 }
 

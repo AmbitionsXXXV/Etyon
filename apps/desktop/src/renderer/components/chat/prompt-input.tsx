@@ -1,13 +1,18 @@
 import type {
+  AgentSessionQueuedMessage,
   AgentSessionQueuedMessageQueue,
   ChatMention,
   ProjectSnapshotItem,
   PromptTemplate
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
+import type { ChatStatus } from "@heroui-pro/react"
 import {
   CubeIcon,
+  Delete02Icon,
+  DragDropVerticalIcon,
+  PencilEdit02Icon,
   Queue02Icon,
   SentIcon,
   StopIcon
@@ -472,6 +477,153 @@ const PromptInputSuggestions = ({
   )
 }
 
+const getQueueLabel = ({
+  followUpLabel,
+  queue,
+  steerLabel
+}: {
+  followUpLabel: string
+  queue: AgentSessionQueuedMessageQueue
+  steerLabel: string
+}): string => (queue === "follow-up" ? followUpLabel : steerLabel)
+
+const QueuedPromptMessageList = ({
+  editLabel,
+  followUpLabel,
+  messages,
+  onEdit,
+  onRemove,
+  onReorder,
+  onUpdate,
+  removeLabel,
+  reorderLabel,
+  steerLabel,
+  titleLabel
+}: {
+  editLabel: string
+  followUpLabel: string
+  messages: AgentSessionQueuedMessage[]
+  onEdit: (message: AgentSessionQueuedMessage) => void
+  onRemove?: (id: string) => Promise<void> | void
+  onReorder?: (ids: string[]) => Promise<void> | void
+  onUpdate?: (input: {
+    id: string
+    queue?: AgentSessionQueuedMessageQueue
+  }) => Promise<void> | void
+  removeLabel: string
+  reorderLabel: string
+  steerLabel: string
+  titleLabel: string
+}) => {
+  if (messages.length === 0) {
+    return null
+  }
+
+  return (
+    <HeroPromptInput.Queue
+      actionsVisibility="always"
+      aria-label={titleLabel}
+      className="border-b border-border/70"
+    >
+      <HeroPromptInput.Queue.List
+        onReorder={(nextMessages) => {
+          void onReorder?.(nextMessages.map((message) => message.id))
+        }}
+        values={messages}
+      >
+        {messages.map((message) => {
+          const nextQueue =
+            message.queue === "follow-up"
+              ? ("steer" as const)
+              : ("follow-up" as const)
+          const queueLabel = getQueueLabel({
+            followUpLabel,
+            queue: message.queue,
+            steerLabel
+          })
+          const nextQueueLabel = getQueueLabel({
+            followUpLabel,
+            queue: nextQueue,
+            steerLabel
+          })
+
+          return (
+            <HeroPromptInput.Queue.Item key={message.id} value={message}>
+              <HeroPromptInput.Queue.Item.Handle
+                aria-label={reorderLabel}
+                type="button"
+              >
+                <HugeiconsIcon
+                  icon={DragDropVerticalIcon}
+                  size={14}
+                  strokeWidth={2}
+                />
+              </HeroPromptInput.Queue.Item.Handle>
+              <HeroPromptInput.Queue.Item.Icon>
+                <HugeiconsIcon
+                  icon={message.queue === "follow-up" ? Queue02Icon : SentIcon}
+                  size={14}
+                  strokeWidth={2}
+                />
+              </HeroPromptInput.Queue.Item.Icon>
+              <HeroPromptInput.Queue.Item.Body>
+                <HeroPromptInput.Queue.Item.Content>
+                  {message.content}
+                </HeroPromptInput.Queue.Item.Content>
+                <HeroPromptInput.Queue.Item.Description>
+                  {queueLabel}
+                </HeroPromptInput.Queue.Item.Description>
+              </HeroPromptInput.Queue.Item.Body>
+              <HeroPromptInput.Queue.Item.Actions>
+                <HeroPromptInput.Queue.Item.Steer
+                  aria-label={nextQueueLabel}
+                  onPress={() => {
+                    void onUpdate?.({
+                      id: message.id,
+                      queue: nextQueue
+                    })
+                  }}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    icon={nextQueue === "follow-up" ? Queue02Icon : SentIcon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                </HeroPromptInput.Queue.Item.Steer>
+                <HeroPromptInput.Queue.Item.Action
+                  aria-label={editLabel}
+                  onPress={() => onEdit(message)}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    icon={PencilEdit02Icon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                </HeroPromptInput.Queue.Item.Action>
+                <HeroPromptInput.Queue.Item.Remove
+                  aria-label={removeLabel}
+                  onPress={() => {
+                    void onRemove?.(message.id)
+                  }}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    icon={Delete02Icon}
+                    size={14}
+                    strokeWidth={2}
+                  />
+                </HeroPromptInput.Queue.Item.Remove>
+              </HeroPromptInput.Queue.Item.Actions>
+            </HeroPromptInput.Queue.Item>
+          )
+        })}
+      </HeroPromptInput.Queue.List>
+    </HeroPromptInput.Queue>
+  )
+}
+
 const PromptInputActions = ({
   disabled,
   isOutputActive,
@@ -495,53 +647,44 @@ const PromptInputActions = ({
   stopLabel: string
   submitLabel: string
 }) => {
-  const handleSingleActionPress = useCallback(() => {
-    if (isOutputActive) {
-      onStop?.()
-      return
-    }
-
-    void onQueueSubmit()
-  }, [isOutputActive, onQueueSubmit, onStop])
   const queueActions = listAgentComposerQueueActions({
     canQueueMessage: isOutputActive && isQueueSubmitEnabled
   })
   const actionLabel = isOutputActive ? stopLabel : submitLabel
   const actionIcon = isOutputActive ? StopIcon : SentIcon
+  const status: ChatStatus = isOutputActive ? "streaming" : "ready"
 
   if (queueActions.length > 0) {
     return (
       <div className="flex items-center gap-2">
-        <Button
+        <HeroPromptInput.Action
           aria-label={stopLabel}
-          isIconOnly
           onPress={onStop}
-          size="sm"
+          tooltip={stopLabel}
           type="button"
           variant="danger"
         >
           <HugeiconsIcon icon={StopIcon} size={16} strokeWidth={2} />
-        </Button>
+        </HeroPromptInput.Action>
         {queueActions.map((action) => {
           const icon = action.queue === "follow-up" ? Queue02Icon : SentIcon
           const label =
             action.queue === "follow-up" ? queueFollowUpLabel : queueSteerLabel
 
           return (
-            <Button
+            <HeroPromptInput.Action
               aria-label={label}
               isDisabled={disabled || isSubmitting}
-              isIconOnly
               key={action.queue}
               onPress={() => {
                 void onQueueSubmit(action.queue)
               }}
-              size="sm"
+              tooltip={label}
               type="button"
               variant={action.queue === "follow-up" ? "secondary" : "primary"}
             >
               <HugeiconsIcon icon={icon} size={16} strokeWidth={2} />
-            </Button>
+            </HeroPromptInput.Action>
           )
         })}
       </div>
@@ -549,17 +692,15 @@ const PromptInputActions = ({
   }
 
   return (
-    <Button
+    <HeroPromptInput.Send
       aria-label={actionLabel}
       isDisabled={isOutputActive ? false : disabled || isSubmitting}
-      isIconOnly
-      onPress={handleSingleActionPress}
-      size="sm"
+      onStop={onStop}
+      status={status}
       type="button"
-      variant={isOutputActive ? "danger" : "primary"}
     >
       <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
-    </Button>
+    </HeroPromptInput.Send>
   )
 }
 
@@ -581,14 +722,23 @@ export const PromptInput = ({
   mentionSkillItems,
   onMentionQueryChange,
   onPromptTemplateQueryChange,
+  onQueuedMessageRemove,
+  onQueuedMessageReorder,
+  onQueuedMessageUpdate,
   onStop,
   onSubmit,
   placeholder,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
   promptTemplateItems = [],
+  queueEditLabel,
   queueFollowUpLabel,
+  queueRemoveLabel,
+  queueReorderLabel,
   queueSteerLabel,
+  queuedMessages = [],
+  queuedMessagesLabel,
+  status = "ready",
   stopLabel,
   submitLabel
 }: {
@@ -613,6 +763,13 @@ export const PromptInput = ({
     trigger: PromptMentionTrigger | null
   ) => void
   onPromptTemplateQueryChange?: (query: string | null) => void
+  onQueuedMessageRemove?: (id: string) => Promise<void> | void
+  onQueuedMessageReorder?: (ids: string[]) => Promise<void> | void
+  onQueuedMessageUpdate?: (input: {
+    content?: string
+    id: string
+    queue?: AgentSessionQueuedMessageQueue
+  }) => Promise<void> | void
   onStop?: () => void
   onSubmit: (payload: {
     mentions: ChatMention[]
@@ -623,8 +780,14 @@ export const PromptInput = ({
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
   promptTemplateItems?: PromptTemplate[]
+  queueEditLabel: string
   queueFollowUpLabel: string
+  queueRemoveLabel: string
+  queueReorderLabel: string
   queueSteerLabel: string
+  queuedMessages?: AgentSessionQueuedMessage[]
+  queuedMessagesLabel: string
+  status?: ChatStatus
   stopLabel: string
   submitLabel: string
 }) => {
@@ -637,7 +800,11 @@ export const PromptInput = ({
     query: string
     to: number
   } | null>(null)
+  const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
+    string | null
+  >(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [promptInputValue, setPromptInputValue] = useState("")
   const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
@@ -684,6 +851,10 @@ export const PromptInput = ({
   const currentMentionEmptyLabel = isSkillMentionActive
     ? mentionSkillEmptyLabel
     : mentionEmptyLabel
+
+  const syncPromptInputValue = useCallback((nextEditor: Editor) => {
+    setPromptInputValue(extractPromptEditorPayload(nextEditor.getJSON()).text)
+  }, [])
 
   const updateActiveRanges = useCallback((nextEditor: Editor) => {
     const { selection } = nextEditor.state
@@ -737,10 +908,11 @@ export const PromptInput = ({
         updateActiveRanges(nextEditor)
       },
       onUpdate: ({ editor: nextEditor }) => {
+        syncPromptInputValue(nextEditor)
         updateActiveRanges(nextEditor)
       }
     },
-    [placeholder, updateActiveRanges]
+    [placeholder, syncPromptInputValue, updateActiveRanges]
   )
 
   useEffect(() => {
@@ -759,6 +931,15 @@ export const PromptInput = ({
   useEffect(() => {
     editor?.setEditable(!(disabled || isSubmitting))
   }, [disabled, editor, isSubmitting])
+
+  useEffect(() => {
+    if (
+      editingQueuedMessageId &&
+      !queuedMessages.some((message) => message.id === editingQueuedMessageId)
+    ) {
+      setEditingQueuedMessageId(null)
+    }
+  }, [editingQueuedMessageId, queuedMessages])
 
   useEffect(() => {
     setActiveItemIndex(0)
@@ -835,6 +1016,22 @@ export const PromptInput = ({
     [activePromptTemplateRange, editor]
   )
 
+  const handleStartEditQueuedMessage = useCallback(
+    (message: AgentSessionQueuedMessage) => {
+      if (!editor) {
+        return
+      }
+
+      setEditingQueuedMessageId(message.id)
+      editor.commands.setContent(message.content)
+      editor.commands.focus("end")
+      setPromptInputValue(message.content)
+      setActiveMentionRange(null)
+      setActivePromptTemplateRange(null)
+    },
+    [editor]
+  )
+
   const handleSubmit = useCallback(
     async (queue?: AgentSessionQueuedMessageQueue) => {
       if (!editor) {
@@ -851,19 +1048,28 @@ export const PromptInput = ({
       setIsSubmitting(true)
 
       try {
-        await onSubmit({
-          mentions,
-          ...(queue ? { queue } : {}),
-          text: normalizedText
-        })
+        if (editingQueuedMessageId) {
+          await onQueuedMessageUpdate?.({
+            content: normalizedText,
+            id: editingQueuedMessageId
+          })
+          setEditingQueuedMessageId(null)
+        } else {
+          await onSubmit({
+            mentions,
+            ...(queue ? { queue } : {}),
+            text: normalizedText
+          })
+        }
         editor.commands.clearContent()
+        setPromptInputValue("")
         editor.commands.focus()
         setActiveMentionRange(null)
       } finally {
         setIsSubmitting(false)
       }
     },
-    [disabled, editor, onSubmit]
+    [disabled, editingQueuedMessageId, editor, onQueuedMessageUpdate, onSubmit]
   )
 
   const handleSelectMentionItemClick = useCallback(
@@ -991,7 +1197,19 @@ export const PromptInput = ({
   )
 
   return (
-    <div className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none">
+    <HeroPromptInput
+      allowSubmitWhileRunning
+      className="relative rounded-[1.75rem] border border-border bg-transparent shadow-none"
+      isDisabled={disabled}
+      lockInputOnRun={false}
+      onStop={onStop}
+      onSubmit={() => {
+        void handleSubmit()
+      }}
+      status={status}
+      value={promptInputValue}
+      variant="secondary"
+    >
       <PromptInputSuggestions
         activeItemIndex={activeItemIndex}
         activeMentionRange={activeMentionRange}
@@ -1012,41 +1230,61 @@ export const PromptInput = ({
         promptTemplateItems={promptTemplateItems}
       />
 
-      <div className="p-4">
-        <div
-          className={cn(
-            "min-h-28 cursor-text text-sm",
-            "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
-            "[&_.ProseMirror]:min-h-28 [&_.ProseMirror]:outline-none",
-            "[&_.ProseMirror_p]:my-0",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
-            "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]"
-          )}
-          data-disabled={disabled || isSubmitting}
-          onKeyDownCapture={handleEditorKeyDown}
-        >
-          <EditorContent editor={editor} />
-        </div>
-      </div>
+      <QueuedPromptMessageList
+        editLabel={queueEditLabel}
+        followUpLabel={queueFollowUpLabel}
+        messages={queuedMessages}
+        onEdit={handleStartEditQueuedMessage}
+        onRemove={onQueuedMessageRemove}
+        onReorder={onQueuedMessageReorder}
+        onUpdate={onQueuedMessageUpdate}
+        removeLabel={queueRemoveLabel}
+        reorderLabel={queueReorderLabel}
+        steerLabel={queueSteerLabel}
+        titleLabel={queuedMessagesLabel}
+      />
 
-      <div className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
-        <div className="min-w-0 flex-1">{footer}</div>
-        <PromptInputActions
-          disabled={disabled}
-          isOutputActive={isOutputActive}
-          isQueueSubmitEnabled={isQueueSubmitEnabled}
-          isSubmitting={isSubmitting}
-          onQueueSubmit={handleSubmit}
-          onStop={onStop}
-          queueFollowUpLabel={queueFollowUpLabel}
-          queueSteerLabel={queueSteerLabel}
-          stopLabel={stopLabel}
-          submitLabel={submitLabel}
-        />
-      </div>
-    </div>
+      <HeroPromptInput.Shell className="block">
+        <HeroPromptInput.Content className="p-4">
+          <div
+            className={cn(
+              "min-h-28 cursor-text text-sm",
+              "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
+              "[&_.ProseMirror]:min-h-28 [&_.ProseMirror]:outline-none",
+              "[&_.ProseMirror_p]:my-0",
+              "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
+              "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",
+              "[&_.ProseMirror_p.is-editor-empty:first-child::before]:h-0",
+              "[&_.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground",
+              "[&_.ProseMirror_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]"
+            )}
+            data-disabled={disabled || isSubmitting}
+            onKeyDownCapture={handleEditorKeyDown}
+          >
+            <EditorContent editor={editor} />
+          </div>
+        </HeroPromptInput.Content>
+
+        <HeroPromptInput.Toolbar className="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3">
+          <HeroPromptInput.ToolbarStart className="min-w-0 flex-1">
+            {footer}
+          </HeroPromptInput.ToolbarStart>
+          <HeroPromptInput.ToolbarEnd>
+            <PromptInputActions
+              disabled={disabled}
+              isOutputActive={isOutputActive}
+              isQueueSubmitEnabled={isQueueSubmitEnabled}
+              isSubmitting={isSubmitting}
+              onQueueSubmit={handleSubmit}
+              onStop={onStop}
+              queueFollowUpLabel={queueFollowUpLabel}
+              queueSteerLabel={queueSteerLabel}
+              stopLabel={stopLabel}
+              submitLabel={submitLabel}
+            />
+          </HeroPromptInput.ToolbarEnd>
+        </HeroPromptInput.Toolbar>
+      </HeroPromptInput.Shell>
+    </HeroPromptInput>
   )
 }

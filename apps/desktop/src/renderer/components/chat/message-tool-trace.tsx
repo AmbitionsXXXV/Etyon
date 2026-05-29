@@ -1,5 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
+import { ChatTool, ChatToolGroup } from "@heroui-pro/react"
+import type { ToolPartState } from "@heroui-pro/react"
 import { Button, Disclosure } from "@heroui/react"
 import {
   BrainIcon,
@@ -30,6 +32,7 @@ import type {
   AssistantCommandTextSegment,
   AssistantFunctionCallTextSegment
 } from "@/renderer/lib/chat/tool-ui"
+import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { orpc } from "@/renderer/lib/rpc"
 
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
@@ -55,6 +58,7 @@ interface ToolTraceCardProps {
   defaultExpanded?: boolean
   description?: string
   icon: IconSvgElement
+  state: ToolPartState
   statusClassName: string
   statusLabel: string
   title: string
@@ -709,6 +713,7 @@ const ToolTraceCard = ({
   defaultExpanded = false,
   description,
   icon,
+  state,
   statusClassName,
   statusLabel,
   title
@@ -722,53 +727,47 @@ const ToolTraceCard = ({
   }, [defaultExpanded])
 
   return (
-    <Disclosure
+    <ChatTool
       className="overflow-hidden rounded-lg border border-border/70 bg-background/60"
       isExpanded={isExpanded}
       onExpandedChange={setIsExpanded}
+      state={state}
+      toolName={title}
     >
-      <Disclosure.Heading>
-        <Button
-          className="h-auto min-h-8 w-full justify-between rounded-lg px-2 py-1.5 text-muted-foreground hover:bg-muted/35 data-[hovered=true]:bg-muted/35"
-          slot="trigger"
-          type="button"
-          variant="ghost"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-              <HugeiconsIcon icon={icon} size={13} />
+      <ChatTool.Trigger className="h-auto min-h-8 w-full justify-between rounded-lg px-2 py-1.5 text-muted-foreground hover:bg-muted/35 data-[hovered=true]:bg-muted/35">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+            <HugeiconsIcon icon={icon} size={13} />
+          </span>
+          <span className="min-w-0 text-left">
+            <span className="block truncate text-xs font-medium text-foreground">
+              {title}
             </span>
-            <span className="min-w-0 text-left">
-              <span className="block truncate text-xs font-medium text-foreground">
-                {title}
+            {description ? (
+              <span className="block truncate font-mono text-[0.625rem] leading-4 text-muted-foreground">
+                {description}
               </span>
-              {description ? (
-                <span className="block truncate font-mono text-[0.625rem] leading-4 text-muted-foreground">
-                  {description}
-                </span>
-              ) : null}
-            </span>
+            ) : null}
           </span>
-          <span className="flex shrink-0 items-center gap-1.5">
-            <span
-              className={cn(
-                "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
-                statusClassName
-              )}
-            >
-              {statusLabel}
-            </span>
-            <Disclosure.Indicator />
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <span
+            className={cn(
+              "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
+              statusClassName
+            )}
+          >
+            {statusLabel}
           </span>
-        </Button>
-      </Disclosure.Heading>
-      <Disclosure.Content>
-        <Disclosure.Body className="space-y-2 border-t border-border/60 p-2">
+        </span>
+      </ChatTool.Trigger>
+      <ChatTool.Content>
+        <div className="space-y-2 border-t border-border/60 p-2">
           {actions}
           {children}
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
+        </div>
+      </ChatTool.Content>
+    </ChatTool>
   )
 }
 
@@ -801,6 +800,7 @@ const CommandToolCallCard = ({
   isStreaming = false,
   metaItems = [],
   output,
+  state,
   statusClassName,
   statusLabel,
   title,
@@ -814,6 +814,7 @@ const CommandToolCallCard = ({
   isStreaming?: boolean
   metaItems?: string[]
   output: string
+  state: ToolPartState
   statusClassName: string
   statusLabel: string
   title: string
@@ -827,6 +828,7 @@ const CommandToolCallCard = ({
       defaultExpanded={defaultExpanded}
       description={description}
       icon={ComputerTerminal02Icon}
+      state={state}
       statusClassName={statusClassName}
       statusLabel={statusLabel}
       title={title}
@@ -923,6 +925,7 @@ export const FunctionCallTextTraceCard = ({
     <ToolTraceCard
       description={inputCommand}
       icon={getToolIcon(segment.name)}
+      state="input-available"
       statusClassName={getToolTraceStateClassName("input-available")}
       statusLabel={t("chat.toolTrace.state.inputAvailable")}
       title={t("chat.toolTrace.functionCall")}
@@ -969,6 +972,7 @@ export const CommandTextTraceCard = ({
           : ""
       ]}
       output={segment.output}
+      state={segment.exitCode === 0 ? "output-available" : "output-error"}
       statusClassName={getToolTraceStateClassName(
         segment.exitCode === 0 ? "output-available" : "output-error"
       )}
@@ -1015,6 +1019,7 @@ export const StructuredToolTraceCard = ({
     part.state === "input-streaming" || part.state === "input-available"
   const statusLabel = t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])
   const statusClassName = getToolTraceStateClassName(part.state)
+  const heroToolState = mapAssistantToolPartStateToChatToolState(part.state)
   const metaItems = getStructuredToolTraceMetaItems({
     commandDuration,
     commandExitCodeMeta,
@@ -1063,6 +1068,7 @@ export const StructuredToolTraceCard = ({
         isStreaming={isCommandStreaming && !commandOutputText}
         metaItems={metaItems}
         output={commandOutputText}
+        state={heroToolState}
         statusClassName={statusClassName}
         statusLabel={statusLabel}
         title={title}
@@ -1076,6 +1082,7 @@ export const StructuredToolTraceCard = ({
       defaultExpanded={part.state === "approval-requested"}
       description={inputLabel || preview}
       icon={getToolIcon(toolName)}
+      state={heroToolState}
       statusClassName={statusClassName}
       statusLabel={statusLabel}
       title={toolName}
@@ -1140,31 +1147,46 @@ export const MessageToolTrace = ({
   }
 
   return (
-    <div aria-label={t("chat.toolTrace.title")} className="mt-2 space-y-1.5">
-      {commandSegments.map((segment) => (
-        <CommandTextTraceCard
-          key={`${segment.cwd}-${segment.shell}-${segment.command}-${segment.exitCode}`}
-          segment={segment}
-        />
-      ))}
-      {functionCallSegments.map((segment, index) => (
-        <FunctionCallTextTraceCard
-          key={`${segment.name}-${index}-${getFunctionCallParameterValue(
-            segment,
-            "command"
-          )}`}
-          segment={segment}
-        />
-      ))}
-      {parts.map((part) => (
-        <StructuredToolTraceCard
-          chatSessionId={chatSessionId}
-          isApprovalActionDisabled={isApprovalActionDisabled}
-          key={part.toolCallId}
-          onApprovalResponse={onApprovalResponse}
-          part={part}
-        />
-      ))}
-    </div>
+    <ChatToolGroup
+      active={parts.some(
+        (part) =>
+          part.state === "input-streaming" ||
+          part.state === "input-available" ||
+          part.state === "approval-requested"
+      )}
+      aria-label={t("chat.toolTrace.title")}
+      className="mt-2"
+      defaultExpanded
+    >
+      <ChatToolGroup.Trigger>{t("chat.toolTrace.title")}</ChatToolGroup.Trigger>
+      <ChatToolGroup.Content>
+        <div className="space-y-1.5">
+          {commandSegments.map((segment) => (
+            <CommandTextTraceCard
+              key={`${segment.cwd}-${segment.shell}-${segment.command}-${segment.exitCode}`}
+              segment={segment}
+            />
+          ))}
+          {functionCallSegments.map((segment, index) => (
+            <FunctionCallTextTraceCard
+              key={`${segment.name}-${index}-${getFunctionCallParameterValue(
+                segment,
+                "command"
+              )}`}
+              segment={segment}
+            />
+          ))}
+          {parts.map((part) => (
+            <StructuredToolTraceCard
+              chatSessionId={chatSessionId}
+              isApprovalActionDisabled={isApprovalActionDisabled}
+              key={part.toolCallId}
+              onApprovalResponse={onApprovalResponse}
+              part={part}
+            />
+          ))}
+        </div>
+      </ChatToolGroup.Content>
+    </ChatToolGroup>
   )
 }

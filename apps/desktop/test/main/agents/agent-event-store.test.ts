@@ -318,6 +318,7 @@ describe("agent event store", () => {
     ).toEqual([
       {
         data: {
+          id: expect.any(String),
           message: "Prefer concise output.",
           queue: "steer"
         },
@@ -325,6 +326,7 @@ describe("agent event store", () => {
       },
       {
         data: {
+          id: expect.any(String),
           message: "Continue after the final answer.",
           queue: "follow-up"
         },
