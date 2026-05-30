@@ -136,6 +136,39 @@ export const agentToolCalls = sqliteTable(
   })
 )
 
+export const agentApprovals = sqliteTable(
+  "agent_approvals",
+  {
+    createdAt: text("created_at").notNull(),
+    id: text("id").primaryKey(),
+    respondedAt: text("responded_at"),
+    responseJson: text("response_json"),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    state: text("state", {
+      enum: ["approved", "denied", "pending"]
+    }).notNull(),
+    toolCallId: text("tool_call_id").notNull(),
+    toolCallRowId: text("tool_call_row_id")
+      .notNull()
+      .references(() => agentToolCalls.id, { onDelete: "cascade" })
+  },
+  (table) => ({
+    runStateIdx: index("agent_approvals_run_state_idx").on(
+      table.runId,
+      table.state
+    ),
+    runToolIdx: index("agent_approvals_run_tool_idx").on(
+      table.runId,
+      table.toolCallId
+    ),
+    toolCallRowIdx: index("agent_approvals_tool_call_row_idx").on(
+      table.toolCallRowId
+    )
+  })
+)
+
 export const agentArtifacts = sqliteTable(
   "agent_artifacts",
   {
@@ -229,6 +262,7 @@ export const memoryEmbeddings = sqliteTable(
 )
 
 export const schema = {
+  agentApprovals,
   agentArtifacts,
   agentEvents,
   agentRuns,

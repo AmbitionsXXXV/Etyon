@@ -24,6 +24,20 @@ describe("agent profiles", () => {
     ])
   })
 
+  it("keeps settings defaults aligned with the default built-in profile", () => {
+    const settings = AppSettingsSchema.parse({}).agents
+    const profile = resolveActiveAgentProfile(settings)
+
+    expect(settings).toMatchObject({
+      defaultProfileId: "general-purpose",
+      enabled: false,
+      maxSteps: 8
+    })
+    expect(profile.id).toBe(settings.defaultProfileId)
+    expect(profile.budgetPolicy.maxSteps).toBe(settings.maxSteps)
+    expect(profile.toolPolicy.allowWrites).toBe(false)
+  })
+
   it("keeps the default profile read-only and limited to project context tools", () => {
     const profile = getAgentProfileById("general-purpose")
 

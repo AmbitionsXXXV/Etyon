@@ -6,6 +6,8 @@ export const CODE_AGENT_TOOL_ALIASES = [
   "find",
   "ls",
   "bash",
+  "processOutput",
+  "stopProcess",
   "edit",
   "write"
 ] as const satisfies readonly AgentToolName[]
@@ -59,9 +61,17 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
     etyonName: "find_files",
     etyonWorkspaceTool: "etyon_workspace_list_files"
   },
+  processOutput: {
+    etyonName: "process_output",
+    etyonWorkspaceTool: "etyon_workspace_process_output"
+  },
   read: {
     etyonName: "view",
     etyonWorkspaceTool: "etyon_workspace_read_file"
+  },
+  stopProcess: {
+    etyonName: "stop_process",
+    etyonWorkspaceTool: "etyon_workspace_stop_process"
   },
   write: {
     etyonName: "write_file",

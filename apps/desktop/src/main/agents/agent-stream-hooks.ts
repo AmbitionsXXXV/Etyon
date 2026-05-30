@@ -67,6 +67,13 @@ const toHookList = <THook>(hooks?: HookList<THook>): readonly THook[] => {
   return Array.isArray(hooks) ? (hooks as readonly THook[]) : [hooks as THook]
 }
 
+const appendHookList = <THook>(
+  target: THook[],
+  hooks?: HookList<THook>
+): void => {
+  target.push(...toHookList(hooks))
+}
+
 const wrapHookError = (error: unknown): AgentRuntimeError => {
   if (error instanceof AgentRuntimeError) {
     return error
@@ -130,6 +137,34 @@ const applyRequestPatch = (
   headers: applyRecordPatch(requestOptions.headers, patch?.headers),
   metadata: applyRecordPatch(requestOptions.metadata, patch?.metadata)
 })
+
+export const mergeAgentStreamHooks = (
+  ...hookDefinitions: readonly (AgentStreamHooks | undefined)[]
+): AgentStreamHooks | undefined => {
+  const afterProviderResponse: AfterProviderResponseHook[] = []
+  const beforeProviderPayload: BeforeProviderPayloadHook[] = []
+  const beforeProviderRequest: BeforeProviderRequestHook[] = []
+
+  for (const hooks of hookDefinitions) {
+    appendHookList(afterProviderResponse, hooks?.afterProviderResponse)
+    appendHookList(beforeProviderPayload, hooks?.beforeProviderPayload)
+    appendHookList(beforeProviderRequest, hooks?.beforeProviderRequest)
+  }
+
+  if (
+    afterProviderResponse.length === 0 &&
+    beforeProviderPayload.length === 0 &&
+    beforeProviderRequest.length === 0
+  ) {
+    return undefined
+  }
+
+  return {
+    ...(afterProviderResponse.length > 0 ? { afterProviderResponse } : {}),
+    ...(beforeProviderPayload.length > 0 ? { beforeProviderPayload } : {}),
+    ...(beforeProviderRequest.length > 0 ? { beforeProviderRequest } : {})
+  }
+}
 
 export const prepareAgentStreamRequest = async ({
   hooks,

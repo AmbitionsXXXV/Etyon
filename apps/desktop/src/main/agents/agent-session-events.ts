@@ -81,6 +81,20 @@ export interface AppendAgentSessionPlanModeEventOptions {
   structuredPlan?: AgentStructuredPlan
 }
 
+export type AgentSessionChatBranchKind = "edit" | "regenerate"
+
+export type AgentSessionChatBranchTrigger =
+  | "regenerate-message"
+  | "submit-message"
+
+export interface AppendAgentSessionChatBranchEventOptions {
+  branchKind: AgentSessionChatBranchKind
+  messageId?: string
+  retainedMessageIds: readonly string[]
+  run: AgentRun
+  trigger: AgentSessionChatBranchTrigger
+}
+
 export interface AppendAgentSessionQueuedMessageEventOptions {
   id?: string
   message: string
@@ -668,6 +682,28 @@ export const appendAgentSessionPlanModeEvent = async ({
         ...(structuredPlan ? { structuredPlan } : {})
       },
       type: "plan-mode"
+    },
+    run
+  })
+}
+
+export const appendAgentSessionChatBranchEvent = async ({
+  branchKind,
+  messageId,
+  retainedMessageIds,
+  run,
+  trigger
+}: AppendAgentSessionChatBranchEventOptions): Promise<void> => {
+  await appendAgentSessionCustomMessageEvent({
+    message: {
+      data: {
+        branchKind,
+        ...(messageId === undefined ? {} : { messageId }),
+        retainedMessageCount: retainedMessageIds.length,
+        retainedMessageIds: [...retainedMessageIds],
+        trigger
+      },
+      type: "chat-branch"
     },
     run
   })

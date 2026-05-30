@@ -13,10 +13,18 @@ export const SkillsSettingsSchema = z.object({
   maxContextSkills: z.number().int().min(1).max(12).default(4)
 })
 
+export const SkillCommandSchema = z.object({
+  description: z.string().nullable(),
+  flags: z.array(z.string()).default([]),
+  name: z.string()
+})
+
 export const ParsedSkillSchema = z.object({
   body: z.string(),
   capabilities: z.array(z.string()).default([]),
+  commands: z.array(SkillCommandSchema).default([]),
   description: z.string(),
+  extensions: z.array(z.string()).default([]),
   modelVisible: z.boolean().default(true),
   name: z.string(),
   path: z.string(),
@@ -48,6 +56,7 @@ export type PromptTemplatesListOutput = z.infer<
   typeof PromptTemplatesListOutputSchema
 >
 export type SkillScope = z.infer<typeof SkillScopeSchema>
+export type SkillCommand = z.infer<typeof SkillCommandSchema>
 export type SkillSource = z.infer<typeof SkillSourceSchema>
 export type SkillsListOutput = z.infer<typeof SkillsListOutputSchema>
 export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>

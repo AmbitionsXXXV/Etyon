@@ -11,7 +11,8 @@ import {
   listSkillPromptTemplates,
   listSkills,
   parseSkillFile,
-  resolveSelectedSkillCapabilities
+  resolveSelectedSkillCapabilities,
+  resolveSelectedSkillExtensionPaths
 } from "@/main/skills"
 
 const { mockedHomeDir } = vi.hoisted(() => ({
@@ -80,6 +81,16 @@ describe("skills", () => {
         "capabilities:",
         "  - tools",
         "  - context-loaders",
+        "commands:",
+        "  - name: review",
+        "    description: Review current diff",
+        "    flags:",
+        "      - --strict",
+        "      - --write",
+        "  - inspect",
+        "extensions:",
+        "  - ./agent-extension.mjs",
+        "  - extensions/code-tool.mjs",
         "metadata:",
         "  short-description: Renderer React patterns",
         "---",
@@ -93,7 +104,20 @@ describe("skills", () => {
     expect(parseSkillFile(skillPath)).toEqual({
       body: "# React Patterns\n\nKeep components outside other components.",
       capabilities: ["tools", "context-loaders"],
+      commands: [
+        {
+          description: "Review current diff",
+          flags: ["--strict", "--write"],
+          name: "review"
+        },
+        {
+          description: null,
+          flags: [],
+          name: "inspect"
+        }
+      ],
       description: "Use when editing React renderer code.",
+      extensions: ["./agent-extension.mjs", "extensions/code-tool.mjs"],
       modelVisible: true,
       name: "react-patterns",
       path: skillPath,
@@ -182,6 +206,51 @@ describe("skills", () => {
         ]
       })
     ).toEqual(["write-fs", "shell"])
+  })
+
+  it("resolves selected skill extension modules inside the skill directory", () => {
+    const projectPath = path.join(mockedHomeDir, "project-extensions")
+    const skillDir = path.join(projectPath, ".agents", "skills", "tool-skill")
+    const skillPath = path.join(skillDir, "SKILL.md")
+
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(
+      skillPath,
+      [
+        "---",
+        "name: tool-skill",
+        "description: Use when binding custom tools.",
+        "extensions:",
+        "  - ./agent-extension.mjs",
+        "  - extensions/reviewer.mjs",
+        "  - ../escape.mjs",
+        `  - ${path.join(mockedHomeDir, "external.mjs")}`,
+        "---",
+        "",
+        "Register custom tools."
+      ].join("\n")
+    )
+
+    expect(
+      resolveSelectedSkillExtensionPaths({
+        projectPath,
+        selectedSkills: [
+          {
+            description: "Use when binding custom tools.",
+            kind: "skill",
+            name: "tool-skill",
+            path: skillPath,
+            projectPath,
+            relativePath: ".agents/skills/tool-skill/SKILL.md",
+            scope: "project",
+            shortDescription: null
+          }
+        ]
+      })
+    ).toEqual([
+      path.join(skillDir, "agent-extension.mjs"),
+      path.join(skillDir, "extensions", "reviewer.mjs")
+    ])
   })
 
   it("builds a skill prompt from matching project and global skills", () => {
@@ -287,7 +356,15 @@ describe("skills", () => {
         {
           body: 'Use <button> & "quotes".',
           capabilities: ["tools"],
+          commands: [
+            {
+              description: "Review renderer code.",
+              flags: ["--strict"],
+              name: "review"
+            }
+          ],
           description: "Renderer <rules>",
+          extensions: [],
           modelVisible: true,
           name: "renderer",
           path: "/tmp/SKILL.md",
@@ -303,7 +380,33 @@ describe("skills", () => {
         {
           body: 'Use <button> & "quotes".',
           capabilities: ["tools"],
+          commands: [
+            {
+              description: "Review renderer code.",
+              flags: ["--strict"],
+              name: "review"
+            }
+          ],
           description: "Renderer <rules>",
+          extensions: [],
+          modelVisible: true,
+          name: "renderer",
+          path: "/tmp/SKILL.md",
+          projectPath: "/tmp/project",
+          scope: "project",
+          shortDescription: "Renderer rules",
+          visible: true
+        }
+      ])
+    ).toContain("<flag>--strict</flag>")
+    expect(
+      formatSkillsForSystemPrompt([
+        {
+          body: 'Use <button> & "quotes".',
+          capabilities: ["tools"],
+          commands: [],
+          description: "Renderer <rules>",
+          extensions: [],
           modelVisible: true,
           name: "renderer",
           path: "/tmp/SKILL.md",
@@ -321,7 +424,9 @@ describe("skills", () => {
       {
         body: "Hidden implementation details.",
         capabilities: ["context-loaders"],
+        commands: [],
         description: "Use when a hidden skill is explicitly selected.",
+        extensions: [],
         modelVisible: false,
         name: "hidden-reference",
         path: "/tmp/hidden-reference/SKILL.md",

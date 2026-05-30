@@ -13,8 +13,16 @@ import * as z from "zod"
 import {
   getAgentRun,
   listAgentEvents,
+  listAgentRuns,
   listAgentToolCalls
 } from "@/main/agents/agent-event-store"
+import type { AgentEvent } from "@/main/agents/agent-event-store"
+import type {
+  AgentExtensionRegisteredTool,
+  AgentExtensionRunner,
+  AgentExtensionToolExecutionContext
+} from "@/main/agents/agent-extensions"
+import { toAgentExtensionErrorMessage } from "@/main/agents/agent-extensions"
 import { createAgentWorkspace } from "@/main/agents/agent-workspace"
 import type {
   AgentWorkspace,
@@ -23,11 +31,15 @@ import type {
 import { ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES } from "@/main/agents/code-agent-tool-aliases"
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
+  formatToolResultSummaryAnnotation,
   clampToolOutput,
   createAgentExecutionEnv,
   writeAgentCommandOutputArtifact
 } from "@/main/agents/execution-env"
 import type {
+  AgentBackgroundProcessEvent,
+  AgentBackgroundProcessRecoverInput,
+  AgentBackgroundProcessSnapshot,
   AgentCommandOutput,
   AgentExecutionError,
   AgentFileError,
@@ -35,6 +47,10 @@ import type {
   AgentShellEvent,
   AgentShellResult
 } from "@/main/agents/execution-env"
+import type {
+  LspDiagnostic,
+  LspDiagnosticsResult
+} from "@/main/agents/lsp-manager"
 import {
   evaluateAgentToolPermission,
   isSecretAgentPath
@@ -113,6 +129,12 @@ const CodeAgentReadInputSchema = z
 
 const CodeAgentBashInputSchema = z
   .object({
+    background: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Start the command as an Etyon-managed background process and return a processId."
+      ),
     command: z.string().min(1).describe("Bash command to execute."),
     timeout: z
       .number()
@@ -121,6 +143,15 @@ const CodeAgentBashInputSchema = z
       .max(600)
       .optional()
       .describe("Timeout in seconds.")
+  })
+  .strict()
+
+const CodeAgentProcessInputSchema = z
+  .object({
+    processId: z
+      .string()
+      .min(1)
+      .describe("Process id returned by a background bash command.")
   })
   .strict()
 
@@ -574,6 +605,7 @@ interface BuildAgentToolsOptions {
   db?: AppDatabase
   eventSink?: (event: AgentWorkspaceEvent) => Promise<void> | void
   executeDelegation?: ExecuteAgentDelegation
+  extensionRunner?: AgentExtensionRunner
   includeApprovalTools?: boolean
   memorySettings?: MemorySettings
   projectPath: string
@@ -611,11 +643,13 @@ type ExecutableAgentToolName =
   | "listProjectTree"
   | "ls"
   | "memorySearch"
+  | "processOutput"
   | "read"
   | "readFile"
   | "rtkCommand"
   | "runCheck"
   | "searchFiles"
+  | "stopProcess"
   | "webSearch"
   | "write"
   | "writeFile"
@@ -662,11 +696,13 @@ const EXECUTABLE_AGENT_TOOL_NAMES = [
   "listProjectTree",
   "ls",
   "memorySearch",
+  "processOutput",
   "read",
   "readFile",
   "rtkCommand",
   "runCheck",
   "searchFiles",
+  "stopProcess",
   "webSearch",
   "write",
   "writeFile"
@@ -1090,6 +1126,68 @@ const createShellWorkspaceEventBridge = ({
       }
     }
   }
+}
+
+const createBackgroundProcessWorkspaceEventBridge = ({
+  eventSink
+}: {
+  eventSink: ((event: AgentWorkspaceEvent) => Promise<void> | void) | undefined
+}): ((event: AgentBackgroundProcessEvent) => void) => {
+  const emitProcessEvent = (event: AgentBackgroundProcessEvent): void => {
+    switch (event.type) {
+      case "finished": {
+        emitCommandWorkspaceEvent(eventSink, {
+          payload: {
+            command: event.command,
+            cwd: event.cwd,
+            durationMs: event.durationMs,
+            exitCode: event.exitCode,
+            finishedAt: event.finishedAt,
+            processId: event.processId,
+            sandboxed: event.sandboxed,
+            status: event.status,
+            stderrChars: event.stderrChars,
+            stdoutChars: event.stdoutChars
+          },
+          type: "background_process_finished"
+        })
+        break
+      }
+      case "output": {
+        emitCommandWorkspaceEvent(eventSink, {
+          payload: {
+            channel: event.channel,
+            chunk: event.chunk,
+            processId: event.processId,
+            sequence: event.sequence
+          },
+          type: "background_process_output"
+        })
+        break
+      }
+      case "started": {
+        emitCommandWorkspaceEvent(eventSink, {
+          payload: {
+            command: event.command,
+            cwd: event.cwd,
+            pid: event.pid,
+            processId: event.processId,
+            sandboxed: event.sandboxed,
+            startedAt: event.startedAt
+          },
+          type: "background_process_started"
+        })
+        break
+      }
+      default: {
+        const exhaustiveEvent: never = event
+
+        throw new Error(`Unknown background process event: ${exhaustiveEvent}`)
+      }
+    }
+  }
+
+  return emitProcessEvent
 }
 
 const getCommandDurationMs = ({
@@ -2256,7 +2354,36 @@ const executeCodeAgentBash = async (
   sandboxSettings?: AgentSettings["sandbox"],
   workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
-  const { command, timeout } = CodeAgentBashInputSchema.parse(input)
+  const { background, command, timeout } = CodeAgentBashInputSchema.parse(input)
+
+  if (background) {
+    if (!workspace) {
+      throw new Error("Background bash requires an active Etyon workspace.")
+    }
+
+    const result = await workspace.executionEnv.backgroundProcesses.start(
+      command,
+      {
+        cwd: "",
+        onEvent: createBackgroundProcessWorkspaceEventBridge({
+          eventSink: workspace.eventSink
+        })
+      }
+    )
+
+    if (!result.ok) {
+      throw new Error(getCommandErrorPreview(result.error))
+    }
+
+    return createCodeAgentTextOutput(
+      `Started background process ${result.value.id}. Use processOutput to read output and stopProcess to stop it.`,
+      {
+        process: result.value,
+        processId: result.value.id
+      }
+    )
+  }
+
   const result = await executeCommandTool({
     abortSignal,
     command,
@@ -2286,16 +2413,358 @@ const executeCodeAgentBash = async (
   })
 }
 
+const formatBackgroundProcessOutput = (
+  snapshot: AgentBackgroundProcessSnapshot
+): string => {
+  const stdoutPreviewChars = [...snapshot.stdoutPreview].length
+  const stderrPreviewChars = [...snapshot.stderrPreview].length
+  const stdoutAnnotation = formatToolResultSummaryAnnotation(
+    {
+      content: snapshot.stdoutPreview,
+      omittedChars: Math.max(0, snapshot.stdoutChars - stdoutPreviewChars),
+      totalChars: snapshot.stdoutChars,
+      truncated: snapshot.stdoutChars > stdoutPreviewChars
+    },
+    {
+      label: "stdout"
+    }
+  )
+  const stderrAnnotation = formatToolResultSummaryAnnotation(
+    {
+      content: snapshot.stderrPreview,
+      omittedChars: Math.max(0, snapshot.stderrChars - stderrPreviewChars),
+      totalChars: snapshot.stderrChars,
+      truncated: snapshot.stderrChars > stderrPreviewChars
+    },
+    {
+      label: "stderr"
+    }
+  )
+  const lines = [
+    `processId: ${snapshot.id}`,
+    `status: ${snapshot.status}`,
+    `exitCode: ${snapshot.exitCode ?? "none"}`,
+    `pid: ${snapshot.pid ?? "none"}`,
+    `cwd: ${snapshot.cwd}`,
+    `command: ${snapshot.command}`
+  ]
+  const outputSections = [
+    snapshot.stdoutPreview ? `stdout:\n${snapshot.stdoutPreview}` : "",
+    stdoutAnnotation,
+    snapshot.stderrPreview ? `stderr:\n${snapshot.stderrPreview}` : "",
+    stderrAnnotation
+  ].filter(Boolean)
+
+  if (snapshot.truncated && !stdoutAnnotation && !stderrAnnotation) {
+    outputSections.push("[output truncated]")
+  }
+
+  return [...lines, outputSections.join("\n\n") || "(no output yet)"].join("\n")
+}
+
+interface BackgroundProcessEventLogRecoveryOptions {
+  chatSessionId?: string
+  db?: AppDatabase
+  processId: string
+  workspace: AgentWorkspace
+}
+
+const getBackgroundProcessEventProcessId = (
+  event: AgentEvent
+): string | null => {
+  if (!isRecord(event.payload) || typeof event.payload.processId !== "string") {
+    return null
+  }
+
+  return event.payload.processId
+}
+
+const getBackgroundProcessRecoveryInput = (
+  events: readonly AgentEvent[],
+  processId: string
+): AgentBackgroundProcessRecoverInput | null => {
+  const processEvents = events.filter(
+    (event) => getBackgroundProcessEventProcessId(event) === processId
+  )
+  const startedEvent = processEvents.find(
+    (event) =>
+      event.type === "background_process_started" && isRecord(event.payload)
+  )
+
+  if (!startedEvent || !isRecord(startedEvent.payload)) {
+    return null
+  }
+
+  const { command, cwd, pid, sandboxed, startedAt } = startedEvent.payload
+
+  if (
+    typeof command !== "string" ||
+    typeof cwd !== "string" ||
+    typeof startedAt !== "string" ||
+    typeof sandboxed !== "boolean" ||
+    !(typeof pid === "number" || pid === null)
+  ) {
+    return null
+  }
+
+  const stdout = processEvents
+    .filter(
+      (event) =>
+        event.type === "background_process_output" &&
+        isRecord(event.payload) &&
+        event.payload.channel === "stdout" &&
+        typeof event.payload.chunk === "string"
+    )
+    .toSorted((first, second) => {
+      const firstSequence = isRecord(first.payload)
+        ? Number(first.payload.sequence)
+        : 0
+      const secondSequence = isRecord(second.payload)
+        ? Number(second.payload.sequence)
+        : 0
+
+      return firstSequence - secondSequence
+    })
+    .map((event) => (isRecord(event.payload) ? event.payload.chunk : ""))
+    .join("")
+  const stderr = processEvents
+    .filter(
+      (event) =>
+        event.type === "background_process_output" &&
+        isRecord(event.payload) &&
+        event.payload.channel === "stderr" &&
+        typeof event.payload.chunk === "string"
+    )
+    .toSorted((first, second) => {
+      const firstSequence = isRecord(first.payload)
+        ? Number(first.payload.sequence)
+        : 0
+      const secondSequence = isRecord(second.payload)
+        ? Number(second.payload.sequence)
+        : 0
+
+      return firstSequence - secondSequence
+    })
+    .map((event) => (isRecord(event.payload) ? event.payload.chunk : ""))
+    .join("")
+  const finishedEvent = processEvents.findLast(
+    (event) =>
+      event.type === "background_process_finished" && isRecord(event.payload)
+  )
+  const finishedPayload = isRecord(finishedEvent?.payload)
+    ? finishedEvent.payload
+    : null
+
+  return {
+    command,
+    cwd,
+    exitCode:
+      typeof finishedPayload?.exitCode === "number"
+        ? finishedPayload.exitCode
+        : null,
+    finishedAt:
+      typeof finishedPayload?.finishedAt === "string"
+        ? finishedPayload.finishedAt
+        : null,
+    id: processId,
+    pid,
+    sandboxed,
+    startedAt,
+    status:
+      finishedPayload &&
+      (finishedPayload.status === "exited" ||
+        finishedPayload.status === "running" ||
+        finishedPayload.status === "spawn_error" ||
+        finishedPayload.status === "stopped")
+        ? finishedPayload.status
+        : undefined,
+    stderr,
+    stdout
+  }
+}
+
+const recoverBackgroundProcessFromEventLog = async ({
+  chatSessionId,
+  db,
+  processId,
+  workspace
+}: BackgroundProcessEventLogRecoveryOptions): Promise<AgentBackgroundProcessSnapshot | null> => {
+  if (!db || !chatSessionId) {
+    return null
+  }
+
+  const runs = await listAgentRuns({
+    chatSessionId,
+    db,
+    limit: 100
+  })
+
+  for (const run of runs) {
+    const events = await listAgentEvents({
+      db,
+      runId: run.id
+    })
+    const input = getBackgroundProcessRecoveryInput(events, processId)
+
+    if (!input) {
+      continue
+    }
+
+    return workspace.executionEnv.backgroundProcesses.recover(input, {
+      onEvent: createBackgroundProcessWorkspaceEventBridge({
+        eventSink: workspace.eventSink
+      })
+    })
+  }
+
+  return null
+}
+
+const getBackgroundProcessSnapshot = async ({
+  chatSessionId,
+  db,
+  processId,
+  workspace
+}: BackgroundProcessEventLogRecoveryOptions): Promise<AgentBackgroundProcessSnapshot | null> =>
+  workspace.executionEnv.backgroundProcesses.get(processId) ??
+  (await recoverBackgroundProcessFromEventLog({
+    chatSessionId,
+    db,
+    processId,
+    workspace
+  }))
+
+const executeCodeAgentProcessOutput = async (
+  input: unknown,
+  chatSessionId?: string,
+  db?: AppDatabase,
+  workspace?: AgentWorkspace
+): Promise<CodeAgentTextOutput> => {
+  if (!workspace) {
+    throw new Error("processOutput requires an active Etyon workspace.")
+  }
+
+  const { processId } = CodeAgentProcessInputSchema.parse(input)
+  const snapshot = await getBackgroundProcessSnapshot({
+    chatSessionId,
+    db,
+    processId,
+    workspace
+  })
+
+  if (!snapshot) {
+    throw new Error(`Background process ${processId} was not found.`)
+  }
+
+  return createCodeAgentTextOutput(formatBackgroundProcessOutput(snapshot), {
+    process: snapshot,
+    processId: snapshot.id
+  })
+}
+
+const executeCodeAgentStopProcess = async (
+  input: unknown,
+  chatSessionId?: string,
+  db?: AppDatabase,
+  workspace?: AgentWorkspace
+): Promise<CodeAgentTextOutput> => {
+  if (!workspace) {
+    throw new Error("stopProcess requires an active Etyon workspace.")
+  }
+
+  const { processId } = CodeAgentProcessInputSchema.parse(input)
+  await getBackgroundProcessSnapshot({
+    chatSessionId,
+    db,
+    processId,
+    workspace
+  })
+  const result =
+    await workspace.executionEnv.backgroundProcesses.stop(processId)
+
+  if (!result.ok) {
+    throw new Error(getCommandErrorPreview(result.error))
+  }
+
+  return createCodeAgentTextOutput(
+    `Stopped background process ${result.value.id}.\n\n${formatBackgroundProcessOutput(result.value)}`,
+    {
+      process: result.value,
+      processId: result.value.id
+    }
+  )
+}
+
+const formatLspDiagnostic = (diagnostic: LspDiagnostic): string =>
+  `- ${diagnostic.severity} ${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`
+
+const formatPostWriteLspDiagnostics = (
+  result: LspDiagnosticsResult | null
+): string => {
+  if (!result) {
+    return ""
+  }
+
+  if (result.status !== "success") {
+    return `LSP diagnostics ${result.status}: ${result.error ?? "no details"}`
+  }
+
+  if (result.diagnostics.length === 0) {
+    return "LSP diagnostics: none"
+  }
+
+  return `LSP diagnostics:\n${result.diagnostics
+    .map(formatLspDiagnostic)
+    .join("\n")}`
+}
+
+const collectPostWriteLspDiagnostics = async ({
+  path: editedPath,
+  workspace
+}: {
+  path: string
+  workspace?: AgentWorkspace
+}): Promise<LspDiagnosticsResult | null> => {
+  if (!workspace?.lsp) {
+    return null
+  }
+
+  try {
+    return await workspace.lsp.touchFile(editedPath)
+  } catch (error) {
+    return {
+      diagnostics: [],
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to collect diagnostics.",
+      path: editedPath,
+      status: "failed"
+    }
+  }
+}
+
 const executeCodeAgentEdit = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const parsedInput = CodeAgentEditInputSchema.parse(input)
   const result = await executeEditFile(parsedInput, projectPath)
+  const diagnostics = await collectPostWriteLspDiagnostics({
+    path: result.path,
+    workspace
+  })
 
   return createCodeAgentTextOutput(
-    `Successfully replaced ${result.replacements} block(s) in ${result.path}.`,
+    [
+      `Successfully replaced ${result.replacements} block(s) in ${result.path}.`,
+      formatPostWriteLspDiagnostics(diagnostics)
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     {
+      ...(diagnostics ? { diagnostics } : {}),
       diff: result.diff,
       path: result.path,
       replacements: result.replacements,
@@ -2306,14 +2775,25 @@ const executeCodeAgentEdit = async (
 
 const executeCodeAgentWrite = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const result = await executeWriteFile(input, projectPath)
+  const diagnostics = await collectPostWriteLspDiagnostics({
+    path: result.path,
+    workspace
+  })
 
   return createCodeAgentTextOutput(
-    `Successfully wrote ${result.bytesWritten} bytes to ${result.path}`,
+    [
+      `Successfully wrote ${result.bytesWritten} bytes to ${result.path}`,
+      formatPostWriteLspDiagnostics(diagnostics)
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     {
       bytesWritten: result.bytesWritten,
+      ...(diagnostics ? { diagnostics } : {}),
       path: result.path
     }
   )
@@ -2350,6 +2830,7 @@ const executeCodeAgentInspect = async (
       implementation: [],
       line,
       path,
+      references: [],
       status: "unavailable"
     })
   }
@@ -2382,6 +2863,15 @@ const executeCodeAgentInspect = async (
               `- ${location.path}:${location.line}:${location.column}`
           )
           .join("\n")}`
+  const referencesText =
+    result.references.length === 0
+      ? "references: none"
+      : `references:\n${result.references
+          .map(
+            (location) =>
+              `- ${location.path}:${location.line}:${location.column}`
+          )
+          .join("\n")}`
   const hoverText = result.hover ? `hover:\n${result.hover}` : "hover: none"
   const statusText =
     result.status === "success"
@@ -2389,7 +2879,14 @@ const executeCodeAgentInspect = async (
       : `LSP inspect ${result.status}: ${result.error ?? "no details"}`
 
   return createCodeAgentTextOutput(
-    [statusText, hoverText, definitionText, implementationText, diagnosticText]
+    [
+      statusText,
+      hoverText,
+      definitionText,
+      implementationText,
+      referencesText,
+      diagnosticText
+    ]
       .filter(Boolean)
       .join("\n\n"),
     {
@@ -2401,6 +2898,7 @@ const executeCodeAgentInspect = async (
       implementation: result.implementation,
       line: result.line,
       path: result.path,
+      references: result.references,
       status: result.status
     }
   )
@@ -2872,8 +3370,12 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
-  edit: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentEdit(input, projectPath),
+  edit: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentEdit(input, projectPath, workspace),
   editFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
     await executeEditFile(input, projectPath),
   fileInfo: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
@@ -2933,6 +3435,13 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     projectPath
   }: ExecuteAgentToolHandlerOptions) =>
     await executeMemorySearch(db, input, memorySettings, projectPath),
+  processOutput: async ({
+    chatSessionId,
+    db,
+    input,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentProcessOutput(input, chatSessionId, db, workspace),
   read: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentRead(input, projectPath),
   readFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
@@ -2979,10 +3488,21 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
+  stopProcess: async ({
+    chatSessionId,
+    db,
+    input,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentStopProcess(input, chatSessionId, db, workspace),
   webSearch: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
     await executeWebSearch(input, abortSignal),
-  write: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentWrite(input, projectPath),
+  write: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentWrite(input, projectPath, workspace),
   writeFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
     await executeWriteFile(input, projectPath)
 } as const satisfies Record<ExecutableAgentToolName, ExecuteAgentToolHandler>
@@ -3076,8 +3596,16 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     inputSchema: ApplyPatchInputSchema
   },
   bash: {
-    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.bash.etyonName}. Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide timeout in seconds.`,
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.bash.etyonName}. Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide timeout in seconds. Set background=true for a long-running Etyon-managed process, then use processOutput and stopProcess with the returned processId.`,
     inputSchema: CodeAgentBashInputSchema
+  },
+  processOutput: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.processOutput.etyonName}. Read bounded stdout and stderr from an Etyon-managed background process.`,
+    inputSchema: CodeAgentProcessInputSchema
+  },
+  stopProcess: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.stopProcess.etyonName}. Stop an Etyon-managed background process by processId.`,
+    inputSchema: CodeAgentProcessInputSchema
   },
   edit: {
     description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.edit.etyonName}. Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file.`,
@@ -3112,7 +3640,7 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     inputSchema: CodeAgentGrepInputSchema
   },
   inspect: {
-    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.inspect.etyonName}. Inspect a source position with sandboxed LSP hover, definition, implementation, and current-line diagnostics.`,
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.inspect.etyonName}. Inspect a source position with sandboxed LSP hover, definition, implementation, references, and current-line diagnostics.`,
     inputSchema: CodeAgentInspectInputSchema
   },
   listDirectory: {
@@ -3266,6 +3794,156 @@ const createAgentDelegationTool = (
   })
 }
 
+const createAgentExtensionToolContext = ({
+  chatSessionId,
+  db,
+  memorySettings,
+  options,
+  projectPath,
+  settings,
+  workspace
+}: {
+  chatSessionId: string | undefined
+  db: AppDatabase | undefined
+  memorySettings: MemorySettings | undefined
+  options: ToolExecutionOptions
+  projectPath: string
+  settings: AgentSettings
+  workspace: AgentWorkspace
+}): AgentExtensionToolExecutionContext => ({
+  abortSignal: options.abortSignal,
+  chatSessionId,
+  db,
+  memorySettings,
+  messages: options.messages,
+  projectPath,
+  settings,
+  toolCallId: options.toolCallId,
+  workspace
+})
+
+const getAgentExtensionToolNeedsApprovalConfig = ({
+  chatSessionId,
+  db,
+  definition,
+  memorySettings,
+  projectPath,
+  settings,
+  workspace
+}: {
+  chatSessionId: string | undefined
+  db: AppDatabase | undefined
+  definition: AgentExtensionRegisteredTool
+  memorySettings: MemorySettings | undefined
+  projectPath: string
+  settings: AgentSettings
+  workspace: AgentWorkspace
+}): Pick<ToolSet[string], "needsApproval"> => {
+  const { requiresApproval } = definition
+
+  if (!requiresApproval) {
+    return {}
+  }
+
+  if (requiresApproval === true) {
+    return {
+      needsApproval: () => true
+    }
+  }
+
+  return {
+    needsApproval: (input: unknown, options: ToolExecutionOptions) =>
+      requiresApproval(
+        input,
+        createAgentExtensionToolContext({
+          chatSessionId,
+          db,
+          memorySettings,
+          options,
+          projectPath,
+          settings,
+          workspace
+        })
+      )
+  }
+}
+
+const createAgentExtensionTool = ({
+  chatSessionId,
+  db,
+  definition,
+  memorySettings,
+  projectPath,
+  runner,
+  settings,
+  workspace
+}: {
+  chatSessionId: string | undefined
+  db: AppDatabase | undefined
+  definition: AgentExtensionRegisteredTool
+  memorySettings: MemorySettings | undefined
+  projectPath: string
+  runner: AgentExtensionRunner
+  settings: AgentSettings
+  workspace: AgentWorkspace
+}): ToolSet[string] =>
+  tool({
+    description: definition.description,
+    execute: async (input, options: ToolExecutionOptions) => {
+      const context = createAgentExtensionToolContext({
+        chatSessionId,
+        db,
+        memorySettings,
+        options,
+        projectPath,
+        settings,
+        workspace
+      })
+
+      await runner.emit({
+        extensionId: definition.extensionId,
+        input,
+        toolCallId: options.toolCallId,
+        toolName: definition.name,
+        type: "tool_call_started"
+      })
+
+      try {
+        const output = await definition.execute(input, context)
+
+        await runner.emit({
+          extensionId: definition.extensionId,
+          output,
+          toolCallId: options.toolCallId,
+          toolName: definition.name,
+          type: "tool_call_finished"
+        })
+
+        return output
+      } catch (error) {
+        await runner.emit({
+          error: toAgentExtensionErrorMessage(error),
+          extensionId: definition.extensionId,
+          toolCallId: options.toolCallId,
+          toolName: definition.name,
+          type: "tool_call_failed"
+        })
+
+        throw error
+      }
+    },
+    inputSchema: definition.inputSchema,
+    ...getAgentExtensionToolNeedsApprovalConfig({
+      chatSessionId,
+      db,
+      definition,
+      memorySettings,
+      projectPath,
+      settings,
+      workspace
+    })
+  })
+
 const canExposeDelegationTool = ({
   executeDelegation,
   name,
@@ -3302,6 +3980,7 @@ export const buildAgentTools = ({
   db,
   eventSink,
   executeDelegation,
+  extensionRunner,
   includeApprovalTools = true,
   memorySettings,
   projectPath,
@@ -3314,6 +3993,7 @@ export const buildAgentTools = ({
 
   const profile = resolveActiveAgentProfile(settings)
   const workspace = createAgentWorkspace({
+    chatSessionId,
     eventSink,
     projectPath,
     settings
@@ -3361,6 +4041,24 @@ export const buildAgentTools = ({
       })
     ) {
       tools[toolName] = createAgentDelegationTool(executeDelegation, toolName)
+    }
+  }
+
+  if (extensionRunner) {
+    for (const extensionToolDefinition of extensionRunner.listTools({
+      profileId: profile.id,
+      skillCapabilities
+    })) {
+      tools[extensionToolDefinition.name] = createAgentExtensionTool({
+        chatSessionId,
+        db,
+        definition: extensionToolDefinition,
+        memorySettings,
+        projectPath,
+        runner: extensionRunner,
+        settings,
+        workspace
+      })
     }
   }
 

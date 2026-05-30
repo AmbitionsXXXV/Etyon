@@ -2,7 +2,13 @@ import type { ChatMention } from "@etyon/rpc"
 
 export { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 
+export interface ChatMessageAgentProjectionMetadata {
+  runId: string
+  source: "agent_events"
+}
+
 export interface ChatMessageMetadata {
+  agentProjection?: ChatMessageAgentProjectionMetadata
   mentions?: ChatMention[]
   workTimeMs?: number
 }
@@ -23,8 +29,18 @@ export const parseChatMessageMetadata = (
     metadata.workTimeMs >= 0
       ? metadata.workTimeMs
       : undefined
+  const agentProjection =
+    isRecord(metadata.agentProjection) &&
+    metadata.agentProjection.source === "agent_events" &&
+    typeof metadata.agentProjection.runId === "string"
+      ? {
+          runId: metadata.agentProjection.runId,
+          source: "agent_events" as const
+        }
+      : undefined
 
   return {
+    agentProjection,
     mentions: Array.isArray(metadata.mentions)
       ? (metadata.mentions as ChatMessageMetadata["mentions"])
       : undefined,

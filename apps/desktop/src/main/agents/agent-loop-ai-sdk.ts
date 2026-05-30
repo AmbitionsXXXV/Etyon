@@ -17,6 +17,11 @@ import type {
   AgentLoopToolCall,
   AgentLoopTool
 } from "@/main/agents/agent-loop"
+import type { AgentToolResultSummaryProcessor } from "@/main/agents/truncate"
+import {
+  formatToolResultSummaryAnnotation,
+  summarizeToolResult
+} from "@/main/agents/truncate"
 
 export interface AiSdkAgentLoopModelStreamCallbacks {
   onFinish?: () => void
@@ -38,6 +43,15 @@ export interface CreateAiSdkAgentLoopToolsOptions {
   metadata?: Readonly<Record<string, unknown>>
   tools: ToolSet
 }
+
+export interface CreateAiSdkToolResultSummaryProcessorOptions {
+  headers?: Readonly<Record<string, string>>
+  maxInputChars?: number
+  metadata?: Readonly<Record<string, unknown>>
+  model: LanguageModel
+}
+
+const DEFAULT_TOOL_RESULT_SUMMARY_PROCESSOR_INPUT_MAX_CHARS = 24_000
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -345,6 +359,48 @@ const toAgentLoopStopReason = ({
 
   return finishReason === "error" ? "error" : "stop"
 }
+
+export const createAiSdkToolResultSummaryProcessor =
+  ({
+    headers,
+    maxInputChars = DEFAULT_TOOL_RESULT_SUMMARY_PROCESSOR_INPUT_MAX_CHARS,
+    metadata,
+    model
+  }: CreateAiSdkToolResultSummaryProcessorOptions): AgentToolResultSummaryProcessor =>
+  async ({ content, deterministicSummary, maxSummaryChars }) => {
+    const inputSummary = summarizeToolResult(content, maxInputChars)
+    const inputAnnotation = formatToolResultSummaryAnnotation(inputSummary, {
+      label: "processor input"
+    })
+    const result = await generateText({
+      experimental_context: {
+        ...metadata,
+        summaryProcessor: "tool-result"
+      },
+      headers,
+      messages: [
+        {
+          content: [
+            "Summarize this tool output for the next Etyon code-agent step.",
+            `Keep the summary under ${maxSummaryChars} characters.`,
+            "Preserve file paths, commands, errors, counts, changed symbols, and decisions.",
+            "Do not include generic commentary.",
+            "",
+            `Original size: ${deterministicSummary.totalChars} characters.`,
+            inputAnnotation,
+            "",
+            inputSummary.content
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          role: "user"
+        }
+      ],
+      model
+    })
+
+    return result.text
+  }
 
 export const createAiSdkAgentLoopModel =
   ({

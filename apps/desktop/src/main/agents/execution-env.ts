@@ -26,8 +26,11 @@ export {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
   clampToolOutput,
   createToolResultSummaryCache,
+  appendToolResultSummaryAnnotation,
+  formatToolResultSummaryAnnotation,
   formatSize,
   summarizeToolResult,
+  summarizeToolResultWithProcessor,
   truncateHead,
   truncateLine,
   truncateTail
@@ -284,7 +287,37 @@ export interface AgentBackgroundProcessOutputEvent {
   chunk: string
   processId: string
   sequence: number
+  type: "output"
 }
+
+export interface AgentBackgroundProcessStartedEvent {
+  command: string
+  cwd: string
+  pid: number | null
+  processId: string
+  sandboxed: boolean
+  startedAt: string
+  type: "started"
+}
+
+export interface AgentBackgroundProcessFinishedEvent {
+  command: string
+  cwd: string
+  durationMs: number
+  exitCode: number | null
+  finishedAt: string
+  processId: string
+  sandboxed: boolean
+  status: AgentBackgroundProcessStatus
+  stderrChars: number
+  stdoutChars: number
+  type: "finished"
+}
+
+export type AgentBackgroundProcessEvent =
+  | AgentBackgroundProcessFinishedEvent
+  | AgentBackgroundProcessOutputEvent
+  | AgentBackgroundProcessStartedEvent
 
 export interface AgentBackgroundProcessSnapshot {
   command: string
@@ -308,14 +341,38 @@ export interface AgentBackgroundProcessSnapshot {
 export interface AgentBackgroundProcessStartOptions {
   cwd?: string
   env?: Record<string, string>
+  onEvent?: (event: AgentBackgroundProcessEvent) => void
   onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
   stdin?: string
+}
+
+export interface AgentBackgroundProcessRecoverInput {
+  command: string
+  cwd: string
+  exitCode?: number | null
+  finishedAt?: string | null
+  id: string
+  pid: number | null
+  sandboxed: boolean
+  startedAt: string
+  status?: AgentBackgroundProcessStatus
+  stderr?: string
+  stdout?: string
+}
+
+export interface AgentBackgroundProcessRecoverOptions {
+  onEvent?: (event: AgentBackgroundProcessEvent) => void
+  onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
 }
 
 export interface AgentBackgroundProcesses {
   cleanup: () => Promise<void>
   get: (processId: string) => AgentBackgroundProcessSnapshot | null
   list: () => AgentBackgroundProcessSnapshot[]
+  recover: (
+    input: AgentBackgroundProcessRecoverInput,
+    options?: AgentBackgroundProcessRecoverOptions
+  ) => AgentBackgroundProcessSnapshot
   start: (
     command: string,
     options?: AgentBackgroundProcessStartOptions
@@ -323,6 +380,10 @@ export interface AgentBackgroundProcesses {
   stop: (
     processId: string
   ) => Promise<AgentResult<AgentBackgroundProcessSnapshot, AgentExecutionError>>
+}
+
+export interface AgentBackgroundProcessStore {
+  records: Map<string, unknown>
 }
 
 export interface AgentExecutionEnv {
@@ -338,6 +399,7 @@ export interface AgentExecutionEnv {
 }
 
 export interface CreateAgentExecutionEnvOptions {
+  backgroundProcessStore?: AgentBackgroundProcessStore
   outputMaxChars?: number
   projectPath: string
   sandbox?: WorkspaceSandbox
@@ -427,6 +489,51 @@ const createChildProcessTerminator = (
   }
 }
 
+const killRecoveredProcessTree = (
+  pid: number | null,
+  signal: NodeJS.Signals
+): void => {
+  if (!pid) {
+    return
+  }
+
+  try {
+    process.kill(-pid, signal)
+    return
+  } catch {
+    // Fall back to direct pid when process-group signaling is unavailable.
+  }
+
+  try {
+    process.kill(pid, signal)
+  } catch {
+    // The process may already be gone after app restart.
+  }
+}
+
+const createRecoveredProcessTerminator = (
+  pid: number | null
+): {
+  cleanup: () => void
+  terminate: () => void
+} => {
+  let forceKillTimeout: NodeJS.Timeout | undefined
+
+  return {
+    cleanup: () => {
+      if (forceKillTimeout) {
+        clearTimeout(forceKillTimeout)
+      }
+    },
+    terminate: () => {
+      killRecoveredProcessTree(pid, "SIGTERM")
+      forceKillTimeout = setTimeout(() => {
+        killRecoveredProcessTree(pid, "SIGKILL")
+      }, FORCE_KILL_GRACE_MS)
+    }
+  }
+}
+
 const emitShellOutputEvent = ({
   channel,
   chunk,
@@ -467,7 +574,7 @@ const createCommandOutputDecoder = () => {
 }
 
 interface AgentBackgroundProcessRecord {
-  child: ChildProcessWithoutNullStreams
+  child?: ChildProcessWithoutNullStreams
   cleanupPreparedCommand: () => Promise<void>
   closed: Promise<void>
   command: string
@@ -476,6 +583,7 @@ interface AgentBackgroundProcessRecord {
   exitCode: number | null
   finishedAtMs: number | null
   id: string
+  onEvent?: (event: AgentBackgroundProcessEvent) => void
   onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
   outputSequence: number
   pid: number | null
@@ -487,8 +595,19 @@ interface AgentBackgroundProcessRecord {
   stdout: string
   stdoutDecoder: ReturnType<typeof createCommandOutputDecoder>
   stopRequested: boolean
-  terminator: ReturnType<typeof createChildProcessTerminator>
+  terminator?: ReturnType<typeof createChildProcessTerminator>
 }
+
+export const createAgentBackgroundProcessStore =
+  (): AgentBackgroundProcessStore => ({
+    records: new Map()
+  })
+
+const getBackgroundProcessRecords = (
+  store?: AgentBackgroundProcessStore
+): Map<string, AgentBackgroundProcessRecord> =>
+  (store?.records as Map<string, AgentBackgroundProcessRecord> | undefined) ??
+  new Map()
 
 const countTextChars = (content: string): number => [...content].length
 
@@ -544,12 +663,16 @@ const appendBackgroundProcessOutput = ({
     record.stderr = `${record.stderr}${text}`
   }
 
-  record.onOutput?.({
+  const event: AgentBackgroundProcessOutputEvent = {
     channel,
     chunk: text,
     processId: record.id,
-    sequence: record.outputSequence
-  })
+    sequence: record.outputSequence,
+    type: "output"
+  }
+
+  record.onEvent?.(event)
+  record.onOutput?.(event)
   record.outputSequence += 1
 }
 
@@ -604,6 +727,28 @@ const isBackgroundProcessTerminal = (
   status: AgentBackgroundProcessStatus
 ): boolean => status !== "running"
 
+const isRecoveredPidRunning = (pid: number | null): boolean => {
+  if (!pid) {
+    return false
+  }
+
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ESRCH"
+    ) {
+      return false
+    }
+
+    return true
+  }
+}
+
 const settleBackgroundProcess = async ({
   errorMessage,
   exitCode,
@@ -626,9 +771,72 @@ const settleBackgroundProcess = async ({
   record.exitCode = exitCode
   record.finishedAtMs = Date.now()
   record.status = record.stopRequested ? "stopped" : status
-  record.terminator.cleanup()
+  record.terminator?.cleanup()
+  record.onEvent?.({
+    command: record.command,
+    cwd: record.cwd,
+    durationMs: record.finishedAtMs - record.startedAtMs,
+    exitCode: record.exitCode,
+    finishedAt: new Date(record.finishedAtMs).toISOString(),
+    processId: record.id,
+    sandboxed: record.sandboxed,
+    status: record.status,
+    stderrChars: countTextChars(record.stderr),
+    stdoutChars: countTextChars(record.stdout),
+    type: "finished"
+  })
 
   await record.cleanupPreparedCommand()
+}
+
+const createRecoveredBackgroundProcessRecord = ({
+  input,
+  onEvent,
+  onOutput
+}: {
+  input: AgentBackgroundProcessRecoverInput
+  onEvent?: (event: AgentBackgroundProcessEvent) => void
+  onOutput?: (event: AgentBackgroundProcessOutputEvent) => void
+}): AgentBackgroundProcessRecord => {
+  const startedAtMs = Date.parse(input.startedAt)
+  const validStartedAtMs = Number.isFinite(startedAtMs)
+    ? startedAtMs
+    : Date.now()
+  const parsedFinishedAtMs = input.finishedAt
+    ? Date.parse(input.finishedAt)
+    : Number.NaN
+  const finishedAtMs = Number.isFinite(parsedFinishedAtMs)
+    ? parsedFinishedAtMs
+    : null
+  const inferredStatus =
+    input.status ??
+    (finishedAtMs !== null || !isRecoveredPidRunning(input.pid)
+      ? "exited"
+      : "running")
+
+  return {
+    cleanupPreparedCommand: () => Promise.resolve(),
+    closed: Promise.resolve(),
+    command: input.command,
+    cwd: input.cwd,
+    exitCode: input.exitCode ?? null,
+    finishedAtMs:
+      finishedAtMs ?? (inferredStatus === "running" ? null : Date.now()),
+    id: input.id,
+    ...(onEvent ? { onEvent } : {}),
+    ...(onOutput ? { onOutput } : {}),
+    outputSequence: 0,
+    pid: input.pid,
+    sandboxed: input.sandboxed,
+    startedAtMs: validStartedAtMs,
+    status: inferredStatus,
+    stderr: input.stderr ?? "",
+    stderrDecoder: createCommandOutputDecoder(),
+    stdout: input.stdout ?? "",
+    stdoutDecoder: createCommandOutputDecoder(),
+    stopRequested: false,
+    terminator: createRecoveredProcessTerminator(input.pid)
+  }
 }
 
 const isPathInsideRoot = (rootPath: string, targetPath: string): boolean => {
@@ -771,6 +979,46 @@ const getShellExecutionError = ({
   }
 
   return null
+}
+
+const toError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error))
+
+const writeChildStdin = ({
+  child,
+  onError,
+  stdin = ""
+}: {
+  child: ChildProcessWithoutNullStreams
+  onError: (error: Error) => void
+  stdin?: string
+}): void => {
+  const handleError = (error: Error): void => {
+    if (getNodeErrorCode(error) !== "EPIPE") {
+      onError(error)
+    }
+  }
+  const canListenToErrors =
+    typeof child.stdin.on === "function" &&
+    typeof child.stdin.removeListener === "function"
+
+  if (canListenToErrors) {
+    child.stdin.on("error", handleError)
+  }
+
+  try {
+    child.stdin.end(stdin)
+  } catch (error) {
+    if (canListenToErrors) {
+      child.stdin.removeListener("error", handleError)
+    }
+
+    const normalizedError = toError(error)
+
+    if (getNodeErrorCode(normalizedError) !== "EPIPE") {
+      onError(normalizedError)
+    }
+  }
 }
 
 const getShellFinishedStatus = ({
@@ -958,8 +1206,13 @@ const executePreparedShellCommand = async ({
     once: true
   })
 
-  child.stdin.write(options?.stdin ?? "")
-  child.stdin.end()
+  writeChildStdin({
+    child,
+    onError: (error) => {
+      spawnErrorRef.value = error
+    },
+    stdin: options?.stdin
+  })
 
   const [exitCode] = (await once(child, "close")) as [number | null]
   const { stderr, stdout } = outputCapture.finish()
@@ -1166,6 +1419,7 @@ export const writeAgentCommandOutputArtifact = async ({
 }
 
 export const createAgentExecutionEnv = ({
+  backgroundProcessStore,
   outputMaxChars = AGENT_TOOL_OUTPUT_MAX_CHARS,
   projectPath,
   sandbox: providedSandbox,
@@ -2050,10 +2304,9 @@ export const createAgentExecutionEnv = ({
     }
   }
 
-  const backgroundProcessRecords = new Map<
-    string,
-    AgentBackgroundProcessRecord
-  >()
+  const backgroundProcessRecords = getBackgroundProcessRecords(
+    backgroundProcessStore
+  )
   const backgroundProcesses: AgentBackgroundProcesses = {
     cleanup: async () => {
       const closePromises: Promise<void>[] = []
@@ -2064,8 +2317,16 @@ export const createAgentExecutionEnv = ({
         }
 
         record.stopRequested = true
-        record.terminator.terminate()
-        closePromises.push(record.closed)
+        record.terminator?.terminate()
+        closePromises.push(
+          record.child
+            ? record.closed
+            : settleBackgroundProcess({
+                exitCode: null,
+                record,
+                status: "stopped"
+              })
+        )
       }
 
       await Promise.all(closePromises)
@@ -2088,6 +2349,37 @@ export const createAgentExecutionEnv = ({
           record
         })
       ),
+    recover: (input, options) => {
+      const existingRecord = backgroundProcessRecords.get(input.id)
+
+      if (existingRecord) {
+        if (options?.onEvent) {
+          existingRecord.onEvent = options.onEvent
+        }
+
+        if (options?.onOutput) {
+          existingRecord.onOutput = options.onOutput
+        }
+
+        return createBackgroundProcessSnapshot({
+          outputMaxChars,
+          record: existingRecord
+        })
+      }
+
+      const record = createRecoveredBackgroundProcessRecord({
+        input,
+        ...(options?.onEvent ? { onEvent: options.onEvent } : {}),
+        ...(options?.onOutput ? { onOutput: options.onOutput } : {})
+      })
+
+      backgroundProcessRecords.set(record.id, record)
+
+      return createBackgroundProcessSnapshot({
+        outputMaxChars,
+        record
+      })
+    },
     start: async (command, options) => {
       const resolvedCwd = resolveCwd(options?.cwd ?? "")
       const preparedCommand = await sandbox.prepareShellCommand({
@@ -2143,6 +2435,7 @@ export const createAgentExecutionEnv = ({
         exitCode: null,
         finishedAtMs: null,
         id,
+        ...(options?.onEvent ? { onEvent: options.onEvent } : {}),
         ...(options?.onOutput ? { onOutput: options.onOutput } : {}),
         outputSequence: 0,
         pid: child.pid ?? null,
@@ -2158,6 +2451,15 @@ export const createAgentExecutionEnv = ({
       }
 
       backgroundProcessRecords.set(id, record)
+      record.onEvent?.({
+        command,
+        cwd: preparedCommand.value.cwd,
+        pid: record.pid,
+        processId: id,
+        sandboxed: preparedCommand.value.sandboxed,
+        startedAt: new Date(record.startedAtMs).toISOString(),
+        type: "started"
+      })
 
       child.stderr.on("data", (chunk: Buffer) => {
         appendBackgroundProcessOutput({
@@ -2189,11 +2491,18 @@ export const createAgentExecutionEnv = ({
         })
       })
 
-      if (options?.stdin) {
-        child.stdin.write(options.stdin)
-      }
-
-      child.stdin.end()
+      writeChildStdin({
+        child,
+        onError: (error) => {
+          void settleBackgroundProcess({
+            errorMessage: error.message,
+            exitCode: null,
+            record,
+            status: "spawn_error"
+          })
+        },
+        stdin: options?.stdin
+      })
 
       return {
         ok: true,
@@ -2215,8 +2524,14 @@ export const createAgentExecutionEnv = ({
 
       if (!isBackgroundProcessTerminal(record.status)) {
         record.stopRequested = true
-        record.terminator.terminate()
-        await record.closed
+        record.terminator?.terminate()
+        await (record.child
+          ? record.closed
+          : settleBackgroundProcess({
+              exitCode: null,
+              record,
+              status: "stopped"
+            }))
       }
 
       return {
@@ -2338,6 +2653,7 @@ export const createAgentExecutionEnv = ({
       }
     )
     const childTerminator = createChildProcessTerminator(child)
+    const stdinErrorRef: { value: Error | null } = { value: null }
     const appendStderr = (chunk: Buffer): void => {
       stderr = `${stderr}${stderrDecoder.write(chunk)}`
     }
@@ -2356,11 +2672,13 @@ export const createAgentExecutionEnv = ({
     child.stdout.on("data", appendStdout)
     abortSignal?.addEventListener("abort", abortCommand, { once: true })
 
-    if (stdin) {
-      child.stdin.write(stdin)
-    }
-
-    child.stdin.end()
+    writeChildStdin({
+      child,
+      onError: (error) => {
+        stdinErrorRef.value = error
+      },
+      stdin
+    })
 
     const [exitCode] = (await once(child, "close")) as [number | null]
 
@@ -2379,6 +2697,8 @@ export const createAgentExecutionEnv = ({
       stderrText = `${stderr}\nCommand aborted.`
     } else if (timedOut) {
       stderrText = `${stderr}\nCommand timed out.`
+    } else if (stdinErrorRef.value) {
+      stderrText = `${stderr}\n${stdinErrorRef.value.message}`
     }
 
     const stderrOutput = clampToolOutput(stderrText, outputMaxChars)
@@ -2401,7 +2721,9 @@ export const createAgentExecutionEnv = ({
       stderrPreview: stderrOutput.content,
       stdoutPreview: stdoutOutput.content,
       status:
-        exitCode === 0 && !(abortSignal?.aborted || timedOut)
+        exitCode === 0 &&
+        !(abortSignal?.aborted || timedOut) &&
+        !stdinErrorRef.value
           ? "success"
           : "failed",
       truncated

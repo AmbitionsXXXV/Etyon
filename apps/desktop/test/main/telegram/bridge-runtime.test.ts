@@ -86,10 +86,8 @@ const {
 
     return instance
   }
-  const chatConstructorMock = vi.fn(function createChat(
-    this: unknown,
-    config: unknown
-  ) {
+  // eslint-disable-next-line prefer-arrow-callback -- The Chat SDK mock must be constructable because production code calls `new Chat(...)`.
+  const chatConstructorMock = vi.fn(function createChat(config: unknown) {
     const instance = createChatInstance(config)
 
     chatInstanceStore.push(instance)

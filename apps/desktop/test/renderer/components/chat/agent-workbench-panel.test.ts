@@ -13,9 +13,12 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
+  AgentWorkbenchBackgroundProcessPanel,
   AgentWorkbenchGraphPlanPanel,
   AgentWorkbenchPanel,
   AgentWorkbenchSessionPanel,
+  AgentWorkbenchShellCommandPanel,
+  AgentWorkbenchShellOutputPanel,
   AgentWorkbenchToolCallsPanel
 } from "@/renderer/components/chat/agent-workbench-panel"
 import type { AgentRunTracePreview } from "@/renderer/lib/chat/agent-workbench"
@@ -71,11 +74,15 @@ vi.mock("@/renderer/lib/rpc", () => ({
     agents: {
       advanceRunGraph: vi.fn(),
       appendSessionCompactionSummary: vi.fn(),
+      executeRunGraphNode: vi.fn(),
       instantiateRunGraphTemplate: vi.fn(),
       moveSessionLeaf: vi.fn(),
       respondToRunGraphApproval: vi.fn(),
       retryRunGraphNode: vi.fn(),
-      startRunGraphNextStage: vi.fn()
+      runGraphUntilIdle: vi.fn(),
+      skipRunGraphNode: vi.fn(),
+      startRunGraphNextStage: vi.fn(),
+      updateRunGraphRetryPolicy: vi.fn()
     }
   }
 }))
@@ -90,6 +97,30 @@ const createQueryClient = () =>
   })
 
 describe("AgentWorkbenchPanel", () => {
+  it("renders standalone workbench shell", () => {
+    const queryClient = createQueryClient()
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(AgentWorkbenchPanel, {
+            isProjectDiffLoading: false,
+            isRequestPending: false,
+            mode: "standalone",
+            sessionId: "session-standalone"
+          })
+        )
+      )
+    )
+
+    expect(html).toContain("Agent Workbench")
+    expect(html).toContain("Runs, graphs, session tree, and approvals")
+    expect(html).toContain("Refresh workbench")
+  })
+
   it("renders selected run tool calls", () => {
     const preview = {
       artifactCount: 0,
@@ -127,6 +158,132 @@ describe("AgentWorkbenchPanel", () => {
     expect(html).toContain("failed")
     expect(html).toContain("read")
     expect(html).toContain("finished")
+  })
+
+  it("renders shell output previews", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AgentWorkbenchShellOutputPanel, {
+          outputs: [
+            {
+              channel: "stdout",
+              chunkCount: 2,
+              commandLabel: "rtk vp check",
+              cwd: "/project",
+              id: "event-stdout",
+              lastEventSequence: 4,
+              text: "first\nsecond\n",
+              truncated: false,
+              type: "sandbox_command_output"
+            },
+            {
+              channel: "stderr",
+              chunkCount: 1,
+              commandLabel: "process process-1",
+              id: "event-stderr",
+              lastEventSequence: 5,
+              processId: "process-1",
+              text: "warning\n",
+              truncated: true,
+              type: "background_process_output"
+            }
+          ]
+        })
+      )
+    )
+
+    expect(html).toContain("Shell output 2")
+    expect(html).toContain("rtk vp check")
+    expect(html).toContain("/project")
+    expect(html).toContain("2 chunks")
+    expect(html).toContain("first")
+    expect(html).toContain("second")
+    expect(html).toContain("stderr")
+    expect(html).toContain("process process-1")
+    expect(html).toContain("Showing latest output")
+  })
+
+  it("renders background process previews", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AgentWorkbenchBackgroundProcessPanel, {
+          processes: [
+            {
+              command: "rtk vp dev",
+              cwd: "/project",
+              durationMs: 4200,
+              exitCode: null,
+              finishedAt: "2026-05-24T00:00:04.000Z",
+              id: "event-started",
+              lastEventSequence: 4,
+              outputEventCount: 2,
+              pid: 1234,
+              processId: "process-1",
+              sandboxed: true,
+              startedAt: "2026-05-24T00:00:00.000Z",
+              status: "stopped",
+              stderrChars: 4,
+              stdoutChars: 6
+            }
+          ]
+        })
+      )
+    )
+
+    expect(html).toContain("Processes 1")
+    expect(html).toContain("rtk vp dev")
+    expect(html).toContain("process-1")
+    expect(html).toContain("/project")
+    expect(html).toContain("stopped")
+    expect(html).toContain("pid 1234")
+    expect(html).toContain("duration 4.2 s")
+    expect(html).toContain("stdout 6 / stderr 4")
+    expect(html).toContain("exit -")
+    expect(html).toContain("sandboxed")
+  })
+
+  it("renders sandbox command previews", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AgentWorkbenchShellCommandPanel, {
+          commands: [
+            {
+              command: "rtk vp check",
+              cwd: "/project",
+              durationMs: 1200,
+              exitCode: 0,
+              id: "event-command-started",
+              lastEventSequence: 3,
+              outputEventCount: 1,
+              pid: 111,
+              sandboxed: true,
+              shellStatus: "exited",
+              startedAt: "2026-05-24T00:00:00.000Z",
+              status: "success",
+              stderrChars: 0,
+              stdoutChars: 6
+            }
+          ]
+        })
+      )
+    )
+
+    expect(html).toContain("Shell commands 1")
+    expect(html).toContain("rtk vp check")
+    expect(html).toContain("/project")
+    expect(html).toContain("success")
+    expect(html).toContain("pid 111")
+    expect(html).toContain("duration 1.2 s")
+    expect(html).toContain("stdout 6 / stderr 0")
+    expect(html).toContain("exit 0")
+    expect(html).toContain("exited")
+    expect(html).toContain("sandboxed")
   })
 
   it("renders graph plan stages and nodes", () => {
@@ -216,6 +373,8 @@ describe("AgentWorkbenchPanel", () => {
     expect(html).toContain("run-child-0")
     expect(html).toContain("Retries 1")
     expect(html).toContain("Retry strategy")
+    expect(html).toContain("Retry transient failures")
+    expect(html).toContain("Max retries")
     expect(html).toContain("max automatic 2")
     expect(html).toContain("transient on")
     expect(html).toContain("automatic")

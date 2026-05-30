@@ -52,6 +52,14 @@
       "waiting": "正在准备响应..."
     },
     "mentions": {
+      "commandPaletteEmpty": "没有匹配的命令。",
+      "commandPaletteGroup": "命令",
+      "commandPlanDescription": "Plan 模式",
+      "commandPlanLabel": "Plan",
+      "commandPromptDescription": "Prompt template",
+      "commandPromptLabel": "Prompt",
+      "commandSkillDescription": "Skill command",
+      "commandSkillLabel": "Skill",
       "empty": "没有匹配的文件、文件夹或 skills。",
       "filesGroup": "文件",
       "foldersGroup": "文件夹",
@@ -187,6 +195,8 @@
       "artifactLoading": "正在读取 artifact...",
       "artifactTruncated": "已省略 {count} 个字符",
       "artifacts": "Artifacts {count}",
+      "backgroundProcesses": "Processes {count}",
+      "backToChat": "返回 chat",
       "createGraph": "创建 graph",
       "deny": "拒绝",
       "diff": "当前 diff",
@@ -199,6 +209,7 @@
       "emptyEvents": "暂无 timeline events",
       "emptyRuns": "暂无 agent runs",
       "emptyTools": "暂无 tool calls",
+      "executeNode": "执行 node",
       "events": "Timeline {count}",
       "failedNode": "失败 node：{node}",
       "graph": "Run graph",
@@ -211,6 +222,7 @@
       "graphRetries": "Retries {count}",
       "graphRetryAttempt": "Attempt {count}",
       "graphRetryAutomatic": "automatic",
+      "graphRetryLimit": "最大重试",
       "graphRetryManual": "manual",
       "graphRetryStrategy": "重试策略",
       "graphRetryStrategyAuto": "自动",
@@ -218,15 +230,24 @@
       "graphRetryStrategyLimit": "最多自动 {count} 次",
       "graphRetryTransientOff": "瞬态重试关闭",
       "graphRetryTransientOn": "瞬态重试开启",
+      "graphRetryToggle": "重试瞬态失败",
       "graphSequential": "sequential",
       "graphStage": "Stage {index}",
       "graphTask": "Task",
       "graphTools": "{count} 个 tools",
       "loading": "正在读取 run trace...",
       "model": "Model",
+      "openStandalone": "打开 workbench",
       "parent": "Parent",
+      "processDuration": "duration {duration}",
+      "processExitCode": "exit {code}",
+      "processOutputChars": "stdout {stdout} / stderr {stderr}",
+      "processPid": "pid {pid}",
+      "processSandboxed": "sandboxed",
+      "processUnsandboxed": "unsandboxed",
       "refresh": "刷新 workbench",
       "retryFailed": "重试失败",
+      "runGraph": "运行 graph",
       "runCount": "Runs {count}",
       "session": "Session tree",
       "sessionBranchPlaceholder": "可选 branch note",
@@ -243,6 +264,11 @@
       "sessionMoveLeaf": "移动 leaf",
       "sessionRoot": "Root",
       "sessionTarget": "Target",
+      "shellCommands": "Shell commands {count}",
+      "shellOutput": "Shell output {count}",
+      "shellOutputChunks": "{count} 个 chunks",
+      "shellOutputTruncated": "仅显示最新 output",
+      "skipFailed": "跳过失败",
       "startNextStage": "启动 stage",
       "task": "Task",
       "taskPlaceholder": "可选 graph task",
@@ -368,12 +394,20 @@
           "description": "即使使用可写 profile，patch 和 command 写操作也必须经过显式确认。",
           "label": "写操作需要 approval"
         },
+        "retryTransientFailures": {
+          "description": "在交给人工决策前，自动重试瞬态 provider、network、timeout 和 tool 失败。",
+          "label": "重试瞬态失败"
+        },
         "showToolTraces": {
           "description": "持久化 tool calls 和 runtime events，方便 harness 追踪发生过什么。",
           "label": "显示 tool traces"
         }
       },
       "defaults": {
+        "maxAutomaticRetries": {
+          "description": "用于 tool execution 和 run graph nodes。",
+          "label": "自动重试次数"
+        },
         "maxConcurrentSubagents": {
           "label": "并发 subagents"
         },
@@ -913,7 +947,13 @@
       "title": "侧边栏设置"
     },
     "skills": {
+      "commands": {
+        "summary": "{{count}} 个 command"
+      },
       "description": "解析全局和 project 级 SKILL.md，在相关请求中把匹配的 instructions 注入模型上下文。",
+      "extensions": {
+        "summary": "{{count}} 个 extension module"
+      },
       "includeGlobal": {
         "description": "从用户目录中的全局 skills 中召回可复用 instructions。",
         "label": "全局 skills"
@@ -934,8 +974,10 @@
         "project": "项目"
       },
       "status": {
+        "commands": "Commands",
         "detected": "已解析 skills",
         "empty": "还没有解析到 skills。",
+        "extensions": "Extensions",
         "global": "全局",
         "project": "项目",
         "title": "Skill 来源",

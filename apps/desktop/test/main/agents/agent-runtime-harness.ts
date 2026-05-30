@@ -107,6 +107,8 @@ export interface AgentRuntimeHarnessOptions {
 export interface AgentRuntimeHarnessStreamOptions {
   abortSignal?: AbortSignal
   activeToolNames?: readonly string[]
+  chatLifecycleBranch?: StreamAgentChatOptions["chatLifecycleBranch"]
+  extensionRunner?: StreamAgentChatOptions["extensionRunner"]
   messages?: ModelMessage[]
   runtimeState?: StreamAgentChatOptions["runtimeState"]
   settings?: StreamAgentChatOptions["settings"]
@@ -410,6 +412,8 @@ export const createAgentRuntimeHarness = async ({
     stream: ({
       abortSignal,
       activeToolNames,
+      chatLifecycleBranch,
+      extensionRunner,
       messages = [],
       runtimeState,
       settings: streamSettings = settings,
@@ -421,7 +425,9 @@ export const createAgentRuntimeHarness = async ({
       streamAgentChat({
         abortSignal,
         activeToolNames,
+        chatLifecycleBranch,
         db,
+        extensionRunner,
         messages,
         model: faux.model,
         modelId,

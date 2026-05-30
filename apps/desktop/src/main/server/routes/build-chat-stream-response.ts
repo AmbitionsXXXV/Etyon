@@ -1,7 +1,9 @@
-import type { AppSettings } from "@etyon/rpc"
+import type { AppSettings, ParsedSkill } from "@etyon/rpc"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 
+import { mergeAgentEventProjectionIntoChatMessages } from "@/main/agents/agent-chat-projection"
+import { listAgentEvents } from "@/main/agents/agent-event-store"
 import type { streamAgentChat } from "@/main/agents/agent-runtime"
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
 import type { AgentRuntimeState } from "@/main/agents/agent-state"
@@ -10,11 +12,13 @@ import {
   parseCommandArgs
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
+import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
 import { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
 
 type StreamAgentChatResult = Awaited<ReturnType<typeof streamAgentChat>>
+type StreamAgentChatOptions = Parameters<typeof streamAgentChat>[0]
 
 const LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS = 2500
 const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
@@ -35,6 +39,9 @@ const PLAN_MODE_SYSTEM_PROMPT = [
 const PROMPT_TEMPLATE_COMMAND_PATTERN = /^\/prompt(?:\s+|$)/iu
 const PROMPT_TEMPLATE_FALLBACK_PROMPT =
   "Prompt template command was incomplete. Ask the user which template to use."
+const SKILL_COMMAND_PATTERN = /^\/skill(?:\s+|$)/iu
+const SKILL_COMMAND_FALLBACK_PROMPT =
+  "Skill command was incomplete. Ask the user which skill and command to run."
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -44,6 +51,9 @@ const stripPlanCommand = (text: string): string =>
 
 const stripPromptTemplateCommand = (text: string): string =>
   text.replace(PROMPT_TEMPLATE_COMMAND_PATTERN, "").trim()
+
+const stripSkillCommand = (text: string): string =>
+  text.replace(SKILL_COMMAND_PATTERN, "").trim()
 
 const getUiMessageText = (message: UIMessage): string =>
   message.parts
@@ -267,6 +277,266 @@ const applyPromptTemplateCommandToLatestModelMessage = ({
   )
 }
 
+const findSkillByName = ({
+  name,
+  skills
+}: {
+  name: string
+  skills: readonly ParsedSkill[]
+}): ParsedSkill | null => {
+  const normalizedName = name.toLowerCase()
+
+  return (
+    skills.find(
+      (skill) => skill.visible && skill.name.toLowerCase() === normalizedName
+    ) ?? null
+  )
+}
+
+const findSkillCommandByName = ({
+  commandName,
+  skill
+}: {
+  commandName: string
+  skill: ParsedSkill
+}): ParsedSkill["commands"][number] | null => {
+  const normalizedCommandName = commandName.toLowerCase()
+
+  return (
+    skill.commands.find(
+      (command) => command.name.toLowerCase() === normalizedCommandName
+    ) ?? null
+  )
+}
+
+const splitSkillCommandArgs = (
+  args: readonly string[]
+): { args: string[]; selectedFlags: string[] } => {
+  const selectedFlags: string[] = []
+  const commandArgs: string[] = []
+  let readingArgs = false
+
+  for (const arg of args) {
+    if (!readingArgs && arg === "--") {
+      readingArgs = true
+      continue
+    }
+
+    if (!readingArgs && arg.startsWith("-")) {
+      selectedFlags.push(arg)
+      continue
+    }
+
+    commandArgs.push(arg)
+  }
+
+  return {
+    args: commandArgs,
+    selectedFlags
+  }
+}
+
+const validateSkillCommandFlags = ({
+  command,
+  selectedFlags
+}: {
+  command: ParsedSkill["commands"][number]
+  selectedFlags: readonly string[]
+}): string | null => {
+  for (const selectedFlag of selectedFlags) {
+    if (command.flags.includes(selectedFlag)) {
+      continue
+    }
+
+    const availableFlags =
+      command.flags.length > 0 ? command.flags.join(", ") : "none"
+
+    return `Skill command flag not declared: ${selectedFlag}. Available flags: ${availableFlags}.`
+  }
+
+  return null
+}
+
+const resolveSkillCommandText = ({
+  skills,
+  text
+}: {
+  skills: readonly ParsedSkill[]
+  text: string
+}): string => {
+  const commandText = stripSkillCommand(text)
+
+  if (commandText.length === 0) {
+    return SKILL_COMMAND_FALLBACK_PROMPT
+  }
+
+  try {
+    const [skillName, commandName, ...rawArgs] = parseCommandArgs(commandText)
+
+    if (!skillName || !commandName) {
+      return SKILL_COMMAND_FALLBACK_PROMPT
+    }
+
+    const skill = findSkillByName({
+      name: skillName,
+      skills
+    })
+
+    if (!skill) {
+      return `Skill not found: ${skillName}. Ask the user to choose an available skill.`
+    }
+
+    const command = findSkillCommandByName({
+      commandName,
+      skill
+    })
+
+    if (!command) {
+      return `Skill command not found: ${skillName} ${commandName}. Ask the user to choose an available command.`
+    }
+
+    const { args, selectedFlags } = splitSkillCommandArgs(rawArgs)
+    const flagError = validateSkillCommandFlags({
+      command,
+      selectedFlags
+    })
+
+    if (flagError) {
+      return flagError
+    }
+
+    return formatSkillCommandInvocation({
+      args,
+      command,
+      selectedFlags,
+      skill
+    })
+  } catch (error) {
+    return `Skill command could not be parsed: ${
+      error instanceof Error ? error.message : String(error)
+    }`
+  }
+}
+
+const applySkillCommandToModelMessage = ({
+  message,
+  skills
+}: {
+  message: ModelMessage
+  skills: readonly ParsedSkill[]
+}): ModelMessage => {
+  if (message.role !== "user") {
+    return message
+  }
+
+  if (typeof message.content === "string") {
+    if (!SKILL_COMMAND_PATTERN.test(message.content)) {
+      return message
+    }
+
+    return {
+      ...message,
+      content: resolveSkillCommandText({
+        skills,
+        text: message.content
+      })
+    }
+  }
+
+  if (!Array.isArray(message.content)) {
+    return message
+  }
+
+  let replaced = false
+  const content = message.content.map((part) => {
+    if (
+      replaced ||
+      !isRecord(part) ||
+      part.type !== "text" ||
+      typeof part.text !== "string" ||
+      !SKILL_COMMAND_PATTERN.test(part.text)
+    ) {
+      return part
+    }
+
+    replaced = true
+
+    return {
+      ...part,
+      text: resolveSkillCommandText({
+        skills,
+        text: part.text
+      })
+    }
+  })
+
+  return replaced
+    ? {
+        ...message,
+        content
+      }
+    : message
+}
+
+const modelMessageHasSkillCommand = (message: ModelMessage): boolean => {
+  if (typeof message.content === "string") {
+    return SKILL_COMMAND_PATTERN.test(message.content)
+  }
+
+  if (!Array.isArray(message.content)) {
+    return false
+  }
+
+  const contentParts: unknown[] = message.content
+
+  return contentParts.some(
+    (part) =>
+      isRecord(part) &&
+      part.type === "text" &&
+      typeof part.text === "string" &&
+      SKILL_COMMAND_PATTERN.test(part.text)
+  )
+}
+
+const applySkillCommandToLatestModelMessage = ({
+  modelMessages,
+  projectPath,
+  skillCommandSkills
+}: {
+  modelMessages: ModelMessage[]
+  projectPath: string
+  skillCommandSkills?: readonly ParsedSkill[]
+}): ModelMessage[] => {
+  const latestUserMessageIndex = modelMessages.findLastIndex(
+    (message) => message.role === "user"
+  )
+
+  if (latestUserMessageIndex === -1) {
+    return modelMessages
+  }
+
+  const latestUserMessage = modelMessages[latestUserMessageIndex]
+
+  if (!modelMessageHasSkillCommand(latestUserMessage)) {
+    return modelMessages
+  }
+
+  const skills =
+    skillCommandSkills ??
+    listSkills({
+      projectPaths: [projectPath]
+    })
+
+  return modelMessages.map((message, index) =>
+    index === latestUserMessageIndex
+      ? applySkillCommandToModelMessage({
+          message,
+          skills
+        })
+      : message
+  )
+}
+
 const applyPlanModeRequest = ({
   messages,
   modelMessages,
@@ -387,6 +657,8 @@ export interface BuildChatStreamResponseOptions {
   buildLongTermMemorySystem: (
     options: BuildLongTermMemorySystemOptions
   ) => Promise<string>
+  chatLifecycleBranch?: StreamAgentChatOptions["chatLifecycleBranch"]
+  extensionRunner?: StreamAgentChatOptions["extensionRunner"]
   messages: UIMessage[]
   memoryRetrievalTimeoutMs?: number
   model: LanguageModel
@@ -400,6 +672,7 @@ export interface BuildChatStreamResponseOptions {
   sessionId: string
   settings: AppSettings
   shouldRetrieveLongTermMemory: boolean
+  skillCommandSkills?: readonly ParsedSkill[]
   skillCapabilities?: readonly string[]
   streamAgentChat: (
     options: Parameters<typeof streamAgentChat>[0]
@@ -411,7 +684,9 @@ export interface BuildChatStreamResponseOptions {
 export const buildChatStreamResponse = ({
   abortSignal,
   buildLongTermMemorySystem,
+  chatLifecycleBranch,
   db,
+  extensionRunner,
   messages,
   model,
   modelId,
@@ -424,6 +699,7 @@ export const buildChatStreamResponse = ({
   sessionId,
   settings,
   shouldRetrieveLongTermMemory,
+  skillCommandSkills,
   skillCapabilities,
   streamAgentChat: runStreamAgentChat,
   systemPrompts,
@@ -431,13 +707,18 @@ export const buildChatStreamResponse = ({
 }: BuildChatStreamResponseOptions): Response => {
   const planModeRequest = applyPlanModeRequest({
     messages,
-    modelMessages: applyPromptTemplateCommandToLatestModelMessage({
-      modelMessages,
-      promptTemplates
+    modelMessages: applySkillCommandToLatestModelMessage({
+      modelMessages: applyPromptTemplateCommandToLatestModelMessage({
+        modelMessages,
+        promptTemplates
+      }),
+      projectPath,
+      skillCommandSkills
     }),
     settings,
     systemPrompts
   })
+  let agentRunId: null | string = null
 
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
@@ -467,24 +748,34 @@ export const buildChatStreamResponse = ({
         )
         const { runWithMoonshotReasoningContext } =
           await import("@/shared/providers/moonshot-reasoning")
-        const result = await runWithMoonshotReasoningContext(
-          moonshotReasoningForAssistantToolCalls,
-          () =>
-            runStreamAgentChat({
-              abortSignal,
-              activeToolNames: planModeRequest.activeToolNames,
-              db,
-              messages: planModeRequest.modelMessages,
-              model,
-              modelId,
-              projectPath,
-              runtimeState,
-              sessionId,
-              settings: planModeRequest.settings,
-              skillCapabilities,
-              systemPrompts: effectiveSystemPrompts
-            })
-        ).finally(unsubscribeRuntimeState)
+        let result: StreamAgentChatResult
+
+        try {
+          result = await runWithMoonshotReasoningContext(
+            moonshotReasoningForAssistantToolCalls,
+            () =>
+              runStreamAgentChat({
+                abortSignal,
+                activeToolNames: planModeRequest.activeToolNames,
+                chatLifecycleBranch,
+                db,
+                extensionRunner,
+                messages: planModeRequest.modelMessages,
+                model,
+                modelId,
+                projectPath,
+                runtimeState,
+                sessionId,
+                settings: planModeRequest.settings,
+                skillCapabilities,
+                systemPrompts: effectiveSystemPrompts
+              })
+          )
+        } finally {
+          unsubscribeRuntimeState()
+        }
+
+        ;({ agentRunId } = result)
 
         writer.merge(
           result.toUIMessageStream({
@@ -494,10 +785,23 @@ export const buildChatStreamResponse = ({
       },
       onFinish: async ({ messages: nextMessages }) => {
         const workTimeMs = Date.now() - requestStartedAt
-
-        await onFinishPersist(
-          attachWorkTimeToLatestAssistantMessage(nextMessages, workTimeMs)
+        const messagesWithWorkTime = attachWorkTimeToLatestAssistantMessage(
+          nextMessages,
+          workTimeMs
         )
+        const projectedMessages = agentRunId
+          ? mergeAgentEventProjectionIntoChatMessages({
+              events: await listAgentEvents({
+                db,
+                runId: agentRunId
+              }),
+              messages: messagesWithWorkTime,
+              originalMessageCount: messages.length,
+              runId: agentRunId
+            })
+          : messagesWithWorkTime
+
+        await onFinishPersist(projectedMessages)
       },
       originalMessages: messages
     })

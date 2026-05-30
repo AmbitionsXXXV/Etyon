@@ -22,6 +22,8 @@ import {
   updateAgentRun,
   updateAgentToolCall
 } from "@/main/agents/agent-event-store"
+import type { AgentLoopMessage, AgentLoopModel } from "@/main/agents/agent-loop"
+import { createSessionBoundAgent } from "@/main/agents/agent-session-binding"
 import {
   appendAgentSessionCompactionSummaryEvent,
   appendAgentSessionCustomMessageEvent,
@@ -31,7 +33,8 @@ import {
   appendAgentSessionQueuedFollowUpEvent,
   appendAgentSessionQueuedSteeringEvent,
   buildAgentSessionTreeFromEvents,
-  createAgentSessionQueuedMessageWriter
+  createAgentSessionQueuedMessageWriter,
+  listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
 import type {
   AgentSessionCustomMessageEntry,
@@ -40,7 +43,7 @@ import type {
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
-import { agentRuns } from "@/main/db/schema"
+import { agentApprovals, agentRuns } from "@/main/db/schema"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -344,6 +347,105 @@ describe("agent event store", () => {
         },
         type: "follow-up"
       }
+    ])
+  })
+
+  it("binds stateful agent turns and queued messages to session events", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/gpt-4.1",
+      profileId: "general-purpose"
+    })
+
+    await appendAgentSessionQueuedSteeringEvent({
+      message: "Recovered steering.",
+      run
+    })
+
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(structuredClone(messages) as AgentLoopMessage[])
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will inspect.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "inspect-1",
+              toolName: "inspect"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+    const agent = createSessionBoundAgent({
+      events: await listAgentEvents({
+        db,
+        runId: run.id
+      }),
+      maxTurns: 3,
+      model,
+      run,
+      tools: {
+        inspect: {
+          execute: () => "ok"
+        }
+      }
+    })
+
+    await agent.prompt("Start.")
+    agent.followUp("Persist this follow-up.")
+    await agent.waitForIdle()
+
+    const events = await listAgentEvents({
+      db,
+      runId: run.id
+    })
+
+    expect(modelMessages[1]?.at(-1)).toEqual({
+      content: "Recovered steering.",
+      role: "user"
+    })
+    expect(buildAgentSessionTreeFromEvents(events).buildContext()).toEqual([
+      {
+        content: "Start.",
+        role: "user",
+        type: "model"
+      },
+      expect.objectContaining({
+        role: "assistant",
+        type: "model"
+      }),
+      expect.objectContaining({
+        role: "tool",
+        type: "model"
+      }),
+      {
+        content: "Recovered steering.",
+        role: "user",
+        type: "model"
+      },
+      expect.objectContaining({
+        role: "assistant",
+        type: "model"
+      })
+    ])
+    expect(listPendingAgentSessionQueuedMessages(events)).toEqual([
+      expect.objectContaining({
+        message: "Persist this follow-up.",
+        queue: "follow-up"
+      })
     ])
   })
 
@@ -941,6 +1043,97 @@ describe("agent event store", () => {
         toolName: "runCheck"
       })
     )
+  })
+
+  it("persists approval projection rows from approval events", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "pending",
+      db,
+      id: "tool-call-projection-1",
+      input: {
+        command: "vp check"
+      },
+      runId: run.id,
+      state: "approval_requested",
+      toolName: "runCheck"
+    })
+    await run.appendEvent({
+      payload: {
+        approvalId: "approval-projection-1",
+        input: {
+          command: "vp check"
+        },
+        toolCallId: "tool-call-projection-1",
+        toolName: "runCheck"
+      },
+      type: "tool_call_approval_requested"
+    })
+
+    const [pendingProjection] = await db
+      .select()
+      .from(agentApprovals)
+      .where(eq(agentApprovals.id, "approval-projection-1"))
+
+    expect(pendingProjection).toEqual(
+      expect.objectContaining({
+        id: "approval-projection-1",
+        respondedAt: null,
+        responseJson: null,
+        runId: run.id,
+        state: "pending",
+        toolCallId: "tool-call-projection-1",
+        toolCallRowId: `${run.id}:tool-call-projection-1`
+      })
+    )
+
+    await run.appendEvent({
+      payload: {
+        approvalId: "approval-projection-1",
+        approved: true,
+        toolCallId: "tool-call-projection-1",
+        toolName: "runCheck"
+      },
+      type: "tool_call_approved"
+    })
+
+    const [approvedProjection] = await db
+      .select()
+      .from(agentApprovals)
+      .where(eq(agentApprovals.id, "approval-projection-1"))
+    const approvals = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db
+    })
+
+    expect(approvedProjection).toEqual(
+      expect.objectContaining({
+        id: "approval-projection-1",
+        state: "approved"
+      })
+    )
+    expect(approvedProjection?.respondedAt).toEqual(expect.any(String))
+    expect(JSON.parse(approvedProjection?.responseJson ?? "{}")).toEqual({
+      approvalId: "approval-projection-1",
+      approved: true,
+      toolCallId: "tool-call-projection-1",
+      toolName: "runCheck"
+    })
+    expect(
+      approvals.some(
+        (approval) => approval.approvalId === "approval-projection-1"
+      )
+    ).toBe(false)
   })
 
   it("resolves pending approval owners while the run is still running", async () => {

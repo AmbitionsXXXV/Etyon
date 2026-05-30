@@ -34,7 +34,7 @@ const MAX_TELEGRAM_HISTORY_MESSAGES = 20
 const TELEGRAM_LONG_POLL_TIMEOUT_SECONDS = 25
 const TELEGRAM_POLL_BACKOFF_MS = 5000
 const TELEGRAM_POLLING_UPDATES = ["message", "edited_message"] as const
-const TELEGRAM_TEXT_MESSAGE_PATTERN = /\S/
+const TELEGRAM_TEXT_MESSAGE_PATTERN = /\S/u
 const TELEGRAM_SYSTEM_PROMPT =
   "You are Etyon, a concise desktop AI assistant. Reply in the user's language."
 const TELEGRAM_FALLBACK_USER_NAME = "etyon"

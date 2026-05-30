@@ -31,7 +31,9 @@ const XML_ESCAPES: Record<string, string> = {
 interface ParsedSkillFile {
   body: string
   capabilities: string[]
+  commands: ParsedSkill["commands"]
   description: string
+  extensions: string[]
   modelVisible: boolean
   name: string
   path: string
@@ -46,12 +48,20 @@ interface SkillCandidate {
 
 interface SkillFrontmatter {
   capabilities?: string[]
+  commands?: ParsedSkill["commands"]
   description?: string
+  extensions?: string[]
   modelDisabled?: boolean
   modelVisible?: boolean
   name?: string
   shortDescription?: string
   visible?: boolean
+}
+
+interface SkillCommandDraft {
+  description?: string
+  flags: string[]
+  name?: string
 }
 
 const trimQuotes = (value: string): string =>
@@ -79,6 +89,9 @@ const parseFrontmatterBoolean = (value: string): boolean =>
 const parseListValue = (value: string): string[] =>
   value.split(",").map(trimQuotes).filter(Boolean)
 
+const getIndentWidth = (line: string): number =>
+  line.length - line.trimStart().length
+
 const parseListItem = (line: string): string | null => {
   const trimmedLine = line.trim()
 
@@ -102,6 +115,193 @@ const addUniqueValues = (
   }
 
   return result
+}
+
+const addUniqueCommands = (
+  currentCommands: ParsedSkill["commands"],
+  nextCommands: ParsedSkill["commands"]
+): ParsedSkill["commands"] => {
+  const result = [...currentCommands]
+
+  for (const command of nextCommands) {
+    if (
+      !result.some((existingCommand) => existingCommand.name === command.name)
+    ) {
+      result.push(command)
+    }
+  }
+
+  return result
+}
+
+const parseInlineCommandValues = (value: string): ParsedSkill["commands"] =>
+  parseListValue(value).map((name) => ({
+    description: null,
+    flags: [],
+    name
+  }))
+
+const toSkillCommand = (
+  draft: SkillCommandDraft
+): ParsedSkill["commands"][number] | null => {
+  const name = draft.name?.trim()
+
+  if (!name) {
+    return null
+  }
+
+  return {
+    description: draft.description?.trim() || null,
+    flags: draft.flags,
+    name
+  }
+}
+
+const collectIndentedListItems = (
+  lines: string[],
+  startIndex: number,
+  parentIndent: number
+): { lastIndex: number; values: string[] } => {
+  const values: string[] = []
+  let lastIndex = startIndex
+
+  for (
+    let nestedIndex = startIndex + 1;
+    nestedIndex < lines.length;
+    nestedIndex += 1
+  ) {
+    const nestedLine = lines[nestedIndex] ?? ""
+
+    if (
+      !nestedLine.startsWith(" ") ||
+      getIndentWidth(nestedLine) <= parentIndent
+    ) {
+      break
+    }
+
+    const nestedValue = parseListItem(nestedLine)
+
+    if (nestedValue) {
+      values.push(nestedValue)
+      lastIndex = nestedIndex
+    }
+  }
+
+  return {
+    lastIndex,
+    values
+  }
+}
+
+const createCommandDraftFromListItem = (value: string): SkillCommandDraft => {
+  const parsedValue = parseFrontmatterValue(value)
+
+  if (parsedValue?.[0] === "name") {
+    return {
+      flags: [],
+      name: parsedValue[1]
+    }
+  }
+
+  return {
+    flags: [],
+    name: value
+  }
+}
+
+const applyCommandDraftProperty = ({
+  draft,
+  index,
+  key,
+  lines,
+  value
+}: {
+  draft: SkillCommandDraft
+  index: number
+  key: string
+  lines: string[]
+  value: string
+}): number => {
+  switch (key) {
+    case "description": {
+      draft.description = value
+      return index
+    }
+    case "flag":
+    case "flags": {
+      const nestedItems = collectIndentedListItems(
+        lines,
+        index,
+        getIndentWidth(lines[index] ?? "")
+      )
+
+      draft.flags = addUniqueValues(draft.flags, [
+        ...parseListValue(value),
+        ...nestedItems.values
+      ])
+
+      return nestedItems.lastIndex
+    }
+    case "name": {
+      draft.name = value
+      return index
+    }
+    default: {
+      return index
+    }
+  }
+}
+
+const parseCommandBlock = (
+  lines: string[],
+  startIndex: number
+): ParsedSkill["commands"] => {
+  const drafts: SkillCommandDraft[] = []
+  let currentDraft: SkillCommandDraft | undefined
+
+  for (
+    let nestedIndex = startIndex + 1;
+    nestedIndex < lines.length;
+    nestedIndex += 1
+  ) {
+    const nestedLine = lines[nestedIndex] ?? ""
+
+    if (!nestedLine.startsWith(" ")) {
+      break
+    }
+
+    const listItem = parseListItem(nestedLine)
+
+    if (listItem) {
+      currentDraft = createCommandDraftFromListItem(listItem)
+      drafts.push(currentDraft)
+      continue
+    }
+
+    if (!currentDraft) {
+      continue
+    }
+
+    const parsedValue = parseFrontmatterValue(nestedLine.trim())
+
+    if (!parsedValue) {
+      continue
+    }
+
+    nestedIndex = applyCommandDraftProperty({
+      draft: currentDraft,
+      index: nestedIndex,
+      key: parsedValue[0],
+      lines,
+      value: parsedValue[1]
+    })
+  }
+
+  return drafts.flatMap((draft) => {
+    const command = toSkillCommand(draft)
+
+    return command ? [command] : []
+  })
 }
 
 const collectNestedListItems = (
@@ -156,12 +356,88 @@ const findNestedShortDescription = (
   }
 }
 
+type SkillFrontmatterHandler = ({
+  index,
+  lines,
+  result,
+  value
+}: {
+  index: number
+  lines: string[]
+  result: SkillFrontmatter
+  value: string
+}) => void
+
+const applySkillCommandFrontmatter: SkillFrontmatterHandler = ({
+  index,
+  lines,
+  result,
+  value
+}) => {
+  result.commands = addUniqueCommands(result.commands ?? [], [
+    ...parseInlineCommandValues(value),
+    ...parseCommandBlock(lines, index)
+  ])
+}
+
+const applySkillExtensionFrontmatter: SkillFrontmatterHandler = ({
+  index,
+  lines,
+  result,
+  value
+}) => {
+  result.extensions = addUniqueValues(result.extensions ?? [], [
+    ...parseListValue(value),
+    ...collectNestedListItems(lines, index)
+  ])
+}
+
+const SKILL_FRONTMATTER_HANDLERS: Record<string, SkillFrontmatterHandler> = {
+  capabilities: ({ index, lines, result, value }) => {
+    result.capabilities = addUniqueValues(result.capabilities ?? [], [
+      ...parseListValue(value),
+      ...collectNestedListItems(lines, index)
+    ])
+  },
+  command: applySkillCommandFrontmatter,
+  commands: applySkillCommandFrontmatter,
+  description: ({ result, value }) => {
+    result.description = value
+  },
+  extension: applySkillExtensionFrontmatter,
+  extensions: applySkillExtensionFrontmatter,
+  metadata: ({ index, lines, result }) => {
+    result.shortDescription =
+      findNestedShortDescription(lines, index) ?? result.shortDescription
+  },
+  "model-disabled": ({ result, value }) => {
+    result.modelDisabled = parseFrontmatterBoolean(value)
+  },
+  "model-visible": ({ result, value }) => {
+    result.modelVisible = parseFrontmatterBoolean(value)
+  },
+  name: ({ result, value }) => {
+    result.name = value
+  },
+  "short-description": ({ result, value }) => {
+    result.shortDescription = value
+  },
+  visible: ({ result, value }) => {
+    result.visible = parseFrontmatterBoolean(value)
+  }
+}
+
 const parseSkillFrontmatter = (frontmatter: string): SkillFrontmatter => {
   const result: SkillFrontmatter = {}
   const lines = frontmatter.split("\n")
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]?.trimEnd() ?? ""
+
+    if (line.startsWith(" ")) {
+      continue
+    }
+
     const parsedValue = parseFrontmatterValue(line)
 
     if (!parsedValue) {
@@ -169,48 +445,18 @@ const parseSkillFrontmatter = (frontmatter: string): SkillFrontmatter => {
     }
 
     const [key, value] = parsedValue
+    const handler = SKILL_FRONTMATTER_HANDLERS[key]
 
-    switch (key) {
-      case "capabilities": {
-        result.capabilities = addUniqueValues(result.capabilities ?? [], [
-          ...parseListValue(value),
-          ...collectNestedListItems(lines, index)
-        ])
-        break
-      }
-      case "description": {
-        result.description = value
-        break
-      }
-      case "metadata": {
-        result.shortDescription =
-          findNestedShortDescription(lines, index) ?? result.shortDescription
-        break
-      }
-      case "model-disabled": {
-        result.modelDisabled = parseFrontmatterBoolean(value)
-        break
-      }
-      case "model-visible": {
-        result.modelVisible = parseFrontmatterBoolean(value)
-        break
-      }
-      case "name": {
-        result.name = value
-        break
-      }
-      case "short-description": {
-        result.shortDescription = value
-        break
-      }
-      case "visible": {
-        result.visible = parseFrontmatterBoolean(value)
-        break
-      }
-      default: {
-        break
-      }
+    if (!handler) {
+      continue
     }
+
+    handler({
+      index,
+      lines,
+      result,
+      value
+    })
   }
 
   return result
@@ -358,6 +604,36 @@ const listSkillFilesInRoot = (root: string): string[] => {
     .filter((skillPath) => fs.existsSync(skillPath))
 }
 
+const isPathInside = (candidatePath: string, parentPath: string): boolean => {
+  const relativePath = path.relative(parentPath, candidatePath)
+
+  return (
+    relativePath.length === 0 ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  )
+}
+
+const resolveSkillExtensionPath = ({
+  extensionPath,
+  skillPath
+}: {
+  extensionPath: string
+  skillPath: string
+}): string | null => {
+  if (path.isAbsolute(extensionPath)) {
+    return null
+  }
+
+  const skillDir = path.dirname(skillPath)
+  const resolvedPath = path.resolve(skillDir, extensionPath)
+
+  if (!isPathInside(resolvedPath, skillDir)) {
+    return null
+  }
+
+  return resolvedPath
+}
+
 export const parseSkillFile = (skillPath: string): ParsedSkillFile => {
   const content = fs.readFileSync(skillPath, "utf-8")
   const parsedMarkdown = splitSkillMarkdown(content)
@@ -377,7 +653,9 @@ export const parseSkillFile = (skillPath: string): ParsedSkillFile => {
   return {
     body: truncateText(parsedMarkdown.body, MAX_SKILL_BODY_CHARS),
     capabilities: frontmatter.capabilities ?? [],
+    commands: frontmatter.commands ?? [],
     description,
+    extensions: frontmatter.extensions ?? [],
     modelVisible: frontmatter.modelDisabled
       ? false
       : (frontmatter.modelVisible ?? true),
@@ -400,6 +678,90 @@ const formatSkillCapabilitiesForSystemPrompt = (
         ),
         "</capabilities>"
       ].join("\n")
+
+const formatSkillCommandFlagsForSystemPrompt = (flags: string[]): string =>
+  flags.length === 0
+    ? ""
+    : [
+        "<flags>",
+        ...flags.map((flag) => `<flag>${escapeXml(flag)}</flag>`),
+        "</flags>"
+      ].join("\n")
+
+const formatSkillCommandsForSystemPrompt = (
+  commands: ParsedSkill["commands"]
+): string =>
+  commands.length === 0
+    ? ""
+    : [
+        "<commands>",
+        ...commands.map((command) =>
+          [
+            "<command>",
+            `<name>${escapeXml(command.name)}</name>`,
+            command.description
+              ? `<description>${escapeXml(command.description)}</description>`
+              : "",
+            formatSkillCommandFlagsForSystemPrompt(command.flags),
+            "</command>"
+          ]
+            .filter(Boolean)
+            .join("\n")
+        ),
+        "</commands>"
+      ].join("\n")
+
+const formatSkillCommandSelectedFlagsForSystemPrompt = (
+  selectedFlags: readonly string[]
+): string =>
+  selectedFlags.length === 0
+    ? ""
+    : [
+        "<selected_flags>",
+        ...selectedFlags.map((flag) => `<flag>${escapeXml(flag)}</flag>`),
+        "</selected_flags>"
+      ].join("\n")
+
+export const formatSkillCommandInvocation = ({
+  args,
+  command,
+  selectedFlags,
+  skill
+}: {
+  args: readonly string[]
+  command: ParsedSkill["commands"][number]
+  selectedFlags: readonly string[]
+  skill: ParsedSkill
+}): string =>
+  [
+    "<skill_command_invocation>",
+    "<skill>",
+    `<name>${escapeXml(skill.name)}</name>`,
+    `<description>${escapeXml(skill.description)}</description>`,
+    skill.shortDescription
+      ? `<short_description>${escapeXml(skill.shortDescription)}</short_description>`
+      : "",
+    `<path>${escapeXml(skill.path)}</path>`,
+    `<scope>${escapeXml(skill.scope)}</scope>`,
+    "</skill>",
+    "<command>",
+    `<name>${escapeXml(command.name)}</name>`,
+    command.description
+      ? `<description>${escapeXml(command.description)}</description>`
+      : "",
+    formatSkillCommandFlagsForSystemPrompt(command.flags),
+    formatSkillCommandSelectedFlagsForSystemPrompt(selectedFlags),
+    "</command>",
+    args.length > 0
+      ? `<arguments>${escapeXml(args.join(" "))}</arguments>`
+      : "",
+    skill.modelVisible
+      ? ["<instructions>", escapeXml(skill.body), "</instructions>"].join("\n")
+      : "<instructions_model_visible>false</instructions_model_visible>",
+    "</skill_command_invocation>"
+  ]
+    .filter(Boolean)
+    .join("\n")
 
 export const listSkills = ({
   projectPaths = []
@@ -482,12 +844,53 @@ export const resolveSelectedSkillCapabilities = ({
   return [...capabilities]
 }
 
+export const resolveSelectedSkillExtensionPaths = ({
+  projectPath,
+  selectedSkills
+}: {
+  projectPath: string
+  selectedSkills: ChatSkillMention[]
+}): string[] => {
+  if (selectedSkills.length === 0) {
+    return []
+  }
+
+  const skillsByPath = new Map(
+    listSkills({
+      projectPaths: [projectPath]
+    }).map((skill) => [skill.path, skill])
+  )
+  const extensionPaths = new Set<string>()
+
+  for (const selectedSkill of selectedSkills) {
+    const skill = skillsByPath.get(selectedSkill.path)
+
+    if (!skill) {
+      continue
+    }
+
+    for (const extensionPath of skill.extensions) {
+      const resolvedPath = resolveSkillExtensionPath({
+        extensionPath,
+        skillPath: skill.path
+      })
+
+      if (resolvedPath) {
+        extensionPaths.add(resolvedPath)
+      }
+    }
+  }
+
+  return [...extensionPaths]
+}
+
 const formatSkillForSystemPrompt = (skill: ParsedSkill): string =>
   [
     "<skill>",
     `<name>${escapeXml(skill.name)}</name>`,
     `<scope>${escapeXml(skill.scope)}</scope>`,
     formatSkillCapabilitiesForSystemPrompt(skill.capabilities),
+    formatSkillCommandsForSystemPrompt(skill.commands),
     `<description>${escapeXml(skill.description)}</description>`,
     skill.shortDescription
       ? `<short_description>${escapeXml(skill.shortDescription)}</short_description>`
@@ -512,6 +915,7 @@ const formatModelDisabledSkillReferenceForSystemPrompt = (
     `<name>${escapeXml(skill.name)}</name>`,
     `<scope>${escapeXml(skill.scope)}</scope>`,
     formatSkillCapabilitiesForSystemPrompt(skill.capabilities),
+    formatSkillCommandsForSystemPrompt(skill.commands),
     `<description>${escapeXml(skill.description)}</description>`,
     skill.shortDescription
       ? `<short_description>${escapeXml(skill.shortDescription)}</short_description>`

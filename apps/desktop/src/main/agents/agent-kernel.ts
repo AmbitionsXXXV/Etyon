@@ -34,7 +34,8 @@ import type {
 import {
   convertAgentLoopMessagesToModelMessages,
   createAiSdkAgentLoopModel,
-  createAiSdkAgentLoopTools
+  createAiSdkAgentLoopTools,
+  createAiSdkToolResultSummaryProcessor
 } from "@/main/agents/agent-loop-ai-sdk"
 import { isRetryableAgentFailure } from "@/main/agents/agent-plan-progress"
 import type {
@@ -49,7 +50,11 @@ import {
 import { resolveActiveAgentProfile } from "@/main/agents/profiles"
 import { compileAgentToolNames } from "@/main/agents/tool-policy"
 import { buildAgentTools } from "@/main/agents/tool-registry"
-import { summarizeToolResult } from "@/main/agents/truncate"
+import {
+  formatToolResultSummaryAnnotation,
+  summarizeToolResultWithProcessor
+} from "@/main/agents/truncate"
+import type { AgentToolResultSummaryProcessor } from "@/main/agents/truncate"
 import type { AgentToolName } from "@/main/agents/types"
 import type { AppDatabase } from "@/main/db"
 
@@ -91,6 +96,7 @@ export interface AgentRunGraphExecutionPlan {
   id: AgentRunGraphTemplateId
   name: string
   nodes: AgentRunGraphExecutionNode[]
+  retryPolicy?: AgentSettings["retry"]
   stages: AgentRunGraphExecutionStage[]
   task?: string
 }
@@ -123,6 +129,15 @@ export interface RetryAgentRunGraphNodeOptions extends GetAgentRunGraphStateOpti
   nodeId: string
 }
 
+export interface SkipAgentRunGraphNodeOptions extends GetAgentRunGraphStateOptions {
+  nodeId: string
+  reason?: string
+}
+
+export interface UpdateAgentRunGraphRetryPolicyOptions extends GetAgentRunGraphStateOptions {
+  retryPolicy: AgentSettings["retry"]
+}
+
 export interface ExecuteAgentRunGraphNodeOptions extends GetAgentRunGraphStateOptions {
   abortSignal?: AbortSignal
   initialMessages?: readonly AgentLoopMessage[]
@@ -137,6 +152,7 @@ export interface ExecuteAgentRunGraphNodeOptions extends GetAgentRunGraphStateOp
   ) => boolean | Promise<boolean>
   resources?: AgentLoopResources
   thinkingLevel?: string
+  toolResultSummaryProcessor?: AgentToolResultSummaryProcessor
   tools?: Readonly<Record<string, AgentLoopTool>>
 }
 
@@ -151,6 +167,13 @@ export interface ExecuteAgentRunGraphNodeWithAiSdkOptions extends Omit<
   projectPath: string
   skillCapabilities?: readonly string[]
   systemPrompts?: readonly string[]
+}
+
+export interface RunAgentRunGraphUntilIdleWithAiSdkOptions extends Omit<
+  ExecuteAgentRunGraphNodeWithAiSdkOptions,
+  "nodeId"
+> {
+  maxIterations?: number
 }
 
 export interface ResumeAgentRunGraphNodeApprovalWithAiSdkOptions extends Omit<
@@ -179,12 +202,63 @@ export interface AgentRunGraphRetryResult extends AgentRunGraphScheduleResult {
   retriedNodeId: string
 }
 
+export interface AgentRunGraphSkipResult extends AgentRunGraphScheduleResult {
+  skippedNodeId: string
+}
+
+export interface AgentRunGraphRetryPolicyUpdateResult {
+  plan: AgentRunGraphExecutionPlan
+  retryPolicy: AgentSettings["retry"]
+  rootRun: AgentRun
+}
+
 export interface AgentRunGraphNodeExecutionResult extends AgentRunGraphAdvanceResult {
   childRun: AgentRun
   nodeId: string
   stopReason: AgentLoopStopReason
   turns: number
 }
+
+export type AgentRunGraphUntilIdleStopReason =
+  | "blocked"
+  | "completed"
+  | "iteration-limit"
+  | "suspended"
+
+export interface AgentRunGraphUntilIdleResult extends AgentRunGraphAdvanceResult {
+  childRuns: AgentRun[]
+  executedNodeIds: string[]
+  iterations: number
+  stopReason: AgentRunGraphUntilIdleStopReason
+}
+
+export type AgentRunSource =
+  | "chat"
+  | "delegation"
+  | "run-graph"
+  | "run-graph-node"
+
+export type AgentRunStartedMetadata = Readonly<Record<string, unknown>>
+
+export interface StartExistingAgentRunOptions {
+  metadata?: AgentRunStartedMetadata
+  run: AgentRun
+  source: AgentRunSource
+}
+
+export interface StartNewAgentRunOptions {
+  chatSessionId: string
+  db: AppDatabase
+  metadata?: AgentRunStartedMetadata
+  modelId?: string | null
+  parentRunId?: string | null
+  profileId: string
+  source: AgentRunSource
+}
+
+export type StartAgentRunOptions =
+  | StartExistingAgentRunOptions
+  | StartNewAgentRunOptions
 
 export interface AgentKernel {
   advanceRunGraph: (
@@ -212,9 +286,51 @@ export interface AgentKernel {
   resumeRunGraphNodeApprovalWithAiSdk: (
     options: ResumeAgentRunGraphNodeApprovalWithAiSdkOptions
   ) => Promise<AgentRunGraphNodeExecutionResult>
+  runGraphUntilIdleWithAiSdk: (
+    options: RunAgentRunGraphUntilIdleWithAiSdkOptions
+  ) => Promise<AgentRunGraphUntilIdleResult>
+  startRun: (options: StartAgentRunOptions) => Promise<AgentRun>
+  skipRunGraphNode: (
+    options: SkipAgentRunGraphNodeOptions
+  ) => Promise<AgentRunGraphSkipResult>
   startNextRunGraphStage: (
     options: StartAgentRunGraphNextStageOptions
   ) => Promise<AgentRunGraphScheduleResult>
+  updateRunGraphRetryPolicy: (
+    options: UpdateAgentRunGraphRetryPolicyOptions
+  ) => Promise<AgentRunGraphRetryPolicyUpdateResult>
+}
+
+const DEFAULT_RUN_GRAPH_UNTIL_IDLE_MAX_ITERATIONS = 20
+
+const isStartExistingAgentRunOptions = (
+  options: StartAgentRunOptions
+): options is StartExistingAgentRunOptions => "run" in options
+
+export const startAgentRun = async (
+  options: StartAgentRunOptions
+): Promise<AgentRun> => {
+  const run = isStartExistingAgentRunOptions(options)
+    ? options.run
+    : await createAgentRun({
+        chatSessionId: options.chatSessionId,
+        db: options.db,
+        modelId: options.modelId,
+        parentRunId: options.parentRunId,
+        profileId: options.profileId
+      })
+  const metadata = options.metadata ?? {}
+
+  await run.appendEvent({
+    payload: {
+      ...metadata,
+      profileId: run.profileId,
+      source: options.source
+    },
+    type: "agent_run_started"
+  })
+
+  return run
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -230,6 +346,20 @@ const isAgentLoopSuccessStopReason = (
 
 const canUseInspectTool = (settings: AgentSettings): boolean =>
   settings.lsp.enabled && settings.sandbox.enabled
+
+const isRunGraphDependencySatisfied = (
+  status: AgentRunGraphExecutionNodeStatus | undefined
+): boolean => status === "succeeded" || status === "skipped"
+
+const normalizeRunGraphRetryPolicy = (
+  retryPolicy: AgentSettings["retry"]
+): AgentSettings["retry"] => ({
+  maxAutomaticRetries: Math.min(
+    5,
+    Math.max(0, Math.round(retryPolicy.maxAutomaticRetries))
+  ),
+  retryTransientFailures: retryPolicy.retryTransientFailures
+})
 
 const filterUnavailableNodeToolNames = ({
   settings,
@@ -395,6 +525,7 @@ const createExecutionPlan = ({
     id: template.id,
     name: template.name,
     nodes,
+    retryPolicy: normalizeRunGraphRetryPolicy(settings.retry),
     stages
   }
 }
@@ -441,6 +572,9 @@ const cloneExecutionPlan = (
     status: node.status,
     toolScope: node.toolScope
   })),
+  ...(plan.retryPolicy
+    ? { retryPolicy: normalizeRunGraphRetryPolicy(plan.retryPolicy) }
+    : {}),
   stages: plan.stages.map((stage) => ({
     id: stage.id,
     index: stage.index,
@@ -474,6 +608,45 @@ const getNumberPayloadValue = (
   const value = payload[key]
 
   return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+const getBooleanPayloadValue = (
+  payload: unknown,
+  key: string
+): boolean | null => {
+  if (!isRecord(payload)) {
+    return null
+  }
+
+  const value = payload[key]
+
+  return typeof value === "boolean" ? value : null
+}
+
+const getRunGraphRetryPolicyFromPayload = (
+  payload: unknown
+): AgentSettings["retry"] | null => {
+  if (!isRecord(payload) || !isRecord(payload.retryPolicy)) {
+    return null
+  }
+
+  const maxAutomaticRetries = getNumberPayloadValue(
+    payload.retryPolicy,
+    "maxAutomaticRetries"
+  )
+  const retryTransientFailures = getBooleanPayloadValue(
+    payload.retryPolicy,
+    "retryTransientFailures"
+  )
+
+  if (maxAutomaticRetries === null || retryTransientFailures === null) {
+    return null
+  }
+
+  return normalizeRunGraphRetryPolicy({
+    maxAutomaticRetries,
+    retryTransientFailures
+  })
 }
 
 const getGraphPlanFromInstantiationPayload = (
@@ -561,6 +734,16 @@ const getRunGraphPlanFromEvents = (
     }
 
     if (!plan) {
+      continue
+    }
+
+    if (event.type === "agent_run_graph_retry_policy_updated") {
+      const retryPolicy = getRunGraphRetryPolicyFromPayload(event.payload)
+
+      if (retryPolicy) {
+        plan.retryPolicy = retryPolicy
+      }
+
       continue
     }
 
@@ -733,8 +916,8 @@ const getNextReadyNodes = (
   const readyNodes = plan.nodes.filter(
     (node) =>
       node.status === "pending" &&
-      node.dependsOn.every(
-        (dependencyId) => statusByNodeId.get(dependencyId) === "succeeded"
+      node.dependsOn.every((dependencyId) =>
+        isRunGraphDependencySatisfied(statusByNodeId.get(dependencyId))
       )
   )
 
@@ -877,16 +1060,10 @@ const startRunGraphNode = async ({
   rootRun: AgentRun
 }): Promise<AgentRun> => {
   const attempt = node.attempt + 1
-  const childRun = await createAgentRun({
+  const childRun = await startAgentRun({
     chatSessionId: rootRun.chatSessionId,
     db,
-    modelId: rootRun.modelId,
-    parentRunId: rootRun.id,
-    profileId: node.profileId
-  })
-
-  await childRun.appendEvent({
-    payload: {
+    metadata: {
       activeToolNames: node.activeToolNames,
       attempt,
       graphNodeId: node.id,
@@ -894,12 +1071,14 @@ const startRunGraphNode = async ({
       graphStage: node.stage,
       outputContract: node.outputContract,
       parentRunId: rootRun.id,
-      profileId: node.profileId,
       ...(retryOfChildRunId ? { retryOfChildRunId } : {}),
       role: node.role,
       toolScope: node.toolScope
     },
-    type: "agent_run_started"
+    modelId: rootRun.modelId,
+    parentRunId: rootRun.id,
+    profileId: node.profileId,
+    source: "run-graph-node"
   })
 
   await rootRun.appendEvent({
@@ -921,34 +1100,59 @@ const startRunGraphNode = async ({
   return childRun
 }
 
-const getRunGraphNodePrompt = ({
+const getRunGraphNodePrompt = async ({
   node,
-  plan
+  plan,
+  toolResultSummaryProcessor
 }: {
   node: AgentRunGraphExecutionNode
   plan: AgentRunGraphExecutionPlan
-}): string => {
+  toolResultSummaryProcessor?: AgentToolResultSummaryProcessor
+}): Promise<string> => {
   const dependencies =
     node.dependsOn.length > 0 ? node.dependsOn.join(", ") : "none"
   const task = plan.task?.trim() || "Execute the assigned graph node."
-  const dependencyOutputBlocks = node.dependsOn.flatMap((dependencyId) => {
+  const dependencyOutputBlocks = []
+
+  for (const dependencyId of node.dependsOn) {
     const dependencyNode = plan.nodes.find(
       (candidate) => candidate.id === dependencyId
     )
 
-    if (!dependencyNode?.lastOutput) {
-      return []
+    if (!dependencyNode) {
+      continue
     }
 
-    const summary = summarizeToolResult(dependencyNode.lastOutput, 4000)
-    const suffix = summary.truncated
-      ? `\n[truncated ${summary.omittedChars} chars]`
-      : ""
+    if (dependencyNode.status === "skipped") {
+      dependencyOutputBlocks.push(
+        `Dependency ${dependencyNode.id} was skipped after failure.${
+          dependencyNode.errorMessage
+            ? ` Previous error: ${dependencyNode.errorMessage}`
+            : ""
+        }`
+      )
+      continue
+    }
 
-    return [
-      `Dependency ${dependencyNode.id} output:\n${summary.content}${suffix}`
-    ]
-  })
+    if (!dependencyNode.lastOutput) {
+      continue
+    }
+
+    const summary = await summarizeToolResultWithProcessor(
+      dependencyNode.lastOutput,
+      {
+        maxChars: 4000,
+        processor: toolResultSummaryProcessor
+      }
+    )
+    const annotation = formatToolResultSummaryAnnotation(summary)
+
+    dependencyOutputBlocks.push(
+      `Dependency ${dependencyNode.id} output:\n${summary.content}${
+        annotation ? `\n${annotation}` : ""
+      }`
+    )
+  }
 
   return [
     "You are executing one node in an Etyon agent run graph.",
@@ -995,6 +1199,48 @@ const getRunnableGraphNode = ({
   }
 
   return node
+}
+
+const getRunningRunGraphNode = (
+  plan: AgentRunGraphExecutionPlan
+): AgentRunGraphExecutionNode | null =>
+  plan.nodes.find((node) => node.status === "running") ?? null
+
+const isRunGraphCompleted = (plan: AgentRunGraphExecutionPlan): boolean =>
+  plan.nodes.every(
+    (node) => node.status === "succeeded" || node.status === "skipped"
+  )
+
+const hasSuspendedRunGraphNode = (plan: AgentRunGraphExecutionPlan): boolean =>
+  plan.nodes.some((node) => node.status === "suspended")
+
+const getRunGraphIdleStopReason = (
+  plan: AgentRunGraphExecutionPlan
+): AgentRunGraphUntilIdleStopReason => {
+  if (isRunGraphCompleted(plan)) {
+    return "completed"
+  }
+
+  return hasSuspendedRunGraphNode(plan) ? "suspended" : "blocked"
+}
+
+const pushUnique = <Value>(
+  target: Value[],
+  values: readonly Value[],
+  getKey: (value: Value) => string
+): void => {
+  const existingKeys = new Set(target.map(getKey))
+
+  for (const value of values) {
+    const key = getKey(value)
+
+    if (existingKeys.has(key)) {
+      continue
+    }
+
+    existingKeys.add(key)
+    target.push(value)
+  }
 }
 
 const getLastAssistantContent = (
@@ -1417,6 +1663,45 @@ const startNextRunGraphStage = async ({
   }
 }
 
+const updateRunGraphRetryPolicy = async ({
+  chatSessionId,
+  db,
+  retryPolicy,
+  rootRunId
+}: UpdateAgentRunGraphRetryPolicyOptions): Promise<AgentRunGraphRetryPolicyUpdateResult> => {
+  const { rootRun } = await getRunGraphState({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+  const normalizedRetryPolicy = normalizeRunGraphRetryPolicy(retryPolicy)
+
+  await rootRun.appendEvent({
+    payload: {
+      retryPolicy: normalizedRetryPolicy
+    },
+    type: "agent_run_graph_retry_policy_updated"
+  })
+
+  const { plan } = await getRunGraphState({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+
+  await appendRunGraphCheckpoint({
+    plan,
+    reason: "retry-policy-updated",
+    rootRun
+  })
+
+  return {
+    plan,
+    retryPolicy: normalizedRetryPolicy,
+    rootRun
+  }
+}
+
 const advanceRunGraph = async ({
   chatSessionId,
   db,
@@ -1443,7 +1728,7 @@ const advanceRunGraph = async ({
   })
   const autoRetryNode = getAutoRetryableFailedNode({
     plan: settledPlan,
-    retrySettings: settings.retry,
+    retrySettings: settledPlan.retryPolicy ?? settings.retry,
     settledNodeIds
   })
 
@@ -1534,7 +1819,8 @@ const retryRunGraphNode = async ({
 
   if (
     node.dependsOn.some(
-      (dependencyId) => statusByNodeId.get(dependencyId) !== "succeeded"
+      (dependencyId) =>
+        !isRunGraphDependencySatisfied(statusByNodeId.get(dependencyId))
     )
   ) {
     throw new Error(
@@ -1582,6 +1868,70 @@ const retryRunGraphNode = async ({
     stage,
     startedNodeIds: [node.id],
     startedRuns: [retryRun]
+  }
+}
+
+const skipRunGraphNode = async ({
+  chatSessionId,
+  db,
+  nodeId,
+  reason,
+  rootRunId
+}: SkipAgentRunGraphNodeOptions): Promise<AgentRunGraphSkipResult> => {
+  const { plan, rootRun } = await getRunGraphState({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+  const node = plan.nodes.find((candidate) => candidate.id === nodeId)
+
+  if (!node) {
+    throw new Error(`Agent graph node does not exist: ${nodeId}`)
+  }
+
+  if (node.status !== "failed") {
+    throw new Error(`Agent graph node is not failed: ${nodeId}`)
+  }
+
+  if (getRunningRunGraphNode(plan) || hasSuspendedRunGraphNode(plan)) {
+    throw new Error(
+      `Agent graph node cannot be skipped while the graph has active nodes: ${nodeId}`
+    )
+  }
+
+  const trimmedReason = reason?.trim()
+
+  await rootRun.appendEvent({
+    payload: {
+      nodeId: node.id,
+      ...(node.childRunId ? { childRunId: node.childRunId } : {}),
+      ...(node.errorMessage ? { errorMessage: node.errorMessage } : {}),
+      ...(trimmedReason ? { reason: trimmedReason } : {})
+    },
+    type: "agent_run_graph_node_skipped"
+  })
+
+  const { plan: skippedPlan } = await getRunGraphState({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+
+  await appendRunGraphCheckpoint({
+    plan: skippedPlan,
+    reason: "node-skipped",
+    rootRun
+  })
+
+  const scheduleResult = await startNextRunGraphStage({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+
+  return {
+    ...scheduleResult,
+    skippedNodeId: node.id
   }
 }
 
@@ -2007,6 +2357,7 @@ const executeRunGraphNode = async ({
   settings,
   thinkingLevel,
   toolNeedsApproval,
+  toolResultSummaryProcessor,
   tools = {}
 }: ExecuteAgentRunGraphNodeOptions & {
   settings: AgentSettings
@@ -2038,6 +2389,17 @@ const executeRunGraphNode = async ({
     },
     type: "agent_step_started"
   })
+
+  const messages = initialMessages ?? [
+    {
+      content: await getRunGraphNodePrompt({
+        node,
+        plan,
+        toolResultSummaryProcessor
+      }),
+      role: "user" as const
+    }
+  ]
 
   const result = await runAgentLoop({
     abortSignal,
@@ -2085,15 +2447,7 @@ const executeRunGraphNode = async ({
       return {}
     },
     maxTurns,
-    messages: initialMessages ?? [
-      {
-        content: getRunGraphNodePrompt({
-          node,
-          plan
-        }),
-        role: "user"
-      }
-    ],
+    messages,
     model,
     onEvent: async (event) => {
       await childRun.appendEvent({
@@ -2107,7 +2461,9 @@ const executeRunGraphNode = async ({
     },
     resources,
     thinkingLevel,
-    toolRetry: createAgentLoopToolRetryPolicy(settings.retry),
+    toolRetry: createAgentLoopToolRetryPolicy(
+      plan.retryPolicy ?? settings.retry
+    ),
     tools: { ...tools }
   })
   const succeeded = isAgentLoopSuccessStopReason(result.stopReason)
@@ -2248,6 +2604,11 @@ const executeRunGraphNodeWithAiSdk = async ({
     rootRunId,
     settings,
     thinkingLevel,
+    toolResultSummaryProcessor: createAiSdkToolResultSummaryProcessor({
+      headers,
+      metadata: graphMetadata,
+      model
+    }),
     toolNeedsApproval: (toolCall, context) =>
       getAiSdkToolNeedsApproval({
         input: toolCall.input,
@@ -2261,6 +2622,159 @@ const executeRunGraphNodeWithAiSdk = async ({
       tools
     })
   })
+}
+
+const runGraphUntilIdleWithAiSdk = async ({
+  abortSignal,
+  chatSessionId,
+  db,
+  headers,
+  maxIterations = DEFAULT_RUN_GRAPH_UNTIL_IDLE_MAX_ITERATIONS,
+  maxTurns,
+  memorySettings,
+  metadata,
+  model,
+  projectPath,
+  resources,
+  rootRunId,
+  settings,
+  skillCapabilities,
+  systemPrompts,
+  thinkingLevel
+}: RunAgentRunGraphUntilIdleWithAiSdkOptions & {
+  settings: AgentSettings
+}): Promise<AgentRunGraphUntilIdleResult> => {
+  let { plan, rootRun } = await getRunGraphState({
+    chatSessionId,
+    db,
+    rootRunId
+  })
+  let iterations = 0
+  let stage: AgentRunGraphExecutionStage | null = null
+  const childRuns: AgentRun[] = []
+  const executedNodeIds: string[] = []
+  const settledNodeIds: string[] = []
+  const startedNodeIds: string[] = []
+  const startedRuns: AgentRun[] = []
+
+  while (iterations < maxIterations) {
+    const advanced = await advanceRunGraph({
+      chatSessionId,
+      db,
+      rootRunId,
+      settings
+    })
+    const advancedPlan = advanced.plan
+    const advancedRootRun = advanced.rootRun
+    const advancedStage = advanced.stage
+
+    plan = advancedPlan
+    rootRun = advancedRootRun
+    stage = advancedStage
+    pushUnique(settledNodeIds, advanced.settledNodeIds, (nodeId) => nodeId)
+    pushUnique(startedNodeIds, advanced.startedNodeIds, (nodeId) => nodeId)
+    pushUnique(startedRuns, advanced.startedRuns, (run) => run.id)
+
+    if (advanced.startedNodeIds.length > 0) {
+      iterations += 1
+      continue
+    }
+
+    const runningNode = getRunningRunGraphNode(plan)
+
+    if (!runningNode) {
+      return {
+        childRuns,
+        executedNodeIds,
+        iterations,
+        plan,
+        rootRun,
+        settledNodeIds,
+        stage,
+        startedNodeIds,
+        startedRuns,
+        stopReason: getRunGraphIdleStopReason(plan)
+      }
+    }
+
+    const executed = await executeRunGraphNodeWithAiSdk({
+      abortSignal,
+      chatSessionId,
+      db,
+      headers,
+      maxTurns,
+      memorySettings,
+      metadata,
+      model,
+      nodeId: runningNode.id,
+      projectPath,
+      resources,
+      rootRunId,
+      settings,
+      skillCapabilities,
+      systemPrompts,
+      thinkingLevel
+    })
+
+    const executedPlan = executed.plan
+    const executedRootRun = executed.rootRun
+    const executedStage = executed.stage
+
+    iterations += 1
+    plan = executedPlan
+    rootRun = executedRootRun
+    stage = executedStage
+    pushUnique(childRuns, [executed.childRun], (run) => run.id)
+    pushUnique(executedNodeIds, [executed.nodeId], (nodeId) => nodeId)
+    pushUnique(settledNodeIds, executed.settledNodeIds, (nodeId) => nodeId)
+    pushUnique(startedNodeIds, executed.startedNodeIds, (nodeId) => nodeId)
+    pushUnique(startedRuns, executed.startedRuns, (run) => run.id)
+
+    if (executed.stopReason === "suspended") {
+      return {
+        childRuns,
+        executedNodeIds,
+        iterations,
+        plan,
+        rootRun,
+        settledNodeIds,
+        stage,
+        startedNodeIds,
+        startedRuns,
+        stopReason: "suspended"
+      }
+    }
+
+    const executedNode = plan.nodes.find((node) => node.id === executed.nodeId)
+
+    if (executedNode?.status === "failed") {
+      return {
+        childRuns,
+        executedNodeIds,
+        iterations,
+        plan,
+        rootRun,
+        settledNodeIds,
+        stage,
+        startedNodeIds,
+        startedRuns,
+        stopReason: "blocked"
+      }
+    }
+  }
+
+  return {
+    childRuns,
+    executedNodeIds,
+    iterations,
+    plan,
+    rootRun,
+    settledNodeIds,
+    stage,
+    startedNodeIds,
+    startedRuns,
+    stopReason: "iteration-limit"
+  }
 }
 
 export const createAgentKernel = ({
@@ -2300,11 +2814,16 @@ export const createAgentKernel = ({
       ...basePlan,
       ...(normalizedTask ? { task: normalizedTask } : {})
     }
-    const rootRun = await createAgentRun({
+    const rootRun = await startAgentRun({
       chatSessionId,
       db,
+      metadata: {
+        planId: plan.id,
+        templateId: plan.id
+      },
       modelId,
-      profileId: "general-purpose"
+      profileId: "general-purpose",
+      source: "run-graph"
     })
 
     await appendAgentEvent({
@@ -2334,5 +2853,13 @@ export const createAgentKernel = ({
       ...options,
       settings
     }),
-  startNextRunGraphStage
+  runGraphUntilIdleWithAiSdk: (options) =>
+    runGraphUntilIdleWithAiSdk({
+      ...options,
+      settings
+    }),
+  startRun: startAgentRun,
+  skipRunGraphNode,
+  startNextRunGraphStage,
+  updateRunGraphRetryPolicy
 })

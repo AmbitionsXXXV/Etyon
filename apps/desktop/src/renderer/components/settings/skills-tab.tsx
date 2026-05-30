@@ -35,6 +35,16 @@ const getSkillDisplayPath = (skill: ParsedSkill): string => {
   return skill.path.replace(`${skill.projectPath}/`, "")
 }
 
+export const getSkillExtensionDisplayPaths = (skill: ParsedSkill): string[] =>
+  skill.extensions
+
+export const getSkillCommandDisplayItems = (skill: ParsedSkill): string[] =>
+  skill.commands.map((command) =>
+    command.flags.length > 0
+      ? `${command.name} ${command.flags.join(" ")}`
+      : command.name
+  )
+
 const SkillsSwitch = ({
   checked,
   label,
@@ -69,7 +79,9 @@ const SkillsSwitchRow = ({
 
 const SkillPreview = ({ skill }: { skill: ParsedSkill }) => {
   const { t } = useI18n()
+  const commandDisplayItems = getSkillCommandDisplayItems(skill)
   const description = skill.shortDescription ?? skill.description
+  const extensionDisplayPaths = getSkillExtensionDisplayPaths(skill)
   const scopeLabel =
     skill.scope === "project"
       ? t("settings.skills.scope.project")
@@ -89,6 +101,30 @@ const SkillPreview = ({ skill }: { skill: ParsedSkill }) => {
       <div className="truncate text-[0.6875rem] text-muted-foreground">
         {getSkillDisplayPath(skill)}
       </div>
+      {extensionDisplayPaths.length > 0 ? (
+        <div className="space-y-1 rounded-md bg-muted/50 px-2 py-1.5">
+          <div className="text-[0.625rem] font-medium text-muted-foreground">
+            {t("settings.skills.extensions.summary", {
+              count: extensionDisplayPaths.length
+            })}
+          </div>
+          <div className="truncate text-[0.625rem] text-muted-foreground">
+            {extensionDisplayPaths.join(" / ")}
+          </div>
+        </div>
+      ) : null}
+      {commandDisplayItems.length > 0 ? (
+        <div className="space-y-1 rounded-md bg-muted/50 px-2 py-1.5">
+          <div className="text-[0.625rem] font-medium text-muted-foreground">
+            {t("settings.skills.commands.summary", {
+              count: commandDisplayItems.length
+            })}
+          </div>
+          <div className="truncate font-mono text-[0.625rem] text-muted-foreground">
+            {commandDisplayItems.join(" / ")}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -140,6 +176,14 @@ export const SkillsTab = ({ onChange, skills }: SkillsTabProps) => {
   )
   const projectSkills = detectedSkills.filter(
     (skill) => skill.scope === "project"
+  )
+  const extensionModuleCount = detectedSkills.reduce(
+    (count, skill) => count + skill.extensions.length,
+    0
+  )
+  const commandCount = detectedSkills.reduce(
+    (count, skill) => count + skill.commands.length,
+    0
   )
 
   return (
@@ -215,7 +259,7 @@ export const SkillsTab = ({ onChange, skills }: SkillsTabProps) => {
           {t("settings.skills.status.title")}
         </h2>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-5">
           <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
             <div className="text-[0.6875rem] text-muted-foreground">
               {t("settings.skills.status.total")}
@@ -239,6 +283,20 @@ export const SkillsTab = ({ onChange, skills }: SkillsTabProps) => {
             <div className="mt-1 text-lg font-semibold">
               {globalSkills.length}
             </div>
+          </div>
+          <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
+            <div className="text-[0.6875rem] text-muted-foreground">
+              {t("settings.skills.status.extensions")}
+            </div>
+            <div className="mt-1 text-lg font-semibold">
+              {extensionModuleCount}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
+            <div className="text-[0.6875rem] text-muted-foreground">
+              {t("settings.skills.status.commands")}
+            </div>
+            <div className="mt-1 text-lg font-semibold">{commandCount}</div>
           </div>
         </div>
 

@@ -8,15 +8,24 @@ import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { sortChatSessionsByLastOpenedAt } from "@/renderer/lib/sidebar/chat-sessions"
 
 const CHAT_ROUTE_PREFIX = "/chat/" as const
+const AGENT_WORKBENCH_ROUTE_PREFIX = "/agents/" as const
 
 const getCurrentSessionIdFromPathname = (
   pathname: string
 ): string | undefined => {
-  if (!pathname.startsWith(CHAT_ROUTE_PREFIX)) {
+  let routePrefix: null | string = null
+
+  if (pathname.startsWith(CHAT_ROUTE_PREFIX)) {
+    routePrefix = CHAT_ROUTE_PREFIX
+  } else if (pathname.startsWith(AGENT_WORKBENCH_ROUTE_PREFIX)) {
+    routePrefix = AGENT_WORKBENCH_ROUTE_PREFIX
+  }
+
+  if (routePrefix === null) {
     return undefined
   }
 
-  const pathWithoutPrefix = pathname.slice(CHAT_ROUTE_PREFIX.length)
+  const pathWithoutPrefix = pathname.slice(routePrefix.length)
 
   return pathWithoutPrefix.length > 0
     ? decodeURIComponent(pathWithoutPrefix)

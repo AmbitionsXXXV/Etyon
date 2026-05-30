@@ -52,6 +52,14 @@
       "waiting": "Preparing response..."
     },
     "mentions": {
+      "commandPaletteEmpty": "No matching commands.",
+      "commandPaletteGroup": "Commands",
+      "commandPlanDescription": "Plan mode",
+      "commandPlanLabel": "Plan",
+      "commandPromptDescription": "Prompt template",
+      "commandPromptLabel": "Prompt",
+      "commandSkillDescription": "Skill command",
+      "commandSkillLabel": "Skill",
       "empty": "No matching files, folders, or skills.",
       "filesGroup": "Files",
       "foldersGroup": "Folders",
@@ -187,6 +195,8 @@
       "artifactLoading": "Loading artifact...",
       "artifactTruncated": "{count} chars omitted",
       "artifacts": "Artifacts {count}",
+      "backgroundProcesses": "Processes {count}",
+      "backToChat": "Back to chat",
       "createGraph": "Create graph",
       "deny": "Deny",
       "diff": "Current diff",
@@ -199,6 +209,7 @@
       "emptyEvents": "No timeline events",
       "emptyRuns": "No agent runs",
       "emptyTools": "No tool calls",
+      "executeNode": "Execute node",
       "events": "Timeline {count}",
       "failedNode": "Failed node: {node}",
       "graph": "Run graph",
@@ -211,6 +222,7 @@
       "graphRetries": "Retries {count}",
       "graphRetryAttempt": "Attempt {count}",
       "graphRetryAutomatic": "automatic",
+      "graphRetryLimit": "Max retries",
       "graphRetryManual": "manual",
       "graphRetryStrategy": "Retry strategy",
       "graphRetryStrategyAuto": "automatic",
@@ -218,15 +230,24 @@
       "graphRetryStrategyLimit": "max automatic {count}",
       "graphRetryTransientOff": "transient off",
       "graphRetryTransientOn": "transient on",
+      "graphRetryToggle": "Retry transient failures",
       "graphSequential": "sequential",
       "graphStage": "Stage {index}",
       "graphTask": "Task",
       "graphTools": "{count} tools",
       "loading": "Loading run trace...",
       "model": "Model",
+      "openStandalone": "Open workbench",
       "parent": "Parent",
+      "processDuration": "duration {duration}",
+      "processExitCode": "exit {code}",
+      "processOutputChars": "stdout {stdout} / stderr {stderr}",
+      "processPid": "pid {pid}",
+      "processSandboxed": "sandboxed",
+      "processUnsandboxed": "unsandboxed",
       "refresh": "Refresh workbench",
       "retryFailed": "Retry failed",
+      "runGraph": "Run graph",
       "runCount": "Runs {count}",
       "session": "Session tree",
       "sessionBranchPlaceholder": "Optional branch note",
@@ -243,6 +264,11 @@
       "sessionMoveLeaf": "Move leaf",
       "sessionRoot": "Root",
       "sessionTarget": "Target",
+      "shellCommands": "Shell commands {count}",
+      "shellOutput": "Shell output {count}",
+      "shellOutputChunks": "{count} chunks",
+      "shellOutputTruncated": "Showing latest output",
+      "skipFailed": "Skip failed",
       "startNextStage": "Start stage",
       "task": "Task",
       "taskPlaceholder": "Optional graph task",
@@ -368,12 +394,20 @@
           "description": "Keep patch and command writes behind explicit approval even for write-capable profiles.",
           "label": "Require approval for writes"
         },
+        "retryTransientFailures": {
+          "description": "Automatically retry transient provider, network, timeout, and tool failures before surfacing a manual decision.",
+          "label": "Retry transient failures"
+        },
         "showToolTraces": {
           "description": "Persist tool calls and runtime events so the harness can inspect what happened.",
           "label": "Show tool traces"
         }
       },
       "defaults": {
+        "maxAutomaticRetries": {
+          "description": "Applied to tool execution and run graph nodes.",
+          "label": "Automatic retries"
+        },
         "maxConcurrentSubagents": {
           "label": "Concurrent subagents"
         },
@@ -913,7 +947,13 @@
       "title": "Sidebar Settings"
     },
     "skills": {
+      "commands": {
+        "summary": "{{count}} command"
+      },
       "description": "Parse global and project-level SKILL.md files and inject matching instructions into model context when relevant.",
+      "extensions": {
+        "summary": "{{count}} extension module"
+      },
       "includeGlobal": {
         "description": "Retrieve reusable instructions from global skills in the user profile.",
         "label": "Global skills"
@@ -934,8 +974,10 @@
         "project": "Project"
       },
       "status": {
+        "commands": "Commands",
         "detected": "Parsed Skills",
         "empty": "No skills parsed yet.",
+        "extensions": "Extensions",
         "global": "Global",
         "project": "Project",
         "title": "Skill Sources",

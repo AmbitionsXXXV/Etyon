@@ -37,11 +37,13 @@ import {
   PROJECT_MENTION_NODE_TYPE,
   applyPlanCommandPrefixToPromptEditorJson,
   buildPromptMentionItemGroups,
+  filterPromptCommandPaletteItems,
   createPromptTemplateCommandText,
   createPromptMentionItemsByKey,
   createMentionFromPromptMentionItem,
   extractPromptEditorPayload,
   getActivePromptMentionItemKey,
+  getPromptEditorActiveCommandPaletteRange,
   getPromptEditorActiveMentionRange,
   getPromptEditorActivePromptTemplateCommandRange,
   getPromptMentionItemIcon,
@@ -51,6 +53,7 @@ import {
   getPromptSkillDescription,
   getPromptSkillDisplayName,
   getPromptSkillSourceLabel,
+  getPromptTemplateArgumentHints,
   isPromptImeConfirmKeyDown,
   isPromptNativeCompositionKeyDown,
   isPlanModeKeyboardShortcut,
@@ -58,6 +61,7 @@ import {
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
 import type {
+  PromptCommandPaletteItem,
   PromptMentionItemGroup,
   PromptMentionQueryState,
   PromptMentionItem,
@@ -68,6 +72,7 @@ import type {
 const COMPOSITION_SUBMIT_GUARD_MS = 100
 const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
 const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
+const PROMPT_COMMAND_PALETTE_ITEM_LIMIT = 6
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -173,6 +178,7 @@ const PromptTemplateSuggestions = ({
               {groupLabel}
             </div>
             {items.map((item, itemIndex) => {
+              const argumentHints = getPromptTemplateArgumentHints(item)
               const isActive = itemIndex === activeItemIndex
 
               return (
@@ -217,6 +223,18 @@ const PromptTemplateSuggestions = ({
                         {item.description}
                       </span>
                     ) : null}
+                    {argumentHints.length > 0 ? (
+                      <span
+                        className={cn(
+                          "shrink-0 font-mono text-[0.68rem]",
+                          isActive
+                            ? "text-accent-foreground/75"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {argumentHints.join(" ")}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
               )
@@ -227,6 +245,89 @@ const PromptTemplateSuggestions = ({
     </div>
   )
 }
+
+const PromptCommandPaletteSuggestions = ({
+  activeItemIndex,
+  currentEmptyLabel,
+  groupLabel,
+  items,
+  onItemClick,
+  onItemRef
+}: {
+  activeItemIndex: number
+  currentEmptyLabel: string
+  groupLabel: string
+  items: PromptCommandPaletteItem[]
+  onItemClick: (event: MouseEvent<HTMLButtonElement>) => void
+  onItemRef: (itemId: string, element: HTMLButtonElement | null) => void
+}) => (
+  <div className="absolute right-4 bottom-full left-4 z-20 mb-2 overflow-hidden rounded-[1.35rem] bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10">
+    <div className="max-h-80 overflow-y-auto p-1.5">
+      {items.length === 0 ? (
+        <div className="p-3 text-xs text-muted-foreground">
+          {currentEmptyLabel}
+        </div>
+      ) : (
+        <div>
+          <div className="px-3 py-1 text-[0.68rem] font-medium tracking-normal text-muted-foreground uppercase">
+            {groupLabel}
+          </div>
+          {items.map((item, itemIndex) => {
+            const isActive = itemIndex === activeItemIndex
+            const itemIcon = item.id === "plan" ? PencilEdit02Icon : CubeIcon
+
+            return (
+              <button
+                className={cn(
+                  "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors",
+                  isActive
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-accent/50"
+                )}
+                data-command-id={item.id}
+                key={item.id}
+                onClick={onItemClick}
+                ref={(element) => {
+                  onItemRef(item.id, element)
+                }}
+                type="button"
+              >
+                <HugeiconsIcon
+                  className={cn(
+                    "size-4 shrink-0",
+                    isActive
+                      ? "text-accent-foreground/85"
+                      : "text-muted-foreground"
+                  )}
+                  icon={itemIcon}
+                  strokeWidth={2}
+                />
+                <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <span className="shrink-0 font-mono text-[0.75rem]">
+                    {item.command}
+                  </span>
+                  <span className="shrink-0 truncate font-medium">
+                    {item.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      isActive
+                        ? "text-accent-foreground/85"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {item.description}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  </div>
+)
 
 const MentionItemRow = ({
   activeItemIndex,
@@ -407,12 +508,18 @@ const handleIndexedSuggestionKeyDown = <TItem,>({
 }
 
 const PromptInputSuggestions = ({
+  activeCommandPaletteRange,
   activeItemIndex,
   activeMentionRange,
   activePromptTemplateRange,
+  commandPaletteEmptyLabel,
+  commandPaletteGroupLabel,
+  commandPaletteItems,
   currentMentionEmptyLabel,
+  handleCommandPaletteItemRef,
   handleMentionItemRef,
   handlePromptTemplateRef,
+  handleSelectCommandPaletteItemClick,
   handleSelectMentionItemClick,
   handleSelectPromptTemplateClick,
   isLoadingMentionItems,
@@ -425,10 +532,18 @@ const PromptInputSuggestions = ({
   promptTemplateGroupLabel,
   promptTemplateItems
 }: {
+  activeCommandPaletteRange: unknown
   activeItemIndex: number
   activeMentionRange: unknown
   activePromptTemplateRange: unknown
+  commandPaletteEmptyLabel: string
+  commandPaletteGroupLabel: string
+  commandPaletteItems: PromptCommandPaletteItem[]
   currentMentionEmptyLabel: string
+  handleCommandPaletteItemRef: (
+    itemId: string,
+    element: HTMLButtonElement | null
+  ) => void
   handleMentionItemRef: (
     itemKey: string,
     element: HTMLButtonElement | null
@@ -436,6 +551,9 @@ const PromptInputSuggestions = ({
   handlePromptTemplateRef: (
     itemPath: string,
     element: HTMLButtonElement | null
+  ) => void
+  handleSelectCommandPaletteItemClick: (
+    event: MouseEvent<HTMLButtonElement>
   ) => void
   handleSelectMentionItemClick: (event: MouseEvent<HTMLButtonElement>) => void
   handleSelectPromptTemplateClick: (
@@ -461,6 +579,19 @@ const PromptInputSuggestions = ({
         items={promptTemplateItems}
         onItemClick={handleSelectPromptTemplateClick}
         onItemRef={handlePromptTemplateRef}
+      />
+    )
+  }
+
+  if (activeCommandPaletteRange) {
+    return (
+      <PromptCommandPaletteSuggestions
+        activeItemIndex={activeItemIndex}
+        currentEmptyLabel={commandPaletteEmptyLabel}
+        groupLabel={commandPaletteGroupLabel}
+        items={commandPaletteItems}
+        onItemClick={handleSelectCommandPaletteItemClick}
+        onItemRef={handleCommandPaletteItemRef}
       />
     )
   }
@@ -674,7 +805,77 @@ const PromptInputActions = ({
   )
 }
 
+const usePromptCommandPaletteItems = ({
+  activeRange,
+  planDescription,
+  planLabel,
+  promptDescription,
+  promptLabel,
+  skillDescription,
+  skillLabel
+}: {
+  activeRange: { query: string } | null
+  planDescription: string
+  planLabel: string
+  promptDescription: string
+  promptLabel: string
+  skillDescription: string
+  skillLabel: string
+}): PromptCommandPaletteItem[] => {
+  const allItems = useMemo<PromptCommandPaletteItem[]>(
+    () => [
+      {
+        command: "/plan",
+        description: planDescription,
+        id: "plan",
+        insertText: "/plan ",
+        label: planLabel
+      },
+      {
+        command: "/prompt",
+        description: promptDescription,
+        id: "prompt",
+        insertText: "/prompt ",
+        label: promptLabel
+      },
+      {
+        command: "/skill",
+        description: skillDescription,
+        id: "skill",
+        insertText: "/skill ",
+        label: skillLabel
+      }
+    ],
+    [
+      planDescription,
+      planLabel,
+      promptDescription,
+      promptLabel,
+      skillDescription,
+      skillLabel
+    ]
+  )
+
+  return useMemo(
+    () =>
+      filterPromptCommandPaletteItems({
+        items: allItems,
+        limit: PROMPT_COMMAND_PALETTE_ITEM_LIMIT,
+        query: activeRange?.query ?? ""
+      }),
+    [activeRange?.query, allItems]
+  )
+}
+
 export const PromptInput = ({
+  commandPaletteEmptyLabel,
+  commandPaletteGroupLabel,
+  commandPalettePlanDescription,
+  commandPalettePlanLabel,
+  commandPalettePromptDescription,
+  commandPalettePromptLabel,
+  commandPaletteSkillDescription,
+  commandPaletteSkillLabel,
   disabled = false,
   footer,
   isLoadingFileItems = false,
@@ -712,6 +913,14 @@ export const PromptInput = ({
   stopLabel,
   submitLabel
 }: {
+  commandPaletteEmptyLabel: string
+  commandPaletteGroupLabel: string
+  commandPalettePlanDescription: string
+  commandPalettePlanLabel: string
+  commandPalettePromptDescription: string
+  commandPalettePromptLabel: string
+  commandPaletteSkillDescription: string
+  commandPaletteSkillLabel: string
   disabled?: boolean
   footer?: ReactNode
   isLoadingFileItems?: boolean
@@ -765,6 +974,11 @@ export const PromptInput = ({
   const [activeMentionRange, setActiveMentionRange] = useState<
     (PromptMentionQueryState & { from: number; to: number }) | null
   >(null)
+  const [activeCommandPaletteRange, setActiveCommandPaletteRange] = useState<{
+    from: number
+    query: string
+    to: number
+  } | null>(null)
   const [activePromptTemplateRange, setActivePromptTemplateRange] = useState<{
     from: number
     query: string
@@ -778,6 +992,9 @@ export const PromptInput = ({
   const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
+  const commandPaletteElementByIdRef = useRef(
+    new Map<string, HTMLButtonElement>()
+  )
   const promptTemplateElementByPathRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
@@ -786,6 +1003,15 @@ export const PromptInput = ({
   const compositionSubmitGuardTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
+  const commandPaletteItems = usePromptCommandPaletteItems({
+    activeRange: activeCommandPaletteRange,
+    planDescription: commandPalettePlanDescription,
+    planLabel: commandPalettePlanLabel,
+    promptDescription: commandPalettePromptDescription,
+    promptLabel: commandPalettePromptLabel,
+    skillDescription: commandPaletteSkillDescription,
+    skillLabel: commandPaletteSkillLabel
+  })
   const mentionItemGroups = useMemo<PromptMentionItemGroup[]>(
     () =>
       buildPromptMentionItemGroups({
@@ -813,6 +1039,8 @@ export const PromptInput = ({
     activeItemIndex,
     items: mentionSelectionItems
   })
+  const activeCommandPaletteItemId =
+    commandPaletteItems[activeItemIndex]?.id ?? null
   const activePromptTemplateItemPath =
     promptTemplateItems[activeItemIndex]?.path ?? null
   const mentionItemsByKey = useMemo(
@@ -854,6 +1082,7 @@ export const PromptInput = ({
 
     if (selection.from !== selection.to) {
       setActiveMentionRange(null)
+      setActiveCommandPaletteRange(null)
       setActivePromptTemplateRange(null)
       return
     }
@@ -872,8 +1101,16 @@ export const PromptInput = ({
     )
 
     setActivePromptTemplateRange(promptTemplateRange)
+    const commandPaletteRange = promptTemplateRange
+      ? null
+      : getPromptEditorActiveCommandPaletteRange({
+          selectionFrom: selection.from,
+          textBeforeCaret
+        })
+
+    setActiveCommandPaletteRange(commandPaletteRange)
     setActiveMentionRange(
-      promptTemplateRange
+      promptTemplateRange || commandPaletteRange
         ? null
         : getPromptEditorActiveMentionRange({
             selectionFrom: selection.from,
@@ -943,7 +1180,7 @@ export const PromptInput = ({
 
   useEffect(() => {
     setActiveItemIndex(0)
-  }, [mentionSelectionItems, promptTemplateItems])
+  }, [commandPaletteItems, mentionSelectionItems, promptTemplateItems])
 
   useEffect(() => {
     if (!activeMentionRange || !activeMentionItemKey) {
@@ -954,6 +1191,16 @@ export const PromptInput = ({
       mentionItemElementByKeyRef.current.get(activeMentionItemKey)
     )
   }, [activeMentionItemKey, activeMentionRange])
+
+  useEffect(() => {
+    if (!activeCommandPaletteRange || !activeCommandPaletteItemId) {
+      return
+    }
+
+    scrollActiveMentionItemIntoView(
+      commandPaletteElementByIdRef.current.get(activeCommandPaletteItemId)
+    )
+  }, [activeCommandPaletteItemId, activeCommandPaletteRange])
 
   useEffect(() => {
     if (!activePromptTemplateRange || !activePromptTemplateItemPath) {
@@ -996,6 +1243,26 @@ export const PromptInput = ({
     [activeMentionRange, editor]
   )
 
+  const handleSelectCommandPaletteItem = useCallback(
+    (item: PromptCommandPaletteItem) => {
+      if (!activeCommandPaletteRange || !editor) {
+        return
+      }
+
+      editor
+        .chain()
+        .focus()
+        .deleteRange({
+          from: activeCommandPaletteRange.from,
+          to: activeCommandPaletteRange.to
+        })
+        .insertContent(item.insertText)
+        .run()
+      setActiveCommandPaletteRange(null)
+    },
+    [activeCommandPaletteRange, editor]
+  )
+
   const handleSelectPromptTemplateItem = useCallback(
     (item: PromptTemplate) => {
       if (!activePromptTemplateRange || !editor) {
@@ -1027,6 +1294,7 @@ export const PromptInput = ({
       editor.commands.focus("end")
       setPromptInputValue(message.content)
       setActiveMentionRange(null)
+      setActiveCommandPaletteRange(null)
       setActivePromptTemplateRange(null)
     },
     [editor]
@@ -1065,6 +1333,8 @@ export const PromptInput = ({
         setPromptInputValue("")
         editor.commands.focus()
         setActiveMentionRange(null)
+        setActiveCommandPaletteRange(null)
+        setActivePromptTemplateRange(null)
       } finally {
         setIsSubmitting(false)
       }
@@ -1087,6 +1357,25 @@ export const PromptInput = ({
       }
     },
     [handleSelectMentionItem, mentionItemsByKey]
+  )
+
+  const handleSelectCommandPaletteItemClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      const { commandId } = event.currentTarget.dataset
+
+      if (!commandId) {
+        return
+      }
+
+      const item = commandPaletteItems.find(
+        (commandItem) => commandItem.id === commandId
+      )
+
+      if (item) {
+        handleSelectCommandPaletteItem(item)
+      }
+    },
+    [commandPaletteItems, handleSelectCommandPaletteItem]
   )
 
   const handleSelectPromptTemplateClick = useCallback(
@@ -1116,6 +1405,18 @@ export const PromptInput = ({
       }
 
       mentionItemElementByKeyRef.current.set(itemKey, element)
+    },
+    []
+  )
+
+  const handleCommandPaletteItemRef = useCallback(
+    (itemId: string, element: HTMLButtonElement | null) => {
+      if (!element) {
+        commandPaletteElementByIdRef.current.delete(itemId)
+        return
+      }
+
+      commandPaletteElementByIdRef.current.set(itemId, element)
     },
     []
   )
@@ -1156,6 +1457,7 @@ export const PromptInput = ({
         )
         editor.commands.focus("end")
         setActiveMentionRange(null)
+        setActiveCommandPaletteRange(null)
         setActivePromptTemplateRange(null)
         return
       }
@@ -1195,6 +1497,19 @@ export const PromptInput = ({
       }
 
       if (
+        activeCommandPaletteRange &&
+        handleIndexedSuggestionKeyDown({
+          activeItemIndex,
+          event,
+          items: commandPaletteItems,
+          onSelect: handleSelectCommandPaletteItem,
+          setActiveItemIndex
+        })
+      ) {
+        return
+      }
+
+      if (
         activeMentionRange &&
         handleIndexedSuggestionKeyDown({
           activeItemIndex,
@@ -1214,11 +1529,14 @@ export const PromptInput = ({
     },
     [
       activeItemIndex,
+      activeCommandPaletteRange,
       activeMentionRange,
       activePromptTemplateRange,
       clearCompositionSubmitGuard,
+      commandPaletteItems,
       disabled,
       editor,
+      handleSelectCommandPaletteItem,
       handleSelectMentionItem,
       handleSelectPromptTemplateItem,
       handleSubmit,
@@ -1243,12 +1561,20 @@ export const PromptInput = ({
       variant="secondary"
     >
       <PromptInputSuggestions
+        activeCommandPaletteRange={activeCommandPaletteRange}
         activeItemIndex={activeItemIndex}
         activeMentionRange={activeMentionRange}
         activePromptTemplateRange={activePromptTemplateRange}
+        commandPaletteEmptyLabel={commandPaletteEmptyLabel}
+        commandPaletteGroupLabel={commandPaletteGroupLabel}
+        commandPaletteItems={commandPaletteItems}
         currentMentionEmptyLabel={currentMentionEmptyLabel}
+        handleCommandPaletteItemRef={handleCommandPaletteItemRef}
         handleMentionItemRef={handleMentionItemRef}
         handlePromptTemplateRef={handlePromptTemplateRef}
+        handleSelectCommandPaletteItemClick={
+          handleSelectCommandPaletteItemClick
+        }
         handleSelectMentionItemClick={handleSelectMentionItemClick}
         handleSelectPromptTemplateClick={handleSelectPromptTemplateClick}
         isLoadingMentionItems={isLoadingMentionItems}

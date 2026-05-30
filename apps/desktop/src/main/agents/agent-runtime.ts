@@ -11,14 +11,10 @@ import type {
   UIMessage,
   UIMessageStreamOptions
 } from "ai"
-import {
-  createUIMessageStream,
-  generateText,
-  stepCountIs,
-  streamText
-} from "ai"
+import { createUIMessageStream, streamText } from "ai"
 
 import { registerActiveAgentRun } from "@/main/agents/active-agent-runs"
+import { createAgent } from "@/main/agents/agent"
 import { recordAgentToolOutputArtifacts } from "@/main/agents/agent-artifacts"
 import {
   AgentRuntimeError,
@@ -36,26 +32,26 @@ import {
   updateAgentRun,
   updateAgentToolCall
 } from "@/main/agents/agent-event-store"
-import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
+import type { AgentRun } from "@/main/agents/agent-event-store"
+import type {
+  AgentExtensionRunner,
+  AgentExtensionToolHooks
+} from "@/main/agents/agent-extensions"
+import { startAgentRun } from "@/main/agents/agent-kernel"
 import type {
   AgentLoopExecutedToolResult,
   AgentLoopMessage,
   AgentLoopStopReason,
   AgentLoopToolCall,
-  AgentLoopToolRetryPolicy,
-  AgentLoopUserMessage
+  AgentLoopToolRetryPolicy
 } from "@/main/agents/agent-loop"
-import { runAgentLoop } from "@/main/agents/agent-loop"
 import {
   convertAgentLoopMessagesToModelMessages,
   convertModelMessagesToAgentLoopMessages,
   createAiSdkAgentLoopModel,
   createAiSdkAgentLoopTools
 } from "@/main/agents/agent-loop-ai-sdk"
-import {
-  completeUnresolvedToolCallsInModelMessages,
-  convertAgentMessagesToLlm
-} from "@/main/agents/agent-messages"
+import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/agent-messages"
 import {
   isRetryableAgentFailure,
   parseStructuredPlanFromText,
@@ -63,16 +59,27 @@ import {
   summarizePlanProgress
 } from "@/main/agents/agent-plan-progress"
 import {
-  appendAgentSessionSavePointEvent,
+  buildAgentSessionModelMessages,
+  buildAgentSessionQueuedModelMessages,
+  createAgentSessionModelMessageCommitter,
+  createAgentSessionQueuedMessageDrainer
+} from "@/main/agents/agent-session-binding"
+import {
+  appendAgentSessionChatBranchEvent,
   appendAgentSessionPlanModeEvent,
-  appendAgentSessionModelMessageEvents,
-  buildAgentSessionModelContextFromLatestSavePoint,
-  listPendingAgentSessionQueuedMessages
+  appendAgentSessionSavePointEvent
 } from "@/main/agents/agent-session-events"
-import type { AgentSessionQueuedMessageQueue } from "@/main/agents/agent-session-events"
-import type { AgentRuntimeState as AgentPhaseRuntimeState } from "@/main/agents/agent-state"
+import type {
+  AgentSessionChatBranchKind,
+  AgentSessionChatBranchTrigger
+} from "@/main/agents/agent-session-events"
+import type {
+  AgentRuntimePhaseHandle,
+  AgentRuntimeState as AgentPhaseRuntimeState
+} from "@/main/agents/agent-state"
 import {
   applyAgentStreamResponseHooks,
+  mergeAgentStreamHooks,
   prepareAgentStreamRequest
 } from "@/main/agents/agent-stream-hooks"
 import type { AgentStreamHooks } from "@/main/agents/agent-stream-hooks"
@@ -87,10 +94,19 @@ export interface AgentRuntimeStreamOptions {
   metadata?: Readonly<Record<string, unknown>>
 }
 
+export interface AgentChatLifecycleBranch {
+  branchKind: AgentSessionChatBranchKind
+  messageId?: string
+  retainedMessageIds: readonly string[]
+  trigger: AgentSessionChatBranchTrigger
+}
+
 export interface StreamAgentChatOptions {
   abortSignal?: AbortSignal
   activeToolNames?: readonly string[]
+  chatLifecycleBranch?: AgentChatLifecycleBranch
   db: AppDatabase
+  extensionRunner?: AgentExtensionRunner
   messages: ModelMessage[]
   model: LanguageModel
   modelId?: string | null
@@ -178,6 +194,7 @@ interface MainAgentLoopExecutionResult {
 }
 
 interface AgentChatStreamResult {
+  agentRunId: string | null
   consumeStream: (options?: {
     onError?: (error: unknown) => void
   }) => PromiseLike<void>
@@ -218,6 +235,11 @@ interface AgentUiLiveSink {
     output: unknown
     toolCall: AgentLoopToolCall
   }) => void
+}
+
+interface AgentUiStreamSnapshotSink {
+  flush: () => Promise<void>
+  write: (parts: UIMessage["parts"]) => void
 }
 
 const filterActiveAgentTools = <TTool>({
@@ -386,6 +408,56 @@ const createAgentLoopToolRetryPolicy = (
     isRetryableAgentFailure(getToolRetryErrorMessage(result.output))
 })
 
+const cloneUiMessagePartsForSnapshot = (
+  parts: UIMessage["parts"]
+): UIMessage["parts"] | null => {
+  try {
+    const clonedParts = structuredClone(parts) as UIMessage["parts"]
+
+    JSON.stringify(clonedParts)
+
+    return clonedParts
+  } catch {
+    return null
+  }
+}
+
+const createAgentUiStreamSnapshotSink = (
+  run: AgentRun
+): AgentUiStreamSnapshotSink => {
+  let pendingWrite = Promise.resolve()
+
+  return {
+    flush: async () => {
+      await pendingWrite
+    },
+    write: (parts) => {
+      const snapshotParts = cloneUiMessagePartsForSnapshot(parts)
+
+      if (!snapshotParts) {
+        return
+      }
+
+      const previousWrite = pendingWrite
+
+      pendingWrite = (async () => {
+        await previousWrite
+
+        try {
+          await run.appendEvent({
+            payload: {
+              parts: snapshotParts
+            },
+            type: "agent_ui_stream_snapshot_created"
+          })
+        } catch (error) {
+          void error
+        }
+      })()
+    }
+  }
+}
+
 const isAsyncIterable = (value: unknown): value is AsyncIterable<unknown> =>
   isRecord(value) && Symbol.asyncIterator in value
 
@@ -401,22 +473,49 @@ const collectAsyncIterable = async (
   return values
 }
 
-const createCombinedAbortSignal = (
-  signals: readonly (AbortSignal | undefined)[]
-): AbortSignal | undefined => {
-  const activeSignals = signals.filter(
-    (signal): signal is AbortSignal => signal !== undefined
-  )
+const appendAgentStreamDisconnectedEvent = async (
+  run: AgentRun
+): Promise<void> => {
+  try {
+    await run.appendEvent({
+      payload: {
+        reason: "request_aborted"
+      },
+      type: "agent_stream_disconnected"
+    })
+  } catch {
+    // Disconnect telemetry is best-effort and must not affect the run lifecycle.
+  }
+}
 
-  if (activeSignals.length <= 1) {
-    return activeSignals[0]
+const registerDetachedRequestAbortEvent = ({
+  requestAbortSignal,
+  run
+}: {
+  requestAbortSignal?: AbortSignal
+  run: AgentRun
+}): (() => void) | null => {
+  if (!requestAbortSignal) {
+    return null
   }
 
-  const abortSignal = AbortSignal as typeof AbortSignal & {
-    any: (signals: readonly AbortSignal[]) => AbortSignal
+  const appendDisconnectEvent = (): void => {
+    void appendAgentStreamDisconnectedEvent(run)
   }
 
-  return abortSignal.any(activeSignals)
+  if (requestAbortSignal.aborted) {
+    appendDisconnectEvent()
+
+    return null
+  }
+
+  requestAbortSignal.addEventListener("abort", appendDisconnectEvent, {
+    once: true
+  })
+
+  return () => {
+    requestAbortSignal.removeEventListener("abort", appendDisconnectEvent)
+  }
 }
 
 const isModelMessage = (value: unknown): value is ModelMessage =>
@@ -887,10 +986,44 @@ const createAgentUiStreamBridge = (): AgentUiStreamBridge => {
   }
 }
 
-const createAgentUiLiveSink = (
+const noopAgentRuntimeSnapshotUnsubscribe = (): void => void 0
+
+const subscribeAgentRuntimeSnapshotEvents = ({
+  run,
+  runtimeState
+}: {
+  run: AgentRun
+  runtimeState?: AgentPhaseRuntimeState
+}): (() => void) => {
+  if (!runtimeState) {
+    return noopAgentRuntimeSnapshotUnsubscribe
+  }
+
+  return runtimeState.subscribe(async (snapshot) => {
+    await run.appendEvent({
+      payload: {
+        phase: snapshot.phase
+      },
+      type: "agent_runtime_snapshot_created"
+    })
+  })
+}
+
+const createAgentUiLiveSink = ({
+  onSnapshot,
+  stream
+}: {
+  onSnapshot?: (parts: UIMessage["parts"]) => void
   stream: AgentUiStreamBridge
-): AgentUiLiveSink => {
+}): AgentUiLiveSink => {
   let activeTextId: string | null = null
+  let activeTextPartIndex: null | number = null
+  const parts: UIMessage["parts"] = []
+  const toolPartIndexes = new Map<string, number>()
+
+  const emitSnapshot = (): void => {
+    onSnapshot?.([...parts])
+  }
 
   const ensureTextId = (): string => {
     if (activeTextId) {
@@ -898,6 +1031,11 @@ const createAgentUiLiveSink = (
     }
 
     activeTextId = `agent-text-${randomUUID()}`
+    activeTextPartIndex = parts.length
+    parts.push({
+      text: "",
+      type: "text"
+    } as UIMessage["parts"][number])
     stream.write({
       id: activeTextId,
       type: "text-start"
@@ -916,55 +1054,113 @@ const createAgentUiLiveSink = (
       type: "text-end"
     } as AgentUiStreamChunk)
     activeTextId = null
+    activeTextPartIndex = null
+  }
+
+  const upsertToolSnapshotPart = (
+    toolCall: AgentLoopToolCall
+  ): Record<string, unknown> => {
+    const existingIndex = toolPartIndexes.get(toolCall.toolCallId)
+    const existingPart =
+      existingIndex === undefined ? undefined : parts[existingIndex]
+
+    if (isRecord(existingPart) && existingPart.type === "dynamic-tool") {
+      existingPart.input = toolCall.input
+      existingPart.toolName = toolCall.toolName
+
+      return existingPart
+    }
+
+    const part = {
+      input: toolCall.input,
+      state: "input-available",
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      type: "dynamic-tool"
+    }
+    const partIndex = parts.length
+
+    parts.push(part as UIMessage["parts"][number])
+    toolPartIndexes.set(toolCall.toolCallId, partIndex)
+
+    return part
   }
 
   return {
     finishText,
     writeApprovalRequest: ({ approvalId, toolCall }) => {
       finishText()
+      const toolPart = upsertToolSnapshotPart(toolCall)
+
+      toolPart.approval = {
+        id: approvalId
+      }
+      toolPart.state = "approval-requested"
       stream.write({
         approvalId,
         toolCallId: toolCall.toolCallId,
         type: "tool-approval-request"
       } as AgentUiStreamChunk)
+      emitSnapshot()
     },
     writeTextDelta: (text) => {
       if (text.length === 0) {
         return
       }
 
+      const textId = ensureTextId()
+      const activePart: unknown =
+        activeTextPartIndex === null ? undefined : parts[activeTextPartIndex]
+      const activePartRecord = isRecord(activePart) ? activePart : null
+
+      if (activePartRecord && typeof activePartRecord.text === "string") {
+        activePartRecord.text += text
+      }
+
       stream.write({
         delta: text,
-        id: ensureTextId(),
+        id: textId,
         type: "text-delta"
       } as AgentUiStreamChunk)
+      emitSnapshot()
     },
     writeToolCall: (toolCall) => {
       finishText()
+      const toolPart = upsertToolSnapshotPart(toolCall)
+
+      toolPart.state = "input-available"
       stream.write({
         input: toolCall.input,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
         type: "tool-input-available"
       } as AgentUiStreamChunk)
+      emitSnapshot()
     },
     writeToolResult: ({ isError, output, toolCall }) => {
       finishText()
+      const toolPart = upsertToolSnapshotPart(toolCall)
 
       if (isError) {
+        toolPart.errorText = getToolRetryErrorMessage(output)
+        toolPart.state = "output-error"
         stream.write({
           errorText: getToolRetryErrorMessage(output),
           toolCallId: toolCall.toolCallId,
           type: "tool-output-error"
         } as AgentUiStreamChunk)
+        emitSnapshot()
         return
       }
 
+      toolPart.output = output
+      toolPart.state = "output-available"
       stream.write({
         output,
         toolCallId: toolCall.toolCallId,
         type: "tool-output-available"
       } as AgentUiStreamChunk)
+      emitSnapshot()
     }
   }
 }
@@ -1011,7 +1207,13 @@ const writeToolMessageToLiveSink = ({
 
 const createMainLoopStreamResult = (
   execution: Promise<MainAgentLoopExecutionResult>,
-  liveStream?: AgentUiStreamBridge
+  {
+    agentRunId,
+    liveStream
+  }: {
+    agentRunId: string
+    liveStream?: AgentUiStreamBridge
+  }
 ): AgentChatStreamResult => {
   void (async () => {
     try {
@@ -1024,6 +1226,7 @@ const createMainLoopStreamResult = (
   })()
 
   return {
+    agentRunId,
     consumeStream: async (options) => {
       try {
         await execution
@@ -1664,6 +1867,66 @@ const getMainLoopToolNeedsApproval = async ({
   )
 }
 
+const runExtensionBeforeToolCall = async ({
+  context,
+  hooks,
+  toolCall
+}: {
+  context: {
+    messages: readonly AgentLoopMessage[]
+    toolCall: AgentLoopToolCall
+  }
+  hooks: AgentExtensionToolHooks | undefined
+  toolCall: AgentLoopToolCall
+}): Promise<{
+  result:
+    | Awaited<
+        ReturnType<NonNullable<AgentExtensionToolHooks["beforeToolCall"]>>
+      >
+    | undefined
+  toolCall: AgentLoopToolCall
+}> => {
+  const result = await hooks?.beforeToolCall?.(toolCall, context)
+  const effectiveToolCall =
+    result && "input" in result
+      ? {
+          ...toolCall,
+          input: result.input
+        }
+      : toolCall
+
+  return {
+    result,
+    toolCall: effectiveToolCall
+  }
+}
+
+const applyExtensionAfterToolCall = async ({
+  context,
+  hooks,
+  result
+}: {
+  context: {
+    messages: readonly AgentLoopMessage[]
+    result: AgentLoopExecutedToolResult
+  }
+  hooks: AgentExtensionToolHooks | undefined
+  result: AgentLoopExecutedToolResult
+}): Promise<AgentLoopExecutedToolResult> => {
+  const hookResult = await hooks?.afterToolCall?.(result, context)
+
+  if (!hookResult) {
+    return result
+  }
+
+  return {
+    ...result,
+    isError: hookResult.isError ?? result.isError,
+    output: hookResult.output ?? result.output,
+    terminate: hookResult.terminate ?? result.terminate
+  }
+}
+
 const buildApprovalResponseModelMessages = (
   responseRecords: ToolApprovalResponseRecord[]
 ): ModelMessage[] =>
@@ -1752,48 +2015,6 @@ const mergeResumedModelMessages = ({
   return [...persistedMessages, ...missingRequestMessages]
 }
 
-const buildQueuedSessionModelMessages = (
-  events: readonly AgentEvent[]
-): ModelMessage[] =>
-  listPendingAgentSessionQueuedMessages(events).map(({ message }) => ({
-    content: message,
-    role: "user"
-  }))
-
-const createRunQueuedMessageDrainer = ({
-  db,
-  queue,
-  run
-}: {
-  db: AppDatabase
-  queue: AgentSessionQueuedMessageQueue
-  run: AgentRun
-}): (() => Promise<AgentLoopUserMessage[]>) => {
-  const consumedMessageIds = new Set<string>()
-
-  return async () => {
-    const events = await listAgentEvents({
-      db,
-      runId: run.id
-    })
-    const pendingMessages = listPendingAgentSessionQueuedMessages(events)
-      .filter(
-        (message) =>
-          message.queue === queue && !consumedMessageIds.has(message.id)
-      )
-      .toSorted((left, right) => left.sequence - right.sequence)
-
-    for (const message of pendingMessages) {
-      consumedMessageIds.add(message.id)
-    }
-
-    return pendingMessages.map((message) => ({
-      content: message.message,
-      role: "user"
-    }))
-  }
-}
-
 const loadPersistedAgentSessionContext = async ({
   db,
   run
@@ -1807,10 +2028,8 @@ const loadPersistedAgentSessionContext = async ({
   })
 
   return {
-    messages: convertAgentMessagesToLlm(
-      buildAgentSessionModelContextFromLatestSavePoint(events)
-    ),
-    queuedMessages: buildQueuedSessionModelMessages(events)
+    messages: buildAgentSessionModelMessages(events),
+    queuedMessages: buildAgentSessionQueuedModelMessages(events)
   }
 }
 
@@ -1835,7 +2054,7 @@ const loadLatestCompletedRunQueuedMessages = async ({
     runId: run.id
   })
 
-  return buildQueuedSessionModelMessages(events)
+  return buildAgentSessionQueuedModelMessages(events)
 }
 
 const loadAgentRequestModelMessages = async ({
@@ -2181,7 +2400,9 @@ const createAgentToolLifecycleHandlers = ({
 export const streamAgentChat = async ({
   abortSignal: requestAbortSignal,
   activeToolNames,
+  chatLifecycleBranch,
   db,
+  extensionRunner,
   messages,
   model,
   modelId = null,
@@ -2195,13 +2416,17 @@ export const streamAgentChat = async ({
   systemPrompts
 }: StreamAgentChatOptions): Promise<AgentChatStreamResult> => {
   if (!settings.agents.enabled) {
-    return streamText({
+    const result = streamText({
       abortSignal: requestAbortSignal,
       ...(systemPrompts.length > 0
         ? { system: systemPrompts.join("\n\n") }
         : {}),
       messages,
       model
+    })
+
+    return Object.assign(result, {
+      agentRunId: null
     })
   }
 
@@ -2220,6 +2445,17 @@ export const streamAgentChat = async ({
     ...settings.agents,
     defaultProfileId: profile.id
   }
+  const effectiveStreamHooks = mergeAgentStreamHooks(
+    streamHooks,
+    extensionRunner?.getStreamHooks({
+      profileId: profile.id,
+      skillCapabilities
+    })
+  )
+  const extensionToolHooks = extensionRunner?.getToolHooks({
+    profileId: profile.id,
+    skillCapabilities
+  })
   const run =
     resumedRun ??
     (await createAgentRun({
@@ -2229,10 +2465,8 @@ export const streamAgentChat = async ({
       profileId: profile.id
     }))
   const runAbortController = new AbortController()
-  const agentAbortSignal = createCombinedAbortSignal([
-    requestAbortSignal,
-    runAbortController.signal
-  ])
+  const agentAbortSignal = runAbortController.signal
+  let unregisterDetachedRequestAbortEvent: (() => void) | null = null
   const unregisterActiveAgentRun = registerActiveAgentRun({
     abortController: runAbortController,
     runId: run.id,
@@ -2247,6 +2481,17 @@ export const streamAgentChat = async ({
     profileId
   }) => {
     const childProfile = resolveActiveAgentProfile(settings.agents, profileId)
+    const childStreamHooks = mergeAgentStreamHooks(
+      streamHooks,
+      extensionRunner?.getStreamHooks({
+        profileId: childProfile.id,
+        skillCapabilities
+      })
+    )
+    const childExtensionToolHooks = extensionRunner?.getToolHooks({
+      profileId: childProfile.id,
+      skillCapabilities
+    })
 
     if (childProfile.id !== profileId) {
       return {
@@ -2295,6 +2540,7 @@ export const streamAgentChat = async ({
       eventSink: async (event) => {
         await childRun.appendEvent(event)
       },
+      extensionRunner,
       includeApprovalTools,
       memorySettings: settings.memory,
       projectPath,
@@ -2317,15 +2563,15 @@ export const streamAgentChat = async ({
       },
       type: "subagent_started"
     })
-    await childRun.appendEvent({
-      payload: {
+    await startAgentRun({
+      metadata: {
         parentRunId: run.id,
         parentToolCallId,
-        profileId: childProfile.id,
         task: input.task,
         toolNames: childToolNames
       },
-      type: "agent_run_started"
+      run: childRun,
+      source: "delegation"
     })
 
     try {
@@ -2365,7 +2611,7 @@ export const streamAgentChat = async ({
         tools: childTools
       })
       const preparedChildProviderRequest = await prepareAgentStreamRequest({
-        hooks: streamHooks,
+        hooks: childStreamHooks,
         payload: {
           messages: childTurnState.messages,
           modelId: childTurnState.model,
@@ -2393,44 +2639,131 @@ export const streamAgentChat = async ({
         fallbackSystemPrompt: childSystemPrompt,
         payload: preparedChildProviderRequest.payload
       })
+      const childSessionModelCommitter =
+        createAgentSessionModelMessageCommitter({
+          run: childRun
+        })
 
-      await appendAgentSessionModelMessageEvents({
-        messages: childPreparedMessages,
-        run: childRun
-      })
+      await childSessionModelCommitter.commit(childPreparedMessages)
       await appendAgentSessionSavePointEvent({
         label: "provider-request-prepared",
         messages: childPreparedMessages,
         run: childRun
       })
 
-      const result = await generateText({
-        abortSignal,
-        experimental_onToolCallFinish: childLifecycleHandlers.onToolCallFinish,
-        experimental_onToolCallStart: childLifecycleHandlers.onToolCallStart,
-        experimental_context:
-          preparedChildProviderRequest.requestOptions.metadata,
+      const childInitialLoopMessages = convertModelMessagesToAgentLoopMessages(
+        childPreparedMessages
+      )
+      const childLoopModel = createAiSdkAgentLoopModel({
         headers: preparedChildProviderRequest.requestOptions.headers,
-        messages: childPreparedMessages,
+        metadata: preparedChildProviderRequest.requestOptions.metadata,
+        mode: "generate",
         model,
-        stopWhen: stepCountIs(childSettings.maxSteps),
         system: childPreparedSystemPrompt,
         tools: childTools
       })
-      const summary = clampDelegationSummary(
-        sanitizeDelegationSummary(result.text)
+      const childRuntimeAgent = createAgent({
+        abortSignal,
+        activeToolNames: childToolNames,
+        afterToolCall: async (result, context) => {
+          const effectiveResult = await applyExtensionAfterToolCall({
+            context,
+            hooks: childExtensionToolHooks,
+            result
+          })
+          const toolError = effectiveResult.isError
+            ? toAgentRuntimeError({
+                cause: effectiveResult.output,
+                code: "tool"
+              })
+            : null
+
+          await childLifecycleHandlers.onToolCallFinish({
+            ...(toolError
+              ? { error: toolError }
+              : { output: effectiveResult.output }),
+            success: !effectiveResult.isError,
+            toolCall: effectiveResult.toolCall
+          })
+
+          return {
+            isError: effectiveResult.isError,
+            output: effectiveResult.output,
+            terminate: effectiveResult.terminate
+          }
+        },
+        beforeToolCall: async (toolCall, context) => {
+          const extensionResult = await runExtensionBeforeToolCall({
+            context,
+            hooks: childExtensionToolHooks,
+            toolCall
+          })
+
+          if (
+            extensionResult.result?.block ||
+            extensionResult.result?.suspend
+          ) {
+            return extensionResult.result
+          }
+
+          await childLifecycleHandlers.onToolCallStart({
+            toolCall: extensionResult.toolCall
+          })
+
+          return extensionResult.result ?? {}
+        },
+        maxTurns: childSettings.maxSteps,
+        messages: childInitialLoopMessages,
+        model: childLoopModel,
+        onEvent: async (event) => {
+          await childRun.appendEvent({
+            payload: {
+              event
+            },
+            type: "agent_loop_event"
+          })
+        },
+        toolRetry: createAgentLoopToolRetryPolicy(childSettings.retry),
+        tools: createAiSdkAgentLoopTools({
+          metadata: preparedChildProviderRequest.requestOptions.metadata,
+          tools: childTools
+        })
+      })
+      const childLoopResult = await childRuntimeAgent.continue()
+      const childLoopResponseMessages = childLoopResult.messages.slice(
+        childInitialLoopMessages.length
+      )
+      const childResponseMessages = convertAgentLoopMessagesToModelMessages(
+        childLoopResponseMessages
+      )
+      const childFailureMessage = getMainLoopFailureMessage(
+        childLoopResult.stopReason
       )
 
+      if (childFailureMessage) {
+        throw new AgentRuntimeError("provider", childFailureMessage)
+      }
+
+      const summary = clampDelegationSummary(
+        sanitizeDelegationSummary(
+          getProviderResponseText({
+            event: {},
+            messages: childResponseMessages
+          })
+        )
+      )
+      const finishReason = toMainLoopFinishReason(childLoopResult.stopReason)
+
       await applyAgentStreamResponseHooks({
-        hooks: streamHooks,
+        hooks: childStreamHooks,
         response: {
-          finishReason: result.finishReason,
+          finishReason,
           parentRunId: run.id,
           parentToolCallId,
           profileId: childProfile.id,
           runId: childRun.id,
           status: "succeeded",
-          usage: result.usage
+          usage: null
         }
       })
 
@@ -2441,8 +2774,8 @@ export const streamAgentChat = async ({
       })
       await childRun.appendEvent({
         payload: {
-          finishReason: result.finishReason,
-          usage: result.usage
+          finishReason,
+          usage: null
         },
         type: "agent_run_finished"
       })
@@ -2510,6 +2843,7 @@ export const streamAgentChat = async ({
         await run.appendEvent(event)
       },
       executeDelegation,
+      extensionRunner,
       memorySettings: settings.memory,
       projectPath,
       settings: runtimeAgentSettings,
@@ -2533,13 +2867,24 @@ export const streamAgentChat = async ({
         id: run.id,
         status: "running"
       })
-    : run.appendEvent({
-        payload: {
-          profileId: profile.id,
+    : startAgentRun({
+        metadata: {
           toolNames
         },
-        type: "agent_run_started"
+        run,
+        source: "chat"
       }))
+  unregisterDetachedRequestAbortEvent = registerDetachedRequestAbortEvent({
+    requestAbortSignal,
+    run
+  })
+
+  if (!resumedRun && chatLifecycleBranch) {
+    await appendAgentSessionChatBranchEvent({
+      ...chatLifecycleBranch,
+      run
+    })
+  }
 
   await recordToolApprovalResponses({
     db,
@@ -2551,6 +2896,7 @@ export const streamAgentChat = async ({
     const finishReason: FinishReason = "stop"
 
     unregisterActiveAgentRun()
+    unregisterDetachedRequestAbortEvent?.()
     await updateAgentRun({
       db,
       id: run.id,
@@ -2567,7 +2913,7 @@ export const streamAgentChat = async ({
       finishReason,
       runId: run.id,
       status: "succeeded",
-      streamHooks,
+      streamHooks: effectiveStreamHooks,
       usage: null
     })
 
@@ -2577,7 +2923,10 @@ export const streamAgentChat = async ({
         generatedMessages: [],
         status: "succeeded",
         text: ""
-      })
+      }),
+      {
+        agentRunId: run.id
+      }
     )
   }
 
@@ -2594,7 +2943,18 @@ export const streamAgentChat = async ({
     run,
     state: runtimeState
   })
-  const phaseHandle = phaseRuntimeState?.beginPhase("turn")
+  const unsubscribeRuntimeSnapshotEvents = subscribeAgentRuntimeSnapshotEvents({
+    run,
+    runtimeState: phaseRuntimeState
+  })
+  let phaseHandle: AgentRuntimePhaseHandle | undefined
+
+  try {
+    phaseHandle = phaseRuntimeState?.beginPhase("turn")
+  } catch (error) {
+    unsubscribeRuntimeSnapshotEvents()
+    throw error
+  }
   const systemPrompt = [
     profile.instructions,
     buildAgentSystemPrompt({
@@ -2627,7 +2987,7 @@ export const streamAgentChat = async ({
       })
 
       return await prepareAgentStreamRequest({
-        hooks: streamHooks,
+        hooks: effectiveStreamHooks,
         payload: {
           messages: turnState.messages,
           modelId: turnState.model,
@@ -2652,6 +3012,8 @@ export const streamAgentChat = async ({
         run
       })
       phaseHandle?.end()
+      await phaseRuntimeState?.waitForIdle()
+      unsubscribeRuntimeSnapshotEvents()
       unregisterActiveAgentRun()
       throw error
     }
@@ -2664,16 +3026,20 @@ export const streamAgentChat = async ({
     fallbackSystemPrompt: systemPrompt,
     payload: preparedProviderRequest.payload
   })
+  const sessionModelCommitter = createAgentSessionModelMessageCommitter({
+    initialMessages: persistedSessionContext.messages,
+    run
+  })
   const liveStream = createAgentUiStreamBridge()
-  const liveSink = createAgentUiLiveSink(liveStream)
+  const snapshotSink = createAgentUiStreamSnapshotSink(run)
+  const liveSink = createAgentUiLiveSink({
+    onSnapshot: snapshotSink.write,
+    stream: liveStream
+  })
 
   const execution = (async (): Promise<MainAgentLoopExecutionResult> => {
     try {
-      await appendAgentSessionModelMessageEvents({
-        existingMessages: persistedSessionContext.messages,
-        messages: preparedMessages,
-        run
-      })
+      await sessionModelCommitter.commit(preparedMessages)
       await appendAgentSessionSavePointEvent({
         label: "provider-request-prepared",
         messages: preparedMessages,
@@ -2719,48 +3085,80 @@ export const streamAgentChat = async ({
         system: preparedSystemPrompt,
         tools: agentTools
       })
-      const drainQueuedFollowUpMessages = createRunQueuedMessageDrainer({
-        db,
-        queue: "follow-up",
-        run
-      })
-      const drainQueuedSteeringMessages = createRunQueuedMessageDrainer({
-        db,
-        queue: "steer",
-        run
-      })
-      const loopResult = await runAgentLoop({
+      const drainQueuedFollowUpMessages =
+        createAgentSessionQueuedMessageDrainer({
+          listEvents: () =>
+            listAgentEvents({
+              db,
+              runId: run.id
+            }),
+          queue: "follow-up"
+        })
+      const drainQueuedSteeringMessages =
+        createAgentSessionQueuedMessageDrainer({
+          listEvents: () =>
+            listAgentEvents({
+              db,
+              runId: run.id
+            }),
+          queue: "steer"
+        })
+      const runtimeAgent = createAgent({
         abortSignal: agentAbortSignal,
         activeToolNames: toolNames,
-        afterToolCall: async (result: AgentLoopExecutedToolResult) => {
-          const toolError = result.isError
+        afterToolCall: async (result, context) => {
+          const effectiveResult = await applyExtensionAfterToolCall({
+            context,
+            hooks: extensionToolHooks,
+            result
+          })
+          const toolError = effectiveResult.isError
             ? toAgentRuntimeError({
-                cause: result.output,
+                cause: effectiveResult.output,
                 code: "tool"
               })
             : null
 
           await lifecycleHandlers.onToolCallFinish({
-            ...(toolError ? { error: toolError } : { output: result.output }),
-            success: !result.isError,
-            toolCall: result.toolCall
+            ...(toolError
+              ? { error: toolError }
+              : { output: effectiveResult.output }),
+            success: !effectiveResult.isError,
+            toolCall: effectiveResult.toolCall
           })
           liveSink.writeToolResult({
-            isError: result.isError,
-            output: result.output,
-            toolCall: result.toolCall
+            isError: effectiveResult.isError,
+            output: effectiveResult.output,
+            toolCall: effectiveResult.toolCall
           })
 
-          return {}
+          return {
+            isError: effectiveResult.isError,
+            output: effectiveResult.output,
+            terminate: effectiveResult.terminate
+          }
         },
         beforeToolCall: async (toolCall, context) => {
+          const extensionResult = await runExtensionBeforeToolCall({
+            context,
+            hooks: extensionToolHooks,
+            toolCall
+          })
+
+          if (
+            extensionResult.result?.block ||
+            extensionResult.result?.suspend
+          ) {
+            return extensionResult.result
+          }
+
           if (
             await getMainLoopToolNeedsApproval({
-              input: toolCall.input,
+              input: extensionResult.toolCall.input,
               messages: context.messages,
               metadata: preparedProviderRequest.requestOptions.metadata,
-              toolCallId: toolCall.toolCallId,
-              toolName: toolCall.toolName,
+              toolCallId: extensionResult.toolCall.toolCallId,
+              toolName: extensionResult.toolCall.toolName,
               tools: agentTools
             })
           ) {
@@ -2768,35 +3166,35 @@ export const streamAgentChat = async ({
 
             pendingApprovalRequests.push({
               approvalId,
-              toolCall
+              toolCall: extensionResult.toolCall
             })
             liveSink.writeApprovalRequest({
               approvalId,
-              toolCall
+              toolCall: extensionResult.toolCall
             })
             await onStepFinish({
               content: [
                 {
                   approvalId,
-                  input: toolCall.input,
-                  toolCallId: toolCall.toolCallId,
-                  toolName: toolCall.toolName,
+                  input: extensionResult.toolCall.input,
+                  toolCallId: extensionResult.toolCall.toolCallId,
+                  toolName: extensionResult.toolCall.toolName,
                   type: "tool-approval-request"
                 }
               ]
             })
 
             return {
-              reason: `${toolCall.toolName} requires approval before execution.`,
+              reason: `${extensionResult.toolCall.toolName} requires approval before execution.`,
               suspend: true
             }
           }
 
           await lifecycleHandlers.onToolCallStart({
-            toolCall
+            toolCall: extensionResult.toolCall
           })
 
-          return {}
+          return extensionResult.result ?? {}
         },
         getFollowUpMessages: drainQueuedFollowUpMessages,
         getSteeringMessages: drainQueuedSteeringMessages,
@@ -2817,6 +3215,7 @@ export const streamAgentChat = async ({
           tools: agentTools
         })
       })
+      const loopResult = await runtimeAgent.continue()
       const loopResponseMessages = loopResult.messages.slice(
         initialLoopMessages.length
       )
@@ -2845,10 +3244,10 @@ export const streamAgentChat = async ({
         : toMainLoopRunStatus(loopResult.stopReason)
       const failureMessage = getMainLoopFailureMessage(loopResult.stopReason)
 
-      await appendAgentSessionModelMessageEvents({
-        messages: generatedMessages,
-        run
-      })
+      await sessionModelCommitter.commit([
+        ...preparedMessages,
+        ...generatedMessages
+      ])
       await appendPlanModeSessionEvents({
         executionMode: profile.executionMode,
         responseText: providerResponseText,
@@ -2884,7 +3283,7 @@ export const streamAgentChat = async ({
         finishReason,
         runId: run.id,
         status,
-        streamHooks,
+        streamHooks: effectiveStreamHooks,
         usage: null
       })
 
@@ -2909,10 +3308,17 @@ export const streamAgentChat = async ({
       throw runtimeError
     } finally {
       phaseHandle?.end()
+      await phaseRuntimeState?.waitForIdle()
+      unsubscribeRuntimeSnapshotEvents()
+      await snapshotSink.flush()
       liveSink.finishText()
       unregisterActiveAgentRun()
+      unregisterDetachedRequestAbortEvent?.()
     }
   })()
 
-  return createMainLoopStreamResult(execution, liveStream)
+  return createMainLoopStreamResult(execution, {
+    agentRunId: run.id,
+    liveStream
+  })
 }

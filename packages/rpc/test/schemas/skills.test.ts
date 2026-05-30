@@ -21,7 +21,15 @@ describe("skills schemas", () => {
         {
           body: "Use project conventions.",
           capabilities: ["tools"],
+          commands: [
+            {
+              description: "Review the current diff.",
+              flags: ["--strict"],
+              name: "review"
+            }
+          ],
           description: "Use when editing this project.",
+          extensions: ["./agent-extension.mjs"],
           name: "project-skill",
           path: "/tmp/project/.agents/skills/project-skill/SKILL.md",
           projectPath: "/tmp/project",
@@ -46,6 +54,20 @@ describe("skills schemas", () => {
     ])
     expect(output.skills.map((skill) => skill.capabilities)).toEqual([
       ["tools"],
+      []
+    ])
+    expect(output.skills.map((skill) => skill.extensions)).toEqual([
+      ["./agent-extension.mjs"],
+      []
+    ])
+    expect(output.skills.map((skill) => skill.commands)).toEqual([
+      [
+        {
+          description: "Review the current diff.",
+          flags: ["--strict"],
+          name: "review"
+        }
+      ],
       []
     ])
   })

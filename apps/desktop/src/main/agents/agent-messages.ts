@@ -5,6 +5,7 @@ export type AgentCustomMessageType =
   | "agent-run-started"
   | "agent-tool-event"
   | "branch-summary"
+  | "chat-branch"
   | "compaction-summary"
   | "follow-up"
   | "plan-mode"

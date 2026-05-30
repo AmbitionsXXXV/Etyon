@@ -4,6 +4,7 @@ import { and, asc, desc, eq, isNull, max, or } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
 import {
+  agentApprovals,
   agentArtifacts,
   agentEvents,
   agentRuns,
@@ -21,15 +22,22 @@ export type AgentEventType =
   | "agent_run_graph_node_started"
   | "agent_run_graph_node_succeeded"
   | "agent_run_graph_node_suspended"
+  | "agent_run_graph_retry_policy_updated"
   | "agent_run_graph_stage_started"
   | "agent_loop_event"
   | "agent_run_failed"
   | "agent_run_finished"
   | "agent_run_started"
+  | "agent_runtime_snapshot_created"
   | "agent_session_entry_appended"
   | "agent_session_save_point_created"
+  | "agent_stream_disconnected"
+  | "agent_ui_stream_snapshot_created"
   | "agent_step_finished"
   | "agent_step_started"
+  | "background_process_finished"
+  | "background_process_output"
+  | "background_process_started"
   | "lsp_diagnostics_collected"
   | "lsp_server_started"
   | "plan_step_completed"
@@ -256,14 +264,6 @@ const getStoredToolCallId = ({
   toolCallId: string
 }): string => `${runId}:${toolCallId}`
 
-const getRunScopedToolCallId = ({
-  runId,
-  toolCallId
-}: {
-  runId: string
-  toolCallId: string
-}): string => `${runId}:${toolCallId}`
-
 const getModelToolCallId = ({
   runId,
   storedId
@@ -294,6 +294,8 @@ const getApprovalRequestPayload = (
     toolCallId: record.toolCallId
   }
 }
+
+const getApprovalEventPayload = getApprovalRequestPayload
 
 const toAgentEvent = (row: typeof agentEvents.$inferSelect): AgentEvent => ({
   createdAt: row.createdAt,
@@ -357,25 +359,23 @@ const toAgentToolCall = (
   toolName: row.toolName
 })
 
-const toPendingAgentApproval = (
-  row: {
-    chatSessionId: string
-    errorMessage: string | null
-    finishedAt: string | null
-    id: string
-    inputJson: string
-    outputJson: string | null
-    parentToolCallId: string | null
-    profileId: string
-    runId: string
-    runStatus: AgentRun["status"]
-    startedAt: string
-    state: AgentToolCall["state"]
-    toolName: string
-  },
+const toPendingAgentApproval = (row: {
   approvalId: string | null
-): PendingAgentApproval => ({
-  approvalId,
+  chatSessionId: string
+  errorMessage: string | null
+  finishedAt: string | null
+  id: string
+  inputJson: string
+  outputJson: string | null
+  parentToolCallId: string | null
+  profileId: string
+  runId: string
+  runStatus: AgentRun["status"]
+  startedAt: string
+  state: AgentToolCall["state"]
+  toolName: string
+}): PendingAgentApproval => ({
+  approvalId: row.approvalId,
   approvalState: "pending",
   chatSessionId: row.chatSessionId,
   errorMessage: row.errorMessage,
@@ -395,55 +395,120 @@ const toPendingAgentApproval = (
   toolName: row.toolName
 })
 
-const listApprovalRequestEventsByRunId = async ({
+const upsertAgentApprovalRequest = async ({
   db,
-  runId
+  payload,
+  runId,
+  timestamp
 }: {
   db: AppDatabase
+  payload: unknown
   runId: string
-}): Promise<(typeof agentEvents.$inferSelect)[]> =>
-  await db
-    .select()
-    .from(agentEvents)
-    .where(
-      and(
-        eq(agentEvents.runId, runId),
-        eq(agentEvents.type, "tool_call_approval_requested")
-      )
-    )
+  timestamp: string
+}): Promise<void> => {
+  const approval = getApprovalEventPayload(payload)
 
-const getApprovalIdsByToolCallId = async ({
-  db,
-  runIds
-}: {
-  db: AppDatabase
-  runIds: string[]
-}): Promise<Map<string, string>> => {
-  const approvalIds = new Map<string, string>()
-  const uniqueRunIds = [...new Set(runIds)]
-
-  for (const runId of uniqueRunIds) {
-    const events = await listApprovalRequestEventsByRunId({
-      db,
-      runId
-    })
-
-    for (const event of events) {
-      const payload = getApprovalRequestPayload(parseJson(event.payloadJson))
-
-      if (payload) {
-        approvalIds.set(
-          getRunScopedToolCallId({
-            runId,
-            toolCallId: payload.toolCallId
-          }),
-          payload.approvalId
-        )
-      }
-    }
+  if (!approval) {
+    return
   }
 
-  return approvalIds
+  const toolCallRowId = getStoredToolCallId({
+    runId,
+    toolCallId: approval.toolCallId
+  })
+  const [existingRow] = await db
+    .select({
+      id: agentApprovals.id
+    })
+    .from(agentApprovals)
+    .where(eq(agentApprovals.id, approval.approvalId))
+    .limit(1)
+
+  if (existingRow) {
+    await db
+      .update(agentApprovals)
+      .set({
+        respondedAt: null,
+        responseJson: null,
+        runId,
+        state: "pending",
+        toolCallId: approval.toolCallId,
+        toolCallRowId
+      })
+      .where(eq(agentApprovals.id, approval.approvalId))
+    return
+  }
+
+  await db.insert(agentApprovals).values({
+    createdAt: timestamp,
+    id: approval.approvalId,
+    respondedAt: null,
+    responseJson: null,
+    runId,
+    state: "pending",
+    toolCallId: approval.toolCallId,
+    toolCallRowId
+  })
+}
+
+const updateAgentApprovalResponse = async ({
+  db,
+  payload,
+  state,
+  timestamp
+}: {
+  db: AppDatabase
+  payload: unknown
+  state: "approved" | "denied"
+  timestamp: string
+}): Promise<void> => {
+  const approval = getApprovalEventPayload(payload)
+
+  if (!approval) {
+    return
+  }
+
+  await db
+    .update(agentApprovals)
+    .set({
+      respondedAt: timestamp,
+      responseJson: serializeJson(payload),
+      state
+    })
+    .where(eq(agentApprovals.id, approval.approvalId))
+}
+
+const syncAgentApprovalProjection = async ({
+  db,
+  payload,
+  runId,
+  timestamp,
+  type
+}: {
+  db: AppDatabase
+  payload: unknown
+  runId: string
+  timestamp: string
+  type: AgentEventType
+}): Promise<void> => {
+  if (type === "tool_call_approval_requested") {
+    await upsertAgentApprovalRequest({
+      db,
+      payload,
+      runId,
+      timestamp
+    })
+    return
+  }
+
+  if (type === "tool_call_approved" || type === "tool_call_denied") {
+    await updateAgentApprovalResponse({
+      db,
+      payload,
+      state: type === "tool_call_approved" ? "approved" : "denied",
+      timestamp
+    })
+  }
 }
 
 const findAgentToolCallRow = async ({
@@ -540,10 +605,11 @@ const appendAgentEventNow = async ({
   runId: string
 }): Promise<AgentEvent> => {
   const sequence = await getNextEventSequence(db, runId)
+  const createdAt = getNowIsoString()
   const [row] = await db
     .insert(agentEvents)
     .values({
-      createdAt: getNowIsoString(),
+      createdAt,
       id: randomUUID(),
       payloadJson: serializeJson(payload),
       runId,
@@ -555,6 +621,14 @@ const appendAgentEventNow = async ({
   if (!row) {
     throw new Error("Failed to append agent event.")
   }
+
+  await syncAgentApprovalProjection({
+    db,
+    payload,
+    runId,
+    timestamp: createdAt,
+    type
+  })
 
   const event = toAgentEvent(row)
   const [runOwner] = await db
@@ -838,9 +912,12 @@ export const getAgentRunForToolApproval = async ({
   toolCallId
 }: GetAgentRunForToolApprovalOptions): Promise<AgentRun | null> => {
   const conditions = [
+    eq(agentApprovals.id, approvalId),
     ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : []),
+    ...(toolCallId ? [eq(agentApprovals.toolCallId, toolCallId)] : []),
     ...(pendingApprovalOnly
       ? [
+          eq(agentApprovals.state, "pending"),
           eq(agentToolCalls.approvalState, "pending"),
           eq(agentToolCalls.state, "approval_requested"),
           or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
@@ -860,31 +937,15 @@ export const getAgentRunForToolApproval = async ({
       status: agentRuns.status,
       storedToolCallId: agentToolCalls.id
     })
-    .from(agentToolCalls)
+    .from(agentApprovals)
+    .innerJoin(
+      agentToolCalls,
+      eq(agentApprovals.toolCallRowId, agentToolCalls.id)
+    )
     .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
-  const rows =
-    conditions.length > 0 ? await query.where(and(...conditions)) : await query
-  const approvalIdsByToolCallId = await getApprovalIdsByToolCallId({
-    db,
-    runIds: rows.map((row) => row.id)
-  })
-  const row = rows.find((candidate) => {
-    const modelToolCallId = getModelToolCallId({
-      runId: candidate.id,
-      storedId: candidate.storedToolCallId
-    })
-
-    if (toolCallId && modelToolCallId !== toolCallId) {
-      return false
-    }
-
-    const scopedToolCallId = getRunScopedToolCallId({
-      runId: candidate.id,
-      toolCallId: modelToolCallId
-    })
-
-    return approvalIdsByToolCallId.get(scopedToolCallId) === approvalId
-  })
+    .where(and(...conditions))
+    .limit(1)
+  const [row] = await query
 
   return row ? toAgentRun(db, row) : null
 }
@@ -895,6 +956,7 @@ export const listPendingAgentApprovals = async ({
 }: ListPendingAgentApprovalsOptions): Promise<PendingAgentApproval[]> => {
   const rows = await db
     .select({
+      approvalId: agentApprovals.id,
       chatSessionId: agentRuns.chatSessionId,
       errorMessage: agentToolCalls.errorMessage,
       finishedAt: agentToolCalls.finishedAt,
@@ -909,10 +971,15 @@ export const listPendingAgentApprovals = async ({
       state: agentToolCalls.state,
       toolName: agentToolCalls.toolName
     })
-    .from(agentToolCalls)
+    .from(agentApprovals)
+    .innerJoin(
+      agentToolCalls,
+      eq(agentApprovals.toolCallRowId, agentToolCalls.id)
+    )
     .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
     .where(
       and(
+        eq(agentApprovals.state, "pending"),
         eq(agentToolCalls.approvalState, "pending"),
         eq(agentToolCalls.state, "approval_requested"),
         or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended")),
@@ -921,27 +988,7 @@ export const listPendingAgentApprovals = async ({
     )
     .orderBy(asc(agentToolCalls.startedAt))
 
-  const approvalIdsByToolCallId = await getApprovalIdsByToolCallId({
-    db,
-    runIds: rows.map((row) => row.runId)
-  })
-
-  return rows.map((row) => {
-    const toolCallId = getModelToolCallId({
-      runId: row.runId,
-      storedId: row.id
-    })
-
-    return toPendingAgentApproval(
-      row,
-      approvalIdsByToolCallId.get(
-        getRunScopedToolCallId({
-          runId: row.runId,
-          toolCallId
-        })
-      ) ?? null
-    )
-  })
+  return rows.map(toPendingAgentApproval)
 }
 
 export const listRecoverableAgentRuns = async ({

@@ -11,6 +11,37 @@ const parseExistingMetadata = (
   return metadata
 }
 
+export const attachAgentProjectionToAssistantMessages = <
+  MESSAGE extends { metadata?: unknown; role: string }
+>(
+  messages: MESSAGE[],
+  {
+    runId,
+    startIndex = 0
+  }: {
+    runId: string
+    startIndex?: number
+  }
+): MESSAGE[] =>
+  messages.map((message, index) => {
+    if (message.role !== "assistant" || index < startIndex) {
+      return message
+    }
+
+    const metadata = parseExistingMetadata(message.metadata)
+
+    return {
+      ...message,
+      metadata: {
+        ...metadata,
+        agentProjection: {
+          runId,
+          source: "agent_events"
+        }
+      }
+    }
+  })
+
 export const attachWorkTimeToLatestAssistantMessage = <
   MESSAGE extends { metadata?: unknown; role: string }
 >(

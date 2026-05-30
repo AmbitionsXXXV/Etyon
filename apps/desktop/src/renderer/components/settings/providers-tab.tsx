@@ -249,6 +249,7 @@ const ProviderRailItem = ({
 
   return (
     <button
+      aria-label={name}
       className={cn(
         "flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition-colors",
         isActive

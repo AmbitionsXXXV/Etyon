@@ -11,6 +11,7 @@ import {
   InstantiateAgentRunGraphTemplateOutputSchema,
   ListAgentRunsInputSchema,
   ListAgentRunGraphTemplatesOutputSchema,
+  ListAgentUiStreamSnapshotsInputSchema,
   ListPendingAgentApprovalsInputSchema,
   ListQueuedAgentMessagesInputSchema,
   ListRecoverableAgentRunsInputSchema,
@@ -30,6 +31,10 @@ import {
   RespondAgentRunGraphApprovalOutputSchema,
   RetryAgentRunGraphNodeInputSchema,
   RetryAgentRunGraphNodeOutputSchema,
+  RunAgentRunGraphUntilIdleInputSchema,
+  RunAgentRunGraphUntilIdleOutputSchema,
+  SkipAgentRunGraphNodeInputSchema,
+  SkipAgentRunGraphNodeOutputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -44,6 +49,8 @@ import {
   CursorAuthStatusOutputSchema,
   CursorModelsOutputSchema,
   EnsureProjectSnapshotInputSchema,
+  ExecuteAgentRunGraphNodeInputSchema,
+  ExecuteAgentRunGraphNodeOutputSchema,
   FontListOutputSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
@@ -81,6 +88,9 @@ import {
   StartAgentRunGraphNextStageOutputSchema,
   StopActiveAgentRunInputSchema,
   StopActiveAgentRunOutputSchema,
+  AgentUiStreamSnapshotsOutputSchema,
+  UpdateAgentRunGraphRetryPolicyInputSchema,
+  UpdateAgentRunGraphRetryPolicyOutputSchema,
   SkillsListOutputSchema,
   PromptTemplatesListOutputSchema,
   TelegramTestConnectionInputSchema,
@@ -107,8 +117,9 @@ import {
   listPendingAgentApprovals,
   listRecoverableAgentRuns
 } from "@/main/agents/agent-event-store"
-import type { AgentRun } from "@/main/agents/agent-event-store"
+import type { AgentEvent, AgentRun } from "@/main/agents/agent-event-store"
 import { createAgentKernel } from "@/main/agents/agent-kernel"
+import type { AgentRunGraphUntilIdleResult } from "@/main/agents/agent-kernel"
 import type { AgentRunGraphTemplate } from "@/main/agents/agent-run-graph-templates"
 import {
   appendAgentSessionCompactionSummaryEvent,
@@ -120,7 +131,7 @@ import {
   createAgentSessionQueuedMessageWriter,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
-import { listChatMessages } from "@/main/chat-messages"
+import { listChatMessagesWithAgentProjectionRepair } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
   archiveChatSession,
@@ -233,6 +244,42 @@ const toAgentRunTraceRunOutput = (run: AgentRun) => ({
   status: run.status
 })
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const toAgentUiStreamSnapshotOutput = (event: AgentEvent) => {
+  if (
+    event.type !== "agent_ui_stream_snapshot_created" ||
+    !isRecord(event.payload) ||
+    !Array.isArray(event.payload.parts)
+  ) {
+    return null
+  }
+
+  return {
+    createdAt: event.createdAt,
+    eventId: event.id,
+    parts: event.payload.parts,
+    runId: event.runId,
+    sequence: event.sequence
+  }
+}
+
+const toAgentRunGraphUntilIdleOutput = (
+  result: AgentRunGraphUntilIdleResult
+) => ({
+  childRuns: result.childRuns.map(toAgentRunTraceRunOutput),
+  executedNodeIds: result.executedNodeIds,
+  iterations: result.iterations,
+  plan: result.plan,
+  run: toAgentRunTraceRunOutput(result.rootRun),
+  settledNodeIds: result.settledNodeIds,
+  stage: result.stage,
+  startedNodeIds: result.startedNodeIds,
+  startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput),
+  stopReason: result.stopReason
+})
+
 const agentsInspectRun = rpc
   .input(InspectAgentRunInputSchema)
   .output(InspectAgentRunOutputSchema)
@@ -331,6 +378,54 @@ const agentsListRecoverableRuns = rpc
 
     return {
       runs: runs.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsListUiStreamSnapshots = rpc
+  .input(ListAgentUiStreamSnapshotsInputSchema)
+  .output(AgentUiStreamSnapshotsOutputSchema)
+  .handler(async ({ context, input }) => {
+    const afterSequence = input.afterSequence ?? 0
+    const run = input.runId
+      ? await getAgentRun({
+          chatSessionId: input.sessionId,
+          db: context.db,
+          runId: input.runId
+        })
+      : await getActiveAgentRunForSession({
+          chatSessionId: input.sessionId,
+          db: context.db
+        })
+
+    if (!run) {
+      if (input.runId) {
+        throw new Error(`Agent run not found: ${input.runId}`)
+      }
+
+      return {
+        nextSequence: afterSequence,
+        run: null,
+        snapshots: []
+      }
+    }
+
+    const events = await listAgentEvents({
+      db: context.db,
+      runId: run.id
+    })
+    const latestSequence = events.at(-1)?.sequence ?? 0
+    const snapshots = events
+      .filter((event) => event.sequence > afterSequence)
+      .flatMap((event) => {
+        const snapshot = toAgentUiStreamSnapshotOutput(event)
+
+        return snapshot ? [snapshot] : []
+      })
+
+    return {
+      nextSequence: Math.max(afterSequence, latestSequence),
+      run: toAgentRunTraceRunOutput(run),
+      snapshots
     }
   })
 
@@ -694,6 +789,91 @@ const agentsAdvanceRunGraph = rpc
     }
   })
 
+const agentsExecuteRunGraphNode = rpc
+  .input(ExecuteAgentRunGraphNodeInputSchema)
+  .output(ExecuteAgentRunGraphNodeOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    const rootRun = await getAgentRun({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      runId: input.runId
+    })
+
+    if (!rootRun) {
+      throw new Error(`Agent run not found: ${input.runId}`)
+    }
+
+    const settings = getSettings()
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const result = await kernel.executeRunGraphNodeWithAiSdk({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      memorySettings: settings.memory,
+      model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
+      ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+      projectPath: session.projectPath,
+      rootRunId: rootRun.id
+    })
+
+    return {
+      childRun: toAgentRunTraceRunOutput(result.childRun),
+      nodeId: result.nodeId,
+      plan: result.plan,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      settledNodeIds: result.settledNodeIds,
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput),
+      stopReason: result.stopReason,
+      turns: result.turns
+    }
+  })
+
+const agentsRunGraphUntilIdle = rpc
+  .input(RunAgentRunGraphUntilIdleInputSchema)
+  .output(RunAgentRunGraphUntilIdleOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    const rootRun = await getAgentRun({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      runId: input.runId
+    })
+
+    if (!rootRun) {
+      throw new Error(`Agent run not found: ${input.runId}`)
+    }
+
+    const settings = getSettings()
+    const kernel = createAgentKernel({
+      settings: settings.agents
+    })
+    const result = await kernel.runGraphUntilIdleWithAiSdk({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      maxIterations: input.maxIterations,
+      memorySettings: settings.memory,
+      model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
+      projectPath: session.projectPath,
+      rootRunId: rootRun.id
+    })
+
+    return toAgentRunGraphUntilIdleOutput(result)
+  })
+
 const agentsRetryRunGraphNode = rpc
   .input(RetryAgentRunGraphNodeInputSchema)
   .output(RetryAgentRunGraphNodeOutputSchema)
@@ -715,6 +895,52 @@ const agentsRetryRunGraphNode = rpc
       stage: result.stage,
       startedNodeIds: result.startedNodeIds,
       startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsSkipRunGraphNode = rpc
+  .input(SkipAgentRunGraphNodeInputSchema)
+  .output(SkipAgentRunGraphNodeOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const result = await kernel.skipRunGraphNode({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      nodeId: input.nodeId,
+      reason: input.reason,
+      rootRunId: input.runId
+    })
+
+    return {
+      plan: result.plan,
+      run: toAgentRunTraceRunOutput(result.rootRun),
+      skippedNodeId: result.skippedNodeId,
+      stage: result.stage,
+      startedNodeIds: result.startedNodeIds,
+      startedRuns: result.startedRuns.map(toAgentRunTraceRunOutput)
+    }
+  })
+
+const agentsUpdateRunGraphRetryPolicy = rpc
+  .input(UpdateAgentRunGraphRetryPolicyInputSchema)
+  .output(UpdateAgentRunGraphRetryPolicyOutputSchema)
+  .handler(async ({ context, input }) => {
+    const kernel = createAgentKernel({
+      settings: getSettings().agents
+    })
+    const result = await kernel.updateRunGraphRetryPolicy({
+      chatSessionId: input.sessionId,
+      db: context.db,
+      retryPolicy: input.retryPolicy,
+      rootRunId: input.runId
+    })
+
+    return {
+      plan: result.plan,
+      retryPolicy: result.retryPolicy,
+      run: toAgentRunTraceRunOutput(result.rootRun)
     }
   })
 
@@ -754,9 +980,25 @@ const agentsRespondToRunGraphApproval = rpc
       rootRunId: rootRun.id,
       toolCallId: input.toolCallId
     })
+    const continuedGraph =
+      input.continueUntilIdle && result.stopReason !== "suspended"
+        ? await kernel.runGraphUntilIdleWithAiSdk({
+            chatSessionId: input.sessionId,
+            db: context.db,
+            memorySettings: settings.memory,
+            model: resolveModel(
+              rootRun.modelId ?? session.modelId ?? undefined
+            ),
+            projectPath: session.projectPath,
+            rootRunId: rootRun.id
+          })
+        : null
 
     return {
       childRun: toAgentRunTraceRunOutput(result.childRun),
+      ...(continuedGraph
+        ? { continuedGraph: toAgentRunGraphUntilIdleOutput(continuedGraph) }
+        : {}),
       nodeId: result.nodeId,
       plan: result.plan,
       run: toAgentRunTraceRunOutput(result.rootRun),
@@ -991,7 +1233,7 @@ const chatSessionsListMessages = rpc
   .input(ChatSessionMessagesInputSchema)
   .output(ChatSessionMessagesOutputSchema)
   .handler(async ({ context, input }) => ({
-    messages: await listChatMessages({
+    messages: await listChatMessagesWithAgentProjectionRepair({
       db: context.db,
       sessionId: input.sessionId
     }),
@@ -1239,6 +1481,7 @@ export const router = {
   agents: {
     advanceRunGraph: agentsAdvanceRunGraph,
     appendSessionCompactionSummary: agentsAppendSessionCompactionSummary,
+    executeRunGraphNode: agentsExecuteRunGraphNode,
     inspectRun: agentsInspectRun,
     inspectSession: agentsInspectSession,
     instantiateRunGraphTemplate: agentsInstantiateRunGraphTemplate,
@@ -1247,6 +1490,7 @@ export const router = {
     listRecoverableRuns: agentsListRecoverableRuns,
     listRuns: agentsListRuns,
     listRunGraphTemplates: agentsListRunGraphTemplates,
+    listUiStreamSnapshots: agentsListUiStreamSnapshots,
     moveSessionLeaf: agentsMoveSessionLeaf,
     previewRunGraphTemplate: agentsPreviewRunGraphTemplate,
     queueMessage: agentsQueueMessage,
@@ -1255,8 +1499,11 @@ export const router = {
     reorderQueuedMessages: agentsReorderQueuedMessages,
     respondToRunGraphApproval: agentsRespondToRunGraphApproval,
     retryRunGraphNode: agentsRetryRunGraphNode,
+    runGraphUntilIdle: agentsRunGraphUntilIdle,
+    skipRunGraphNode: agentsSkipRunGraphNode,
     startRunGraphNextStage: agentsStartRunGraphNextStage,
     stopActiveRun: agentsStopActiveRun,
+    updateRunGraphRetryPolicy: agentsUpdateRunGraphRetryPolicy,
     updateQueuedMessage: agentsUpdateQueuedMessage
   },
   chatSessions: {

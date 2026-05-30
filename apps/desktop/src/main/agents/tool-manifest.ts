@@ -103,6 +103,20 @@ const AGENT_TOOL_MANIFESTS = {
     riskLevel: "high",
     summary: "Execute a bash command in the current project."
   }),
+  processOutput: createManifest({
+    capabilities: ["sandbox"],
+    id: "processOutput",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Read bounded output from an Etyon-managed background process."
+  }),
+  stopProcess: createManifest({
+    capabilities: ["sandbox"],
+    id: "stopProcess",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Stop an Etyon-managed background process."
+  }),
   edit: createManifest({
     capabilities: ["write-fs"],
     id: "edit",

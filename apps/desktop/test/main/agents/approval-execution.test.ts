@@ -967,7 +967,9 @@ describe("agent approval execution", () => {
       "find",
       "grep",
       "ls",
+      "processOutput",
       "read",
+      "stopProcess",
       "write"
     ])
   })
@@ -1035,7 +1037,17 @@ describe("agent approval execution", () => {
     ])
     expect(
       childGenerateCall?.tools?.map((tool) => tool.name).toSorted()
-    ).toEqual(["bash", "edit", "find", "grep", "ls", "read", "write"])
+    ).toEqual([
+      "bash",
+      "edit",
+      "find",
+      "grep",
+      "ls",
+      "processOutput",
+      "read",
+      "stopProcess",
+      "write"
+    ])
     expect(childPromptJson).toContain("Execute the confirmed plan.")
     expect(childPromptJson).toContain("Plan:\\n1. Update tests")
     expect(await harness.session.listToolCalls()).toEqual([

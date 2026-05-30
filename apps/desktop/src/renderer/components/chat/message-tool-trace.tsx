@@ -588,15 +588,17 @@ const AgentRunGraphPreviewPanel = ({
   )
 }
 
-const AgentChildTracePanel = ({
+export const AgentChildTracePanel = ({
+  defaultExpanded = false,
   runId,
   sessionId
 }: {
+  defaultExpanded?: boolean
   runId: string
   sessionId: string
 }) => {
   const { t } = useI18n()
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const traceQuery = useQuery({
     ...orpc.agents.inspectRun.queryOptions({
       input: {

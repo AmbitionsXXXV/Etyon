@@ -15,7 +15,12 @@ import {
   CODE_AGENT_TOOL_ALIASES,
   ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES
 } from "@/main/agents/code-agent-tool-aliases"
-import { createAgentExecutionEnv } from "@/main/agents/execution-env"
+import {
+  createAgentBackgroundProcessStore,
+  createAgentExecutionEnv
+} from "@/main/agents/execution-env"
+import type { AgentBackgroundProcessStore } from "@/main/agents/execution-env"
+import type { AgentLspManager } from "@/main/agents/lsp-manager"
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
   buildAgentTools,
@@ -72,8 +77,10 @@ const createApprovedToolContext = (toolCallId = "tool-call-1") => ({
 })
 
 const createFakeSandboxedWorkspace = ({
+  backgroundProcessStore,
   events
 }: {
+  backgroundProcessStore?: AgentBackgroundProcessStore
   events: AgentWorkspaceEvent[]
 }): AgentWorkspace => {
   const sandbox: WorkspaceSandbox = {
@@ -93,6 +100,7 @@ const createFakeSandboxedWorkspace = ({
       })
   }
   const executionEnv = createAgentExecutionEnv({
+    ...(backgroundProcessStore ? { backgroundProcessStore } : {}),
     projectPath: testProjectPath,
     sandbox
   })
@@ -152,6 +160,66 @@ const createFakeWorkspaceCommandOutput = ({
   }
 }
 
+const createFakeLspManager = (): AgentLspManager => ({
+  cleanup: () => Promise.resolve(),
+  diagnostics: (filePath) =>
+    Promise.resolve({
+      diagnostics: [
+        {
+          column: 7,
+          line: 1,
+          message: "Type mismatch",
+          severity: "error",
+          source: "ts"
+        }
+      ],
+      path: filePath,
+      status: "success"
+    }),
+  hasClients: () => true,
+  inspect: ({ line, path: filePath }) =>
+    Promise.resolve({
+      column: 1,
+      definition: [],
+      diagnostics: [],
+      hover: null,
+      implementation: [],
+      line,
+      path: filePath,
+      references: [
+        {
+          column: 14,
+          line: 2,
+          path: "src/reference.ts"
+        }
+      ],
+      status: "success"
+    }),
+  status: () => ({
+    clients: [
+      {
+        rootPath: testProjectPath,
+        status: "running"
+      }
+    ],
+    hasClients: true
+  }),
+  touchFile: (filePath) =>
+    Promise.resolve({
+      diagnostics: [
+        {
+          column: 7,
+          line: 1,
+          message: "Type mismatch",
+          severity: "error",
+          source: "ts"
+        }
+      ],
+      path: filePath,
+      status: "success"
+    })
+})
+
 const getCodeAgentTextContent = (
   result: Awaited<ReturnType<typeof executeAgentTool>>
 ): string => {
@@ -160,6 +228,16 @@ const getCodeAgentTextContent = (
   }
 
   return result.content[0]?.text ?? ""
+}
+
+const getCodeAgentDetails = (
+  result: Awaited<ReturnType<typeof executeAgentTool>>
+): Record<string, unknown> => {
+  if (!("details" in result) || !result.details) {
+    throw new Error("Expected code-agent details.")
+  }
+
+  return result.details
 }
 
 const resolveNeedsApproval = (
@@ -199,6 +277,8 @@ describe("agent tool registry", () => {
       "find",
       "ls",
       "bash",
+      "processOutput",
+      "stopProcess",
       "edit",
       "write"
     ])
@@ -231,6 +311,14 @@ describe("agent tool registry", () => {
       read: {
         etyonName: "view",
         etyonWorkspaceTool: "etyon_workspace_read_file"
+      },
+      processOutput: {
+        etyonName: "process_output",
+        etyonWorkspaceTool: "etyon_workspace_process_output"
+      },
+      stopProcess: {
+        etyonName: "stop_process",
+        etyonWorkspaceTool: "etyon_workspace_stop_process"
       },
       write: {
         etyonName: "write_file",
@@ -391,7 +479,9 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
+      "processOutput",
       "read",
+      "stopProcess",
       "write"
     ])
     expect(
@@ -404,6 +494,12 @@ describe("agent tool registry", () => {
         command: "rtk vp check"
       })
     ).toBe(false)
+    expect(
+      resolveNeedsApproval(tools.bash?.needsApproval, {
+        background: true,
+        command: "rtk vp check"
+      })
+    ).toBe(true)
     expect(
       resolveNeedsApproval(tools.edit?.needsApproval, {
         edits: [
@@ -540,6 +636,112 @@ describe("agent tool registry", () => {
     ).toBe("export const value = 2\n")
   })
 
+  it("appends LSP diagnostics after code-agent edit when LSP is active", async () => {
+    writeProjectFile("src/edit-with-diagnostics.ts", "export const value = 1\n")
+
+    const events: AgentWorkspaceEvent[] = []
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = {
+      ...createFakeSandboxedWorkspace({
+        events
+      }),
+      lsp: createFakeLspManager()
+    }
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        edits: [
+          {
+            newText: "export const value = 'wrong'",
+            oldText: "export const value = 1"
+          }
+        ],
+        path: "src/edit-with-diagnostics.ts"
+      },
+      name: "edit",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(getCodeAgentTextContent(result)).toContain(
+      "Successfully replaced 1 block(s) in src/edit-with-diagnostics.ts."
+    )
+    expect(getCodeAgentTextContent(result)).toContain(
+      "LSP diagnostics:\n- error 1:7 Type mismatch"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      diagnostics: {
+        diagnostics: [
+          {
+            column: 7,
+            line: 1,
+            message: "Type mismatch"
+          }
+        ],
+        path: "src/edit-with-diagnostics.ts",
+        status: "success"
+      }
+    })
+  })
+
+  it("returns LSP references from code-agent inspect", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = {
+      ...createFakeSandboxedWorkspace({
+        events: []
+      }),
+      lsp: createFakeLspManager()
+    }
+    const result = await executeAgentTool({
+      input: {
+        line: 1,
+        match: "const <<<value = 1",
+        path: "src/inspect-target.ts"
+      },
+      name: "inspect",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(getCodeAgentTextContent(result)).toContain(
+      "references:\n- src/reference.ts:2:14"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      references: [
+        {
+          column: 14,
+          line: 2,
+          path: "src/reference.ts"
+        }
+      ],
+      status: "success"
+    })
+  })
+
   it("exposes delegated agent tools only when delegation is enabled", async () => {
     const executeDelegation = vi.fn(() =>
       Promise.resolve({
@@ -573,7 +775,9 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
+      "processOutput",
       "read",
+      "stopProcess",
       "write"
     ])
 
@@ -663,6 +867,242 @@ describe("agent tool registry", () => {
       shellStatus: "exited",
       status: "success"
     })
+  })
+
+  it("starts, reads, and stops Etyon background process tools", async () => {
+    const events: AgentWorkspaceEvent[] = []
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = createFakeSandboxedWorkspace({
+      events
+    })
+    const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(
+      "process.stdout.write('ready'); setInterval(() => {}, 1000)"
+    )}`
+    const startResult = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        background: true,
+        command
+      },
+      name: "bash",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+    const { processId } = getCodeAgentDetails(startResult)
+
+    expect(getCodeAgentTextContent(startResult)).toContain(
+      "Started background process"
+    )
+    expect(typeof processId).toBe("string")
+
+    if (typeof processId !== "string") {
+      throw new TypeError("Expected processId.")
+    }
+
+    await vi.waitFor(async () => {
+      const outputResult = await executeAgentTool({
+        input: {
+          processId
+        },
+        name: "processOutput",
+        projectPath: testProjectPath,
+        settings,
+        workspace
+      })
+      const process = getCodeAgentDetails(outputResult).process as
+        | { stdoutPreview?: unknown }
+        | undefined
+
+      expect(process?.stdoutPreview).toBe("ready")
+    })
+
+    const stopResult = await executeAgentTool({
+      input: {
+        processId
+      },
+      name: "stopProcess",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(getCodeAgentTextContent(stopResult)).toContain(
+      `Stopped background process ${processId}`
+    )
+    expect(getCodeAgentTextContent(stopResult)).toContain("status: stopped")
+    expect(events.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "background_process_started",
+        "background_process_output",
+        "background_process_finished"
+      ])
+    )
+    expect(
+      events.find((event) => event.type === "background_process_started")
+        ?.payload
+    ).toMatchObject({
+      command,
+      cwd: testProjectPath,
+      processId,
+      sandboxed: true
+    })
+    expect(
+      events.find((event) => event.type === "background_process_output")
+        ?.payload
+    ).toMatchObject({
+      channel: "stdout",
+      chunk: "ready",
+      processId
+    })
+    expect(
+      events.find((event) => event.type === "background_process_finished")
+        ?.payload
+    ).toMatchObject({
+      command,
+      exitCode: null,
+      processId,
+      sandboxed: true,
+      status: "stopped"
+    })
+  })
+
+  it("annotates truncated background process output for model-visible reads", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = createFakeSandboxedWorkspace({
+      events: []
+    })
+    const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(
+      `process.stdout.write('x'.repeat(${AGENT_TOOL_OUTPUT_MAX_CHARS + 5})); setInterval(() => {}, 1000)`
+    )}`
+    const startResult = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        background: true,
+        command
+      },
+      name: "bash",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+    const { processId } = getCodeAgentDetails(startResult)
+
+    if (typeof processId !== "string") {
+      throw new TypeError("Expected processId.")
+    }
+
+    try {
+      await vi.waitFor(async () => {
+        const outputResult = await executeAgentTool({
+          input: {
+            processId
+          },
+          name: "processOutput",
+          projectPath: testProjectPath,
+          settings,
+          workspace
+        })
+
+        expect(getCodeAgentTextContent(outputResult)).toContain(
+          `[stdout truncated: omitted 5 of ${
+            AGENT_TOOL_OUTPUT_MAX_CHARS + 5
+          } chars]`
+        )
+      })
+    } finally {
+      await executeAgentTool({
+        input: {
+          processId
+        },
+        name: "stopProcess",
+        projectPath: testProjectPath,
+        settings,
+        workspace
+      })
+    }
+  })
+
+  it("keeps Etyon background process registry across workspace turns", async () => {
+    const backgroundProcessStore = createAgentBackgroundProcessStore()
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const startWorkspace = createFakeSandboxedWorkspace({
+      backgroundProcessStore,
+      events: []
+    })
+    const nextTurnWorkspace = createFakeSandboxedWorkspace({
+      backgroundProcessStore,
+      events: []
+    })
+    const command = `${JSON.stringify(process.execPath)} -e ${JSON.stringify(
+      "process.stdout.write('next-turn-ready'); setInterval(() => {}, 1000)"
+    )}`
+    const startResult = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        background: true,
+        command
+      },
+      name: "bash",
+      projectPath: testProjectPath,
+      settings,
+      workspace: startWorkspace
+    })
+    const { processId } = getCodeAgentDetails(startResult)
+
+    if (typeof processId !== "string") {
+      throw new TypeError("Expected processId.")
+    }
+
+    await vi.waitFor(async () => {
+      const outputResult = await executeAgentTool({
+        input: {
+          processId
+        },
+        name: "processOutput",
+        projectPath: testProjectPath,
+        settings,
+        workspace: nextTurnWorkspace
+      })
+
+      expect(getCodeAgentTextContent(outputResult)).toContain("next-turn-ready")
+    })
+
+    const stopResult = await executeAgentTool({
+      input: {
+        processId
+      },
+      name: "stopProcess",
+      projectPath: testProjectPath,
+      settings,
+      workspace: nextTurnWorkspace
+    })
+
+    expect(getCodeAgentTextContent(stopResult)).toContain("status: stopped")
   })
 
   it("routes code-agent search commands through the provided workspace sandbox", async () => {

@@ -7,6 +7,7 @@ import type {
   AgentLoopResources,
   AgentLoopTool,
   AgentLoopUserMessage,
+  RunAgentLoopOptions,
   RunAgentLoopResult
 } from "@/main/agents/agent-loop"
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
@@ -45,8 +46,13 @@ export type AgentQueuedMessageListener = (
 ) => Promise<void> | void
 
 export interface CreateAgentOptions {
+  abortSignal?: AbortSignal
   activeToolNames?: readonly string[]
+  afterToolCall?: RunAgentLoopOptions["afterToolCall"]
+  beforeToolCall?: RunAgentLoopOptions["beforeToolCall"]
   followUpDrainMode?: AgentQueueDrainMode
+  getFollowUpMessages?: RunAgentLoopOptions["getFollowUpMessages"]
+  getSteeringMessages?: RunAgentLoopOptions["getSteeringMessages"]
   initialQueuedMessages?: readonly AgentQueuedMessage[]
   maxTurns: number
   messages?: readonly AgentLoopMessage[]
@@ -57,6 +63,7 @@ export interface CreateAgentOptions {
   steeringDrainMode?: AgentQueueDrainMode
   systemPrompt?: string
   thinkingLevel?: string
+  toolRetry?: RunAgentLoopOptions["toolRetry"]
   tools: Readonly<Record<string, AgentLoopTool>>
 }
 
@@ -191,9 +198,32 @@ const stripSystemPrompt = ({
   return cloneAgentMessages(messages)
 }
 
+const createCombinedAgentAbortSignal = (
+  signals: readonly (AbortSignal | undefined)[]
+): AbortSignal | undefined => {
+  const activeSignals = signals.filter(
+    (signal): signal is AbortSignal => signal !== undefined
+  )
+
+  if (activeSignals.length <= 1) {
+    return activeSignals[0]
+  }
+
+  const abortSignal = AbortSignal as typeof AbortSignal & {
+    any: (signals: readonly AbortSignal[]) => AbortSignal
+  }
+
+  return abortSignal.any(activeSignals)
+}
+
 export const createAgent = ({
+  abortSignal,
   activeToolNames,
+  afterToolCall,
+  beforeToolCall,
   followUpDrainMode = "all",
+  getFollowUpMessages,
+  getSteeringMessages,
   initialQueuedMessages = [],
   maxTurns,
   messages = [],
@@ -204,6 +234,7 @@ export const createAgent = ({
   steeringDrainMode = "all",
   systemPrompt = "",
   thinkingLevel,
+  toolRetry,
   tools
 }: CreateAgentOptions): Agent => {
   const followUpQueue = createQueuedLoopUserMessages({
@@ -352,11 +383,19 @@ export const createAgent = ({
     }
   }
 
-  const drainFollowUpQueue = (): AgentLoopUserMessage[] =>
-    drainAgentLoopUserMessageQueue(followUpQueue, followUpDrainMode)
+  const drainFollowUpQueue: RunAgentLoopOptions["getFollowUpMessages"] = async (
+    context
+  ) => [
+    ...drainAgentLoopUserMessageQueue(followUpQueue, followUpDrainMode),
+    ...((await getFollowUpMessages?.(context)) ?? [])
+  ]
 
-  const drainSteeringQueue = (): AgentLoopUserMessage[] =>
-    drainAgentLoopUserMessageQueue(steeringQueue, steeringDrainMode)
+  const drainSteeringQueue: RunAgentLoopOptions["getSteeringMessages"] = async (
+    context
+  ) => [
+    ...drainAgentLoopUserMessageQueue(steeringQueue, steeringDrainMode),
+    ...((await getSteeringMessages?.(context)) ?? [])
+  ]
 
   const executeTurn = async ({
     abortController,
@@ -387,8 +426,13 @@ export const createAgent = ({
       await notifyListeners()
 
       const result = await runAgentLoop({
-        abortSignal: abortController.signal,
+        abortSignal: createCombinedAgentAbortSignal([
+          abortController.signal,
+          abortSignal
+        ]),
         activeToolNames: turnActiveToolNames,
+        afterToolCall,
+        beforeToolCall,
         getFollowUpMessages: drainFollowUpQueue,
         getSteeringMessages: drainSteeringQueue,
         maxTurns,
@@ -422,6 +466,7 @@ export const createAgent = ({
         },
         resources: turnResources,
         thinkingLevel: turnThinkingLevel,
+        toolRetry,
         tools: turnTools
       })
       const nextMessages = stripSystemPrompt({

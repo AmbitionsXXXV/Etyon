@@ -7,6 +7,8 @@ import type {
 export const AGENT_TOOL_NAMES = [
   "read",
   "bash",
+  "processOutput",
+  "stopProcess",
   "edit",
   "write",
   "grep",

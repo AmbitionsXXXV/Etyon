@@ -9,9 +9,11 @@ import type {
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  getAgentWorkbenchBackgroundProcessPreview,
   getAgentWorkbenchControlState,
   getAgentWorkbenchDiffPreview,
   getAgentWorkbenchFirstFailedNode,
+  getAgentWorkbenchFirstRunningNode,
   getAgentWorkbenchGraphPreview,
   getAgentWorkbenchGraphRetryPreview,
   getAgentWorkbenchGraphPlan,
@@ -24,6 +26,8 @@ import {
   getAgentWorkbenchSelectedRun,
   getAgentWorkbenchRetryPolicyPreview,
   getAgentWorkbenchSessionPreview,
+  getAgentWorkbenchShellCommandPreview,
+  getAgentWorkbenchShellOutputPreview,
   getGraphApprovalOperationRunIds,
   getGraphOperationRunIds,
   hasRunningRunGraphNode
@@ -251,6 +255,360 @@ describe("agent workbench helpers", () => {
     ).toBe(rootTrace)
   })
 
+  it("groups shell output events into bounded channel previews", () => {
+    const run = createRun({
+      id: "run-shell",
+      parentRunId: null,
+      status: "succeeded"
+    })
+    const trace = {
+      artifacts: [],
+      events: [
+        {
+          createdAt: "2026-05-24T00:00:00.000Z",
+          id: "event-started",
+          payload: {
+            command: "rtk vp check",
+            cwd: "/project"
+          },
+          runId: run.id,
+          sequence: 1,
+          type: "sandbox_command_started"
+        },
+        {
+          createdAt: "2026-05-24T00:00:01.000Z",
+          id: "event-stdout-1",
+          payload: {
+            channel: "stdout",
+            chunk: "first\n",
+            command: "rtk vp check",
+            cwd: "/project",
+            sequence: 1
+          },
+          runId: run.id,
+          sequence: 2,
+          type: "sandbox_command_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:02.000Z",
+          id: "event-stderr",
+          payload: {
+            channel: "stderr",
+            chunk: "warning\n",
+            command: "rtk vp check",
+            cwd: "/project",
+            sequence: 2
+          },
+          runId: run.id,
+          sequence: 3,
+          type: "sandbox_command_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:03.000Z",
+          id: "event-stdout-2",
+          payload: {
+            channel: "stdout",
+            chunk: "second\n",
+            command: "rtk vp check",
+            cwd: "/project",
+            sequence: 3
+          },
+          runId: run.id,
+          sequence: 4,
+          type: "sandbox_command_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:04.000Z",
+          id: "event-background",
+          payload: {
+            channel: "stdout",
+            chunk: "ready\n",
+            processId: "process-1",
+            sequence: 1
+          },
+          runId: run.id,
+          sequence: 5,
+          type: "background_process_output"
+        }
+      ],
+      run,
+      toolCalls: []
+    } satisfies InspectAgentRunOutput
+
+    expect(getAgentWorkbenchShellOutputPreview(trace)).toEqual([
+      {
+        channel: "stdout",
+        chunkCount: 1,
+        commandLabel: "process process-1",
+        id: "event-background",
+        lastEventSequence: 5,
+        processId: "process-1",
+        text: "ready\n",
+        truncated: false,
+        type: "background_process_output"
+      },
+      {
+        channel: "stdout",
+        chunkCount: 2,
+        commandLabel: "rtk vp check",
+        cwd: "/project",
+        id: "event-stdout-1",
+        lastEventSequence: 4,
+        text: "first\nsecond\n",
+        truncated: false,
+        type: "sandbox_command_output"
+      },
+      {
+        channel: "stderr",
+        chunkCount: 1,
+        commandLabel: "rtk vp check",
+        cwd: "/project",
+        id: "event-stderr",
+        lastEventSequence: 3,
+        text: "warning\n",
+        truncated: false,
+        type: "sandbox_command_output"
+      }
+    ])
+  })
+
+  it("derives sandbox command lifecycle previews", () => {
+    const run = createRun({
+      id: "run-command",
+      parentRunId: null,
+      status: "succeeded"
+    })
+    const trace = {
+      artifacts: [],
+      events: [
+        {
+          createdAt: "2026-05-24T00:00:00.000Z",
+          id: "event-command-started-1",
+          payload: {
+            command: "rtk vp check",
+            cwd: "/project",
+            pid: 111,
+            sandboxed: true,
+            startedAt: "2026-05-24T00:00:00.000Z"
+          },
+          runId: run.id,
+          sequence: 1,
+          type: "sandbox_command_started"
+        },
+        {
+          createdAt: "2026-05-24T00:00:01.000Z",
+          id: "event-command-output-1",
+          payload: {
+            channel: "stdout",
+            chunk: "ready\n",
+            command: "rtk vp check",
+            cwd: "/project",
+            sequence: 1
+          },
+          runId: run.id,
+          sequence: 2,
+          type: "sandbox_command_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:02.000Z",
+          id: "event-command-finished-1",
+          payload: {
+            command: "rtk vp check",
+            cwd: "/project",
+            durationMs: 1200,
+            exitCode: 0,
+            sandboxed: true,
+            shellStatus: "exited",
+            status: "success",
+            stderrChars: 0,
+            stdoutChars: 6
+          },
+          runId: run.id,
+          sequence: 3,
+          type: "sandbox_command_finished"
+        },
+        {
+          createdAt: "2026-05-24T00:00:03.000Z",
+          id: "event-command-started-2",
+          payload: {
+            command: "rtk vp check",
+            cwd: "/project",
+            pid: 222,
+            sandboxed: true,
+            startedAt: "2026-05-24T00:00:03.000Z"
+          },
+          runId: run.id,
+          sequence: 4,
+          type: "sandbox_command_started"
+        },
+        {
+          createdAt: "2026-05-24T00:00:04.000Z",
+          id: "event-command-output-2",
+          payload: {
+            channel: "stderr",
+            chunk: "warn",
+            command: "rtk vp check",
+            cwd: "/project",
+            sequence: 1
+          },
+          runId: run.id,
+          sequence: 5,
+          type: "sandbox_command_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:05.000Z",
+          id: "event-command-finished-2",
+          payload: {
+            command: "rtk vp check",
+            cwd: "/project",
+            durationMs: 2000,
+            exitCode: 1,
+            sandboxed: true,
+            shellStatus: "exited",
+            status: "failed",
+            stderrChars: 4,
+            stdoutChars: 0
+          },
+          runId: run.id,
+          sequence: 6,
+          type: "sandbox_command_finished"
+        }
+      ],
+      run,
+      toolCalls: []
+    } satisfies InspectAgentRunOutput
+
+    expect(getAgentWorkbenchShellCommandPreview(trace)).toEqual([
+      {
+        command: "rtk vp check",
+        cwd: "/project",
+        durationMs: 2000,
+        exitCode: 1,
+        id: "event-command-started-2",
+        lastEventSequence: 6,
+        outputEventCount: 1,
+        pid: 222,
+        sandboxed: true,
+        shellStatus: "exited",
+        startedAt: "2026-05-24T00:00:03.000Z",
+        status: "failed",
+        stderrChars: 4,
+        stdoutChars: 0
+      },
+      {
+        command: "rtk vp check",
+        cwd: "/project",
+        durationMs: 1200,
+        exitCode: 0,
+        id: "event-command-started-1",
+        lastEventSequence: 3,
+        outputEventCount: 1,
+        pid: 111,
+        sandboxed: true,
+        shellStatus: "exited",
+        startedAt: "2026-05-24T00:00:00.000Z",
+        status: "success",
+        stderrChars: 0,
+        stdoutChars: 6
+      }
+    ])
+  })
+
+  it("derives background process lifecycle previews", () => {
+    const run = createRun({
+      id: "run-process",
+      parentRunId: null,
+      status: "succeeded"
+    })
+    const trace = {
+      artifacts: [],
+      events: [
+        {
+          createdAt: "2026-05-24T00:00:00.000Z",
+          id: "event-started",
+          payload: {
+            command: "rtk vp dev",
+            cwd: "/project",
+            pid: 1234,
+            processId: "process-1",
+            sandboxed: true,
+            startedAt: "2026-05-24T00:00:00.000Z"
+          },
+          runId: run.id,
+          sequence: 1,
+          type: "background_process_started"
+        },
+        {
+          createdAt: "2026-05-24T00:00:01.000Z",
+          id: "event-stdout",
+          payload: {
+            channel: "stdout",
+            chunk: "ready\n",
+            processId: "process-1",
+            sequence: 1
+          },
+          runId: run.id,
+          sequence: 2,
+          type: "background_process_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:02.000Z",
+          id: "event-stderr",
+          payload: {
+            channel: "stderr",
+            chunk: "warn",
+            processId: "process-1",
+            sequence: 2
+          },
+          runId: run.id,
+          sequence: 3,
+          type: "background_process_output"
+        },
+        {
+          createdAt: "2026-05-24T00:00:04.000Z",
+          id: "event-finished",
+          payload: {
+            command: "rtk vp dev",
+            cwd: "/project",
+            durationMs: 4000,
+            exitCode: null,
+            finishedAt: "2026-05-24T00:00:04.000Z",
+            processId: "process-1",
+            sandboxed: true,
+            status: "stopped",
+            stderrChars: 4,
+            stdoutChars: 6
+          },
+          runId: run.id,
+          sequence: 4,
+          type: "background_process_finished"
+        }
+      ],
+      run,
+      toolCalls: []
+    } satisfies InspectAgentRunOutput
+
+    expect(getAgentWorkbenchBackgroundProcessPreview(trace)).toEqual([
+      {
+        command: "rtk vp dev",
+        cwd: "/project",
+        durationMs: 4000,
+        exitCode: null,
+        finishedAt: "2026-05-24T00:00:04.000Z",
+        id: "event-started",
+        lastEventSequence: 4,
+        outputEventCount: 2,
+        pid: 1234,
+        processId: "process-1",
+        sandboxed: true,
+        startedAt: "2026-05-24T00:00:00.000Z",
+        status: "stopped",
+        stderrChars: 4,
+        stdoutChars: 6
+      }
+    ])
+  })
+
   it("extracts graph state used by workbench controls", () => {
     const run = createRun({
       id: "run-root",
@@ -277,7 +635,10 @@ describe("agent workbench helpers", () => {
     ).toEqual({
       canAdvanceGraph: true,
       canCreateGraph: true,
+      canExecuteRunningNode: false,
       canRetryFailedNode: true,
+      canRunGraph: true,
+      canSkipFailedNode: true,
       canStartNextStage: true
     })
     expect(
@@ -290,7 +651,10 @@ describe("agent workbench helpers", () => {
     ).toEqual({
       canAdvanceGraph: false,
       canCreateGraph: false,
+      canExecuteRunningNode: false,
       canRetryFailedNode: false,
+      canRunGraph: false,
+      canSkipFailedNode: false,
       canStartNextStage: false
     })
   })
@@ -441,10 +805,14 @@ describe("agent workbench helpers", () => {
     })
 
     expect(hasRunningRunGraphNode(graphPlan)).toBe(true)
+    expect(getAgentWorkbenchFirstRunningNode(graphPlan)?.id).toBe("node-0")
     expect(controlState).toEqual({
       canAdvanceGraph: true,
       canCreateGraph: true,
+      canExecuteRunningNode: true,
       canRetryFailedNode: false,
+      canRunGraph: true,
+      canSkipFailedNode: false,
       canStartNextStage: false
     })
   })
@@ -461,6 +829,8 @@ describe("agent workbench helpers", () => {
 
     expect(
       getGraphOperationRunIds({
+        childRuns: [childRun],
+        childRun,
         run: rootRun,
         startedRuns: [childRun]
       })
@@ -468,6 +838,11 @@ describe("agent workbench helpers", () => {
     expect(
       getGraphApprovalOperationRunIds({
         childRun,
+        continuedGraph: {
+          childRuns: [childRun],
+          run: rootRun,
+          startedRuns: [childRun]
+        },
         run: rootRun,
         startedRuns: [childRun]
       })
@@ -567,9 +942,24 @@ describe("agent workbench helpers", () => {
         },
         {
           id: "entry-5",
-          parentId: "entry-3",
+          message: {
+            data: {
+              branchKind: "regenerate",
+              messageId: "assistant-1",
+              retainedMessageCount: 1,
+              trigger: "regenerate-message"
+            },
+            type: "chat-branch"
+          },
+          parentId: "entry-4",
           sequence: 5,
-          targetEntryId: "entry-4",
+          type: "custom_message"
+        },
+        {
+          id: "entry-6",
+          parentId: "entry-4",
+          sequence: 6,
+          targetEntryId: "entry-5",
           type: "leaf"
         }
       ],
@@ -607,9 +997,15 @@ describe("agent workbench helpers", () => {
           id: "entry-4",
           label: "#4 checkpoint",
           type: "custom_message"
+        },
+        {
+          detail: "message assistant-1; retained 1; trigger regenerate-message",
+          id: "entry-5",
+          label: "#5 regenerate branch",
+          type: "custom_message"
         }
       ],
-      leafEntryId: "entry-4",
+      leafEntryId: "entry-5",
       sessionEventCount: 1
     })
     expect(

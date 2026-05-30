@@ -5,10 +5,12 @@ import { z } from "zod"
 import {
   createAiSdkAgentLoopModel,
   createAiSdkAgentLoopTools,
+  createAiSdkToolResultSummaryProcessor,
   convertModelMessagesToAgentLoopMessages
 } from "@/main/agents/agent-loop-ai-sdk"
 
 import {
+  createFauxGenerateTextResponse,
   createFauxGenerateToolCallResponse,
   createFauxToolCallResponse,
   createFauxProvider
@@ -167,6 +169,33 @@ describe("agent loop AI SDK adapter", () => {
       }
     })
     expect(execute).toHaveBeenCalledTimes(1)
+  })
+
+  it("summarizes large tool output through the AI SDK model", async () => {
+    const faux = createFauxProvider()
+
+    faux.setGenerateResponses([
+      createFauxGenerateTextResponse("model generated summary")
+    ])
+
+    const processor = createAiSdkToolResultSummaryProcessor({
+      maxInputChars: 12,
+      model: faux.model
+    })
+
+    await expect(
+      processor({
+        content: "abcdefghijklmnopqrstuvwxyz",
+        deterministicSummary: {
+          content: "abc",
+          omittedChars: 23,
+          totalChars: 26,
+          truncated: true
+        },
+        maxSummaryChars: 80
+      })
+    ).resolves.toBe("model generated summary")
+    expect(faux.model.doGenerateCalls).toHaveLength(1)
   })
 
   it("drops approval-only assistant messages before provider calls", () => {

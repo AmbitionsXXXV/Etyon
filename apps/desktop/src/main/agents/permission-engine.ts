@@ -228,6 +228,15 @@ const evaluateCommandPermission = (
     })
   }
 
+  if (getInputBoolean(input, "background")) {
+    return buildDecision({
+      action: "ask",
+      reason: "Background commands require explicit approval.",
+      risk: "medium",
+      ruleId: "background-command"
+    })
+  }
+
   if ((name === "bash" || name === "runCheck") && isSafeCheckCommand(command)) {
     return buildDecision({
       action: "allow",
@@ -305,6 +314,15 @@ export const evaluateAgentToolPermission = ({
     }
 
     return evaluateCommandPermission(input, name)
+  }
+
+  if (name === "processOutput" || name === "stopProcess") {
+    return buildDecision({
+      action: "allow",
+      reason: "The tool only accesses Etyon-managed background processes.",
+      risk: "low",
+      ruleId: "managed-process-tool"
+    })
   }
 
   if (manifest.riskLevel === "safe") {

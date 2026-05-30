@@ -1,18 +1,22 @@
 import type { ParsedSkill, PromptTemplate } from "@etyon/rpc"
 import { describe, expect, it, vi } from "vite-plus/test"
 
+import type { PromptCommandPaletteItem } from "@/renderer/lib/chat/prompt-input"
 import {
   applyMentionSelection,
   applyPlanCommandPrefixToPromptEditorJson,
   createPromptTemplateCommandText,
   createMentionFromProjectSnapshotItem,
   extractPromptEditorPayload,
+  filterPromptCommandPaletteItems,
   filterPromptTemplateItems,
   filterPromptSkillMentionItems,
   getActiveMentionMatch,
   getMentionTokenTypeLabel,
+  getPromptEditorActiveCommandPaletteRange,
   getPromptEditorActiveMentionRange,
   getPromptEditorActivePromptTemplateCommandRange,
+  getPromptTemplateArgumentHints,
   isPromptImeConfirmKeyDown,
   isPromptNativeCompositionKeyDown,
   isPlanModeKeyboardShortcut,
@@ -382,6 +386,52 @@ describe("prompt input helpers", () => {
     ).toBeNull()
   })
 
+  it("maps the active slash command palette query before the editor caret", () => {
+    expect(
+      getPromptEditorActiveCommandPaletteRange({
+        selectionFrom: "/pr".length,
+        textBeforeCaret: "/pr"
+      })
+    ).toEqual({
+      from: 0,
+      query: "pr",
+      to: 3
+    })
+    expect(
+      getPromptEditorActiveCommandPaletteRange({
+        selectionFrom: "/prompt review".length,
+        textBeforeCaret: "/prompt review"
+      })
+    ).toBeNull()
+  })
+
+  it("filters slash command palette items", () => {
+    const items: PromptCommandPaletteItem[] = [
+      {
+        command: "/plan",
+        description: "Plan mode",
+        id: "plan",
+        insertText: "/plan ",
+        label: "Plan"
+      },
+      {
+        command: "/prompt",
+        description: "Prompt template",
+        id: "prompt",
+        insertText: "/prompt ",
+        label: "Prompt"
+      }
+    ]
+
+    expect(
+      filterPromptCommandPaletteItems({
+        items,
+        limit: 10,
+        query: "tem"
+      }).map((item) => item.id)
+    ).toEqual(["prompt"])
+  })
+
   it("filters and formats prompt template commands", () => {
     const templates: PromptTemplate[] = [
       {
@@ -408,6 +458,11 @@ describe("prompt input helpers", () => {
     expect(createPromptTemplateCommandText(templates[1])).toBe(
       '/prompt "quick plan" '
     )
+    expect(
+      getPromptTemplateArgumentHints({
+        body: "Review $2 then $1. Keep $$3 literal and reuse $2."
+      })
+    ).toEqual(["$1", "$2"])
   })
 
   it("filters skill suggestions by title only when requested", () => {
@@ -415,7 +470,9 @@ describe("prompt input helpers", () => {
       {
         body: "Use when working on Rust ownership and lifetimes.",
         capabilities: [],
+        commands: [],
         description: "Rust code style guidance.",
+        extensions: [],
         modelVisible: true,
         name: "coding-guidelines",
         path: "/project/.agents/skills/coding-guidelines/SKILL.md",
@@ -427,7 +484,9 @@ describe("prompt input helpers", () => {
       {
         body: "Drizzle relations and schema examples.",
         capabilities: [],
+        commands: [],
         description: "Type-safe SQL ORM.",
+        extensions: [],
         modelVisible: true,
         name: "drizzle-orm",
         path: "/project/.agents/skills/drizzle-orm/SKILL.md",

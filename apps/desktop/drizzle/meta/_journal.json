@@ -64,6 +64,13 @@
       "when": 1780057052701,
       "tag": "0008_easy_redwing",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1780118163089,
+      "tag": "0009_first_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

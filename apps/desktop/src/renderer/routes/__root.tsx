@@ -25,6 +25,7 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRoute, Outlet, useRouterState } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import { AnimatePresence, motion } from "motion/react"
+import type { ComponentProps } from "react"
 
 import { AppSidebar } from "@/renderer/components/app-sidebar"
 import { TITLE_BAR_HEIGHT, TitleBar } from "@/renderer/components/title-bar"
@@ -32,6 +33,19 @@ import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-a
 import { useProjectSidebarState } from "@/renderer/lib/sidebar/use-project-sidebar-state"
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[76px]"
+type TanStackDevtoolsPlugin = NonNullable<
+  ComponentProps<typeof TanStackDevtools>["plugins"]
+>[number]
+
+const renderHotkeysDevtoolsPanel: TanStackDevtoolsPlugin["render"] = (
+  _element,
+  props
+) => <HotkeysDevtoolsPanel {...props} />
+
+const renderPacerDevtoolsPanel: TanStackDevtoolsPlugin["render"] = (
+  _element,
+  props
+) => <PacerDevtoolsPanel {...props} />
 
 const InsetHeader = () => {
   const { state } = useSidebar()
@@ -122,7 +136,10 @@ const RootComponent = () => {
     select: (state) => state.location.pathname
   })
   const { sidebarWidthPx } = useProjectSidebarState()
-  const isAppShellRoute = pathname === "/" || pathname.startsWith("/chat/")
+  const isAppShellRoute =
+    pathname === "/" ||
+    pathname.startsWith("/agents/") ||
+    pathname.startsWith("/chat/")
 
   useHotkey("Mod+,", () => {
     window.electron.ipcRenderer.send("open-settings")
@@ -172,7 +189,7 @@ const RootComponent = () => {
           },
           {
             name: "TanStack Hotkeys",
-            render: (_element, props) => <HotkeysDevtoolsPanel {...props} />
+            render: renderHotkeysDevtoolsPanel
           },
           {
             name: "TanStack Form",
@@ -180,7 +197,7 @@ const RootComponent = () => {
           },
           {
             name: "TanStack Pacer",
-            render: (_element, props) => <PacerDevtoolsPanel {...props} />
+            render: renderPacerDevtoolsPanel
           }
         ]}
       />

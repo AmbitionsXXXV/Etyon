@@ -122,6 +122,7 @@ describe("agent runtime", () => {
     })
     expect(appendEventMock).toHaveBeenCalledWith({
       payload: {
+        code: "provider",
         error: "Agent provider stream failed."
       },
       type: "agent_run_failed"

@@ -9,6 +9,7 @@ import type { RouterClient } from "@orpc/server"
 import type * as Ai from "ai"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
+import type { AppendAgentEventInput } from "@/main/agents/agent-event-store"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import type { AppRouter } from "@/main/rpc"
 import { app } from "@/main/server/app"
@@ -39,11 +40,13 @@ const {
   listAgentEventsMock,
   listAgentToolCallsMock,
   listSkillPromptTemplatesMock,
+  loadAgentExtensionsMock,
   mockedHomeDir,
   recordAgentToolCallMock,
   replaceChatMessagesMock,
   resolveModelMock,
   resolveSelectedSkillCapabilitiesMock,
+  resolveSelectedSkillExtensionPathsMock,
   stepCountIsMock,
   streamTextMock,
   updateAgentRunMock,
@@ -136,13 +139,15 @@ const {
     listAgentEventsMock: vi.fn(() => Promise.resolve([])),
     listAgentToolCallsMock: vi.fn(() => Promise.resolve([])),
     listSkillPromptTemplatesMock: vi.fn(() => []),
+    loadAgentExtensionsMock: vi.fn(),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     recordAgentToolCallMock: vi.fn(() =>
       Promise.resolve({ id: "tool-call-1" })
     ),
     replaceChatMessagesMock: vi.fn(() => Promise.resolve([])),
     resolveModelMock: vi.fn(() => ({ modelId: "test-model" })),
-    resolveSelectedSkillCapabilitiesMock: vi.fn(() => []),
+    resolveSelectedSkillCapabilitiesMock: vi.fn((): string[] => []),
+    resolveSelectedSkillExtensionPathsMock: vi.fn((): string[] => []),
     stepCountIsMock: vi.fn((stepCount: number) => ({
       kind: "step-count",
       stepCount
@@ -184,6 +189,24 @@ const getFirstStreamTextCallOptions = ():
   return calls[0]?.[0]
 }
 
+const createMockTextStreamResult = (
+  parts: readonly Ai.TextStreamPart<Ai.ToolSet>[]
+) => ({
+  fullStream: (async function* createMockFullStream() {
+    for (const part of parts) {
+      yield part
+    }
+  })(),
+  toUIMessageStream: vi.fn(
+    () =>
+      new ReadableStream({
+        start(controller) {
+          controller.close()
+        }
+      })
+  )
+})
+
 const consumeChatResponse = async (response: Response): Promise<void> => {
   if (!response.body) {
     return
@@ -209,6 +232,10 @@ vi.mock("@/main/agents/agent-event-store", () => ({
   recordAgentToolCall: recordAgentToolCallMock,
   updateAgentRun: updateAgentRunMock,
   updateAgentToolCall: updateAgentToolCallMock
+}))
+
+vi.mock("@/main/agents/agent-extensions", () => ({
+  loadAgentExtensions: loadAgentExtensionsMock
 }))
 
 vi.mock("@electron-toolkit/utils", () => ({
@@ -294,7 +321,8 @@ vi.mock("@/main/project-snapshot", () => ({
 vi.mock("@/main/skills", () => ({
   buildSkillsSystemPrompt: buildSkillsSystemPromptMock,
   listSkillPromptTemplates: listSkillPromptTemplatesMock,
-  resolveSelectedSkillCapabilities: resolveSelectedSkillCapabilitiesMock
+  resolveSelectedSkillCapabilities: resolveSelectedSkillCapabilitiesMock,
+  resolveSelectedSkillExtensionPaths: resolveSelectedSkillExtensionPathsMock
 }))
 
 vi.mock("@/main/settings", () => ({
@@ -343,6 +371,18 @@ const buildAgentSettings = (
   AppSettingsSchema.parse({
     agents
   })
+
+const listAppendedAgentEvents = (): AppendAgentEventInput[] =>
+  (appendAgentEventMock.mock.calls as unknown as [AppendAgentEventInput][]).map(
+    ([event]) => event
+  )
+
+const eventPayloadContainsChatBranch = ({
+  payload
+}: AppendAgentEventInput): boolean =>
+  typeof payload === "object" &&
+  payload !== null &&
+  JSON.stringify(payload).includes('"type":"chat-branch"')
 
 describe("hono app", () => {
   afterAll(() => {
@@ -584,6 +624,105 @@ describe("hono app", () => {
     expect(stepCountIsMock).not.toHaveBeenCalled()
   })
 
+  it("completes unresolved tool calls before disabled chat provider requests", async () => {
+    const unresolvedMessages = [
+      {
+        content: "Inspect source.",
+        role: "user"
+      },
+      {
+        content: [
+          {
+            input: {
+              path: "src/index.ts"
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: "Continue without that tool result.",
+        role: "user"
+      }
+    ] satisfies Ai.ModelMessage[]
+
+    convertToModelMessagesMock.mockResolvedValueOnce(unresolvedMessages)
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "message-1",
+            parts: [
+              {
+                text: "Continue without that tool result.",
+                type: "text"
+              }
+            ],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+
+    const streamOptions = getFirstStreamTextCallOptions() as
+      | {
+          messages?: Ai.ModelMessage[]
+        }
+      | undefined
+
+    expect(streamOptions?.messages).toEqual([
+      {
+        content: "Inspect source.",
+        role: "user"
+      },
+      {
+        content: [
+          {
+            input: {
+              path: "src/index.ts"
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value:
+                "Tool execution did not complete before the next user message."
+            },
+            toolCallId: "readFile:18",
+            toolName: "readFile",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: "Continue without that tool result.",
+        role: "user"
+      }
+    ])
+  })
+
   it("injects read-only agent tool aliases through the provider adapter", async () => {
     getSettingsMock.mockReturnValueOnce(
       buildAgentSettings({
@@ -629,6 +768,279 @@ describe("hono app", () => {
       kind: "step-count",
       stepCount: 1
     })
+  })
+
+  it("persists agent tool parts from the real chat route stream", async () => {
+    fs.mkdirSync("/tmp/project-a", { recursive: true })
+    fs.writeFileSync("/tmp/project-a/package.json", '{ "name": "route" }\n')
+    getSettingsMock.mockReturnValueOnce(
+      buildAgentSettings({
+        enabled: true,
+        maxSteps: 3
+      })
+    )
+    convertToModelMessagesMock.mockResolvedValueOnce([
+      {
+        content: "Read package metadata.",
+        role: "user"
+      }
+    ] satisfies Ai.ModelMessage[])
+    streamTextMock
+      .mockReturnValueOnce(
+        createMockTextStreamResult([
+          {
+            input: {
+              path: "package.json"
+            },
+            toolCallId: "tool-call-read-route",
+            toolName: "read",
+            type: "tool-call"
+          } as Ai.TextStreamPart<Ai.ToolSet>,
+          {
+            finishReason: "tool-calls",
+            type: "finish-step"
+          } as Ai.TextStreamPart<Ai.ToolSet>
+        ])
+      )
+      .mockReturnValueOnce(
+        createMockTextStreamResult([
+          {
+            text: "Read package metadata.",
+            type: "text-delta"
+          } as Ai.TextStreamPart<Ai.ToolSet>,
+          {
+            finishReason: "stop",
+            type: "finish-step"
+          } as Ai.TextStreamPart<Ai.ToolSet>
+        ])
+      )
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "message-1",
+            parts: [
+              {
+                text: "Read package metadata.",
+                type: "text"
+              }
+            ],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+    const replaceChatMessageCalls = replaceChatMessagesMock.mock
+      .calls as unknown as [
+      {
+        messages: Ai.UIMessage[]
+      }
+    ][]
+    const persistedMessages = replaceChatMessageCalls.at(-1)?.[0].messages
+    const assistantMessage = persistedMessages?.find(
+      (message) => message.role === "assistant"
+    )
+    const toolPart = assistantMessage?.parts.find(
+      (part) =>
+        part.type === "tool-read" && part.toolCallId === "tool-call-read-route"
+    )
+
+    expect(toolPart).toMatchObject({
+      input: {
+        path: "package.json"
+      },
+      output: {
+        content: [
+          {
+            text: '{ "name": "route" }',
+            type: "text"
+          }
+        ],
+        details: {
+          path: "package.json"
+        }
+      },
+      state: "output-available",
+      toolCallId: "tool-call-read-route",
+      type: "tool-read"
+    })
+    expect(JSON.stringify(assistantMessage)).toContain("Read package metadata.")
+    expect(recordAgentToolCallMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "tool-call-read-route",
+        toolName: "read"
+      })
+    )
+  })
+
+  it("loads selected skill extension modules into agent requests", async () => {
+    const extensionPaths = [
+      "/tmp/project-a/.agents/skills/reviewer/agent-extension.mjs"
+    ]
+    const extensionRunner = {
+      emit: vi.fn(() => Promise.resolve()),
+      getStreamHooks: vi.fn(() => {}),
+      getToolHooks: vi.fn(() => {}),
+      listTools: vi.fn(() => [])
+    }
+    const selectedSkill = {
+      description: "Use when reviewing code.",
+      kind: "skill" as const,
+      name: "reviewer",
+      path: "/tmp/project-a/.agents/skills/reviewer/SKILL.md",
+      projectPath: "/tmp/project-a",
+      relativePath: ".agents/skills/reviewer/SKILL.md",
+      scope: "project" as const,
+      shortDescription: null
+    }
+
+    getSettingsMock.mockReturnValueOnce(
+      buildAgentSettings({
+        enabled: true,
+        maxSteps: 6
+      })
+    )
+    resolveSelectedSkillCapabilitiesMock.mockReturnValueOnce(["write-fs"])
+    resolveSelectedSkillExtensionPathsMock.mockReturnValueOnce(extensionPaths)
+    loadAgentExtensionsMock.mockResolvedValueOnce(extensionRunner)
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        mentions: [selectedSkill],
+        messages: [
+          {
+            id: "message-1",
+            parts: [],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+    expect(resolveSelectedSkillExtensionPathsMock).toHaveBeenCalledWith({
+      projectPath: "/tmp/project-a",
+      selectedSkills: [selectedSkill]
+    })
+    expect(loadAgentExtensionsMock).toHaveBeenCalledWith({
+      paths: extensionPaths
+    })
+    expect(extensionRunner.listTools).toHaveBeenCalledWith({
+      profileId: "general-purpose",
+      skillCapabilities: ["write-fs"]
+    })
+  })
+
+  it("persists regenerate chat lifecycle branches for agent requests", async () => {
+    getSettingsMock.mockReturnValueOnce(
+      buildAgentSettings({
+        enabled: true,
+        maxSteps: 6
+      })
+    )
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messageId: "assistant-1",
+        messages: [
+          {
+            id: "user-1",
+            parts: [],
+            role: "user"
+          }
+        ],
+        sessionId: "session-1",
+        trigger: "regenerate-message"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+
+    expect(listAppendedAgentEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: {
+            action: "appendCustomMessage",
+            message: {
+              data: {
+                branchKind: "regenerate",
+                messageId: "assistant-1",
+                retainedMessageCount: 1,
+                retainedMessageIds: ["user-1"],
+                trigger: "regenerate-message"
+              },
+              type: "chat-branch"
+            }
+          },
+          type: "agent_session_entry_appended"
+        })
+      ])
+    )
+  })
+
+  it("does not treat assistant submit triggers as chat branches", async () => {
+    getSettingsMock.mockReturnValueOnce(
+      buildAgentSettings({
+        enabled: true,
+        maxSteps: 6
+      })
+    )
+
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messageId: "assistant-1",
+        messages: [
+          {
+            id: "user-1",
+            parts: [],
+            role: "user"
+          },
+          {
+            id: "assistant-1",
+            parts: [],
+            role: "assistant"
+          }
+        ],
+        model: "openai/gpt-4.1",
+        sessionId: "session-1",
+        trigger: "submit-message"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(200)
+    await consumeChatResponse(response)
+
+    expect(listAppendedAgentEvents().some(eventPayloadContainsChatBranch)).toBe(
+      false
+    )
   })
 
   it("forwards the chat request abort signal to the model stream", async () => {

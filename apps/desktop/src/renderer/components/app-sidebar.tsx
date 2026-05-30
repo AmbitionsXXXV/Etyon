@@ -437,11 +437,11 @@ export const AppSidebarShell = ({
       </SidebarContent>
 
       {state === "expanded" ? (
-        <div
+        <hr
           aria-label="Resize sidebar"
-          className="title-bar-no-drag absolute top-0 right-0 z-30 h-full w-3 cursor-col-resize after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-sidebar-border/50 after:transition-colors hover:after:bg-sidebar-accent-foreground/28"
+          aria-orientation="vertical"
+          className="title-bar-no-drag absolute top-0 right-0 z-30 h-full w-3 cursor-col-resize border-0 after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-sidebar-border/50 after:transition-colors hover:after:bg-sidebar-accent-foreground/28"
           onPointerDown={handleSidebarResizePointerDown}
-          role="separator"
         />
       ) : null}
     </Sidebar>

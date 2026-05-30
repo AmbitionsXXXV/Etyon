@@ -1,6 +1,8 @@
 import type { TranslationKey } from "@etyon/i18n"
 import type { AgentExecutionMode } from "@etyon/rpc"
 
+export const AGENT_MAX_AUTOMATIC_RETRIES_MAX = 5
+export const AGENT_MAX_AUTOMATIC_RETRIES_MIN = 0
 export const AGENT_MAX_CONCURRENT_SUBAGENTS_MAX = 4
 export const AGENT_MAX_CONCURRENT_SUBAGENTS_MIN = 1
 export const AGENT_MAX_STEPS_MAX = 20
@@ -89,6 +91,12 @@ export const AGENT_PROFILE_OPTIONS = [
     readonly: true
   }
 ] as const satisfies readonly AgentProfileOption[]
+
+export const clampAgentMaxAutomaticRetries = (value: number): number =>
+  Math.min(
+    AGENT_MAX_AUTOMATIC_RETRIES_MAX,
+    Math.max(AGENT_MAX_AUTOMATIC_RETRIES_MIN, Math.round(value))
+  )
 
 export const clampAgentMaxConcurrentSubagents = (value: number): number =>
   Math.min(

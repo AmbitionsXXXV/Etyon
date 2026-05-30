@@ -1,6 +1,17 @@
 import type { UIMessage } from "ai"
 import { and, asc, eq, isNull } from "drizzle-orm"
 
+import {
+  getLatestAgentChatProjectionBranch,
+  hasAgentUiStreamSnapshot,
+  mergeAgentEventProjectionIntoChatMessages,
+  selectAgentChatProjectionPrefixMessages
+} from "@/main/agents/agent-chat-projection"
+import {
+  getActiveAgentRunForSession,
+  getLatestCompletedAgentRunForSession,
+  listAgentEvents
+} from "@/main/agents/agent-event-store"
 import { compactChatMessages } from "@/main/chat-auto-compact"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
@@ -20,6 +31,9 @@ const parseOptionalJson = (value: string | null): unknown | undefined =>
 const serializeOptionalJson = (value: unknown): string | null =>
   value === undefined ? null : JSON.stringify(value)
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
 const getTextParts = (
   message: UIMessage
 ): Extract<UIMessage["parts"][number], { type: "text" }>[] =>
@@ -34,6 +48,44 @@ const getMessageText = (message: UIMessage): string =>
     .join(" ")
     .replace(WHITESPACE_PATTERN, " ")
     .trim()
+
+const getAgentProjectionRunId = (message: UIMessage): null | string => {
+  if (!isRecord(message.metadata)) {
+    return null
+  }
+
+  const { agentProjection } = message.metadata
+
+  if (
+    !isRecord(agentProjection) ||
+    agentProjection.source !== "agent_events" ||
+    typeof agentProjection.runId !== "string"
+  ) {
+    return null
+  }
+
+  return agentProjection.runId
+}
+
+const hasAgentProjectionForRun = ({
+  messages,
+  runId
+}: {
+  messages: readonly UIMessage[]
+  runId: string
+}): boolean =>
+  messages.some(
+    (message) =>
+      message.role === "assistant" && getAgentProjectionRunId(message) === runId
+  )
+
+const getLatestUserMessageBoundary = (messages: readonly UIMessage[]): number =>
+  messages.findLastIndex((message) => message.role === "user") + 1
+
+const areMessagesEqual = (
+  leftMessages: readonly UIMessage[],
+  rightMessages: readonly UIMessage[]
+): boolean => JSON.stringify(leftMessages) === JSON.stringify(rightMessages)
 
 const buildChatSessionTitle = (messages: UIMessage[]): string => {
   const firstUserMessage = messages.find((message) => message.role === "user")
@@ -196,6 +248,100 @@ export const replaceChatMessages = async ({
 
   return listChatMessages({
     db,
+    sessionId
+  })
+}
+
+export const listChatMessagesWithAgentProjectionRepair = async ({
+  db,
+  sessionId
+}: {
+  db: AppDatabase
+  sessionId: string
+}): Promise<UIMessage[]> => {
+  const messages = await listChatMessages({
+    db,
+    sessionId
+  })
+  const activeRun = await getActiveAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  })
+
+  if (
+    activeRun &&
+    !hasAgentProjectionForRun({
+      messages,
+      runId: activeRun.id
+    })
+  ) {
+    const activeRunEvents = await listAgentEvents({
+      db,
+      runId: activeRun.id
+    })
+
+    if (hasAgentUiStreamSnapshot(activeRunEvents)) {
+      const prefixMessages = selectAgentChatProjectionPrefixMessages({
+        events: activeRunEvents,
+        fallbackMessageCount: getLatestUserMessageBoundary(messages),
+        messages
+      })
+      const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
+        allowEmptyProjectionFallback: false,
+        events: activeRunEvents,
+        messages: prefixMessages,
+        originalMessageCount: prefixMessages.length,
+        runId: activeRun.id
+      })
+
+      if (!areMessagesEqual(messages, projectedMessages)) {
+        return projectedMessages
+      }
+    }
+  }
+
+  const latestRun = await getLatestCompletedAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  })
+
+  if (
+    !latestRun ||
+    hasAgentProjectionForRun({ messages, runId: latestRun.id })
+  ) {
+    return messages
+  }
+
+  const events = await listAgentEvents({
+    db,
+    runId: latestRun.id
+  })
+  const branch = getLatestAgentChatProjectionBranch(events)
+  const prefixMessages = selectAgentChatProjectionPrefixMessages({
+    events,
+    fallbackMessageCount: getLatestUserMessageBoundary(messages),
+    messages
+  })
+  const originalMessageCount = prefixMessages.length
+
+  if (originalMessageCount === 0 && !branch) {
+    return messages
+  }
+
+  const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
+    events,
+    messages: prefixMessages,
+    originalMessageCount,
+    runId: latestRun.id
+  })
+
+  if (areMessagesEqual(messages, projectedMessages)) {
+    return messages
+  }
+
+  return replaceChatMessages({
+    db,
+    messages: projectedMessages,
     sessionId
   })
 }

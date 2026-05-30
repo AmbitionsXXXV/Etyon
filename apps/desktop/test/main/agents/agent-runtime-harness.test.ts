@@ -1,14 +1,22 @@
 import fs from "node:fs"
+import { setTimeout as delay } from "node:timers/promises"
 
+import type {
+  LanguageModelV3StreamPart,
+  LanguageModelV3StreamResult
+} from "@ai-sdk/provider"
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
+import * as z from "zod"
 
+import { stopActiveAgentRun } from "@/main/agents/active-agent-runs"
 import {
   createAgentRun,
   getAgentRun,
   updateAgentRun
 } from "@/main/agents/agent-event-store"
+import { createAgentExtensionRunner } from "@/main/agents/agent-extensions"
 import {
   appendAgentSessionQueuedFollowUpEvent,
   appendAgentSessionQueuedSteeringEvent
@@ -108,6 +116,94 @@ const readUiStreamChunks = async (
   }
 
   return chunks
+}
+
+const waitForCondition = async (
+  predicate: () => boolean | Promise<boolean>
+): Promise<void> => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (await predicate()) {
+      return
+    }
+
+    await delay(5)
+  }
+
+  throw new Error("Timed out waiting for condition.")
+}
+
+const createControlledTextStreamResponse = (): {
+  close: () => void
+  response: LanguageModelV3StreamResult
+} => {
+  let closed = false
+  let controllerRef:
+    | ReadableStreamDefaultController<LanguageModelV3StreamPart>
+    | undefined
+
+  return {
+    close: () => {
+      if (!controllerRef || closed) {
+        return
+      }
+
+      closed = true
+      controllerRef.enqueue({
+        id: "controlled-response-text",
+        type: "text-end"
+      })
+      controllerRef.enqueue({
+        finishReason: {
+          raw: "stop",
+          unified: "stop"
+        },
+        type: "finish",
+        usage: {
+          inputTokens: {
+            cacheRead: undefined,
+            cacheWrite: undefined,
+            noCache: undefined,
+            total: 0
+          },
+          outputTokens: {
+            reasoning: undefined,
+            text: 0,
+            total: 0
+          }
+        }
+      })
+      controllerRef.close()
+    },
+    response: {
+      stream: new ReadableStream<LanguageModelV3StreamPart>({
+        cancel: () => {
+          closed = true
+        },
+        start: (controller) => {
+          controllerRef = controller
+          controller.enqueue({
+            type: "stream-start",
+            warnings: []
+          })
+          controller.enqueue({
+            id: "controlled-response",
+            modelId: "mock-model",
+            timestamp: new Date("2026-05-24T00:00:00.000Z"),
+            type: "response-metadata"
+          })
+          controller.enqueue({
+            id: "controlled-response-text",
+            type: "text-start"
+          })
+          controller.enqueue({
+            delta: "partial",
+            id: "controlled-response-text",
+            type: "text-delta"
+          })
+        }
+      })
+    } satisfies LanguageModelV3StreamResult
+  }
 }
 
 describe("agent runtime harness", () => {
@@ -306,14 +402,100 @@ describe("agent runtime harness", () => {
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          payload: {
+          payload: expect.objectContaining({
             profileId: "general-purpose",
+            source: "chat",
             toolNames: ["read", "grep", "find", "ls"]
-          },
+          }),
           type: "agent_run_started"
         })
       ])
     )
+  })
+
+  it("keeps agent runs detached from chat request aborts", async () => {
+    const abortController = new AbortController()
+    const controlledStream = createControlledTextStreamResponse()
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true,
+          maxSteps: 5
+        }
+      })
+    })
+
+    harness.faux.setResponses([controlledStream.response])
+
+    const result = await harness.stream({
+      abortSignal: abortController.signal,
+      messages: [
+        {
+          content: "Keep running after the HTTP stream disconnects.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await waitForCondition(() => harness.faux.model.doStreamCalls.length === 1)
+
+    const streamCall = harness.faux.model.doStreamCalls.at(-1)
+
+    expect(streamCall?.abortSignal).toBeInstanceOf(AbortSignal)
+    expect(streamCall?.abortSignal).not.toBe(abortController.signal)
+
+    await waitForCondition(async () => {
+      const events = await harness.session.listEvents()
+
+      return events.some(
+        (event) => event.type === "agent_ui_stream_snapshot_created"
+      )
+    })
+
+    expect(await harness.session.listEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            parts: [
+              {
+                text: "partial",
+                type: "text"
+              }
+            ]
+          }),
+          type: "agent_ui_stream_snapshot_created"
+        })
+      ])
+    )
+
+    abortController.abort()
+
+    await waitForCondition(async () => {
+      const events = await harness.session.listEvents()
+
+      return events.some((event) => event.type === "agent_stream_disconnected")
+    })
+
+    expect(streamCall?.abortSignal?.aborted).toBe(false)
+    expect(await harness.session.listRuns()).toEqual([
+      expect.objectContaining({
+        status: "running"
+      })
+    ])
+    expect(stopActiveAgentRun(harness.session.id)).toBe(true)
+    controlledStream.close()
+
+    await result.consumeStream()
+
+    expect(streamCall?.abortSignal?.aborted).toBe(true)
+    expect(await harness.session.listRuns()).toEqual([
+      expect.objectContaining({
+        errorMessage: "Agent run was stopped.",
+        status: "failed"
+      })
+    ])
   })
 
   it("passes Etyon code tool definitions and guidelines to the provider", async () => {
@@ -538,6 +720,62 @@ describe("agent runtime harness", () => {
         type: "model"
       }
     ])
+  })
+
+  it("persists chat branch lifecycle events before streaming", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("Regenerated response.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      chatLifecycleBranch: {
+        branchKind: "regenerate",
+        messageId: "assistant-1",
+        retainedMessageIds: ["user-1"],
+        trigger: "regenerate-message"
+      },
+      messages: [
+        {
+          content: "Regenerate the last answer.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    expect(await harness.session.listEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: {
+            action: "appendCustomMessage",
+            message: {
+              data: {
+                branchKind: "regenerate",
+                messageId: "assistant-1",
+                retainedMessageCount: 1,
+                retainedMessageIds: ["user-1"],
+                trigger: "regenerate-message"
+              },
+              type: "chat-branch"
+            }
+          },
+          type: "agent_session_entry_appended"
+        })
+      ])
+    )
   })
 
   it("drains queued messages from the latest completed run into the next request", async () => {
@@ -964,10 +1202,23 @@ describe("agent runtime harness", () => {
     await result.consumeStream()
     await runtimeState.waitForIdle()
 
+    const events = await harness.session.listEvents()
+    const snapshotEvents = events.filter(
+      (event) => event.type === "agent_runtime_snapshot_created"
+    )
+
     expect(runtimeState.getSnapshot()).toEqual({
       phase: "idle"
     })
     expect(phases).toEqual(["turn", "idle"])
+    expect(snapshotEvents.map((event) => event.payload)).toEqual([
+      {
+        phase: "turn"
+      },
+      {
+        phase: "idle"
+      }
+    ])
   })
 
   it("persists user and assistant model messages to the session event log", async () => {
@@ -1492,10 +1743,11 @@ describe("agent runtime harness", () => {
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          payload: {
+          payload: expect.objectContaining({
             profileId: "general-purpose",
+            source: "chat",
             toolNames: ["read"]
-          },
+          }),
           type: "agent_run_started"
         })
       ])
@@ -1541,14 +1793,324 @@ describe("agent runtime harness", () => {
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          payload: {
+          payload: expect.objectContaining({
             profileId: "coder",
+            source: "chat",
             toolNames: ["edit", "write"]
-          },
+          }),
           type: "agent_run_started"
         })
       ])
     )
+  })
+
+  it("binds selected extension tools into the runtime tool loop", async () => {
+    const extensionEvents: string[] = []
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "runtime-extension",
+          register: (context) => {
+            context.on("*", (event) => {
+              extensionEvents.push(event.type)
+            })
+            context.registerTool({
+              description: "Echo a message through an extension tool.",
+              execute: ({ message }, executionContext) => ({
+                message,
+                projectPath: executionContext.projectPath
+              }),
+              inputSchema: z.object({
+                message: z.string()
+              }),
+              name: "etyonEcho",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["extension.echo"]
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          message: "hello"
+        },
+        modelId: "mock-model",
+        toolCallId: "extension-tool-1",
+        toolName: "etyonEcho"
+      }),
+      createFauxTextResponse("extension done", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Use the selected extension.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      skillCapabilities: ["extension.echo"]
+    })
+
+    await result.consumeStream()
+
+    const toolCalls = await harness.session.listToolCalls()
+
+    expect(harness.faux.listLastStreamToolNames()).toContain("etyonEcho")
+    expect(toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          output: expect.objectContaining({
+            message: "hello",
+            projectPath: harness.projectPath
+          }),
+          state: "finished",
+          toolName: "etyonEcho"
+        })
+      ])
+    )
+    expect(extensionEvents).toEqual([
+      "tool_registered",
+      "tool_call_started",
+      "tool_call_finished"
+    ])
+  })
+
+  it("applies selected extension tool hooks inside the runtime tool loop", async () => {
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "runtime-tool-hook-extension",
+          register: (context) => {
+            context.registerToolHooks({
+              afterToolCall: (result) => ({
+                output: {
+                  extensionPatched: true,
+                  original: result.output
+                }
+              }),
+              beforeToolCall: (toolCall) => {
+                if (toolCall.toolName !== "read") {
+                  return {}
+                }
+
+                return {
+                  input: {
+                    path: "rewritten.json"
+                  }
+                }
+              },
+              profiles: ["general-purpose"],
+              requiredSkillCapabilities: ["extension.tool-hooks"]
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    fs.writeFileSync(
+      `${harness.projectPath}/package.json`,
+      '{ "name": "original" }'
+    )
+    fs.writeFileSync(
+      `${harness.projectPath}/rewritten.json`,
+      '{ "name": "rewritten" }'
+    )
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          path: "package.json"
+        },
+        modelId: "mock-model",
+        toolCallId: "tool-hook-1",
+        toolName: "read"
+      }),
+      createFauxTextResponse("hooked read done", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Read package metadata.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      skillCapabilities: ["extension.tool-hooks", "read-fs"]
+    })
+
+    await result.consumeStream()
+
+    const toolCalls = await harness.session.listToolCalls()
+    const modelMessages = await harness.session.listModelMessages()
+
+    expect(toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "tool-hook-1",
+          input: {
+            path: "rewritten.json"
+          },
+          output: expect.objectContaining({
+            extensionPatched: true,
+            original: expect.objectContaining({
+              content: expect.arrayContaining([
+                {
+                  text: '{ "name": "rewritten" }',
+                  type: "text"
+                }
+              ])
+            })
+          }),
+          state: "finished",
+          toolName: "read"
+        })
+      ])
+    )
+    expect(modelMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: [
+            expect.objectContaining({
+              output: {
+                type: "json",
+                value: expect.objectContaining({
+                  extensionPatched: true
+                })
+              },
+              toolCallId: "tool-hook-1",
+              toolName: "read",
+              type: "tool-result"
+            })
+          ],
+          role: "tool"
+        })
+      ])
+    )
+  })
+
+  it("merges selected extension stream hooks into the runtime provider request", async () => {
+    const extensionResponses: unknown[] = []
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "runtime-stream-extension",
+          register: (context) => {
+            context.registerStreamHooks({
+              afterProviderResponse: ({ response }) => {
+                extensionResponses.push(response)
+              },
+              beforeProviderPayload: ({ payload }) => ({
+                system: `${String(payload.system)}\nExtension system`
+              }),
+              beforeProviderRequest: () => ({
+                headers: {
+                  "x-extension-hook": "enabled"
+                },
+                metadata: {
+                  extensionHook: true
+                }
+              }),
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["extension.stream"]
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("extension hooked", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Use extension stream hooks.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      skillCapabilities: ["extension.stream"],
+      streamHooks: {
+        beforeProviderPayload: () => ({
+          system: "Runtime system"
+        }),
+        beforeProviderRequest: () => ({
+          headers: {
+            "x-runtime-hook": "enabled"
+          },
+          metadata: {
+            runtimeHook: true
+          }
+        })
+      },
+      streamOptions: {
+        headers: {
+          "x-base": "1"
+        },
+        metadata: {
+          source: "chat"
+        }
+      }
+    })
+
+    await result.consumeStream()
+
+    const modelCall = harness.faux.model.doStreamCalls.at(-1)
+    const promptJson = JSON.stringify(modelCall?.prompt)
+
+    expect(modelCall?.headers).toEqual({
+      "x-base": "1",
+      "x-extension-hook": "enabled",
+      "x-runtime-hook": "enabled"
+    })
+    expect(promptJson).toContain("Runtime system")
+    expect(promptJson).toContain("Extension system")
+    expect(extensionResponses).toEqual([
+      expect.objectContaining({
+        runId: expect.any(String),
+        status: "succeeded"
+      })
+    ])
   })
 
   it("runs delegated child agents through the faux provider with scoped child runs", async () => {
@@ -1666,7 +2228,7 @@ describe("agent runtime harness", () => {
     )
   })
 
-  it("bounds delegated child turns and passes the request abort signal", async () => {
+  it("bounds delegated child turns and keeps child aborts on the run signal", async () => {
     const abortController = new AbortController()
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",
@@ -1726,9 +2288,11 @@ describe("agent runtime harness", () => {
     const childRun = runs.find((run) => run.profileId === "explore")
 
     expect(harness.faux.model.doGenerateCalls).toHaveLength(1)
+    expect(childGenerateCall?.abortSignal).toBeInstanceOf(AbortSignal)
+    expect(childGenerateCall?.abortSignal).not.toBe(abortController.signal)
     expect(childGenerateCall?.abortSignal?.aborted).toBe(false)
     abortController.abort()
-    expect(childGenerateCall?.abortSignal?.aborted).toBe(true)
+    expect(childGenerateCall?.abortSignal?.aborted).toBe(false)
     expect(childRun).toEqual(
       expect.objectContaining({
         profileId: "explore",

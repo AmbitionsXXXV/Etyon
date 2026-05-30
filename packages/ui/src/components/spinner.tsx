@@ -11,7 +11,6 @@ function Spinner({
     <HugeiconsIcon
       icon={Loading03Icon}
       strokeWidth={typeof strokeWidth === "number" ? strokeWidth : 2}
-      role="status"
       aria-label="Loading"
       className={cn("size-4 animate-spin", className)}
       {...props}

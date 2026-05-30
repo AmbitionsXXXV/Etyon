@@ -1,13 +1,13 @@
 export const parseTelegramIdList = (value: string): Set<string> =>
   new Set(
     value
-      .split(/[\s,;]+/)
-      .map((item) => item.trim().replace(/^(telegram:|tg:)/i, ""))
+      .split(/[\s,;]+/u)
+      .map((item) => item.trim().replace(/^(telegram:|tg:)/iu, ""))
       .filter(Boolean)
   )
 
 const escapeRegex = (value: string): string =>
-  value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&")
 
 export const stripTelegramBotMention = (
   text: string,
@@ -18,6 +18,6 @@ export const stripTelegramBotMention = (
   }
 
   return text
-    .replaceAll(new RegExp(`@${escapeRegex(botUsername)}\\b`, "gi"), "")
+    .replaceAll(new RegExp(`@${escapeRegex(botUsername)}\\b`, "giu"), "")
     .trim()
 }

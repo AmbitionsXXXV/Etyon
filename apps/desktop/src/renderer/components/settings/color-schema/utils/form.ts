@@ -5,7 +5,7 @@ import { z } from "zod"
 import { HEX_COLOR_REGEX } from "../constants/defaults"
 
 export const normalizeHexDraft = (value: string) => {
-  const sanitizedValue = value.toLowerCase().replaceAll(/[^#0-9a-f]/g, "")
+  const sanitizedValue = value.toLowerCase().replaceAll(/[^#0-9a-f]/gu, "")
   const withoutHashes = sanitizedValue.replaceAll("#", "")
 
   if (withoutHashes.length === 0) {

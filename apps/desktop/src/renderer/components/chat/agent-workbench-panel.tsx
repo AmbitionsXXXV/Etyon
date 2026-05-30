@@ -12,7 +12,15 @@ import type {
   ReadAgentArtifactOutput
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Chip, Disclosure, ScrollShadow } from "@heroui/react"
+import {
+  Button,
+  Chip,
+  Disclosure,
+  Label,
+  NumberField,
+  ScrollShadow,
+  Switch
+} from "@heroui/react"
 import {
   Add01Icon,
   ArrowReloadHorizontalIcon,
@@ -22,22 +30,29 @@ import {
   PlayIcon,
   RepeatIcon,
   Rocket01Icon,
+  TerminalIcon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
+import type { ReactNode } from "react"
 
 import type {
   AgentRunTracePreview,
+  AgentWorkbenchBackgroundProcessPreview,
   AgentWorkbenchGraphRetryPreview,
-  AgentWorkbenchRetryPolicyPreview
+  AgentWorkbenchRetryPolicyPreview,
+  AgentWorkbenchShellCommandPreview,
+  AgentWorkbenchShellOutputPreview
 } from "@/renderer/lib/chat/agent-workbench"
 import {
+  getAgentWorkbenchBackgroundProcessPreview,
   getAgentWorkbenchControlState,
   getAgentWorkbenchDiffPreview,
   getAgentWorkbenchFirstFailedNode,
+  getAgentWorkbenchFirstRunningNode,
   getAgentWorkbenchGraphPreview,
   getAgentWorkbenchGraphPlan,
   getAgentWorkbenchGraphRetryPreview,
@@ -50,19 +65,34 @@ import {
   getAgentWorkbenchRunDepth,
   getAgentWorkbenchSelectedRun,
   getAgentWorkbenchSessionPreview,
+  getAgentWorkbenchShellCommandPreview,
+  getAgentWorkbenchShellOutputPreview,
   getGraphApprovalOperationRunIds,
   getGraphOperationRunIds
 } from "@/renderer/lib/chat/agent-workbench"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { buildAgentApprovalInboxItem } from "@/renderer/lib/settings-page/agent-approval-inbox"
+import {
+  AGENT_MAX_AUTOMATIC_RETRIES_MAX,
+  AGENT_MAX_AUTOMATIC_RETRIES_MIN,
+  clampAgentMaxAutomaticRetries
+} from "@/renderer/lib/settings-page/agents-settings"
 import { CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS } from "@/renderer/lib/sidebar/chat-sessions"
 
 interface AgentWorkbenchPanelProps {
   gitDiff?: GitProjectDiffOutput
   isRequestPending: boolean
   isProjectDiffLoading: boolean
+  mode?: AgentWorkbenchPanelMode
   retrySettings?: AgentRetrySettings
   sessionId: string
+}
+
+interface AgentWorkbenchPanelChromeProps {
+  approvalCount: number
+  children: ReactNode
+  mode: AgentWorkbenchPanelMode
+  runs: AgentRunTraceRun[]
 }
 
 interface InvalidateAgentWorkbenchQueriesOptions {
@@ -89,6 +119,7 @@ interface UseAgentWorkbenchOperationsOptions {
   approvalsQueryKey: QueryKey
   failedNode: AgentRunGraphExecutionNode | null
   rootRun: AgentRunTraceRun | null
+  runningNode: AgentRunGraphExecutionNode | null
   runsQueryKey: QueryKey
   selectedTemplateId: AgentRunGraphTemplateId
   selectedRun: AgentRunTraceRun | null
@@ -115,6 +146,7 @@ type AgentRunTracePreviewItem = AgentRunTracePreview["events"][number]
 type AgentWorkbenchGraphNodePreview = NonNullable<
   ReturnType<typeof getAgentWorkbenchGraphPreview>
 >["stages"][number]["nodes"][number]
+type AgentWorkbenchPanelMode = "embedded" | "standalone"
 
 interface RespondAgentWorkbenchApprovalInput {
   approval: PendingAgentApproval
@@ -134,6 +166,10 @@ const SESSION_ROOT_ENTRY_VALUE = "__root__"
 const EMPTY_AGENT_RUNS: AgentRunTraceRun[] = []
 const EMPTY_GRAPH_RETRIES: AgentWorkbenchGraphRetryPreview[] = []
 const EMPTY_RUN_GRAPH_TEMPLATES: AgentRunGraphTemplate[] = []
+const runGridHeightClassNameByMode: Record<AgentWorkbenchPanelMode, string> = {
+  embedded: "max-h-[min(24rem,40vh)]",
+  standalone: "flex-1"
+}
 
 type ChipColor = "danger" | "default" | "success" | "warning"
 
@@ -155,6 +191,32 @@ const graphNodeStatusChipColor: Record<
   succeeded: "success",
   suspended: "default"
 }
+
+const backgroundProcessStatusChipColor: Record<
+  AgentWorkbenchBackgroundProcessPreview["status"],
+  ChipColor
+> = {
+  exited: "success",
+  running: "warning",
+  spawn_error: "danger",
+  stopped: "default",
+  unknown: "default"
+}
+
+const shellCommandStatusChipColor: Record<
+  AgentWorkbenchShellCommandPreview["status"],
+  ChipColor
+> = {
+  failed: "danger",
+  running: "warning",
+  success: "success",
+  unknown: "default"
+}
+
+const processDurationFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0
+})
 
 const runTimeFormatter = new Intl.DateTimeFormat(undefined, {
   day: "2-digit",
@@ -191,6 +253,28 @@ const invalidateAgentWorkbenchQueries = ({
 
 const formatRunTime = (run: AgentRunTraceRun): string =>
   runTimeFormatter.format(new Date(run.startedAt))
+
+const formatProcessDuration = (durationMs?: number): string => {
+  if (durationMs === undefined) {
+    return "-"
+  }
+
+  const normalizedDurationMs = Math.max(0, durationMs)
+
+  if (normalizedDurationMs < 1_000) {
+    return `${Math.round(normalizedDurationMs)} ms`
+  }
+
+  return `${processDurationFormatter.format(normalizedDurationMs / 1_000)} s`
+}
+
+const getAgentWorkbenchRetrySettings = ({
+  graphPlan,
+  retrySettings
+}: {
+  graphPlan: AgentRunGraphExecutionPlan | null
+  retrySettings?: AgentRetrySettings
+}): AgentRetrySettings | undefined => graphPlan?.retryPolicy ?? retrySettings
 
 const refreshAgentWorkbenchQueries = ({
   approvalsQueryKey,
@@ -264,6 +348,30 @@ const GraphNodeStatusBadge = ({
   status: AgentRunGraphExecutionNode["status"]
 }) => (
   <Chip color={graphNodeStatusChipColor[status]} size="sm" variant="soft">
+    <Chip.Label>{status}</Chip.Label>
+  </Chip>
+)
+
+const BackgroundProcessStatusBadge = ({
+  status
+}: {
+  status: AgentWorkbenchBackgroundProcessPreview["status"]
+}) => (
+  <Chip
+    color={backgroundProcessStatusChipColor[status]}
+    size="sm"
+    variant="soft"
+  >
+    <Chip.Label>{status}</Chip.Label>
+  </Chip>
+)
+
+const ShellCommandStatusBadge = ({
+  status
+}: {
+  status: AgentWorkbenchShellCommandPreview["status"]
+}) => (
+  <Chip color={shellCommandStatusChipColor[status]} size="sm" variant="soft">
     <Chip.Label>{status}</Chip.Label>
   </Chip>
 )
@@ -468,11 +576,31 @@ const AgentWorkbenchGraphRetryList = ({
 }
 
 const AgentWorkbenchRetryPolicyPanel = ({
+  isPending = false,
+  onRetryPolicyChange,
   retryPolicy
 }: {
+  isPending?: boolean
+  onRetryPolicyChange?: (retryPolicy: AgentRetrySettings) => void
   retryPolicy: AgentWorkbenchRetryPolicyPreview
 }) => {
   const { t } = useI18n()
+  const isEditable = Boolean(onRetryPolicyChange)
+  const handleRetryTransientFailuresChange = (checked: boolean) => {
+    onRetryPolicyChange?.({
+      maxAutomaticRetries:
+        checked && retryPolicy.maxAutomaticRetries === 0
+          ? 1
+          : retryPolicy.maxAutomaticRetries,
+      retryTransientFailures: checked
+    })
+  }
+  const handleMaxAutomaticRetriesChange = (value: number) => {
+    onRetryPolicyChange?.({
+      maxAutomaticRetries: clampAgentMaxAutomaticRetries(value),
+      retryTransientFailures: retryPolicy.retryTransientFailures
+    })
+  }
 
   return (
     <div className="space-y-1.5 rounded-md border border-border/50 bg-background/35 p-2">
@@ -493,6 +621,41 @@ const AgentWorkbenchRetryPolicyPanel = ({
             )}
           </Chip.Label>
         </Chip>
+      </div>
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(8rem,10rem)]">
+        <Switch
+          aria-label={t("chat.workbench.graphRetryToggle")}
+          isDisabled={!isEditable || isPending}
+          isSelected={retryPolicy.retryTransientFailures}
+          onChange={handleRetryTransientFailuresChange}
+        >
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+          <Switch.Content>
+            <Label className="text-xs">
+              {t("chat.workbench.graphRetryToggle")}
+            </Label>
+          </Switch.Content>
+        </Switch>
+        <NumberField
+          isDisabled={
+            !isEditable || isPending || !retryPolicy.retryTransientFailures
+          }
+          maxValue={AGENT_MAX_AUTOMATIC_RETRIES_MAX}
+          minValue={AGENT_MAX_AUTOMATIC_RETRIES_MIN}
+          onChange={handleMaxAutomaticRetriesChange}
+          value={retryPolicy.maxAutomaticRetries}
+        >
+          <Label className="text-xs text-muted-foreground">
+            {t("chat.workbench.graphRetryLimit")}
+          </Label>
+          <NumberField.Group>
+            <NumberField.DecrementButton />
+            <NumberField.Input className="text-center" />
+            <NumberField.IncrementButton />
+          </NumberField.Group>
+        </NumberField>
       </div>
       <div className="flex flex-wrap gap-1 text-[0.625rem] text-muted-foreground">
         <span className="rounded-sm bg-muted px-1.5 py-0.5">
@@ -534,13 +697,290 @@ export const AgentWorkbenchToolCallsPanel = ({
   )
 }
 
+export const AgentWorkbenchBackgroundProcessPanel = ({
+  processes
+}: {
+  processes: AgentWorkbenchBackgroundProcessPreview[]
+}) => {
+  const { t } = useI18n()
+
+  if (processes.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="shrink-0 space-y-1.5 rounded-md border border-border/50 bg-background/35 p-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <HugeiconsIcon
+            className="shrink-0 text-muted-foreground"
+            icon={TerminalIcon}
+            size={14}
+          />
+          <p className="truncate text-[0.6875rem] font-medium text-muted-foreground">
+            {t("chat.workbench.backgroundProcesses", {
+              count: processes.length
+            })}
+          </p>
+        </div>
+      </div>
+      <ScrollShadow className="max-h-40 pr-1">
+        <div className="space-y-1.5">
+          {processes.map((process) => (
+            <div
+              className="min-w-0 rounded-md border border-border/50 bg-background/55 p-2"
+              key={process.id}
+            >
+              <div className="mb-1 flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-[0.625rem] font-medium text-foreground">
+                    {process.command ?? process.processId}
+                  </p>
+                  <p className="truncate font-mono text-[0.625rem] text-muted-foreground">
+                    {process.processId}
+                  </p>
+                  {process.cwd ? (
+                    <p className="truncate font-mono text-[0.625rem] text-muted-foreground">
+                      {process.cwd}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="shrink-0">
+                  <BackgroundProcessStatusBadge status={process.status} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1 text-[0.625rem] text-muted-foreground">
+                {process.pid === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t("chat.workbench.processPid", {
+                      pid: process.pid ?? "-"
+                    })}
+                  </span>
+                )}
+                <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                  {t("chat.workbench.processDuration", {
+                    duration: formatProcessDuration(process.durationMs)
+                  })}
+                </span>
+                <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                  {t("chat.workbench.processOutputChars", {
+                    stderr: process.stderrChars,
+                    stdout: process.stdoutChars
+                  })}
+                </span>
+                {process.exitCode === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t("chat.workbench.processExitCode", {
+                      code: process.exitCode ?? "-"
+                    })}
+                  </span>
+                )}
+                {process.sandboxed === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t(
+                      process.sandboxed
+                        ? "chat.workbench.processSandboxed"
+                        : "chat.workbench.processUnsandboxed"
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScrollShadow>
+    </div>
+  )
+}
+
+export const AgentWorkbenchShellCommandPanel = ({
+  commands
+}: {
+  commands: AgentWorkbenchShellCommandPreview[]
+}) => {
+  const { t } = useI18n()
+
+  if (commands.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="shrink-0 space-y-1.5 rounded-md border border-border/50 bg-background/35 p-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <HugeiconsIcon
+            className="shrink-0 text-muted-foreground"
+            icon={TerminalIcon}
+            size={14}
+          />
+          <p className="truncate text-[0.6875rem] font-medium text-muted-foreground">
+            {t("chat.workbench.shellCommands", {
+              count: commands.length
+            })}
+          </p>
+        </div>
+      </div>
+      <ScrollShadow className="max-h-40 pr-1">
+        <div className="space-y-1.5">
+          {commands.map((command) => (
+            <div
+              className="min-w-0 rounded-md border border-border/50 bg-background/55 p-2"
+              key={command.id}
+            >
+              <div className="mb-1 flex min-w-0 items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-[0.625rem] font-medium text-foreground">
+                    {command.command ?? command.id}
+                  </p>
+                  {command.cwd ? (
+                    <p className="truncate font-mono text-[0.625rem] text-muted-foreground">
+                      {command.cwd}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="shrink-0">
+                  <ShellCommandStatusBadge status={command.status} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1 text-[0.625rem] text-muted-foreground">
+                {command.pid === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t("chat.workbench.processPid", {
+                      pid: command.pid ?? "-"
+                    })}
+                  </span>
+                )}
+                <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                  {t("chat.workbench.processDuration", {
+                    duration: formatProcessDuration(command.durationMs)
+                  })}
+                </span>
+                <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                  {t("chat.workbench.processOutputChars", {
+                    stderr: command.stderrChars,
+                    stdout: command.stdoutChars
+                  })}
+                </span>
+                {command.exitCode === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t("chat.workbench.processExitCode", {
+                      code: command.exitCode ?? "-"
+                    })}
+                  </span>
+                )}
+                {command.shellStatus ? (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {command.shellStatus}
+                  </span>
+                ) : null}
+                {command.sandboxed === undefined ? null : (
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5">
+                    {t(
+                      command.sandboxed
+                        ? "chat.workbench.processSandboxed"
+                        : "chat.workbench.processUnsandboxed"
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </ScrollShadow>
+    </div>
+  )
+}
+
+export const AgentWorkbenchShellOutputPanel = ({
+  outputs
+}: {
+  outputs: AgentWorkbenchShellOutputPreview[]
+}) => {
+  const { t } = useI18n()
+
+  if (outputs.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="shrink-0 space-y-1.5 rounded-md border border-border/50 bg-background/35 p-2">
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <HugeiconsIcon
+            className="shrink-0 text-muted-foreground"
+            icon={TerminalIcon}
+            size={14}
+          />
+          <p className="truncate text-[0.6875rem] font-medium text-muted-foreground">
+            {t("chat.workbench.shellOutput", {
+              count: outputs.length
+            })}
+          </p>
+        </div>
+      </div>
+      <ScrollShadow className="max-h-36 pr-1">
+        <div className="space-y-1.5">
+          {outputs.map((output) => (
+            <div
+              className="min-w-0 rounded-md border border-border/50 bg-background/55 p-2"
+              key={output.id}
+            >
+              <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-[0.625rem] font-medium text-foreground">
+                    {output.commandLabel}
+                  </p>
+                  {output.cwd ? (
+                    <p className="truncate font-mono text-[0.625rem] text-muted-foreground">
+                      {output.cwd}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span
+                    className={cn(
+                      "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
+                      output.channel === "stderr"
+                        ? "bg-danger/10 text-danger"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {output.channel}
+                  </span>
+                  <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground">
+                    {t("chat.workbench.shellOutputChunks", {
+                      count: output.chunkCount
+                    })}
+                  </span>
+                </div>
+              </div>
+              <pre className="max-h-24 overflow-auto font-mono text-[0.625rem] wrap-break-word whitespace-pre-wrap text-foreground">
+                {output.text}
+              </pre>
+              {output.truncated ? (
+                <p className="mt-1 text-[0.625rem] text-muted-foreground">
+                  {t("chat.workbench.shellOutputTruncated")}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </ScrollShadow>
+    </div>
+  )
+}
+
 export const AgentWorkbenchGraphPlanPanel = ({
   graphPlan,
+  isRetryPolicyPending = false,
+  onRetryPolicyChange,
   onSelectRun,
   retryPolicy,
   retries = EMPTY_GRAPH_RETRIES
 }: {
   graphPlan: AgentRunGraphExecutionPlan | null
+  isRetryPolicyPending?: boolean
+  onRetryPolicyChange?: (retryPolicy: AgentRetrySettings) => void
   onSelectRun: (runId: string) => void
   retryPolicy?: AgentWorkbenchRetryPolicyPreview
   retries?: AgentWorkbenchGraphRetryPreview[]
@@ -581,7 +1021,11 @@ export const AgentWorkbenchGraphPlanPanel = ({
             ) : null}
           </div>
           {retryPolicy ? (
-            <AgentWorkbenchRetryPolicyPanel retryPolicy={retryPolicy} />
+            <AgentWorkbenchRetryPolicyPanel
+              isPending={isRetryPolicyPending}
+              onRetryPolicyChange={onRetryPolicyChange}
+              retryPolicy={retryPolicy}
+            />
           ) : null}
           <AgentWorkbenchGraphRetryList retries={retries} />
           <div className="space-y-2">
@@ -691,12 +1135,18 @@ const AgentWorkbenchControls = ({
   graphPlan,
   isAdvanceGraphPending,
   isCreateGraphPending,
+  isExecuteNodePending,
   isRetryNodePending,
+  isRunGraphPending,
+  isSkipNodePending,
   isStartStagePending,
   onAdvanceGraph,
   onCreateGraph,
+  onExecuteNode,
   onRetryNode,
+  onRunGraph,
   onSelectedTemplateIdChange,
+  onSkipNode,
   onStartStage,
   onTaskTextChange,
   operationErrorMessage,
@@ -709,12 +1159,18 @@ const AgentWorkbenchControls = ({
   isAdvanceGraphPending: boolean
   isApprovalResponsePending: boolean
   isCreateGraphPending: boolean
+  isExecuteNodePending: boolean
   isRetryNodePending: boolean
+  isRunGraphPending: boolean
+  isSkipNodePending: boolean
   isStartStagePending: boolean
   onAdvanceGraph: () => void
   onCreateGraph: () => void
+  onExecuteNode: () => void
   onRetryNode: () => void
+  onRunGraph: () => void
   onSelectedTemplateIdChange: (templateId: AgentRunGraphTemplateId) => void
+  onSkipNode: () => void
   onStartStage: () => void
   onTaskTextChange: (text: string) => void
   operationErrorMessage: string | null
@@ -727,7 +1183,10 @@ const AgentWorkbenchControls = ({
     isAdvanceGraphPending ||
     isApprovalResponsePending ||
     isCreateGraphPending ||
+    isExecuteNodePending ||
     isRetryNodePending ||
+    isRunGraphPending ||
+    isSkipNodePending ||
     isStartStagePending
   const controlState = getAgentWorkbenchControlState({
     failedNode,
@@ -788,6 +1247,28 @@ const AgentWorkbenchControls = ({
         </Button>
         <Button
           className="gap-1.5"
+          isDisabled={!controlState.canRunGraph}
+          onPress={onRunGraph}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon icon={Rocket01Icon} size={14} />
+          <span>{t("chat.workbench.runGraph")}</span>
+        </Button>
+        <Button
+          className="gap-1.5"
+          isDisabled={!controlState.canExecuteRunningNode}
+          onPress={onExecuteNode}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon icon={PlayIcon} size={14} />
+          <span>{t("chat.workbench.executeNode")}</span>
+        </Button>
+        <Button
+          className="gap-1.5"
           isDisabled={!controlState.canStartNextStage}
           onPress={onStartStage}
           size="sm"
@@ -818,6 +1299,17 @@ const AgentWorkbenchControls = ({
         >
           <HugeiconsIcon icon={RepeatIcon} size={14} />
           <span>{t("chat.workbench.retryFailed")}</span>
+        </Button>
+        <Button
+          className="gap-1.5"
+          isDisabled={!controlState.canSkipFailedNode}
+          onPress={onSkipNode}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={14} />
+          <span>{t("chat.workbench.skipFailed")}</span>
         </Button>
       </div>
 
@@ -1293,22 +1785,106 @@ const AgentWorkbenchTriggerChips = ({
   )
 }
 
+const AgentWorkbenchPanelChrome = ({
+  approvalCount,
+  children,
+  mode,
+  runs
+}: AgentWorkbenchPanelChromeProps) => {
+  const { t } = useI18n()
+
+  if (mode === "standalone") {
+    return (
+      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <HugeiconsIcon
+              className="shrink-0 text-muted-foreground"
+              icon={WorkflowSquare02Icon}
+              size={18}
+            />
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold">
+                {t("chat.workbench.title")}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {t("chat.workbench.subtitle")}
+              </p>
+            </div>
+          </div>
+          <AgentWorkbenchTriggerChips
+            approvalCount={approvalCount}
+            runs={runs}
+          />
+        </header>
+        <ScrollShadow className="min-h-0 flex-1 px-4 py-4">
+          <div className="flex h-full min-h-0 flex-col">{children}</div>
+        </ScrollShadow>
+      </section>
+    )
+  }
+
+  return (
+    <Disclosure className="min-h-0 overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
+      <Disclosure.Heading>
+        <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <HugeiconsIcon
+              className="shrink-0 text-muted-foreground"
+              icon={WorkflowSquare02Icon}
+              size={18}
+            />
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-semibold">
+                {t("chat.workbench.title")}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("chat.workbench.subtitle")}
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <AgentWorkbenchTriggerChips
+              approvalCount={approvalCount}
+              runs={runs}
+            />
+            <Disclosure.Indicator />
+          </div>
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      <Disclosure.Content className="min-h-0 overflow-hidden">
+        <Disclosure.Body>
+          <ScrollShadow className="max-h-[50vh] px-4 pb-4">
+            {children}
+          </ScrollShadow>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  )
+}
+
 const SelectedRunDetails = ({
   artifactContent,
+  backgroundProcesses,
   isArtifactContentLoading,
   isLoading,
   onSelectArtifact,
   preview,
   run,
-  selectedArtifactId
+  selectedArtifactId,
+  shellCommands,
+  shellOutputs
 }: {
   artifactContent: ReadAgentArtifactOutput | null
+  backgroundProcesses: AgentWorkbenchBackgroundProcessPreview[]
   isArtifactContentLoading: boolean
   isLoading: boolean
   onSelectArtifact: (artifactId: string) => void
   preview: AgentRunTracePreview | null
   run: AgentRunTraceRun | null
   selectedArtifactId: string | null
+  shellCommands: AgentWorkbenchShellCommandPreview[]
+  shellOutputs: AgentWorkbenchShellOutputPreview[]
 }) => {
   const { t } = useI18n()
 
@@ -1349,6 +1925,9 @@ const SelectedRunDetails = ({
           {t("chat.workbench.loading")}
         </p>
       ) : null}
+      <AgentWorkbenchShellCommandPanel commands={shellCommands} />
+      <AgentWorkbenchBackgroundProcessPanel processes={backgroundProcesses} />
+      <AgentWorkbenchShellOutputPanel outputs={shellOutputs} />
       {preview ? (
         <div className="grid min-h-0 min-w-0 flex-1 gap-2 md:grid-cols-3">
           <div className="min-h-0 min-w-0 space-y-1.5">
@@ -1412,6 +1991,7 @@ const useAgentWorkbenchOperations = ({
   approvalsQueryKey,
   failedNode,
   rootRun,
+  runningNode,
   runsQueryKey,
   selectedTemplateId,
   selectedRun,
@@ -1482,6 +2062,41 @@ const useAgentWorkbenchOperations = ({
       invalidateQueries(getGraphOperationRunIds(result))
     }
   })
+  const executeNodeMutation = useMutation({
+    mutationFn: () => {
+      if (!rootRun || !runningNode) {
+        throw new Error("Running run graph node is not selected.")
+      }
+
+      return rpcClient.agents.executeRunGraphNode({
+        nodeId: runningNode.id,
+        runId: rootRun.id,
+        sessionId
+      })
+    },
+    onSuccess: (result) => {
+      setSelectedRunId(result.childRun.id)
+      invalidateQueries(getGraphOperationRunIds(result))
+    }
+  })
+  const runGraphMutation = useMutation({
+    mutationFn: () => {
+      if (!rootRun) {
+        throw new Error("Run graph root is not selected.")
+      }
+
+      return rpcClient.agents.runGraphUntilIdle({
+        runId: rootRun.id,
+        sessionId
+      })
+    },
+    onSuccess: (result) => {
+      const lastChildRun = result.childRuns.at(-1)
+
+      setSelectedRunId(lastChildRun?.id ?? result.run.id)
+      invalidateQueries(getGraphOperationRunIds(result))
+    }
+  })
   const retryNodeMutation = useMutation({
     mutationFn: () => {
       if (!failedNode || !rootRun) {
@@ -1490,6 +2105,41 @@ const useAgentWorkbenchOperations = ({
 
       return rpcClient.agents.retryRunGraphNode({
         nodeId: failedNode.id,
+        runId: rootRun.id,
+        sessionId
+      })
+    },
+    onSuccess: (result) => {
+      setSelectedRunId(result.run.id)
+      invalidateQueries(getGraphOperationRunIds(result))
+    }
+  })
+  const skipNodeMutation = useMutation({
+    mutationFn: () => {
+      if (!failedNode || !rootRun) {
+        throw new Error("Failed run graph node is not selected.")
+      }
+
+      return rpcClient.agents.skipRunGraphNode({
+        nodeId: failedNode.id,
+        reason: "Skipped in Agent Workbench.",
+        runId: rootRun.id,
+        sessionId
+      })
+    },
+    onSuccess: (result) => {
+      setSelectedRunId(result.run.id)
+      invalidateQueries(getGraphOperationRunIds(result))
+    }
+  })
+  const updateRetryPolicyMutation = useMutation({
+    mutationFn: (retryPolicy: AgentRetrySettings) => {
+      if (!rootRun) {
+        throw new Error("Run graph root is not selected.")
+      }
+
+      return rpcClient.agents.updateRunGraphRetryPolicy({
+        retryPolicy,
         runId: rootRun.id,
         sessionId
       })
@@ -1515,6 +2165,7 @@ const useAgentWorkbenchOperations = ({
       return rpcClient.agents.respondToRunGraphApproval({
         approvalId: approval.approvalId,
         approved,
+        continueUntilIdle: true,
         ...(approved ? {} : { reason: "Denied in Agent Workbench." }),
         rootRunId: rootRun.id,
         sessionId,
@@ -1522,7 +2173,9 @@ const useAgentWorkbenchOperations = ({
       })
     },
     onSuccess: (result) => {
-      setSelectedRunId(result.childRun.id)
+      const continuedChildRun = result.continuedGraph?.childRuns.at(-1)
+
+      setSelectedRunId(continuedChildRun?.id ?? result.childRun.id)
       invalidateQueries(getGraphApprovalOperationRunIds(result))
     }
   })
@@ -1572,7 +2225,11 @@ const useAgentWorkbenchOperations = ({
     getAgentWorkbenchOperationErrorMessage(instantiateGraphMutation.error) ??
     getAgentWorkbenchOperationErrorMessage(startStageMutation.error) ??
     getAgentWorkbenchOperationErrorMessage(advanceGraphMutation.error) ??
+    getAgentWorkbenchOperationErrorMessage(executeNodeMutation.error) ??
+    getAgentWorkbenchOperationErrorMessage(runGraphMutation.error) ??
     getAgentWorkbenchOperationErrorMessage(retryNodeMutation.error) ??
+    getAgentWorkbenchOperationErrorMessage(skipNodeMutation.error) ??
+    getAgentWorkbenchOperationErrorMessage(updateRetryPolicyMutation.error) ??
     getAgentWorkbenchOperationErrorMessage(respondApprovalMutation.error)
   const sessionOperationErrorMessage =
     getAgentWorkbenchOperationErrorMessage(moveSessionLeafMutation.error) ??
@@ -1583,13 +2240,17 @@ const useAgentWorkbenchOperations = ({
   return {
     advanceGraphMutation,
     appendSessionCompactionSummaryMutation,
+    executeNodeMutation,
     graphOperationErrorMessage,
     instantiateGraphMutation,
     moveSessionLeafMutation,
     respondApprovalMutation,
     retryNodeMutation,
+    runGraphMutation,
+    skipNodeMutation,
     sessionOperationErrorMessage,
-    startStageMutation
+    startStageMutation,
+    updateRetryPolicyMutation
   }
 }
 
@@ -1643,6 +2304,7 @@ export const AgentWorkbenchPanel = ({
   gitDiff,
   isRequestPending,
   isProjectDiffLoading,
+  mode = "embedded",
   retrySettings,
   sessionId
 }: AgentWorkbenchPanelProps) => {
@@ -1731,6 +2393,13 @@ export const AgentWorkbenchPanel = ({
     enabled: shouldInspectAgentWorkbenchSelectedRun(selectedRun)
   })
   const preview = getAgentWorkbenchPreview(inspectRunQuery.data)
+  const backgroundProcesses = getAgentWorkbenchBackgroundProcessPreview(
+    inspectRunQuery.data
+  )
+  const shellCommands = getAgentWorkbenchShellCommandPreview(
+    inspectRunQuery.data
+  )
+  const shellOutputs = getAgentWorkbenchShellOutputPreview(inspectRunQuery.data)
   const rootTrace = getAgentWorkbenchRootTrace({
     inspectedRootRun: rootInspectRunQuery.data,
     inspectedRun: inspectRunQuery.data,
@@ -1739,8 +2408,14 @@ export const AgentWorkbenchPanel = ({
   })
   const graphPlan = getAgentWorkbenchGraphPlan(rootTrace)
   const graphRetries = getAgentWorkbenchGraphRetryPreview(rootTrace)
-  const retryPolicy = getAgentWorkbenchRetryPolicyPreview(retrySettings)
+  const retryPolicy = getAgentWorkbenchRetryPolicyPreview(
+    getAgentWorkbenchRetrySettings({
+      graphPlan,
+      retrySettings
+    })
+  )
   const failedNode = getAgentWorkbenchFirstFailedNode(graphPlan)
+  const runningNode = getAgentWorkbenchFirstRunningNode(graphPlan)
   const pendingApprovals = getAgentWorkbenchPendingApprovals({
     approvals,
     rootRun,
@@ -1759,17 +2434,22 @@ export const AgentWorkbenchPanel = ({
   const {
     advanceGraphMutation,
     appendSessionCompactionSummaryMutation,
+    executeNodeMutation,
     graphOperationErrorMessage,
     instantiateGraphMutation,
     moveSessionLeafMutation,
     respondApprovalMutation,
     retryNodeMutation,
+    runGraphMutation,
     sessionOperationErrorMessage,
-    startStageMutation
+    skipNodeMutation,
+    startStageMutation,
+    updateRetryPolicyMutation
   } = useAgentWorkbenchOperations({
     approvalsQueryKey: approvalsQueryOptions.queryKey,
     failedNode,
     rootRun,
+    runningNode,
     runsQueryKey: runsQueryOptions.queryKey,
     selectedTemplateId,
     selectedRun,
@@ -1809,128 +2489,123 @@ export const AgentWorkbenchPanel = ({
     appendPending: appendSessionCompactionSummaryMutation.isPending,
     movePending: moveSessionLeafMutation.isPending
   })
+  const workbenchContent = (
+    <>
+      <div className="flex min-w-0 items-center justify-end">
+        <Button
+          aria-label={t("chat.workbench.refresh")}
+          isIconOnly
+          onPress={handleRefresh}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
+        </Button>
+      </div>
+
+      <AgentWorkbenchControls
+        failedNode={failedNode}
+        graphPlan={graphPlan}
+        isAdvanceGraphPending={advanceGraphMutation.isPending}
+        isApprovalResponsePending={respondApprovalMutation.isPending}
+        isCreateGraphPending={instantiateGraphMutation.isPending}
+        isExecuteNodePending={executeNodeMutation.isPending}
+        isRetryNodePending={retryNodeMutation.isPending}
+        isRunGraphPending={runGraphMutation.isPending}
+        isSkipNodePending={skipNodeMutation.isPending}
+        isStartStagePending={startStageMutation.isPending}
+        onAdvanceGraph={() => advanceGraphMutation.mutate()}
+        onCreateGraph={() => instantiateGraphMutation.mutate()}
+        onExecuteNode={() => executeNodeMutation.mutate()}
+        onRetryNode={() => retryNodeMutation.mutate()}
+        onRunGraph={() => runGraphMutation.mutate()}
+        onSelectedTemplateIdChange={setSelectedTemplateId}
+        onSkipNode={() => skipNodeMutation.mutate()}
+        onStartStage={() => startStageMutation.mutate()}
+        onTaskTextChange={setTaskText}
+        operationErrorMessage={graphOperationErrorMessage}
+        selectedTemplateId={selectedTemplateId}
+        taskText={taskText}
+        templates={templates}
+      />
+
+      <AgentWorkbenchApprovalInbox
+        approvals={pendingApprovals}
+        isPending={respondApprovalMutation.isPending}
+        onRespond={(input) => respondApprovalMutation.mutate(input)}
+      />
+
+      <AgentWorkbenchGraphPlanPanel
+        graphPlan={graphPlan}
+        isRetryPolicyPending={updateRetryPolicyMutation.isPending}
+        onRetryPolicyChange={(policy) =>
+          updateRetryPolicyMutation.mutate(policy)
+        }
+        onSelectRun={setSelectedRunId}
+        retryPolicy={retryPolicy}
+        retries={graphRetries}
+      />
+
+      <AgentWorkbenchSessionPanel
+        isLoading={sessionQuery.isFetching}
+        isPending={isSessionMutationPending}
+        onAppendCompactionSummary={(summary) =>
+          appendSessionCompactionSummaryMutation.mutate(summary)
+        }
+        onMoveLeaf={(input) => moveSessionLeafMutation.mutate(input)}
+        operationErrorMessage={sessionOperationErrorMessage}
+        snapshot={sessionQuery.data ?? null}
+      />
+
+      <AgentWorkbenchDiffPanel
+        gitDiff={gitDiff}
+        isLoading={isProjectDiffLoading}
+      />
+
+      <div
+        className={cn(
+          "mt-3 grid min-h-0 gap-3 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.2fr)]",
+          runGridHeightClassNameByMode[mode]
+        )}
+      >
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
+          <div className="min-h-0 flex-1">
+            <AgentRunGraphList
+              emptyLabel={t("chat.workbench.emptyRuns")}
+              onSelectRun={setSelectedRunId}
+              runs={runs}
+              runsById={runsById}
+              selectedRunId={selectedRunId}
+            />
+          </div>
+        </div>
+
+        <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
+          <SelectedRunDetails
+            artifactContent={artifactContentQuery.data ?? null}
+            backgroundProcesses={backgroundProcesses}
+            isArtifactContentLoading={artifactContentQuery.isFetching}
+            isLoading={inspectRunQuery.isFetching}
+            onSelectArtifact={setSelectedArtifactId}
+            preview={preview}
+            run={selectedRun}
+            selectedArtifactId={selectedArtifactId}
+            shellCommands={shellCommands}
+            shellOutputs={shellOutputs}
+          />
+        </div>
+      </div>
+    </>
+  )
 
   return (
-    <Disclosure className="min-h-0 overflow-hidden rounded-2xl border border-border/60 bg-background/70 shadow-sm">
-      <Disclosure.Heading>
-        <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-4 py-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <HugeiconsIcon
-              className="shrink-0 text-muted-foreground"
-              icon={WorkflowSquare02Icon}
-              size={18}
-            />
-            <div className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                {t("chat.workbench.title")}
-              </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {t("chat.workbench.subtitle")}
-              </span>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <AgentWorkbenchTriggerChips
-              approvalCount={pendingApprovals.length}
-              runs={runs}
-            />
-            <Disclosure.Indicator />
-          </div>
-        </Disclosure.Trigger>
-      </Disclosure.Heading>
-      <Disclosure.Content className="min-h-0 overflow-hidden">
-        <Disclosure.Body>
-          <ScrollShadow className="max-h-[50vh] px-4 pb-4">
-            <div className="flex min-w-0 items-center justify-end">
-              <Button
-                aria-label={t("chat.workbench.refresh")}
-                isIconOnly
-                onPress={handleRefresh}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                <HugeiconsIcon icon={ArrowReloadHorizontalIcon} size={16} />
-              </Button>
-            </div>
-
-            <AgentWorkbenchControls
-              failedNode={failedNode}
-              graphPlan={graphPlan}
-              isAdvanceGraphPending={advanceGraphMutation.isPending}
-              isApprovalResponsePending={respondApprovalMutation.isPending}
-              isCreateGraphPending={instantiateGraphMutation.isPending}
-              isRetryNodePending={retryNodeMutation.isPending}
-              isStartStagePending={startStageMutation.isPending}
-              onAdvanceGraph={() => advanceGraphMutation.mutate()}
-              onCreateGraph={() => instantiateGraphMutation.mutate()}
-              onRetryNode={() => retryNodeMutation.mutate()}
-              onSelectedTemplateIdChange={setSelectedTemplateId}
-              onStartStage={() => startStageMutation.mutate()}
-              onTaskTextChange={setTaskText}
-              operationErrorMessage={graphOperationErrorMessage}
-              selectedTemplateId={selectedTemplateId}
-              taskText={taskText}
-              templates={templates}
-            />
-
-            <AgentWorkbenchApprovalInbox
-              approvals={pendingApprovals}
-              isPending={respondApprovalMutation.isPending}
-              onRespond={(input) => respondApprovalMutation.mutate(input)}
-            />
-
-            <AgentWorkbenchGraphPlanPanel
-              graphPlan={graphPlan}
-              onSelectRun={setSelectedRunId}
-              retryPolicy={retryPolicy}
-              retries={graphRetries}
-            />
-
-            <AgentWorkbenchSessionPanel
-              isLoading={sessionQuery.isFetching}
-              isPending={isSessionMutationPending}
-              onAppendCompactionSummary={(summary) =>
-                appendSessionCompactionSummaryMutation.mutate(summary)
-              }
-              onMoveLeaf={(input) => moveSessionLeafMutation.mutate(input)}
-              operationErrorMessage={sessionOperationErrorMessage}
-              snapshot={sessionQuery.data ?? null}
-            />
-
-            <AgentWorkbenchDiffPanel
-              gitDiff={gitDiff}
-              isLoading={isProjectDiffLoading}
-            />
-
-            <div className="mt-3 grid max-h-[min(24rem,40vh)] min-h-0 gap-3 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.2fr)]">
-              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
-                <div className="min-h-0 flex-1">
-                  <AgentRunGraphList
-                    emptyLabel={t("chat.workbench.emptyRuns")}
-                    onSelectRun={setSelectedRunId}
-                    runs={runs}
-                    runsById={runsById}
-                    selectedRunId={selectedRunId}
-                  />
-                </div>
-              </div>
-
-              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 p-2">
-                <SelectedRunDetails
-                  artifactContent={artifactContentQuery.data ?? null}
-                  isArtifactContentLoading={artifactContentQuery.isFetching}
-                  isLoading={inspectRunQuery.isFetching}
-                  onSelectArtifact={setSelectedArtifactId}
-                  preview={preview}
-                  run={selectedRun}
-                  selectedArtifactId={selectedArtifactId}
-                />
-              </div>
-            </div>
-          </ScrollShadow>
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
+    <AgentWorkbenchPanelChrome
+      approvalCount={pendingApprovals.length}
+      mode={mode}
+      runs={runs}
+    >
+      {workbenchContent}
+    </AgentWorkbenchPanelChrome>
   )
 }

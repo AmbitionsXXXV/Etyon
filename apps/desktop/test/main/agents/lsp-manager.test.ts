@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { PassThrough } from "node:stream"
+import { setTimeout as sleep } from "node:timers/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test"
 
@@ -124,7 +125,8 @@ const createRpcParser = (
 
 const createFakeWorkspaceSandbox = (
   preparedCommands: string[],
-  cleanupCalls: string[] = []
+  cleanupCalls: string[] = [],
+  preparedCwds: string[] = []
 ): WorkspaceSandbox => ({
   cleanup: () => Promise.resolve(),
   enabled: true,
@@ -144,6 +146,7 @@ const createFakeWorkspaceSandbox = (
       }
   > => {
     preparedCommands.push(input.command)
+    preparedCwds.push(input.cwd)
 
     return Promise.resolve({
       ok: true,
@@ -203,6 +206,17 @@ const createFakeLspProcessManager = ({
   return {
     manager,
     spawnedProcesses
+  }
+}
+
+const waitForSpawnedProcess = async (
+  spawnedProcesses: readonly FakeLspProcess[]
+): Promise<void> => {
+  let attempts = 0
+
+  while (spawnedProcesses.length === 0 && attempts < 20) {
+    attempts += 1
+    await sleep(0)
   }
 }
 
@@ -294,7 +308,11 @@ const handleFakeLspMessage = ({
     return
   }
 
-  if (method === "textDocument/definition" && typeof id === "number") {
+  if (
+    (method === "textDocument/definition" ||
+      method === "textDocument/references") &&
+    typeof id === "number"
+  ) {
     const params = message.params as {
       textDocument?: {
         uri?: string
@@ -339,6 +357,17 @@ describe("agent LSP manager", () => {
       path.join(testProjectPath, "src/example.ts"),
       "const answer = 1\n"
     )
+    fs.mkdirSync(path.join(testProjectPath, "packages/app/src"), {
+      recursive: true
+    })
+    fs.writeFileSync(
+      path.join(testProjectPath, "packages/app/pnpm-lock.yaml"),
+      ""
+    )
+    fs.writeFileSync(
+      path.join(testProjectPath, "packages/app/src/nested.ts"),
+      "const nested = 1\n"
+    )
     fs.writeFileSync(path.join(testProjectPath, "README.md"), "# test\n")
   })
 
@@ -364,6 +393,13 @@ describe("agent LSP manager", () => {
       sandbox: createFakeWorkspaceSandbox(preparedCommands, cleanupCalls),
       settings: lspSettings
     })
+
+    expect(lsp.hasClients()).toBe(false)
+    expect(lsp.status()).toEqual({
+      clients: [],
+      hasClients: false
+    })
+
     const result = await lsp.inspect({
       line: 1,
       match: "const <<<answer = 1",
@@ -391,6 +427,13 @@ describe("agent LSP manager", () => {
       ],
       hover: "const answer: number",
       path: "src/example.ts",
+      references: [
+        {
+          column: 7,
+          line: 1,
+          path: "src/example.ts"
+        }
+      ],
       status: "success"
     })
     expect(preparedCommands).toEqual(
@@ -399,6 +442,16 @@ describe("agent LSP manager", () => {
       ])
     )
     expect(spawnedProcesses).toHaveLength(1)
+    expect(lsp.hasClients()).toBe(true)
+    expect(lsp.status()).toEqual({
+      clients: [
+        {
+          rootPath: testProjectPath,
+          status: "running"
+        }
+      ],
+      hasClients: true
+    })
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -413,6 +466,75 @@ describe("agent LSP manager", () => {
     await lsp.cleanup()
 
     expect(cleanupCalls).toEqual(preparedCommands)
+  })
+
+  it("touches a TypeScript document and keeps diagnostics as a compatibility alias", async () => {
+    const preparedCommands: string[] = []
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const { manager } = createFakeLspProcessManager()
+    const lsp = createAgentLspManager({
+      fileSystem: env.fileSystem,
+      processManager: manager,
+      projectPath: testProjectPath,
+      sandbox: createFakeWorkspaceSandbox(preparedCommands),
+      settings: lspSettings
+    })
+    const result = await lsp.touchFile("src/example.ts")
+
+    expect(result).toMatchObject({
+      diagnostics: [
+        {
+          code: 2322,
+          column: 7,
+          line: 1,
+          message: "Type mismatch",
+          severity: "error",
+          source: "ts"
+        }
+      ],
+      path: "src/example.ts",
+      status: "success"
+    })
+    expect(preparedCommands).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("typescript-language-server")
+      ])
+    )
+
+    await expect(lsp.diagnostics("src/example.ts")).resolves.toMatchObject({
+      status: "success"
+    })
+
+    await lsp.cleanup()
+  })
+
+  it("starts TypeScript LSP at the nearest package root", async () => {
+    const preparedCommands: string[] = []
+    const preparedCwds: string[] = []
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const { manager, spawnedProcesses } = createFakeLspProcessManager()
+    const lsp = createAgentLspManager({
+      fileSystem: env.fileSystem,
+      processManager: manager,
+      projectPath: testProjectPath,
+      sandbox: createFakeWorkspaceSandbox(preparedCommands, [], preparedCwds),
+      settings: lspSettings
+    })
+    const result = await lsp.inspect({
+      line: 1,
+      match: "const <<<nested = 1",
+      path: "packages/app/src/nested.ts"
+    })
+
+    expect(result.status).toBe("success")
+    expect(preparedCwds).toEqual([path.join(testProjectPath, "packages/app")])
+    expect(spawnedProcesses).toHaveLength(1)
+
+    await lsp.cleanup()
   })
 
   it("returns unsupported without spawning for non TS/JS files", async () => {
@@ -471,6 +593,65 @@ describe("agent LSP manager", () => {
     })
   })
 
+  it("deduplicates concurrent startup and exposes the starting status", async () => {
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const { manager, spawnedProcesses } = createFakeLspProcessManager({
+      ignoreInitialize: true
+    })
+    const lsp = createAgentLspManager({
+      fileSystem: env.fileSystem,
+      processManager: manager,
+      projectPath: testProjectPath,
+      sandbox: createFakeWorkspaceSandbox([]),
+      settings: {
+        ...lspSettings,
+        initTimeoutMs: 20
+      }
+    })
+    const firstInspection = lsp.inspect({
+      line: 1,
+      match: "const <<<answer = 1",
+      path: "src/example.ts"
+    })
+    const secondInspection = lsp.inspect({
+      line: 1,
+      match: "const <<<answer = 1",
+      path: "src/example.ts"
+    })
+
+    await waitForSpawnedProcess(spawnedProcesses)
+
+    expect(spawnedProcesses).toHaveLength(1)
+    expect(lsp.status()).toEqual({
+      clients: [
+        {
+          rootPath: testProjectPath,
+          status: "starting"
+        }
+      ],
+      hasClients: false
+    })
+    await expect(firstInspection).resolves.toMatchObject({
+      status: "timeout"
+    })
+    await expect(secondInspection).resolves.toMatchObject({
+      status: "timeout"
+    })
+    expect(spawnedProcesses).toHaveLength(1)
+    expect(lsp.status()).toEqual({
+      clients: [
+        {
+          error: expect.stringContaining("timed out"),
+          rootPath: testProjectPath,
+          status: "broken"
+        }
+      ],
+      hasClients: false
+    })
+  })
+
   it("reports server crash as unavailable", async () => {
     const env = createAgentExecutionEnv({
       projectPath: testProjectPath
@@ -495,5 +676,49 @@ describe("agent LSP manager", () => {
     ).resolves.toMatchObject({
       status: "unavailable"
     })
+  })
+
+  it("marks a running root as broken when the server exits and avoids respawn", async () => {
+    const preparedCommands: string[] = []
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const { manager, spawnedProcesses } = createFakeLspProcessManager()
+    const lsp = createAgentLspManager({
+      fileSystem: env.fileSystem,
+      processManager: manager,
+      projectPath: testProjectPath,
+      sandbox: createFakeWorkspaceSandbox(preparedCommands),
+      settings: lspSettings
+    })
+
+    await expect(
+      lsp.inspect({
+        line: 1,
+        match: "const <<<answer = 1",
+        path: "src/example.ts"
+      })
+    ).resolves.toMatchObject({
+      status: "success"
+    })
+
+    spawnedProcesses[0]?.emitClose(1)
+
+    expect(lsp.hasClients()).toBe(false)
+    expect(lsp.status()).toEqual({
+      clients: [
+        {
+          error: "LSP server closed.",
+          rootPath: testProjectPath,
+          status: "broken"
+        }
+      ],
+      hasClients: false
+    })
+    await expect(lsp.touchFile("src/example.ts")).resolves.toMatchObject({
+      error: "LSP server closed.",
+      status: "unavailable"
+    })
+    expect(spawnedProcesses).toHaveLength(1)
   })
 })

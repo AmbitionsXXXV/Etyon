@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   AGENT_TOOL_OUTPUT_MAX_CHARS,
+  createAgentBackgroundProcessStore,
   createAgentExecutionEnv
 } from "@/main/agents/execution-env"
 import type {
@@ -535,6 +536,27 @@ describe("agent execution env", () => {
     })
   })
 
+  it("ignores broken pipe errors when a command exits before reading stdin", async () => {
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+
+    await expect(
+      env.shell.exec(createNodeCommand("process.exit(0)"), {
+        cwd: "",
+        stdin: "x".repeat(1_000_000),
+        timeout: 10_000
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        exitCode: 0,
+        stderr: "",
+        stdout: ""
+      }
+    })
+  })
+
   it("emits structured shell output events", async () => {
     const env = createAgentExecutionEnv({
       projectPath: testProjectPath
@@ -754,14 +776,13 @@ describe("agent execution env", () => {
     }
 
     await vi.waitFor(() => {
-      expect(outputEvents).toEqual([
-        {
-          channel: "stdout",
-          chunk: "ready",
-          processId: started.value.id,
-          sequence: 0
-        }
-      ])
+      expect(outputEvents).toHaveLength(1)
+      expect(outputEvents[0]).toMatchObject({
+        channel: "stdout",
+        chunk: "ready",
+        processId: started.value.id,
+        sequence: 0
+      })
     })
 
     expect(preparedCommand).toBe("start-dev-server")
@@ -834,6 +855,61 @@ describe("agent execution env", () => {
         })
       ])
     )
+  })
+
+  it("recovers background process snapshots after store recreation", async () => {
+    const startEnv = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const started = await startEnv.backgroundProcesses.start(
+      createNodeCommand(
+        "process.stdout.write('recover-ready'); setInterval(() => {}, 1000)"
+      )
+    )
+
+    if (!started.ok) {
+      throw new Error(started.error.message)
+    }
+
+    await vi.waitFor(() => {
+      expect(
+        startEnv.backgroundProcesses.get(started.value.id)?.stdoutPreview
+      ).toBe("recover-ready")
+    })
+
+    const recoveredStore = createAgentBackgroundProcessStore()
+    const recoveredEnv = createAgentExecutionEnv({
+      backgroundProcessStore: recoveredStore,
+      projectPath: testProjectPath
+    })
+    const recovered = recoveredEnv.backgroundProcesses.recover({
+      command: started.value.command,
+      cwd: started.value.cwd,
+      id: started.value.id,
+      pid: started.value.pid,
+      sandboxed: started.value.sandboxed,
+      startedAt: started.value.startedAt,
+      stdout: "recover-ready"
+    })
+
+    expect(recovered).toMatchObject({
+      id: started.value.id,
+      pid: started.value.pid,
+      status: "running",
+      stdoutPreview: "recover-ready"
+    })
+
+    const stopped = await recoveredEnv.backgroundProcesses.stop(
+      started.value.id
+    )
+
+    expect(stopped).toMatchObject({
+      ok: true,
+      value: {
+        id: started.value.id,
+        status: "stopped"
+      }
+    })
   })
 
   it("fails background process start when the workspace sandbox is unavailable", async () => {

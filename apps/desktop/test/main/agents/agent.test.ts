@@ -760,6 +760,184 @@ describe("agent", () => {
     })
   })
 
+  it("passes loop hooks and external queued messages through turns", async () => {
+    const beforeToolCall = vi.fn(() => ({
+      input: {
+        path: "README.md"
+      }
+    }))
+    const afterToolCall = vi.fn(() => ({
+      output: "patched output"
+    }))
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will inspect.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "tool-call-1",
+              toolName: "inspect"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+    let drained = false
+    const agent = createAgent({
+      afterToolCall,
+      beforeToolCall,
+      getSteeringMessages: () => {
+        if (drained) {
+          return []
+        }
+
+        drained = true
+
+        return [
+          {
+            content: "External steering.",
+            role: "user"
+          }
+        ]
+      },
+      maxTurns: 3,
+      model,
+      tools: {
+        inspect: {
+          execute: (input) => input
+        }
+      }
+    })
+
+    await agent.prompt("Start.")
+
+    expect(beforeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: "tool-call-1"
+      }),
+      expect.any(Object)
+    )
+    expect(afterToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        output: {
+          path: "README.md"
+        }
+      }),
+      expect.any(Object)
+    )
+    expect(modelMessages[1]).toEqual(
+      expect.arrayContaining([
+        {
+          content: "External steering.",
+          role: "user"
+        },
+        {
+          isError: false,
+          output: "patched output",
+          role: "tool",
+          toolCallId: "tool-call-1",
+          toolName: "inspect"
+        }
+      ])
+    )
+  })
+
+  it("settles loop hook failures without leaving the stateful agent busy", async () => {
+    const blockedTool = vi.fn(() => "should not run")
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will run hook-sensitive tools.",
+          toolCalls: [
+            {
+              input: "before",
+              toolCallId: "tool-call-1",
+              toolName: "beforeHookFailure"
+            },
+            {
+              input: "after",
+              toolCallId: "tool-call-2",
+              toolName: "afterHookFailure"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Recovered from hook failures.",
+        toolCalls: []
+      }
+    })
+    const agent = createAgent({
+      afterToolCall: (result) => {
+        if (result.toolCall.toolName === "afterHookFailure") {
+          throw new Error("after hook failed")
+        }
+
+        return {}
+      },
+      beforeToolCall: (toolCall) => {
+        if (toolCall.toolName === "beforeHookFailure") {
+          throw new Error("before hook failed")
+        }
+
+        return {}
+      },
+      maxTurns: 3,
+      model,
+      tools: {
+        afterHookFailure: {
+          execute: () => "raw after output"
+        },
+        beforeHookFailure: {
+          execute: blockedTool
+        }
+      }
+    })
+
+    await expect(agent.prompt("Start.")).resolves.toMatchObject({
+      stopReason: "final"
+    })
+    await expect(agent.waitForIdle()).resolves.toBeUndefined()
+    await expect(agent.continue()).resolves.toMatchObject({
+      stopReason: "final"
+    })
+
+    expect(blockedTool).not.toHaveBeenCalled()
+    expect(modelMessages[1]?.slice(-2)).toEqual([
+      {
+        isError: true,
+        output: {
+          error: "before hook failed"
+        },
+        role: "tool",
+        toolCallId: "tool-call-1",
+        toolName: "beforeHookFailure"
+      },
+      {
+        isError: true,
+        output: {
+          error: "after hook failed"
+        },
+        role: "tool",
+        toolCallId: "tool-call-2",
+        toolName: "afterHookFailure"
+      }
+    ])
+  })
+
   it("can drain queued steering messages one at a time", async () => {
     const modelMessages: AgentLoopMessage[][] = []
     const model: AgentLoopModel = vi.fn(({ messages }) => {

@@ -501,6 +501,173 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("lists agent UI stream snapshots by cursor over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-stream-cursor")
+    })
+    const otherSession = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-stream-cursor-other"
+      )
+    })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        profileId: "coder"
+      },
+      runId: run.id,
+      type: "agent_run_started"
+    })
+    const firstSnapshot = await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        parts: [
+          {
+            text: "first partial",
+            type: "text"
+          }
+        ]
+      },
+      runId: run.id,
+      type: "agent_ui_stream_snapshot_created"
+    })
+    await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        step: 1
+      },
+      runId: run.id,
+      type: "agent_step_finished"
+    })
+    const secondSnapshot = await appendAgentEvent({
+      db: getDb(),
+      payload: {
+        parts: [
+          {
+            text: "second partial",
+            type: "text"
+          }
+        ]
+      },
+      runId: run.id,
+      type: "agent_ui_stream_snapshot_created"
+    })
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const fullResult = await client.agents.listUiStreamSnapshots({
+      sessionId: session.id
+    })
+    const cursorResult = await client.agents.listUiStreamSnapshots({
+      afterSequence: firstSnapshot.sequence,
+      runId: run.id,
+      sessionId: session.id
+    })
+    const emptyResult = await client.agents.listUiStreamSnapshots({
+      afterSequence: secondSnapshot.sequence,
+      runId: run.id,
+      sessionId: session.id
+    })
+
+    expect(fullResult).toEqual({
+      nextSequence: secondSnapshot.sequence,
+      run: expect.objectContaining({
+        chatSessionId: session.id,
+        id: run.id,
+        status: "running"
+      }),
+      snapshots: [
+        {
+          createdAt: firstSnapshot.createdAt,
+          eventId: firstSnapshot.id,
+          parts: [
+            {
+              text: "first partial",
+              type: "text"
+            }
+          ],
+          runId: run.id,
+          sequence: firstSnapshot.sequence
+        },
+        {
+          createdAt: secondSnapshot.createdAt,
+          eventId: secondSnapshot.id,
+          parts: [
+            {
+              text: "second partial",
+              type: "text"
+            }
+          ],
+          runId: run.id,
+          sequence: secondSnapshot.sequence
+        }
+      ]
+    })
+    expect(cursorResult).toEqual({
+      nextSequence: secondSnapshot.sequence,
+      run: expect.objectContaining({
+        chatSessionId: session.id,
+        id: run.id,
+        status: "running"
+      }),
+      snapshots: [
+        {
+          createdAt: secondSnapshot.createdAt,
+          eventId: secondSnapshot.id,
+          parts: [
+            {
+              text: "second partial",
+              type: "text"
+            }
+          ],
+          runId: run.id,
+          sequence: secondSnapshot.sequence
+        }
+      ]
+    })
+    expect(emptyResult).toEqual({
+      nextSequence: secondSnapshot.sequence,
+      run: expect.objectContaining({
+        chatSessionId: session.id,
+        id: run.id,
+        status: "running"
+      }),
+      snapshots: []
+    })
+    await expect(
+      client.agents.listUiStreamSnapshots({
+        runId: run.id,
+        sessionId: otherSession.id
+      })
+    ).rejects.toThrow()
+
+    port1.close()
+    port2.close()
+  })
+
   it("exposes agent run graph template previews over the message-port adapter", async () => {
     const { port1, port2 } = new MessageChannel()
     const client: RouterClient<AppRouter> = createORPCClient(
@@ -619,12 +786,23 @@ describe("message-port rpc", () => {
     })
     expect(events).toEqual([
       expect.objectContaining({
+        payload: expect.objectContaining({
+          planId: "investigation",
+          profileId: "general-purpose",
+          source: "run-graph",
+          templateId: "investigation"
+        }),
+        runId: result.run.id,
+        sequence: 1,
+        type: "agent_run_started"
+      }),
+      expect.objectContaining({
         payload: {
           plan: result.plan,
           templateId: "investigation"
         },
         runId: result.run.id,
-        sequence: 1,
+        sequence: 2,
         type: "agent_run_graph_instantiated"
       })
     ])
@@ -1014,6 +1192,135 @@ describe("message-port rpc", () => {
     port2.close()
   })
 
+  it("skips failed agent graph nodes over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-run-graph-skip")
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const firstStage = await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const planChildRunId = firstStage.startedRuns[0]?.id
+
+    if (!planChildRunId) {
+      throw new Error("Expected graph plan child run to start.")
+    }
+
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "non-retryable assertion mismatch",
+      id: planChildRunId,
+      status: "failed"
+    })
+
+    await client.agents.advanceRunGraph({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    const skipped = await client.agents.skipRunGraphNode({
+      nodeId: "plan",
+      reason: "Continue with available context.",
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(skipped).toMatchObject({
+      skippedNodeId: "plan",
+      startedNodeIds: ["explore"]
+    })
+    expect(skipped.plan.nodes.find((node) => node.id === "plan")).toMatchObject(
+      {
+        errorMessage: "non-retryable assertion mismatch",
+        status: "skipped"
+      }
+    )
+    expect(
+      skipped.plan.nodes.find((node) => node.id === "explore")
+    ).toMatchObject({
+      status: "running"
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("updates agent graph retry policy over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(mockedHomeDir, ".config", "etyon-run-graph-policy")
+    })
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const policyUpdate = await client.agents.updateRunGraphRetryPolicy({
+      retryPolicy: {
+        maxAutomaticRetries: 0,
+        retryTransientFailures: false
+      },
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+    const events = await listAgentEvents({
+      db: getDb(),
+      runId: instance.run.id
+    })
+
+    expect(policyUpdate).toMatchObject({
+      retryPolicy: {
+        maxAutomaticRetries: 0,
+        retryTransientFailures: false
+      },
+      run: {
+        id: instance.run.id
+      }
+    })
+    expect(policyUpdate.plan.retryPolicy).toEqual(policyUpdate.retryPolicy)
+    expect(events.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "agent_run_graph_checkpoint_created",
+        "agent_run_graph_retry_policy_updated"
+      ])
+    )
+
+    port1.close()
+    port2.close()
+  })
+
   it("automatically retries transient failed agent graph nodes once", async () => {
     await ensureDatabaseReady()
 
@@ -1085,6 +1392,152 @@ describe("message-port rpc", () => {
     expect(retryingEvent?.payload).toMatchObject({
       automatic: true,
       nodeId: "plan"
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("executes a running agent graph node over the message-port adapter", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-run-graph-execute-node"
+      )
+    })
+    const faux = createFauxProvider({
+      modelId: "mock-model"
+    })
+
+    faux.setGenerateResponses([
+      createFauxGenerateTextResponse("Plan finished.", {
+        modelId: "mock-model"
+      })
+    ])
+    mockedResolveModel.mockReturnValue(faux.model)
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      modelId: "mock-model",
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+
+    await client.agents.startRunGraphNextStage({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    const executed = await client.agents.executeRunGraphNode({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(executed).toMatchObject({
+      childRun: {
+        status: "succeeded"
+      },
+      nodeId: "plan",
+      settledNodeIds: ["plan"],
+      stopReason: "final",
+      turns: 1
+    })
+    expect(executed.startedNodeIds.length).toBeGreaterThan(0)
+    expect(
+      executed.plan.nodes.find((node) => node.id === "plan")
+    ).toMatchObject({
+      lastOutput: "Plan finished.",
+      status: "succeeded"
+    })
+
+    port1.close()
+    port2.close()
+  })
+
+  it("runs an agent graph until no runnable node remains", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({
+      db: getDb(),
+      projectPath: path.join(
+        mockedHomeDir,
+        ".config",
+        "etyon-run-graph-until-idle"
+      )
+    })
+    const faux = createFauxProvider({
+      modelId: "mock-model"
+    })
+
+    faux.setGenerateResponses([
+      createFauxGenerateTextResponse("Plan finished.", {
+        modelId: "mock-model"
+      }),
+      createFauxGenerateTextResponse("Evidence collected.", {
+        modelId: "mock-model"
+      }),
+      createFauxGenerateTextResponse("Synthesis complete.", {
+        modelId: "mock-model"
+      })
+    ])
+    mockedResolveModel.mockReturnValue(faux.model)
+
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+
+    handler.upgrade(port1, {
+      context: createMessagePortRpcContext()
+    })
+    port1.start()
+    port2.start()
+
+    const instance = await client.agents.instantiateRunGraphTemplate({
+      modelId: "mock-model",
+      sessionId: session.id,
+      templateId: "investigation"
+    })
+    const completed = await client.agents.runGraphUntilIdle({
+      runId: instance.run.id,
+      sessionId: session.id
+    })
+
+    expect(completed).toMatchObject({
+      executedNodeIds: ["plan", "explore", "synthesize"],
+      settledNodeIds: ["plan", "explore", "synthesize"],
+      startedNodeIds: ["plan", "explore", "synthesize"],
+      stopReason: "completed"
+    })
+    expect(completed.childRuns).toHaveLength(3)
+    expect(completed.iterations).toBeGreaterThanOrEqual(3)
+    expect(faux.model.doGenerateCalls).toHaveLength(3)
+    expect(completed.plan.nodes.map((node) => node.status)).toEqual([
+      "succeeded",
+      "succeeded",
+      "succeeded"
+    ])
+    expect(
+      completed.plan.nodes.find((node) => node.id === "synthesize")
+    ).toMatchObject({
+      lastOutput: "Synthesis complete.",
+      status: "succeeded"
     })
 
     port1.close()
@@ -1423,6 +1876,9 @@ describe("message-port rpc", () => {
       }),
       createFauxGenerateTextResponse("RPC write completed.", {
         modelId: "mock-model"
+      }),
+      createFauxGenerateTextResponse("RPC review completed.", {
+        modelId: "mock-model"
       })
     ])
     mockedResolveModel.mockReturnValue(faux.model)
@@ -1467,6 +1923,7 @@ describe("message-port rpc", () => {
     const result = await client.agents.respondToRunGraphApproval({
       approvalId: approval?.approvalId ?? "",
       approved: true,
+      continueUntilIdle: true,
       rootRunId: instance.rootRun.id,
       sessionId: session.id,
       toolCallId: approval?.id ?? ""
@@ -1486,8 +1943,17 @@ describe("message-port rpc", () => {
       run: {
         id: instance.rootRun.id
       },
-      settledNodeIds: ["coder"]
+      settledNodeIds: ["coder"],
+      continuedGraph: {
+        executedNodeIds: ["review"],
+        settledNodeIds: ["review"],
+        stopReason: "completed"
+      }
     })
+    expect(result.continuedGraph?.childRuns).toHaveLength(1)
+    expect(
+      result.continuedGraph?.plan.nodes.map((node) => node.status)
+    ).toEqual(["succeeded", "succeeded"])
     expect(
       fs.readFileSync(
         path.join(projectPath, "src", "rpc-generated.txt"),

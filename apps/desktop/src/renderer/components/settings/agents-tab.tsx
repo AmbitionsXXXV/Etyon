@@ -24,11 +24,14 @@ import {
   upsertAgentProfileOverride
 } from "@/renderer/lib/settings-page/agent-profile-overrides"
 import {
+  AGENT_MAX_AUTOMATIC_RETRIES_MAX,
+  AGENT_MAX_AUTOMATIC_RETRIES_MIN,
   AGENT_MAX_CONCURRENT_SUBAGENTS_MAX,
   AGENT_MAX_CONCURRENT_SUBAGENTS_MIN,
   AGENT_MAX_STEPS_MAX,
   AGENT_MAX_STEPS_MIN,
   AGENT_PROFILE_OPTIONS,
+  clampAgentMaxAutomaticRetries,
   clampAgentMaxConcurrentSubagents,
   clampAgentMaxSteps,
   getAgentProfileOption
@@ -218,6 +221,17 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
     [updateAgents]
   )
 
+  const handleMaxAutomaticRetriesChange = useCallback(
+    (value: number) =>
+      updateAgents({
+        retry: {
+          ...agents.retry,
+          maxAutomaticRetries: clampAgentMaxAutomaticRetries(value)
+        }
+      }),
+    [agents.retry, updateAgents]
+  )
+
   const handleResetSelectedProfileOverride = useCallback(
     () =>
       onChange(
@@ -237,6 +251,17 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
   const handleRefreshApprovalInbox = useCallback(() => {
     void approvalInboxQuery.refetch()
   }, [approvalInboxQuery])
+
+  const handleRetryTransientFailuresChange = useCallback(
+    (checked: boolean) =>
+      updateAgents({
+        retry: {
+          ...agents.retry,
+          retryTransientFailures: checked
+        }
+      }),
+    [agents.retry, updateAgents]
+  )
 
   const updateSelectedProfileOverride = useCallback(
     (patch: Partial<AgentProfile>) =>
@@ -310,6 +335,47 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             label={t("settings.agents.control.showToolTraces.label")}
             onChange={handleShowToolTracesChange}
           />
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)]">
+          <AgentsSwitchRow
+            checked={agents.retry.retryTransientFailures}
+            description={t(
+              "settings.agents.control.retryTransientFailures.description"
+            )}
+            isDisabled={!agents.enabled}
+            label={t("settings.agents.control.retryTransientFailures.label")}
+            onChange={handleRetryTransientFailuresChange}
+          />
+          <div
+            className={cn(
+              "rounded-lg border border-border bg-background/60 px-3 py-3",
+              (!agents.enabled || !agents.retry.retryTransientFailures) &&
+                "opacity-60"
+            )}
+          >
+            <NumberField
+              isDisabled={
+                !agents.enabled || !agents.retry.retryTransientFailures
+              }
+              maxValue={AGENT_MAX_AUTOMATIC_RETRIES_MAX}
+              minValue={AGENT_MAX_AUTOMATIC_RETRIES_MIN}
+              onChange={handleMaxAutomaticRetriesChange}
+              value={agents.retry.maxAutomaticRetries}
+            >
+              <Label className="text-xs font-medium text-muted-foreground">
+                {t("settings.agents.defaults.maxAutomaticRetries.label")}
+              </Label>
+              <NumberField.Group>
+                <NumberField.DecrementButton />
+                <NumberField.Input className="text-center" />
+                <NumberField.IncrementButton />
+              </NumberField.Group>
+            </NumberField>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              {t("settings.agents.defaults.maxAutomaticRetries.description")}
+            </p>
+          </div>
         </div>
       </motion.section>
 

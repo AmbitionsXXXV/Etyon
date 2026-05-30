@@ -52,6 +52,14 @@
       "waiting": "応答を準備中..."
     },
     "mentions": {
+      "commandPaletteEmpty": "一致する commands がありません。",
+      "commandPaletteGroup": "Commands",
+      "commandPlanDescription": "Plan mode",
+      "commandPlanLabel": "Plan",
+      "commandPromptDescription": "Prompt template",
+      "commandPromptLabel": "Prompt",
+      "commandSkillDescription": "Skill command",
+      "commandSkillLabel": "Skill",
       "empty": "一致するファイル、フォルダー、または skills がありません。",
       "filesGroup": "ファイル",
       "foldersGroup": "フォルダー",
@@ -187,6 +195,8 @@
       "artifactLoading": "artifact を読み込み中...",
       "artifactTruncated": "{count} 文字を省略",
       "artifacts": "Artifacts {count}",
+      "backgroundProcesses": "Processes {count}",
+      "backToChat": "chat に戻る",
       "createGraph": "graph を作成",
       "deny": "拒否",
       "diff": "現在の diff",
@@ -199,6 +209,7 @@
       "emptyEvents": "timeline event なし",
       "emptyRuns": "agent run なし",
       "emptyTools": "tool call なし",
+      "executeNode": "node を実行",
       "events": "Timeline {count}",
       "failedNode": "失敗 node: {node}",
       "graph": "Run graph",
@@ -211,6 +222,7 @@
       "graphRetries": "Retries {count}",
       "graphRetryAttempt": "Attempt {count}",
       "graphRetryAutomatic": "automatic",
+      "graphRetryLimit": "最大再試行",
       "graphRetryManual": "manual",
       "graphRetryStrategy": "Retry strategy",
       "graphRetryStrategyAuto": "automatic",
@@ -218,15 +230,24 @@
       "graphRetryStrategyLimit": "max automatic {count}",
       "graphRetryTransientOff": "transient off",
       "graphRetryTransientOn": "transient on",
+      "graphRetryToggle": "一時的な失敗を再試行",
       "graphSequential": "sequential",
       "graphStage": "Stage {index}",
       "graphTask": "Task",
       "graphTools": "{count} tools",
       "loading": "run trace を読み込み中...",
       "model": "Model",
+      "openStandalone": "workbench を開く",
       "parent": "Parent",
+      "processDuration": "duration {duration}",
+      "processExitCode": "exit {code}",
+      "processOutputChars": "stdout {stdout} / stderr {stderr}",
+      "processPid": "pid {pid}",
+      "processSandboxed": "sandboxed",
+      "processUnsandboxed": "unsandboxed",
       "refresh": "workbench を更新",
       "retryFailed": "失敗を再試行",
+      "runGraph": "graph を実行",
       "runCount": "Runs {count}",
       "session": "Session tree",
       "sessionBranchPlaceholder": "任意の branch note",
@@ -243,6 +264,11 @@
       "sessionMoveLeaf": "leaf を移動",
       "sessionRoot": "Root",
       "sessionTarget": "Target",
+      "shellCommands": "Shell commands {count}",
+      "shellOutput": "Shell output {count}",
+      "shellOutputChunks": "{count} chunks",
+      "shellOutputTruncated": "最新 output のみ表示",
+      "skipFailed": "失敗をスキップ",
       "startNextStage": "stage を開始",
       "task": "Task",
       "taskPlaceholder": "任意の graph task",
@@ -368,12 +394,20 @@
           "description": "書き込み可能な profile でも、patch と command の書き込みは明示的な承認に通します。",
           "label": "書き込みに approval を要求"
         },
+        "retryTransientFailures": {
+          "description": "手動判断に渡す前に、provider、network、timeout、tool の一時的な失敗を自動 retry します。",
+          "label": "一時的な失敗を retry"
+        },
         "showToolTraces": {
           "description": "tool calls と runtime events を保存し、harness で実行内容を確認できるようにします。",
           "label": "tool traces を表示"
         }
       },
       "defaults": {
+        "maxAutomaticRetries": {
+          "description": "tool execution と run graph nodes に適用します。",
+          "label": "自動 retry 回数"
+        },
         "maxConcurrentSubagents": {
           "label": "同時 subagents"
         },
@@ -913,7 +947,13 @@
       "title": "Sidebar Settings"
     },
     "skills": {
+      "commands": {
+        "summary": "{{count}} command"
+      },
       "description": "グローバルと project レベルの SKILL.md を解析し、関連するリクエストでは一致した instructions をモデルコンテキストに注入します。",
+      "extensions": {
+        "summary": "{{count}} extension module"
+      },
       "includeGlobal": {
         "description": "ユーザープロファイル内のグローバル skills から再利用可能な instructions を取得します。",
         "label": "Global skills"
@@ -934,8 +974,10 @@
         "project": "Project"
       },
       "status": {
+        "commands": "Commands",
         "detected": "解析済み skills",
         "empty": "解析済み skills はまだありません。",
+        "extensions": "Extensions",
         "global": "Global",
         "project": "Project",
         "title": "Skill ソース",

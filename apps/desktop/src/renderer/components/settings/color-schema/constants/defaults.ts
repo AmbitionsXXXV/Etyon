@@ -1,6 +1,6 @@
 import type { CustomThemeFormValues } from "../types"
 
-export const HEX_COLOR_REGEX = /^#[0-9a-f]{6}$/
+export const HEX_COLOR_REGEX = /^#[0-9a-f]{6}$/u
 
 export const CREATE_THEME_DEFAULT_VALUES: CustomThemeFormValues = {
   accent: "#4da3ff",

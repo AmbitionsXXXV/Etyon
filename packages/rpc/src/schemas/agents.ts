@@ -1,5 +1,7 @@
 import * as z from "zod"
 
+import { AgentRetrySettingsSchema } from "./settings"
+
 export const AgentRunStatusSchema = z.enum([
   "failed",
   "running",
@@ -66,6 +68,14 @@ export const AgentRunTraceArtifactSchema = z.object({
   path: z.string(),
   runId: z.string(),
   toolCallId: z.string().nullable()
+})
+
+export const AgentUiStreamSnapshotSchema = z.object({
+  createdAt: z.string(),
+  eventId: z.string(),
+  parts: z.array(z.unknown()),
+  runId: z.string(),
+  sequence: z.number().int().min(1)
 })
 
 export const InspectAgentRunInputSchema = z.object({
@@ -180,6 +190,18 @@ export const RecoverableAgentRunsOutputSchema = z.object({
   runs: z.array(AgentRunTraceRunSchema)
 })
 
+export const ListAgentUiStreamSnapshotsInputSchema = z.object({
+  afterSequence: z.number().int().min(0).optional(),
+  runId: z.string().optional(),
+  sessionId: z.string()
+})
+
+export const AgentUiStreamSnapshotsOutputSchema = z.object({
+  nextSequence: z.number().int().min(0),
+  run: AgentRunTraceRunSchema.nullable(),
+  snapshots: z.array(AgentUiStreamSnapshotSchema)
+})
+
 export const StopActiveAgentRunInputSchema = z.object({
   sessionId: z.string()
 })
@@ -217,6 +239,13 @@ export const AgentRunGraphExecutionNodeStatusSchema = z.enum([
   "running",
   "skipped",
   "succeeded",
+  "suspended"
+])
+
+export const AgentRunGraphUntilIdleStopReasonSchema = z.enum([
+  "blocked",
+  "completed",
+  "iteration-limit",
   "suspended"
 ])
 
@@ -259,6 +288,7 @@ export const AgentRunGraphExecutionStageSchema = z.object({
 export const AgentRunGraphExecutionPlanSchema =
   AgentRunGraphTemplateSchema.extend({
     nodes: z.array(AgentRunGraphExecutionNodeSchema),
+    retryPolicy: AgentRetrySettingsSchema.optional(),
     stages: z.array(AgentRunGraphExecutionStageSchema),
     task: z.string().optional()
   })
@@ -310,6 +340,34 @@ export const AdvanceAgentRunGraphOutputSchema =
     settledNodeIds: z.array(z.string())
   })
 
+export const ExecuteAgentRunGraphNodeInputSchema = z.object({
+  nodeId: z.string().optional(),
+  runId: z.string(),
+  sessionId: z.string()
+})
+
+export const ExecuteAgentRunGraphNodeOutputSchema =
+  AdvanceAgentRunGraphOutputSchema.extend({
+    childRun: AgentRunTraceRunSchema,
+    nodeId: z.string(),
+    stopReason: z.string(),
+    turns: z.number().int().min(0)
+  })
+
+export const RunAgentRunGraphUntilIdleInputSchema = z.object({
+  maxIterations: z.number().int().min(1).max(50).optional(),
+  runId: z.string(),
+  sessionId: z.string()
+})
+
+export const RunAgentRunGraphUntilIdleOutputSchema =
+  AdvanceAgentRunGraphOutputSchema.extend({
+    childRuns: z.array(AgentRunTraceRunSchema),
+    executedNodeIds: z.array(z.string()),
+    iterations: z.number().int().min(0),
+    stopReason: AgentRunGraphUntilIdleStopReasonSchema
+  })
+
 export const RetryAgentRunGraphNodeInputSchema = z.object({
   nodeId: z.string(),
   runId: z.string(),
@@ -321,9 +379,34 @@ export const RetryAgentRunGraphNodeOutputSchema =
     retriedNodeId: z.string()
   })
 
+export const SkipAgentRunGraphNodeInputSchema = z.object({
+  nodeId: z.string(),
+  reason: z.string().trim().min(1).optional(),
+  runId: z.string(),
+  sessionId: z.string().optional()
+})
+
+export const SkipAgentRunGraphNodeOutputSchema =
+  StartAgentRunGraphNextStageOutputSchema.extend({
+    skippedNodeId: z.string()
+  })
+
+export const UpdateAgentRunGraphRetryPolicyInputSchema = z.object({
+  retryPolicy: AgentRetrySettingsSchema,
+  runId: z.string(),
+  sessionId: z.string().optional()
+})
+
+export const UpdateAgentRunGraphRetryPolicyOutputSchema = z.object({
+  plan: AgentRunGraphExecutionPlanSchema,
+  retryPolicy: AgentRetrySettingsSchema,
+  run: AgentRunTraceRunSchema
+})
+
 export const RespondAgentRunGraphApprovalInputSchema = z.object({
   approvalId: z.string().trim().min(1),
   approved: z.boolean(),
+  continueUntilIdle: z.boolean().optional(),
   reason: z.string().trim().min(1).optional(),
   rootRunId: z.string().trim().min(1),
   sessionId: z.string().trim().min(1),
@@ -333,6 +416,7 @@ export const RespondAgentRunGraphApprovalInputSchema = z.object({
 export const RespondAgentRunGraphApprovalOutputSchema =
   AdvanceAgentRunGraphOutputSchema.extend({
     childRun: AgentRunTraceRunSchema,
+    continuedGraph: RunAgentRunGraphUntilIdleOutputSchema.optional(),
     nodeId: z.string(),
     stopReason: z.string(),
     turns: z.number().int().min(0)
@@ -410,6 +494,10 @@ export type AgentRunTraceEvent = z.infer<typeof AgentRunTraceEventSchema>
 export type AgentRunTraceRun = z.infer<typeof AgentRunTraceRunSchema>
 export type AgentRunTraceToolCall = z.infer<typeof AgentRunTraceToolCallSchema>
 export type AgentRunsOutput = z.infer<typeof AgentRunsOutputSchema>
+export type AgentUiStreamSnapshot = z.infer<typeof AgentUiStreamSnapshotSchema>
+export type AgentUiStreamSnapshotsOutput = z.infer<
+  typeof AgentUiStreamSnapshotsOutputSchema
+>
 export type AgentToolApprovalState = z.infer<
   typeof AgentToolApprovalStateSchema
 >
@@ -420,6 +508,12 @@ export type AdvanceAgentRunGraphInput = z.infer<
 export type AdvanceAgentRunGraphOutput = z.infer<
   typeof AdvanceAgentRunGraphOutputSchema
 >
+export type ExecuteAgentRunGraphNodeInput = z.infer<
+  typeof ExecuteAgentRunGraphNodeInputSchema
+>
+export type ExecuteAgentRunGraphNodeOutput = z.infer<
+  typeof ExecuteAgentRunGraphNodeOutputSchema
+>
 export type AppendAgentSessionCompactionSummaryInput = z.infer<
   typeof AppendAgentSessionCompactionSummaryInputSchema
 >
@@ -428,6 +522,24 @@ export type RetryAgentRunGraphNodeInput = z.infer<
 >
 export type RetryAgentRunGraphNodeOutput = z.infer<
   typeof RetryAgentRunGraphNodeOutputSchema
+>
+export type SkipAgentRunGraphNodeInput = z.infer<
+  typeof SkipAgentRunGraphNodeInputSchema
+>
+export type SkipAgentRunGraphNodeOutput = z.infer<
+  typeof SkipAgentRunGraphNodeOutputSchema
+>
+export type UpdateAgentRunGraphRetryPolicyInput = z.infer<
+  typeof UpdateAgentRunGraphRetryPolicyInputSchema
+>
+export type UpdateAgentRunGraphRetryPolicyOutput = z.infer<
+  typeof UpdateAgentRunGraphRetryPolicyOutputSchema
+>
+export type RunAgentRunGraphUntilIdleInput = z.infer<
+  typeof RunAgentRunGraphUntilIdleInputSchema
+>
+export type RunAgentRunGraphUntilIdleOutput = z.infer<
+  typeof RunAgentRunGraphUntilIdleOutputSchema
 >
 export type RespondAgentRunGraphApprovalInput = z.infer<
   typeof RespondAgentRunGraphApprovalInputSchema
@@ -446,6 +558,9 @@ export type AgentRunGraphExecutionPlan = z.infer<
 >
 export type AgentRunGraphExecutionStage = z.infer<
   typeof AgentRunGraphExecutionStageSchema
+>
+export type AgentRunGraphUntilIdleStopReason = z.infer<
+  typeof AgentRunGraphUntilIdleStopReasonSchema
 >
 export type AgentRunGraphTemplate = z.infer<typeof AgentRunGraphTemplateSchema>
 export type AgentRunGraphTemplateId = z.infer<
@@ -483,6 +598,9 @@ export type ListQueuedAgentMessagesInput = z.infer<
 >
 export type ListRecoverableAgentRunsInput = z.infer<
   typeof ListRecoverableAgentRunsInputSchema
+>
+export type ListAgentUiStreamSnapshotsInput = z.infer<
+  typeof ListAgentUiStreamSnapshotsInputSchema
 >
 export type MoveAgentSessionLeafInput = z.infer<
   typeof MoveAgentSessionLeafInputSchema

@@ -22,6 +22,12 @@ export interface PromptEditorActiveMentionRange {
   trigger: PromptMentionTrigger
 }
 
+export interface PromptEditorActiveCommandPaletteRange {
+  from: number
+  query: string
+  to: number
+}
+
 export interface PromptEditorActivePromptTemplateCommandRange {
   from: number
   query: string
@@ -51,6 +57,14 @@ export interface PromptMentionItemGroup {
 export interface PromptMentionQueryState {
   query: string
   trigger: PromptMentionTrigger
+}
+
+export interface PromptCommandPaletteItem {
+  command: string
+  description: string
+  id: "plan" | "prompt" | "skill"
+  insertText: string
+  label: string
 }
 
 export type PromptTextDisplayPart =
@@ -89,11 +103,13 @@ export interface PromptEditorJsonNode {
 }
 
 const MENTION_PREFIX_PATTERN = /(^|[\s.,:;!?()[\]{}])([@$])([^\s@$]*)$/u
+const COMMAND_PALETTE_PATTERN = /(?:^|\n)(\/([^\s/]*)?)$/iu
 const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
 const PLAN_COMMAND_PREFIX = "/plan "
 const PROMPT_TEMPLATE_COMMAND_PATTERN =
   /(?:^|\n)(\/prompt(?:\s+([^\s/]+)?)?)$/iu
 const PROMPT_TEMPLATE_COMMAND_PREFIX = "/prompt "
+const PROMPT_TEMPLATE_POSITIONAL_ARG_PATTERN = /(^|[^$])\$(\d+)/gu
 const PROMPT_TEMPLATE_SAFE_ARG_PATTERN = /^[\w./:-]+$/u
 const SKILL_QUERY_SEPARATOR = "\n"
 const IME_PROCESS_KEY_CODE = 229
@@ -427,6 +443,31 @@ export const filterPromptTemplateItems = ({
     .slice(0, limit)
 }
 
+export const filterPromptCommandPaletteItems = ({
+  items,
+  limit,
+  query
+}: {
+  items: PromptCommandPaletteItem[]
+  limit: number
+  query: string
+}): PromptCommandPaletteItem[] => {
+  const normalizedQuery = normalizePromptTemplateQuery(query)
+
+  return items
+    .filter((item) => {
+      if (normalizedQuery === "") {
+        return true
+      }
+
+      return [item.command, item.description, item.label]
+        .join(SKILL_QUERY_SEPARATOR)
+        .toLowerCase()
+        .includes(normalizedQuery)
+    })
+    .slice(0, limit)
+}
+
 const quotePromptTemplateCommandArg = (value: string): string => {
   if (PROMPT_TEMPLATE_SAFE_ARG_PATTERN.test(value)) {
     return value
@@ -439,6 +480,26 @@ export const createPromptTemplateCommandText = (
   template: Pick<PromptTemplate, "name">
 ): string =>
   `${PROMPT_TEMPLATE_COMMAND_PREFIX}${quotePromptTemplateCommandArg(template.name)} `
+
+export const getPromptTemplateArgumentHints = (
+  template: Pick<PromptTemplate, "body">
+): string[] => {
+  const indexes = new Set<number>()
+
+  for (const match of template.body.matchAll(
+    PROMPT_TEMPLATE_POSITIONAL_ARG_PATTERN
+  )) {
+    const index = Number(match[2])
+
+    if (Number.isSafeInteger(index) && index > 0) {
+      indexes.add(index)
+    }
+  }
+
+  return [...indexes]
+    .toSorted((left, right) => left - right)
+    .map((index) => `$${index}`)
+}
 
 export const scrollActiveMentionItemIntoView = (
   itemElement: Pick<HTMLElement, "scrollIntoView"> | null | undefined
@@ -742,6 +803,33 @@ export const getPromptEditorActivePromptTemplateCommandRange = ({
   textBeforeCaret: string
 }): PromptEditorActivePromptTemplateCommandRange | null => {
   const match = textBeforeCaret.match(PROMPT_TEMPLATE_COMMAND_PATTERN)
+
+  if (!match) {
+    return null
+  }
+
+  const commandText = match[1] ?? ""
+  const from = selectionFrom - commandText.length
+
+  if (from < 0) {
+    return null
+  }
+
+  return {
+    from,
+    query: match[2] ?? "",
+    to: selectionFrom
+  }
+}
+
+export const getPromptEditorActiveCommandPaletteRange = ({
+  selectionFrom,
+  textBeforeCaret
+}: {
+  selectionFrom: number
+  textBeforeCaret: string
+}): PromptEditorActiveCommandPaletteRange | null => {
+  const match = textBeforeCaret.match(COMMAND_PALETTE_PATTERN)
 
   if (!match) {
     return null

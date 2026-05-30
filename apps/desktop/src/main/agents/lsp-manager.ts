@@ -78,6 +78,13 @@ export interface LspInspectInput {
   path: string
 }
 
+export interface LspDiagnosticsResult {
+  diagnostics: LspDiagnostic[]
+  error?: string
+  path: string
+  status: "failed" | "success" | "timeout" | "unavailable" | "unsupported"
+}
+
 export interface LspInspectResult {
   column: number
   definition: LspLocation[]
@@ -87,12 +94,28 @@ export interface LspInspectResult {
   implementation: LspLocation[]
   line: number
   path: string
+  references: LspLocation[]
   status: "failed" | "success" | "timeout" | "unavailable" | "unsupported"
+}
+
+export interface LspClientStatus {
+  error?: string
+  rootPath: string
+  status: "broken" | "running" | "starting"
+}
+
+export interface LspManagerStatus {
+  clients: LspClientStatus[]
+  hasClients: boolean
 }
 
 export interface AgentLspManager {
   cleanup: () => Promise<void>
+  diagnostics: (path: string) => Promise<LspDiagnosticsResult>
+  hasClients: () => boolean
   inspect: (input: LspInspectInput) => Promise<LspInspectResult>
+  status: () => LspManagerStatus
+  touchFile: (path: string) => Promise<LspDiagnosticsResult>
 }
 
 export interface AgentLspEvent {
@@ -115,6 +138,7 @@ interface LspClientState {
   diagnosticsByUri: Map<string, LspDiagnostic[]>
   openedUris: Set<string>
   process: LspProcess
+  rootPath: string
 }
 
 const CONTENT_LENGTH_PATTERN = /Content-Length:\s*(\d+)/iu
@@ -132,6 +156,13 @@ const TYPESCRIPT_LSP_EXTENSIONS = new Set([
   ".ts",
   ".tsx"
 ])
+const TYPESCRIPT_ROOT_MARKERS = [
+  "package-lock.json",
+  "bun.lockb",
+  "bun.lock",
+  "pnpm-lock.yaml",
+  "yarn.lock"
+] as const
 
 const defaultProcessManager: LspProcessManager = {
   spawn: (config) =>
@@ -177,22 +208,32 @@ const getLanguageId = (filePath: string): string | null => {
   }
 }
 
-const getLocalTypescriptLanguageServerPath = (projectPath: string): string => {
+const getLocalTypescriptLanguageServerPath = (rootPath: string): string => {
   const executableName =
     process.platform === "win32"
       ? `${TYPESCRIPT_LANGUAGE_SERVER_NAME}.cmd`
       : TYPESCRIPT_LANGUAGE_SERVER_NAME
 
-  return path.join(projectPath, "node_modules", ".bin", executableName)
+  return path.join(rootPath, "node_modules", ".bin", executableName)
 }
 
-const resolveTypescriptLanguageServerCommand = (
+const resolveTypescriptLanguageServerCommand = ({
+  projectPath,
+  rootPath
+}: {
   projectPath: string
-): string => {
-  const localServerPath = getLocalTypescriptLanguageServerPath(projectPath)
+  rootPath: string
+}): string => {
+  const localServerPath = getLocalTypescriptLanguageServerPath(rootPath)
 
-  return fsSync.existsSync(localServerPath)
-    ? localServerPath
+  if (fsSync.existsSync(localServerPath)) {
+    return localServerPath
+  }
+
+  const projectServerPath = getLocalTypescriptLanguageServerPath(projectPath)
+
+  return fsSync.existsSync(projectServerPath)
+    ? projectServerPath
     : TYPESCRIPT_LANGUAGE_SERVER_NAME
 }
 
@@ -211,6 +252,32 @@ const toProjectRelativePath = ({
   const relativePath = path.relative(projectPath, targetPath)
 
   return relativePath.split(path.sep).join("/") || "."
+}
+
+const resolveTypescriptLspRoot = ({
+  filePath,
+  projectPath
+}: {
+  filePath: string
+  projectPath: string
+}): string => {
+  let currentPath = path.dirname(filePath)
+
+  while (currentPath.startsWith(projectPath)) {
+    for (const marker of TYPESCRIPT_ROOT_MARKERS) {
+      if (fsSync.existsSync(path.join(currentPath, marker))) {
+        return currentPath
+      }
+    }
+
+    if (currentPath === projectPath) {
+      break
+    }
+
+    currentPath = path.dirname(currentPath)
+  }
+
+  return projectPath
 }
 
 const toPositionParams = ({
@@ -312,6 +379,32 @@ const convertDiagnostics = (diagnostics: unknown): LspDiagnostic[] => {
 
     return convertedDiagnostic ? [convertedDiagnostic] : []
   })
+}
+
+const convertDocumentDiagnosticReport = (report: unknown): LspDiagnostic[] => {
+  const record = asRecord(report)
+
+  return convertDiagnostics(record?.items)
+}
+
+const dedupeDiagnostics = (
+  diagnostics: readonly LspDiagnostic[]
+): LspDiagnostic[] => {
+  const seen = new Set<string>()
+  const dedupedDiagnostics: LspDiagnostic[] = []
+
+  for (const diagnostic of diagnostics) {
+    const key = JSON.stringify(diagnostic)
+
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    dedupedDiagnostics.push(diagnostic)
+  }
+
+  return dedupedDiagnostics
 }
 
 const getCurrentLineDiagnostics = ({
@@ -630,6 +723,22 @@ const createUnavailableInspectResult = ({
   implementation: [],
   line,
   path: resultPath,
+  references: [],
+  status
+})
+
+const createUnavailableDiagnosticsResult = ({
+  error,
+  path: resultPath,
+  status
+}: {
+  error: string
+  path: string
+  status: LspDiagnosticsResult["status"]
+}): LspDiagnosticsResult => ({
+  diagnostics: [],
+  error,
+  path: resultPath,
   status
 })
 
@@ -652,19 +761,64 @@ export const createAgentLspManager = ({
   settings
 }: CreateAgentLspManagerOptions): AgentLspManager => {
   const normalizedProjectPath = path.resolve(projectPath)
-  let clientPromise: Promise<LspClientState> | null = null
+  const brokenRootErrors = new Map<string, string>()
+  const clients = new Map<string, LspClientState>()
+  const clientPromises = new Map<string, Promise<LspClientState>>()
 
-  const startClient = async (): Promise<LspClientState> => {
+  const markRootBroken = ({
+    message,
+    rootPath
+  }: {
+    message: string
+    rootPath: string
+  }): void => {
+    brokenRootErrors.set(rootPath, message)
+    clients.delete(rootPath)
+    clientPromises.delete(rootPath)
+  }
+
+  const collectDocumentDiagnostics = async ({
+    client,
+    uri
+  }: {
+    client: LspClientState
+    uri: string
+  }): Promise<LspDiagnostic[]> => {
+    const report = await safeLspRequest(
+      client.connection.request(
+        "textDocument/diagnostic",
+        {
+          textDocument: {
+            uri
+          }
+        },
+        settings.diagnosticTimeoutMs
+      )
+    )
+    const pushedDiagnostics = client.diagnosticsByUri.get(uri) ?? []
+    const pulledDiagnostics = convertDocumentDiagnosticReport(report)
+    const diagnostics = dedupeDiagnostics([
+      ...pushedDiagnostics,
+      ...pulledDiagnostics
+    ])
+
+    client.diagnosticsByUri.set(uri, diagnostics)
+
+    return diagnostics
+  }
+
+  const startClient = async (rootPath: string): Promise<LspClientState> => {
     if (settings.requireSandbox && !sandbox.enabled) {
       throw new Error("LSP requires the workspace sandbox.")
     }
 
-    const serverCommand = resolveTypescriptLanguageServerCommand(
-      normalizedProjectPath
-    )
+    const serverCommand = resolveTypescriptLanguageServerCommand({
+      projectPath: normalizedProjectPath,
+      rootPath
+    })
     const preparedCommand = await sandbox.prepareShellCommand({
       command: `${quoteShellArg(serverCommand)} --stdio`,
-      cwd: normalizedProjectPath,
+      cwd: rootPath,
       env: process.env
     })
 
@@ -687,10 +841,26 @@ export const createAgentLspManager = ({
       throw error
     }
 
+    let cleanupRequested = false
+    const markProcessClosed = (message: string): void => {
+      if (cleanupRequested) {
+        return
+      }
+
+      markRootBroken({
+        message,
+        rootPath
+      })
+    }
+
     lspProcess.once("close", () => {
+      markProcessClosed("LSP server closed.")
       void cleanupSandboxCommand()
     })
-    lspProcess.once("error", () => {
+    lspProcess.once("error", (error) => {
+      markProcessClosed(
+        error instanceof Error ? error.message : "LSP server failed."
+      )
       void cleanupSandboxCommand()
     })
 
@@ -717,64 +887,115 @@ export const createAgentLspManager = ({
       process: lspProcess
     })
 
-    await connection.request(
-      "initialize",
-      {
-        capabilities: {
-          textDocument: {
-            definition: {},
-            hover: {
-              contentFormat: ["markdown", "plaintext"]
+    try {
+      await connection.request(
+        "initialize",
+        {
+          capabilities: {
+            textDocument: {
+              definition: {},
+              hover: {
+                contentFormat: ["markdown", "plaintext"]
+              },
+              implementation: {},
+              publishDiagnostics: {
+                relatedInformation: false,
+                versionSupport: false
+              },
+              synchronization: {
+                didSave: false,
+                dynamicRegistration: false,
+                willSave: false,
+                willSaveWaitUntil: false
+              }
             },
-            implementation: {},
-            publishDiagnostics: {
-              relatedInformation: false,
-              versionSupport: false
-            },
-            synchronization: {
-              didSave: false,
-              dynamicRegistration: false,
-              willSave: false,
-              willSaveWaitUntil: false
+            workspace: {
+              workspaceFolders: true
             }
           },
-          workspace: {
-            workspaceFolders: true
-          }
+          processId: process.pid,
+          rootPath,
+          rootUri: toFileUri(rootPath),
+          workspaceFolders: [
+            {
+              name: path.basename(rootPath),
+              uri: toFileUri(rootPath)
+            }
+          ]
         },
-        processId: process.pid,
-        rootPath: normalizedProjectPath,
-        rootUri: toFileUri(normalizedProjectPath),
-        workspaceFolders: [
-          {
-            name: path.basename(normalizedProjectPath),
-            uri: toFileUri(normalizedProjectPath)
-          }
-        ]
-      },
-      settings.initTimeoutMs
-    )
+        settings.initTimeoutMs
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "LSP initialize failed."
+
+      markRootBroken({
+        message,
+        rootPath
+      })
+      cleanupRequested = true
+      lspProcess.kill("SIGTERM")
+      await cleanupSandboxCommand()
+      throw error
+    }
+
     connection.notify("initialized", {})
     void eventSink?.({
       payload: {
         command: serverCommand,
-        pid: lspProcess.pid ?? null
+        pid: lspProcess.pid ?? null,
+        root: toProjectRelativePath({
+          projectPath: normalizedProjectPath,
+          targetPath: rootPath
+        })
       },
       type: "lsp_server_started"
     })
 
-    return {
-      cleanup: cleanupSandboxCommand,
+    const client = {
+      cleanup: async () => {
+        cleanupRequested = true
+        await cleanupSandboxCommand()
+      },
       connection,
       diagnosticsByUri,
       openedUris: new Set<string>(),
-      process: lspProcess
+      process: lspProcess,
+      rootPath
     }
+
+    clients.set(rootPath, client)
+
+    return client
   }
 
-  const getClient = (): Promise<LspClientState> => {
-    clientPromise ??= startClient()
+  const getClient = (rootPath: string): Promise<LspClientState> => {
+    const brokenRootError = brokenRootErrors.get(rootPath)
 
+    if (brokenRootError) {
+      return Promise.reject(new Error(brokenRootError))
+    }
+
+    const existingClient = clientPromises.get(rootPath)
+
+    if (existingClient) {
+      return existingClient
+    }
+
+    const clientPromise = (async () => {
+      try {
+        return await startClient(rootPath)
+      } catch (error) {
+        markRootBroken({
+          message:
+            error instanceof Error ? error.message : "LSP server unavailable.",
+          rootPath
+        })
+        throw error
+      }
+    })()
+
+    clientPromises.set(rootPath, clientPromise)
     return clientPromise
   }
 
@@ -824,7 +1045,12 @@ export const createAgentLspManager = ({
     let client: LspClientState
 
     try {
-      client = await getClient()
+      client = await getClient(
+        resolveTypescriptLspRoot({
+          filePath: absolutePath.value,
+          projectPath: normalizedProjectPath
+        })
+      )
     } catch (error) {
       return createUnavailableInspectResult({
         column: markerColumn,
@@ -849,24 +1075,29 @@ export const createAgentLspManager = ({
       uri
     })
 
-    await safeLspRequest(
-      client.connection.request(
-        "textDocument/diagnostic",
-        {
-          textDocument: {
-            uri
-          }
-        },
-        settings.diagnosticTimeoutMs
-      )
-    )
+    const fileDiagnostics = await collectDocumentDiagnostics({
+      client,
+      uri
+    })
 
     const positionParams = toPositionParams({
       character: zeroBasedCharacter,
       uri,
       zeroBasedLine
     })
-    const [hover, definition, implementation] = await Promise.all([
+    const referencesParams: LspJsonValue = {
+      context: {
+        includeDeclaration: true
+      },
+      position: {
+        character: zeroBasedCharacter,
+        line: zeroBasedLine
+      },
+      textDocument: {
+        uri
+      }
+    }
+    const [hover, definition, implementation, references] = await Promise.all([
       safeLspRequest(
         client.connection.request("textDocument/hover", positionParams, 5000)
       ),
@@ -883,10 +1114,17 @@ export const createAgentLspManager = ({
           positionParams,
           5000
         )
+      ),
+      safeLspRequest(
+        client.connection.request(
+          "textDocument/references",
+          referencesParams,
+          5000
+        )
       )
     ])
     const diagnostics = getCurrentLineDiagnostics({
-      diagnostics: client.diagnosticsByUri.get(uri) ?? [],
+      diagnostics: fileDiagnostics,
       line
     })
 
@@ -904,20 +1142,160 @@ export const createAgentLspManager = ({
       }),
       line,
       path: resultPath,
+      references: convertLocations({
+        locations: references,
+        projectPath: normalizedProjectPath
+      }),
+      status: "success"
+    }
+  }
+
+  const touchFile = async (
+    requestedPath: string
+  ): Promise<LspDiagnosticsResult> => {
+    let textFile: Awaited<ReturnType<AgentFileSystem["readTextFile"]>>
+
+    try {
+      textFile = await fileSystem.readTextFile(requestedPath)
+    } catch (error) {
+      return createUnavailableDiagnosticsResult({
+        error: error instanceof Error ? error.message : "Failed to read file.",
+        path: requestedPath,
+        status: "failed"
+      })
+    }
+
+    if (!textFile.ok) {
+      return createUnavailableDiagnosticsResult({
+        error: textFile.error.message,
+        path: requestedPath,
+        status: "failed"
+      })
+    }
+
+    const absolutePath = await fileSystem.absolutePath(requestedPath)
+
+    if (!absolutePath.ok) {
+      return createUnavailableDiagnosticsResult({
+        error: absolutePath.error.message,
+        path: requestedPath,
+        status: "failed"
+      })
+    }
+
+    const canonicalPath = await fileSystem.canonicalPath(requestedPath)
+    const resultPath = canonicalPath.ok ? canonicalPath.value : requestedPath
+
+    if (isUnsupportedPath(resultPath)) {
+      return createUnavailableDiagnosticsResult({
+        error: "No LSP server is configured for this file type.",
+        path: resultPath,
+        status: "unsupported"
+      })
+    }
+
+    const languageId = getLanguageId(resultPath)
+
+    if (!languageId) {
+      return createUnavailableDiagnosticsResult({
+        error: "Unsupported language id.",
+        path: resultPath,
+        status: "unsupported"
+      })
+    }
+
+    let client: LspClientState
+
+    try {
+      client = await getClient(
+        resolveTypescriptLspRoot({
+          filePath: absolutePath.value,
+          projectPath: normalizedProjectPath
+        })
+      )
+    } catch (error) {
+      return createUnavailableDiagnosticsResult({
+        error: error instanceof Error ? error.message : "LSP server failed.",
+        path: resultPath,
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "unavailable"
+      })
+    }
+
+    const uri = toFileUri(absolutePath.value)
+
+    openLspDocument({
+      client,
+      content: textFile.value,
+      languageId,
+      uri
+    })
+
+    return {
+      diagnostics: await collectDocumentDiagnostics({
+        client,
+        uri
+      }),
+      path: resultPath,
       status: "success"
     }
   }
 
   const cleanup = async (): Promise<void> => {
-    const client = clientPromise ? await clientPromise.catch(() => null) : null
+    const clientSnapshots = await Promise.all(
+      Array.from(clientPromises.values(), (clientPromise) =>
+        clientPromise.catch(() => null)
+      )
+    )
 
-    client?.process.kill("SIGTERM")
-    await client?.cleanup()
-    clientPromise = null
+    for (const client of clientSnapshots) {
+      client?.process.kill("SIGTERM")
+      await client?.cleanup()
+    }
+
+    brokenRootErrors.clear()
+    clients.clear()
+    clientPromises.clear()
+  }
+
+  const hasClients = (): boolean => clients.size > 0
+
+  const status = (): LspManagerStatus => {
+    const rootPaths = new Set([
+      ...clientPromises.keys(),
+      ...clients.keys(),
+      ...brokenRootErrors.keys()
+    ])
+
+    return {
+      clients: Array.from(rootPaths, (rootPath) => {
+        const brokenRootError = brokenRootErrors.get(rootPath)
+
+        if (brokenRootError) {
+          return {
+            error: brokenRootError,
+            rootPath,
+            status: "broken" as const
+          }
+        }
+
+        return {
+          rootPath,
+          status: clients.has(rootPath) ? "running" : "starting"
+        }
+      }),
+      hasClients: hasClients()
+    }
   }
 
   return {
     cleanup,
-    inspect
+    diagnostics: touchFile,
+    hasClients,
+    inspect,
+    status,
+    touchFile
   }
 }
