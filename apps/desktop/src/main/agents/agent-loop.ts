@@ -37,6 +37,14 @@ export interface AgentLoopToolMessage {
   toolName: string
 }
 
+export interface AgentLoopModelToolResult {
+  input: unknown
+  isError: boolean
+  output: unknown
+  toolCallId: string
+  toolName: string
+}
+
 export type AgentLoopMessage =
   | AgentLoopAssistantMessage
   | AgentLoopToolMessage
@@ -55,6 +63,7 @@ export interface AgentLoopModelTurn {
   content: string
   stopReason?: "aborted" | "error" | "stop"
   toolCalls?: readonly AgentLoopToolCall[]
+  toolResults?: readonly AgentLoopModelToolResult[]
 }
 
 export type AgentLoopModel = (
@@ -69,6 +78,10 @@ export type AgentLoopModelStreamPart =
   | {
       toolCall: AgentLoopToolCall
       type: "tool-call"
+    }
+  | {
+      toolResult: AgentLoopModelToolResult
+      type: "tool-result"
     }
   | {
       stopReason?: AgentLoopModelTurn["stopReason"]
@@ -261,6 +274,7 @@ interface AgentLoopModelStreamState {
   content: string
   stopReason?: AgentLoopModelTurn["stopReason"]
   toolCalls: AgentLoopToolCall[]
+  toolResults: AgentLoopModelToolResult[]
 }
 
 const getErrorMessage = (error: unknown): string =>
@@ -279,7 +293,7 @@ const emitAgentLoopEvent = async (
   onEvent: RunAgentLoopOptions["onEvent"],
   event: AgentLoopEvent
 ): Promise<void> => {
-  await onEvent?.(event)
+  await onEvent?.(structuredClone(event) as AgentLoopEvent)
 }
 
 const waitForPromiseWithAbortSignal = async <TValue>({
@@ -313,10 +327,65 @@ const waitForPromiseWithAbortSignal = async <TValue>({
   }
 }
 
+const cloneAgentLoopResources = (
+  resources: AgentLoopResources | undefined
+): AgentLoopResources | undefined =>
+  resources ? (structuredClone(resources) as AgentLoopResources) : undefined
+
+const cloneAgentLoopMessages = (
+  messages: readonly AgentLoopMessage[]
+): AgentLoopMessage[] => structuredClone(messages) as AgentLoopMessage[]
+
+const cloneAgentLoopValue = <TValue>(value: TValue): TValue =>
+  structuredClone(value) as TValue
+
+const cloneAgentLoopToolCall = (
+  toolCall: AgentLoopToolCall
+): AgentLoopToolCall => cloneAgentLoopValue(toolCall)
+
+const cloneAgentLoopToolCalls = (
+  toolCalls: readonly AgentLoopToolCall[]
+): AgentLoopToolCall[] => toolCalls.map(cloneAgentLoopToolCall)
+
+const cloneAgentLoopUserMessages = (
+  userMessages: readonly AgentLoopUserMessage[]
+): AgentLoopUserMessage[] =>
+  structuredClone(userMessages) as AgentLoopUserMessage[]
+
+const cloneAgentLoopExecutedToolResult = (
+  result: AgentLoopExecutedToolResult
+): AgentLoopExecutedToolResult => cloneAgentLoopValue(result)
+
 const createAgentLoopModelStreamState = (): AgentLoopModelStreamState => ({
   content: "",
-  toolCalls: []
+  toolCalls: [],
+  toolResults: []
 })
+
+const appendAgentLoopModelToolResult = ({
+  state,
+  toolResult
+}: {
+  state: {
+    toolCalls: AgentLoopToolCall[]
+    toolResults: AgentLoopModelToolResult[]
+  }
+  toolResult: AgentLoopModelToolResult
+}): void => {
+  if (
+    !state.toolCalls.some(
+      (toolCall) => toolCall.toolCallId === toolResult.toolCallId
+    )
+  ) {
+    state.toolCalls.push({
+      input: cloneAgentLoopValue(toolResult.input),
+      toolCallId: toolResult.toolCallId,
+      toolName: toolResult.toolName
+    })
+  }
+
+  state.toolResults.push(cloneAgentLoopValue(toolResult))
+}
 
 const applyAgentLoopModelStreamPart = (
   state: AgentLoopModelStreamState,
@@ -332,7 +401,14 @@ const applyAgentLoopModelStreamPart = (
       break
     }
     case "tool-call": {
-      state.toolCalls.push(part.toolCall)
+      state.toolCalls.push(cloneAgentLoopToolCall(part.toolCall))
+      break
+    }
+    case "tool-result": {
+      appendAgentLoopModelToolResult({
+        state,
+        toolResult: cloneAgentLoopValue(part.toolResult)
+      })
       break
     }
     default: {
@@ -344,11 +420,13 @@ const applyAgentLoopModelStreamPart = (
 const createAgentLoopModelTurnFromStreamState = ({
   content,
   stopReason,
-  toolCalls
+  toolCalls,
+  toolResults
 }: AgentLoopModelStreamState): AgentLoopModelTurn => ({
   content,
   ...(stopReason ? { stopReason } : {}),
-  toolCalls
+  toolCalls,
+  toolResults
 })
 
 const isReadableAgentLoopModelStream = (
@@ -523,17 +601,13 @@ const buildErrorResult = ({
   },
   sourceIndex,
   terminate: false,
-  toolCall
+  toolCall: cloneAgentLoopToolCall(toolCall)
 })
 
 const createActiveToolNameSet = (
   activeToolNames: readonly string[] | undefined
 ): ReadonlySet<string> | undefined =>
   activeToolNames ? new Set(activeToolNames) : undefined
-
-const cloneAgentLoopResources = (
-  resources: AgentLoopResources | undefined
-): AgentLoopResources | undefined => (resources ? { ...resources } : undefined)
 
 const getAvailableToolNames = ({
   activeToolNames,
@@ -587,17 +661,17 @@ const prepareToolCall = async ({
 
   if (!beforeToolCall) {
     return {
-      input: toolCall.input,
+      input: cloneAgentLoopValue(toolCall.input),
       sourceIndex,
       tool,
-      toolCall
+      toolCall: cloneAgentLoopToolCall(toolCall)
     }
   }
 
   try {
-    const hookResult = await beforeToolCall(toolCall, {
-      messages,
-      toolCall
+    const hookResult = await beforeToolCall(cloneAgentLoopToolCall(toolCall), {
+      messages: cloneAgentLoopMessages(messages),
+      toolCall: cloneAgentLoopToolCall(toolCall)
     })
 
     if (hookResult.block) {
@@ -617,15 +691,18 @@ const prepareToolCall = async ({
         },
         sourceIndex,
         terminate: true,
-        toolCall
+        toolCall: cloneAgentLoopToolCall(toolCall)
       }
     }
 
     return {
-      input: hookResult.input ?? toolCall.input,
+      input:
+        hookResult.input === undefined
+          ? cloneAgentLoopValue(toolCall.input)
+          : cloneAgentLoopValue(hookResult.input),
       sourceIndex,
       tool,
-      toolCall
+      toolCall: cloneAgentLoopToolCall(toolCall)
     }
   } catch (error) {
     return buildErrorResult({
@@ -654,16 +731,24 @@ const finalizeToolResult = async ({
   }
 
   try {
-    const hookResult = await afterToolCall(result, {
-      messages,
-      result
-    })
+    const hookResult = await afterToolCall(
+      cloneAgentLoopExecutedToolResult(result),
+      {
+        messages: cloneAgentLoopMessages(messages),
+        result: cloneAgentLoopExecutedToolResult(result)
+      }
+    )
+    const output =
+      hookResult.output === undefined
+        ? result.output
+        : cloneAgentLoopValue(hookResult.output)
 
     return {
       ...result,
       isError: hookResult.isError ?? result.isError,
-      output: hookResult.output ?? result.output,
-      terminate: hookResult.terminate ?? result.terminate
+      output,
+      terminate: hookResult.terminate ?? result.terminate,
+      toolCall: cloneAgentLoopToolCall(result.toolCall)
     }
   } catch (error) {
     return {
@@ -672,7 +757,8 @@ const finalizeToolResult = async ({
       output: {
         error: getErrorMessage(error)
       },
-      terminate: false
+      terminate: false,
+      toolCall: cloneAgentLoopToolCall(result.toolCall)
     }
   }
 }
@@ -710,9 +796,9 @@ const shouldRetryToolResult = async ({
     return await toolRetry.shouldRetry({
       attempt,
       maxRetries,
-      messages,
-      result,
-      toolCall: result.toolCall
+      messages: cloneAgentLoopMessages(messages),
+      result: cloneAgentLoopExecutedToolResult(result),
+      toolCall: cloneAgentLoopToolCall(result.toolCall)
     })
   } catch {
     return false
@@ -762,13 +848,14 @@ const executePreparedToolCall = async ({
     let result: AgentLoopExecutedToolResult
 
     try {
-      const outputOrPromise = tool.execute(input, {
+      const toolInput = cloneAgentLoopValue(input)
+      const outputOrPromise = tool.execute(toolInput, {
         abortSignal,
-        messages,
-        toolCall: {
+        messages: cloneAgentLoopMessages(messages),
+        toolCall: cloneAgentLoopToolCall({
           ...toolCall,
-          input
-        }
+          input: toolInput
+        })
       })
       const output = isPromiseLike<unknown>(outputOrPromise)
         ? await waitForPromiseWithAbortSignal({
@@ -782,10 +869,10 @@ const executePreparedToolCall = async ({
         output,
         sourceIndex,
         terminate: false,
-        toolCall: {
+        toolCall: cloneAgentLoopToolCall({
           ...toolCall,
           input
-        }
+        })
       }
     } catch (error) {
       result = buildErrorResult({
@@ -929,7 +1016,7 @@ const appendToolResults = async ({
 
     const toolMessage: AgentLoopToolMessage = {
       isError: result.isError,
-      output: result.output,
+      output: cloneAgentLoopValue(result.output),
       role: "tool",
       toolCallId: result.toolCall.toolCallId,
       toolName: result.toolCall.toolName
@@ -948,6 +1035,72 @@ const appendToolResults = async ({
   }
 }
 
+const getToolCallKey = (toolCallId: string): string => toolCallId
+
+const createProvidedToolExecutionResults = ({
+  toolCalls,
+  toolResults
+}: {
+  toolCalls: readonly AgentLoopToolCall[]
+  toolResults: readonly AgentLoopModelToolResult[]
+}): AgentLoopExecutedToolResult[] => {
+  const toolCallsById = new Map(
+    toolCalls.map((toolCall, sourceIndex) => [
+      getToolCallKey(toolCall.toolCallId),
+      {
+        sourceIndex,
+        toolCall
+      }
+    ])
+  )
+
+  return toolResults.map((toolResult, resultIndex) => {
+    const matchedToolCall = toolCallsById.get(
+      getToolCallKey(toolResult.toolCallId)
+    )
+
+    return {
+      isError: toolResult.isError,
+      output: cloneAgentLoopValue(toolResult.output),
+      sourceIndex:
+        matchedToolCall?.sourceIndex ?? toolCalls.length + resultIndex,
+      terminate: false,
+      toolCall: cloneAgentLoopToolCall(
+        matchedToolCall?.toolCall ?? {
+          input: toolResult.input,
+          toolCallId: toolResult.toolCallId,
+          toolName: toolResult.toolName
+        }
+      )
+    }
+  })
+}
+
+const getExecutableToolCallEntries = ({
+  providedToolResults,
+  toolCalls
+}: {
+  providedToolResults: readonly AgentLoopModelToolResult[]
+  toolCalls: readonly AgentLoopToolCall[]
+}): { sourceIndex: number; toolCall: AgentLoopToolCall }[] => {
+  const providedToolCallIds = new Set(
+    providedToolResults.map((toolResult) =>
+      getToolCallKey(toolResult.toolCallId)
+    )
+  )
+
+  return toolCalls.flatMap((toolCall, sourceIndex) =>
+    providedToolCallIds.has(getToolCallKey(toolCall.toolCallId))
+      ? []
+      : [
+          {
+            sourceIndex,
+            toolCall
+          }
+        ]
+  )
+}
+
 const appendAgentLoopUserMessages = async ({
   eventType,
   messages,
@@ -962,7 +1115,7 @@ const appendAgentLoopUserMessages = async ({
   userMessages: readonly AgentLoopUserMessage[]
 }): Promise<void> => {
   for (const message of userMessages) {
-    messages.push(message)
+    messages.push(cloneAgentLoopValue(message))
     await emitAgentLoopEvent(onEvent, {
       turnIndex,
       type: eventType
@@ -980,11 +1133,14 @@ const getAgentLoopUserMessages = async ({
     | RunAgentLoopOptions["getSteeringMessages"]
   messages: readonly AgentLoopMessage[]
   turnIndex: number
-}): Promise<readonly AgentLoopUserMessage[]> =>
-  (await getMessages?.({
-    messages,
+}): Promise<readonly AgentLoopUserMessage[]> => {
+  const userMessages = await getMessages?.({
+    messages: cloneAgentLoopMessages(messages),
     turnIndex
-  })) ?? []
+  })
+
+  return userMessages ? cloneAgentLoopUserMessages(userMessages) : []
+}
 
 const prepareAgentLoopNextTurn = async ({
   activeToolNames,
@@ -1012,7 +1168,7 @@ const prepareAgentLoopNextTurn = async ({
   const preparedNextTurn = await prepareNextTurn?.({
     activeToolNames,
     availableToolNames,
-    messages,
+    messages: cloneAgentLoopMessages(messages),
     model,
     resources: cloneAgentLoopResources(resources),
     thinkingLevel,
@@ -1023,7 +1179,7 @@ const prepareAgentLoopNextTurn = async ({
   return {
     activeToolNames: preparedNextTurn?.activeToolNames ?? activeToolNames,
     messages: preparedNextTurn?.messages
-      ? [...preparedNextTurn.messages]
+      ? cloneAgentLoopMessages(preparedNextTurn.messages)
       : messages,
     model: preparedNextTurn?.model ?? model,
     resources:
@@ -1045,7 +1201,7 @@ const shouldStopAgentLoopTurn = async ({
   turnIndex: number
 }): Promise<boolean> =>
   (await shouldStopAfterTurn?.({
-    messages,
+    messages: cloneAgentLoopMessages(messages),
     turnIndex
   })) ?? false
 
@@ -1067,7 +1223,7 @@ const finishAgentLoop = async ({
   })
 
   return {
-    messages,
+    messages: cloneAgentLoopMessages(messages),
     stopReason,
     turns
   }
@@ -1096,7 +1252,7 @@ export const runAgentLoop = async ({
   let activeResources = cloneAgentLoopResources(resources)
   let activeThinkingLevel = thinkingLevel
   let activeTools = tools
-  let messages = [...initialMessages]
+  let messages = cloneAgentLoopMessages(initialMessages)
 
   for (let turnIndex = 0; turnIndex < maxTurns; turnIndex += 1) {
     if (abortSignal?.aborted) {
@@ -1120,16 +1276,32 @@ export const runAgentLoop = async ({
     const modelTurn = await activeModel({
       abortSignal,
       availableToolNames,
-      messages: [...messages],
+      messages: cloneAgentLoopMessages(messages),
       resources: cloneAgentLoopResources(activeResources),
       thinkingLevel: activeThinkingLevel,
       turnIndex
     })
-    const toolCalls = [...(modelTurn.toolCalls ?? [])]
+    const providedToolResults = cloneAgentLoopValue([
+      ...(modelTurn.toolResults ?? [])
+    ])
+    const toolCalls = cloneAgentLoopToolCalls(modelTurn.toolCalls ?? [])
+    for (const toolResult of providedToolResults) {
+      if (
+        !toolCalls.some(
+          (toolCall) => toolCall.toolCallId === toolResult.toolCallId
+        )
+      ) {
+        toolCalls.push({
+          input: cloneAgentLoopValue(toolResult.input),
+          toolCallId: toolResult.toolCallId,
+          toolName: toolResult.toolName
+        })
+      }
+    }
     const assistantMessage: AgentLoopAssistantMessage = {
       content: modelTurn.content,
       role: "assistant",
-      toolCalls
+      toolCalls: cloneAgentLoopToolCalls(toolCalls)
     }
 
     messages.push(assistantMessage)
@@ -1150,7 +1322,7 @@ export const runAgentLoop = async ({
       })
     }
 
-    if (toolCalls.length === 0) {
+    if (toolCalls.length === 0 && providedToolResults.length === 0) {
       const followUpMessages = await getAgentLoopUserMessages({
         getMessages: getFollowUpMessages,
         messages,
@@ -1177,17 +1349,38 @@ export const runAgentLoop = async ({
       })
     }
 
-    const toolResults = await executeToolBatch({
-      activeToolNames: activeLoopToolNames,
-      abortSignal,
-      afterToolCall,
-      beforeToolCall,
-      messages,
-      onEvent,
+    const providedExecutionResults = createProvidedToolExecutionResults({
       toolCalls,
-      toolRetry,
-      tools: activeTools
+      toolResults: providedToolResults
     })
+    const executableToolCallEntries = getExecutableToolCallEntries({
+      providedToolResults,
+      toolCalls
+    })
+    const batchToolResults =
+      executableToolCallEntries.length === 0
+        ? []
+        : await executeToolBatch({
+            activeToolNames: activeLoopToolNames,
+            abortSignal,
+            afterToolCall,
+            beforeToolCall,
+            messages,
+            onEvent,
+            toolCalls: executableToolCallEntries.map((entry) => entry.toolCall),
+            toolRetry,
+            tools: activeTools
+          })
+    const executedToolResults = batchToolResults.map((result, resultIndex) => ({
+      ...result,
+      sourceIndex:
+        executableToolCallEntries[resultIndex]?.sourceIndex ??
+        result.sourceIndex
+    }))
+    const toolResults = [
+      ...providedExecutionResults,
+      ...executedToolResults
+    ].toSorted((first, second) => first.sourceIndex - second.sourceIndex)
 
     await appendToolResults({
       messages,

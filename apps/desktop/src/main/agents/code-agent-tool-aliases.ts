@@ -19,13 +19,24 @@ export const CODE_AGENT_TOOL_ALIASES = [
 export type CodeAgentToolAlias = (typeof CODE_AGENT_TOOL_ALIASES)[number]
 
 export const CODE_AGENT_LSP_TOOL_ALIASES = [
-  "inspect"
+  "inspect",
+  "symbolSearch",
+  "symbols"
 ] as const satisfies readonly AgentToolName[]
 
 export type CodeAgentLspToolAlias = (typeof CODE_AGENT_LSP_TOOL_ALIASES)[number]
 
+export const CODE_AGENT_NETWORK_TOOL_ALIASES = [
+  "webExtract",
+  "webSearch"
+] as const satisfies readonly AgentToolName[]
+
+export type CodeAgentNetworkToolAlias =
+  (typeof CODE_AGENT_NETWORK_TOOL_ALIASES)[number]
+
 export type CodeAgentModelFacingToolAlias =
   | CodeAgentLspToolAlias
+  | CodeAgentNetworkToolAlias
   | CodeAgentToolAlias
 
 export const CODE_AGENT_READONLY_TOOL_ALIASES = [
@@ -94,6 +105,22 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
     etyonName: "file_stat",
     etyonWorkspaceTool: "etyon_workspace_file_stat"
   },
+  symbolSearch: {
+    etyonName: "lsp_workspace_symbols",
+    etyonWorkspaceTool: "etyon_workspace_lsp_workspace_symbols"
+  },
+  symbols: {
+    etyonName: "lsp_symbols",
+    etyonWorkspaceTool: "etyon_workspace_lsp_symbols"
+  },
+  webExtract: {
+    etyonName: "web_extract",
+    etyonWorkspaceTool: "etyon_workspace_web_extract"
+  },
+  webSearch: {
+    etyonName: "web_search",
+    etyonWorkspaceTool: "etyon_workspace_web_search"
+  },
   write: {
     etyonName: "write_file",
     etyonWorkspaceTool: "etyon_workspace_write_file"
@@ -105,7 +132,8 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
 
 const codeAgentToolAliasSet = new Set<AgentToolName>([
   ...CODE_AGENT_TOOL_ALIASES,
-  ...CODE_AGENT_LSP_TOOL_ALIASES
+  ...CODE_AGENT_LSP_TOOL_ALIASES,
+  ...CODE_AGENT_NETWORK_TOOL_ALIASES
 ])
 
 export const isCodeAgentToolAlias = (

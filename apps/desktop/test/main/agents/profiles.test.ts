@@ -54,10 +54,16 @@ describe("agent profiles", () => {
     expect(profile.toolPolicy.allowWrites).toBe(false)
   })
 
-  it("adds inspect to code-oriented profiles without changing general chat", () => {
+  it("adds LSP tools to code-oriented profiles without changing general chat", () => {
     expect(
       getAgentProfileById("general-purpose").toolPolicy.allowedToolNames
     ).not.toContain("inspect")
+    expect(
+      getAgentProfileById("general-purpose").toolPolicy.allowedToolNames
+    ).not.toContain("symbolSearch")
+    expect(
+      getAgentProfileById("general-purpose").toolPolicy.allowedToolNames
+    ).not.toContain("symbols")
     expect(getAgentProfileById("explore").toolPolicy.allowedToolNames).toEqual([
       ...CODE_AGENT_READONLY_TOOL_ALIASES,
       ...CODE_AGENT_LSP_TOOL_ALIASES

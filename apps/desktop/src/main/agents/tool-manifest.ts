@@ -159,6 +159,20 @@ const AGENT_TOOL_MANIFESTS = {
     riskLevel: "safe",
     summary: "Inspect one source position through a sandboxed LSP server."
   }),
+  symbols: createManifest({
+    capabilities: ["lsp", "read-fs", "sandbox"],
+    id: "symbols",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "List source symbols through a sandboxed LSP server."
+  }),
+  symbolSearch: createManifest({
+    capabilities: ["lsp", "read-fs", "sandbox"],
+    id: "symbolSearch",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Search workspace symbols through a sandboxed LSP server."
+  }),
   ls: createManifest({
     capabilities: ["read-fs"],
     id: "ls",

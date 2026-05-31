@@ -347,6 +347,24 @@ const findToolPart = ({
     : null
 }
 
+const setProjectedToolApproval = ({
+  approvalId,
+  approvalToolCallIdsById,
+  toolCallId,
+  toolPart
+}: {
+  approvalId: string
+  approvalToolCallIdsById: Map<string, string>
+  toolCallId: string
+  toolPart: ProjectedDynamicToolPart
+}): void => {
+  approvalToolCallIdsById.set(approvalId, toolCallId)
+  toolPart.approval = {
+    id: approvalId
+  }
+  toolPart.state = "approval-requested"
+}
+
 const upsertToolPart = ({
   input,
   messages,
@@ -405,10 +423,12 @@ const upsertToolPart = ({
 }
 
 const applyAssistantPartToProjection = ({
+  approvalToolCallIdsById,
   messages,
   part,
   toolLocations
 }: {
+  approvalToolCallIdsById: Map<string, string>
   messages: UIMessage[]
   part: unknown
   toolLocations: Map<string, ProjectedToolLocation>
@@ -436,22 +456,33 @@ const applyAssistantPartToProjection = ({
   if (
     part.type === "tool-approval-request" &&
     typeof part.approvalId === "string" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
+    typeof part.toolCallId === "string"
   ) {
-    const toolPart = upsertToolPart({
-      input: part.input,
+    const existingToolPart = findToolPart({
       messages,
-      state: "approval-requested",
       toolCallId: part.toolCallId,
-      toolLocations,
-      toolName: part.toolName
+      toolLocations
     })
+    const toolPart =
+      existingToolPart ??
+      (typeof part.toolName === "string"
+        ? upsertToolPart({
+            input: part.input,
+            messages,
+            state: "approval-requested",
+            toolCallId: part.toolCallId,
+            toolLocations,
+            toolName: part.toolName
+          })
+        : null)
 
     if (toolPart) {
-      toolPart.approval = {
-        id: part.approvalId
-      }
+      setProjectedToolApproval({
+        approvalId: part.approvalId,
+        approvalToolCallIdsById,
+        toolCallId: part.toolCallId,
+        toolPart
+      })
     }
   }
 }
@@ -498,25 +529,37 @@ const applyToolResultPartToProjection = ({
 }
 
 const applyToolApprovalResponsePartToProjection = ({
+  approvalToolCallIdsById,
   messages,
   part,
   toolLocations
 }: {
+  approvalToolCallIdsById: Map<string, string>
   messages: UIMessage[]
   part: unknown
   toolLocations: Map<string, ProjectedToolLocation>
 }): void => {
-  if (
-    !isRecord(part) ||
-    part.type !== "tool-approval-response" ||
-    typeof part.toolCallId !== "string"
-  ) {
+  if (!isRecord(part) || part.type !== "tool-approval-response") {
+    return
+  }
+
+  let toolCallId: string | undefined
+
+  const { approvalId, toolCallId: partToolCallId } = part
+
+  if (typeof partToolCallId === "string") {
+    toolCallId = partToolCallId
+  } else if (typeof approvalId === "string") {
+    toolCallId = approvalToolCallIdsById.get(approvalId)
+  }
+
+  if (!toolCallId) {
     return
   }
 
   const toolPart = findToolPart({
     messages,
-    toolCallId: part.toolCallId,
+    toolCallId,
     toolLocations
   })
 
@@ -526,16 +569,19 @@ const applyToolApprovalResponsePartToProjection = ({
 }
 
 const applyToolMessageToProjection = ({
+  approvalToolCallIdsById,
   message,
   messages,
   toolLocations
 }: {
+  approvalToolCallIdsById: Map<string, string>
   message: ModelMessage
   messages: UIMessage[]
   toolLocations: Map<string, ProjectedToolLocation>
 }): void => {
   for (const part of getContentParts(message)) {
     applyToolApprovalResponsePartToProjection({
+      approvalToolCallIdsById,
       messages,
       part,
       toolLocations
@@ -590,6 +636,7 @@ export const buildAgentChatProjectionMessages = ({
   const modelMessages = convertAgentMessagesToLlm(
     buildAgentSessionModelContextFromLatestSavePoint(events)
   )
+  const approvalToolCallIdsById = new Map<string, string>()
   const messages: UIMessage[] = []
   const toolLocations = new Map<string, ProjectedToolLocation>()
 
@@ -600,6 +647,7 @@ export const buildAgentChatProjectionMessages = ({
 
     if (message.role === "tool") {
       applyToolMessageToProjection({
+        approvalToolCallIdsById,
         message,
         messages,
         toolLocations
@@ -623,6 +671,7 @@ export const buildAgentChatProjectionMessages = ({
     if (message.role === "assistant") {
       for (const part of getContentParts(message)) {
         applyAssistantPartToProjection({
+          approvalToolCallIdsById,
           messages,
           part,
           toolLocations

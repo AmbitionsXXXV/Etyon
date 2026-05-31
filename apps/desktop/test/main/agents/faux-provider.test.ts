@@ -1,52 +1,76 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider"
+import type {
+  LanguageModelV3CallOptions,
+  LanguageModelV3StreamPart
+} from "@ai-sdk/provider"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
   collectFauxTextStream,
-  createFauxGenerateTextResponse,
+  createFauxErrorResponse,
   createFauxGenerateToolCallResponse,
+  createFauxGenerateTextResponse,
   createFauxProvider,
-  createFauxTextResponse
+  createFauxTextResponse,
+  createFauxToolInputDeltaResponse,
+  createMockLanguageModel
 } from "./faux-provider"
 
-const readTextResponse = (
-  stream: ReadableStream<LanguageModelV3StreamPart>
-): Promise<string> => collectFauxTextStream(stream)
+const createCallOptions = (): LanguageModelV3CallOptions =>
+  ({
+    prompt: []
+  }) as LanguageModelV3CallOptions
 
-describe("faux provider", () => {
-  it("serves deterministic stream responses in queue order", async () => {
+const collectStreamParts = async (
+  stream: ReadableStream<LanguageModelV3StreamPart>
+): Promise<LanguageModelV3StreamPart[]> => {
+  const reader = stream.getReader()
+  const parts: LanguageModelV3StreamPart[] = []
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      return parts
+    }
+
+    parts.push(value)
+  }
+}
+
+describe("faux provider fixtures", () => {
+  it("keeps faux provider stream queue compatibility", async () => {
     const faux = createFauxProvider({ modelId: "mock-model" })
 
     faux.setResponses([createFauxTextResponse("first")])
     faux.appendResponses(createFauxTextResponse("second"))
 
-    const first = await faux.model.doStream({ prompt: [] })
-    const second = await faux.model.doStream({ prompt: [] })
+    const first = await faux.model.doStream(createCallOptions())
+    const second = await faux.model.doStream(createCallOptions())
 
-    expect(await readTextResponse(first.stream)).toBe("first")
-    expect(await readTextResponse(second.stream)).toBe("second")
+    expect(await collectFauxTextStream(first.stream)).toBe("first")
+    expect(await collectFauxTextStream(second.stream)).toBe("second")
     expect(faux.model.doStreamCalls).toHaveLength(2)
   })
 
-  it("replaces queued responses when setResponses is called again", async () => {
+  it("replaces queued stream responses when setResponses is called again", async () => {
     const faux = createFauxProvider()
 
     faux.setResponses([createFauxTextResponse("stale")])
     faux.setResponses([createFauxTextResponse("fresh")])
 
-    const response = await faux.model.doStream({ prompt: [] })
+    const response = await faux.model.doStream(createCallOptions())
 
-    expect(await readTextResponse(response.stream)).toBe("fresh")
+    expect(await collectFauxTextStream(response.stream)).toBe("fresh")
   })
 
-  it("serves deterministic generate responses in queue order", async () => {
+  it("keeps faux provider generate queue compatibility", async () => {
     const faux = createFauxProvider({ modelId: "mock-model" })
 
     faux.setGenerateResponses([createFauxGenerateTextResponse("first")])
     faux.appendGenerateResponses(createFauxGenerateTextResponse("second"))
 
-    const first = await faux.model.doGenerate({ prompt: [] })
-    const second = await faux.model.doGenerate({ prompt: [] })
+    const first = await faux.model.doGenerate(createCallOptions())
+    const second = await faux.model.doGenerate(createCallOptions())
 
     expect(first.content).toEqual([
       {
@@ -76,7 +100,7 @@ describe("faux provider", () => {
       })
     ])
 
-    const response = await faux.model.doGenerate({ prompt: [] })
+    const response = await faux.model.doGenerate(createCallOptions())
 
     expect(response.content).toEqual([
       {
@@ -94,7 +118,7 @@ describe("faux provider", () => {
     faux.setResponses([createFauxTextResponse("tools")])
 
     await faux.model.doStream({
-      prompt: [],
+      ...createCallOptions(),
       tools: [
         {
           inputSchema: {
@@ -114,5 +138,98 @@ describe("faux provider", () => {
     })
 
     expect(faux.listLastStreamToolNames()).toEqual(["readFile", "writeFile"])
+  })
+
+  it("queues mock language model stream and generate responses", async () => {
+    const mock = createMockLanguageModel({
+      generateResponses: [createFauxGenerateTextResponse("generated")],
+      streamResponses: [createFauxTextResponse("first")]
+    })
+    const firstStream = await mock.model.doStream(createCallOptions())
+
+    mock.appendResponses(createFauxTextResponse("second"))
+
+    const secondStream = await mock.model.doStream(createCallOptions())
+    const generated = await mock.model.doGenerate(createCallOptions())
+
+    expect(await collectFauxTextStream(firstStream.stream)).toBe("first")
+    expect(await collectFauxTextStream(secondStream.stream)).toBe("second")
+    expect(generated.content).toEqual([
+      {
+        text: "generated",
+        type: "text"
+      }
+    ])
+    await expect(mock.model.doStream(createCallOptions())).rejects.toThrow(
+      "Mock language model stream response queue is empty."
+    )
+  })
+
+  it("creates tool input delta and error stream fixtures", async () => {
+    const toolResponse = createFauxToolInputDeltaResponse({
+      input: {
+        path: "package.json"
+      },
+      inputChunks: ['{"path":', '"package.json"}'],
+      toolCallId: "tool-call-1",
+      toolName: "read"
+    })
+    const errorResponse = createFauxErrorResponse(new Error("model failed"))
+
+    await expect(collectStreamParts(toolResponse.stream)).resolves.toEqual([
+      {
+        type: "stream-start",
+        warnings: []
+      },
+      expect.objectContaining({
+        type: "response-metadata"
+      }),
+      {
+        id: "tool-call-1",
+        toolName: "read",
+        type: "tool-input-start"
+      },
+      {
+        delta: '{"path":',
+        id: "tool-call-1",
+        type: "tool-input-delta"
+      },
+      {
+        delta: '"package.json"}',
+        id: "tool-call-1",
+        type: "tool-input-delta"
+      },
+      {
+        id: "tool-call-1",
+        type: "tool-input-end"
+      },
+      expect.objectContaining({
+        finishReason: {
+          raw: "tool_calls",
+          unified: "tool-calls"
+        },
+        type: "finish"
+      })
+    ])
+    await expect(collectStreamParts(errorResponse.stream)).resolves.toEqual([
+      {
+        type: "stream-start",
+        warnings: []
+      },
+      expect.objectContaining({
+        type: "response-metadata"
+      }),
+      {
+        error: new Error("model failed"),
+        type: "error"
+      },
+      expect.objectContaining({
+        finishReason: {
+          raw: "error",
+          unified: "error"
+        },
+        type: "finish"
+      })
+    ])
   })
 })

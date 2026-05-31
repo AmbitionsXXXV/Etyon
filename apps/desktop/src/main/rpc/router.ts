@@ -820,6 +820,7 @@ const agentsExecuteRunGraphNode = rpc
       model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
       ...(input.nodeId ? { nodeId: input.nodeId } : {}),
       projectPath: session.projectPath,
+      resolveModel,
       rootRunId: rootRun.id
     })
 
@@ -868,6 +869,7 @@ const agentsRunGraphUntilIdle = rpc
       memorySettings: settings.memory,
       model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
       projectPath: session.projectPath,
+      resolveModel,
       rootRunId: rootRun.id
     })
 
@@ -977,6 +979,7 @@ const agentsRespondToRunGraphApproval = rpc
       model: resolveModel(rootRun.modelId ?? session.modelId ?? undefined),
       projectPath: session.projectPath,
       ...(input.reason ? { reason: input.reason } : {}),
+      resolveModel,
       rootRunId: rootRun.id,
       toolCallId: input.toolCallId
     })
@@ -990,6 +993,7 @@ const agentsRespondToRunGraphApproval = rpc
               rootRun.modelId ?? session.modelId ?? undefined
             ),
             projectPath: session.projectPath,
+            resolveModel,
             rootRunId: rootRun.id
           })
         : null

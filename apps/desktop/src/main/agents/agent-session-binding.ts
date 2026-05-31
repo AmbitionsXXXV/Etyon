@@ -165,6 +165,8 @@ export const createSessionBoundAgent = ({
     continue: async () => commitTurnMessages(await agent.continue()),
     prompt: async (content) => commitTurnMessages(await agent.prompt(content)),
     promptFromTemplate: async (template, args) =>
-      commitTurnMessages(await agent.promptFromTemplate(template, args))
+      commitTurnMessages(await agent.promptFromTemplate(template, args)),
+    skill: async (skill, additionalInstructions) =>
+      commitTurnMessages(await agent.skill(skill, additionalInstructions))
   }
 }

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import fsSync from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -41,6 +42,10 @@ interface LspPendingRequest {
   timeout: NodeJS.Timeout
 }
 
+type LspRequestHandler = (
+  message: LspJsonRpcMessage
+) => LspJsonValue | Promise<LspJsonValue | undefined> | undefined
+
 export interface LspProcess {
   kill: (signal?: NodeJS.Signals) => boolean | undefined
   once: (
@@ -72,10 +77,33 @@ export interface LspLocation {
   path: string
 }
 
+export interface LspCallHierarchyCall {
+  column: number
+  detail?: string
+  kind: string
+  line: number
+  name: string
+  path: string
+  ranges: LspLocation[]
+}
+
+export interface LspCallHierarchy {
+  incoming: LspCallHierarchyCall[]
+  outgoing: LspCallHierarchyCall[]
+}
+
 export interface LspInspectInput {
   line: number
   match: string
   path: string
+}
+
+export interface LspDocumentSymbolsInput {
+  path: string
+}
+
+export interface LspWorkspaceSymbolsInput {
+  query: string
 }
 
 export interface LspDiagnosticsResult {
@@ -85,7 +113,35 @@ export interface LspDiagnosticsResult {
   status: "failed" | "success" | "timeout" | "unavailable" | "unsupported"
 }
 
+export interface LspSymbol {
+  column: number
+  containerName?: string
+  detail?: string
+  endColumn: number
+  endLine: number
+  kind: string
+  line: number
+  name: string
+  path: string
+}
+
+export interface LspDocumentSymbolsResult {
+  error?: string
+  path: string
+  status: "failed" | "success" | "timeout" | "unavailable" | "unsupported"
+  symbols: LspSymbol[]
+}
+
+export interface LspWorkspaceSymbolsResult {
+  error?: string
+  query: string
+  rootPath: string
+  status: "failed" | "success" | "timeout" | "unavailable" | "unsupported"
+  symbols: LspSymbol[]
+}
+
 export interface LspInspectResult {
+  calls: LspCallHierarchy
   column: number
   definition: LspLocation[]
   diagnostics: LspDiagnostic[]
@@ -112,10 +168,16 @@ export interface LspManagerStatus {
 export interface AgentLspManager {
   cleanup: () => Promise<void>
   diagnostics: (path: string) => Promise<LspDiagnosticsResult>
+  documentSymbols: (
+    input: LspDocumentSymbolsInput
+  ) => Promise<LspDocumentSymbolsResult>
   hasClients: () => boolean
   inspect: (input: LspInspectInput) => Promise<LspInspectResult>
   status: () => LspManagerStatus
   touchFile: (path: string) => Promise<LspDiagnosticsResult>
+  workspaceSymbols: (
+    input: LspWorkspaceSymbolsInput
+  ) => Promise<LspWorkspaceSymbolsResult>
 }
 
 export interface AgentLspEvent {
@@ -141,6 +203,11 @@ interface LspClientState {
   rootPath: string
 }
 
+interface TypescriptLanguageServerCommand {
+  args: string[]
+  command: string
+}
+
 type LspMarkedLinePosition =
   | {
       column: number
@@ -155,8 +222,40 @@ type LspMarkedLinePosition =
 const CONTENT_LENGTH_PATTERN = /Content-Length:\s*(\d+)/iu
 const HEADER_SEPARATOR = "\r\n\r\n"
 const HEADER_SEPARATOR_BYTE_LENGTH = Buffer.byteLength(HEADER_SEPARATOR)
+const JSON_RPC_INTERNAL_ERROR_CODE = -32_603
 const JSON_RPC_VERSION = "2.0"
+const LSP_SYMBOL_KIND_NAMES = new Map<number, string>([
+  [1, "file"],
+  [2, "module"],
+  [3, "namespace"],
+  [4, "package"],
+  [5, "class"],
+  [6, "method"],
+  [7, "property"],
+  [8, "field"],
+  [9, "constructor"],
+  [10, "enum"],
+  [11, "interface"],
+  [12, "function"],
+  [13, "variable"],
+  [14, "constant"],
+  [15, "string"],
+  [16, "number"],
+  [17, "boolean"],
+  [18, "array"],
+  [19, "object"],
+  [20, "key"],
+  [21, "null"],
+  [22, "enum-member"],
+  [23, "struct"],
+  [24, "event"],
+  [25, "operator"],
+  [26, "type-parameter"]
+])
+const LSP_SYMBOL_KIND_VALUE_SET = [...LSP_SYMBOL_KIND_NAMES.keys()]
+const requireFromLspManager = createRequire(import.meta.url)
 const TYPESCRIPT_LANGUAGE_SERVER_NAME = "typescript-language-server"
+const TYPESCRIPT_LANGUAGE_SERVER_PACKAGE_NAME = "typescript-language-server"
 const TYPESCRIPT_LSP_EXTENSIONS = new Set([
   ".cjs",
   ".cts",
@@ -168,6 +267,9 @@ const TYPESCRIPT_LSP_EXTENSIONS = new Set([
   ".tsx"
 ])
 const TYPESCRIPT_ROOT_MARKERS = [
+  "tsconfig.json",
+  "jsconfig.json",
+  "package.json",
   "package-lock.json",
   "bun.lockb",
   "bun.lock",
@@ -192,6 +294,12 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const quoteShellArg = (value: string): string =>
   `'${value.replaceAll("'", "'\\''")}'`
+
+const formatShellCommand = ({
+  args,
+  command
+}: TypescriptLanguageServerCommand): string =>
+  [command, ...args].map(quoteShellArg).join(" ")
 
 const getLanguageId = (filePath: string): string | null => {
   const extension = path.extname(filePath)
@@ -228,24 +336,56 @@ const getLocalTypescriptLanguageServerPath = (rootPath: string): string => {
   return path.join(rootPath, "node_modules", ".bin", executableName)
 }
 
+const resolveBundledTypescriptLanguageServerPath = (): string | null => {
+  try {
+    const packageJsonPath = requireFromLspManager.resolve(
+      `${TYPESCRIPT_LANGUAGE_SERVER_PACKAGE_NAME}/package.json`
+    )
+    const serverPath = path.join(
+      path.dirname(packageJsonPath),
+      "lib",
+      "cli.mjs"
+    )
+
+    return fsSync.existsSync(serverPath) ? serverPath : null
+  } catch {
+    return null
+  }
+}
+
 const resolveTypescriptLanguageServerCommand = ({
   projectPath,
   rootPath
 }: {
   projectPath: string
   rootPath: string
-}): string => {
+}): TypescriptLanguageServerCommand | null => {
   const localServerPath = getLocalTypescriptLanguageServerPath(rootPath)
 
   if (fsSync.existsSync(localServerPath)) {
-    return localServerPath
+    return {
+      args: ["--stdio"],
+      command: localServerPath
+    }
   }
 
   const projectServerPath = getLocalTypescriptLanguageServerPath(projectPath)
 
-  return fsSync.existsSync(projectServerPath)
-    ? projectServerPath
-    : TYPESCRIPT_LANGUAGE_SERVER_NAME
+  if (fsSync.existsSync(projectServerPath)) {
+    return {
+      args: ["--stdio"],
+      command: projectServerPath
+    }
+  }
+
+  const bundledServerPath = resolveBundledTypescriptLanguageServerPath()
+
+  return bundledServerPath
+    ? {
+        args: ["--stdio"],
+        command: bundledServerPath
+      }
+    : null
 }
 
 const toFileUri = (filePath: string): string =>
@@ -367,6 +507,14 @@ const getMarkedLinePosition = ({
   return {
     column: matchIndex + markerIndex + 1,
     ok: true
+  }
+}
+
+const getInspectFallbackColumn = (match: string): number => {
+  try {
+    return getMarkerIndex(match) + 1
+  } catch {
+    return 1
   }
 }
 
@@ -558,6 +706,40 @@ const convertLocation = ({
   }
 }
 
+const getRangePosition = (
+  range: unknown,
+  edge: "end" | "start"
+): Record<string, unknown> | null => asRecord(asRecord(range)?.[edge])
+
+const convertRangeLocation = ({
+  projectPath,
+  range,
+  uri
+}: {
+  projectPath: string
+  range: unknown
+  uri: string
+}): LspLocation | null => {
+  const start = getRangePosition(range, "start")
+
+  if (!start) {
+    return null
+  }
+
+  try {
+    return {
+      column: getPositionCharacter(start) + 1,
+      line: getPositionLine(start) + 1,
+      path: toProjectRelativePath({
+        projectPath,
+        targetPath: fromFileUri(uri)
+      })
+    }
+  } catch {
+    return null
+  }
+}
+
 const convertLocations = ({
   locations,
   projectPath
@@ -580,6 +762,246 @@ const convertLocations = ({
     })
 
     return convertedLocation ? [convertedLocation] : []
+  })
+}
+
+const getSymbolKindName = (kind: unknown): string =>
+  typeof kind === "number"
+    ? (LSP_SYMBOL_KIND_NAMES.get(kind) ?? `kind-${kind}`)
+    : "unknown"
+
+const convertCallHierarchyItem = ({
+  item,
+  projectPath
+}: {
+  item: unknown
+  projectPath: string
+}): Omit<LspCallHierarchyCall, "ranges"> | null => {
+  const record = asRecord(item)
+  const uri = record?.uri
+  const range = record?.selectionRange ?? record?.range
+  const location =
+    typeof uri === "string"
+      ? convertRangeLocation({
+          projectPath,
+          range,
+          uri
+        })
+      : null
+
+  if (!record || typeof record.name !== "string" || !location) {
+    return null
+  }
+
+  const detail = typeof record.detail === "string" ? record.detail : undefined
+
+  return {
+    column: location.column,
+    ...(detail ? { detail } : {}),
+    kind: getSymbolKindName(record.kind),
+    line: location.line,
+    name: record.name,
+    path: location.path
+  }
+}
+
+const getFirstCallHierarchyItem = (items: unknown): LspJsonValue | null =>
+  Array.isArray(items)
+    ? ((items.find((item) => asRecord(item)) as LspJsonValue | undefined) ??
+      null)
+    : null
+
+const convertCallHierarchyCalls = ({
+  calls,
+  direction,
+  originUri,
+  projectPath
+}: {
+  calls: unknown
+  direction: "incoming" | "outgoing"
+  originUri: string
+  projectPath: string
+}): LspCallHierarchyCall[] => {
+  if (!Array.isArray(calls)) {
+    return []
+  }
+
+  return calls.flatMap((call) => {
+    const record = asRecord(call)
+    const item = direction === "incoming" ? record?.from : record?.to
+    const itemRecord = asRecord(item)
+    const convertedItem = convertCallHierarchyItem({
+      item,
+      projectPath
+    })
+
+    if (!record || !convertedItem || typeof itemRecord?.uri !== "string") {
+      return []
+    }
+
+    const rangeUri = direction === "incoming" ? itemRecord.uri : originUri
+    const ranges = Array.isArray(record.fromRanges)
+      ? record.fromRanges.flatMap((range) => {
+          const convertedRange = convertRangeLocation({
+            projectPath,
+            range,
+            uri: rangeUri
+          })
+
+          return convertedRange ? [convertedRange] : []
+        })
+      : []
+
+    return [
+      {
+        ...convertedItem,
+        ranges
+      }
+    ]
+  })
+}
+
+const getSymbolRelativePath = ({
+  fallbackPath,
+  projectPath,
+  uri
+}: {
+  fallbackPath: string
+  projectPath: string
+  uri: unknown
+}): string => {
+  if (typeof uri !== "string") {
+    return fallbackPath
+  }
+
+  try {
+    return toProjectRelativePath({
+      projectPath,
+      targetPath: fromFileUri(uri)
+    })
+  } catch {
+    return fallbackPath
+  }
+}
+
+const convertDocumentSymbol = ({
+  containerName,
+  fallbackPath,
+  projectPath,
+  symbol
+}: {
+  containerName?: string
+  fallbackPath: string
+  projectPath: string
+  symbol: unknown
+}): LspSymbol[] => {
+  const record = asRecord(symbol)
+  const range = record?.range
+  const selectionRange = record?.selectionRange
+  const start = getRangePosition(selectionRange ?? range, "start")
+  const end = getRangePosition(range, "end")
+
+  if (!record || typeof record.name !== "string" || !start || !end) {
+    return []
+  }
+
+  const { name } = record
+  const detail = typeof record.detail === "string" ? record.detail : undefined
+  const children = Array.isArray(record.children) ? record.children : []
+  const convertedSymbol: LspSymbol = {
+    column: getPositionCharacter(start) + 1,
+    ...(containerName ? { containerName } : {}),
+    ...(detail ? { detail } : {}),
+    endColumn: getPositionCharacter(end) + 1,
+    endLine: getPositionLine(end) + 1,
+    kind: getSymbolKindName(record.kind),
+    line: getPositionLine(start) + 1,
+    name,
+    path: fallbackPath
+  }
+
+  return [
+    convertedSymbol,
+    ...children.flatMap((child) =>
+      convertDocumentSymbol({
+        containerName: name,
+        fallbackPath,
+        projectPath,
+        symbol: child
+      })
+    )
+  ]
+}
+
+const convertSymbolInformation = ({
+  fallbackPath,
+  projectPath,
+  symbol
+}: {
+  fallbackPath: string
+  projectPath: string
+  symbol: unknown
+}): LspSymbol[] => {
+  const record = asRecord(symbol)
+  const location = asRecord(record?.location)
+  const range = location?.range
+  const start = getRangePosition(range, "start")
+  const end = getRangePosition(range, "end")
+
+  if (!record || typeof record.name !== "string" || !start || !end) {
+    return []
+  }
+
+  const containerName =
+    typeof record.containerName === "string" ? record.containerName : undefined
+
+  return [
+    {
+      column: getPositionCharacter(start) + 1,
+      ...(containerName ? { containerName } : {}),
+      endColumn: getPositionCharacter(end) + 1,
+      endLine: getPositionLine(end) + 1,
+      kind: getSymbolKindName(record.kind),
+      line: getPositionLine(start) + 1,
+      name: record.name,
+      path: getSymbolRelativePath({
+        fallbackPath,
+        projectPath,
+        uri: location?.uri
+      })
+    }
+  ]
+}
+
+const convertDocumentSymbols = ({
+  fallbackPath,
+  projectPath,
+  symbols
+}: {
+  fallbackPath: string
+  projectPath: string
+  symbols: unknown
+}): LspSymbol[] => {
+  if (!Array.isArray(symbols)) {
+    return []
+  }
+
+  return symbols.flatMap((symbol) => {
+    const record = asRecord(symbol)
+
+    if (asRecord(record?.location)) {
+      return convertSymbolInformation({
+        fallbackPath,
+        projectPath,
+        symbol
+      })
+    }
+
+    return convertDocumentSymbol({
+      fallbackPath,
+      projectPath,
+      symbol
+    })
   })
 }
 
@@ -627,17 +1049,21 @@ class LspRpcConnection {
   #buffer = Buffer.alloc(0)
   #nextId = 1
   #onNotification: (message: LspJsonRpcMessage) => void
+  #onRequest: LspRequestHandler
   #pending = new Map<number, LspPendingRequest>()
   #process: LspProcess
 
   constructor({
     onNotification,
+    onRequest,
     process: lspProcess
   }: {
     onNotification: (message: LspJsonRpcMessage) => void
+    onRequest?: LspRequestHandler
     process: LspProcess
   }) {
     this.#onNotification = onNotification
+    this.#onRequest = onRequest ?? (() => null)
     this.#process = lspProcess
     this.#process.stdout.on("data", (chunk) => {
       this.#appendData(Buffer.from(chunk as Buffer))
@@ -726,7 +1152,12 @@ class LspRpcConnection {
   }
 
   #handleMessage(message: LspJsonRpcMessage): void {
-    if (typeof message.id === "number") {
+    if (message.method && message.id !== undefined && message.id !== null) {
+      void this.#handleRequest(message)
+      return
+    }
+
+    if (typeof message.id === "number" && !message.method) {
       const pending = this.#pending.get(message.id)
 
       if (!pending) {
@@ -746,6 +1177,32 @@ class LspRpcConnection {
     }
 
     this.#onNotification(message)
+  }
+
+  async #handleRequest(message: LspJsonRpcMessage): Promise<void> {
+    const requestId = message.id
+
+    if (typeof requestId !== "number" && typeof requestId !== "string") {
+      return
+    }
+
+    try {
+      this.#write({
+        id: requestId,
+        jsonrpc: JSON_RPC_VERSION,
+        result: (await this.#onRequest(message)) ?? null
+      })
+    } catch (error) {
+      this.#write({
+        error: {
+          code: JSON_RPC_INTERNAL_ERROR_CODE,
+          message:
+            error instanceof Error ? error.message : "LSP request failed."
+        },
+        id: requestId,
+        jsonrpc: JSON_RPC_VERSION
+      })
+    }
   }
 
   #rejectPending(message: string): void {
@@ -777,6 +1234,10 @@ const createUnavailableInspectResult = ({
   path: string
   status: LspInspectResult["status"]
 }): LspInspectResult => ({
+  calls: {
+    incoming: [],
+    outgoing: []
+  },
   column,
   definition: [],
   diagnostics: [],
@@ -802,6 +1263,39 @@ const createUnavailableDiagnosticsResult = ({
   error,
   path: resultPath,
   status
+})
+
+const createUnavailableDocumentSymbolsResult = ({
+  error,
+  path: resultPath,
+  status
+}: {
+  error: string
+  path: string
+  status: LspDocumentSymbolsResult["status"]
+}): LspDocumentSymbolsResult => ({
+  error,
+  path: resultPath,
+  status,
+  symbols: []
+})
+
+const createUnavailableWorkspaceSymbolsResult = ({
+  error,
+  query,
+  rootPath,
+  status
+}: {
+  error: string
+  query: string
+  rootPath: string
+  status: LspWorkspaceSymbolsResult["status"]
+}): LspWorkspaceSymbolsResult => ({
+  error,
+  query,
+  rootPath,
+  status,
+  symbols: []
 })
 
 const safeLspRequest = async (
@@ -878,8 +1372,16 @@ export const createAgentLspManager = ({
       projectPath: normalizedProjectPath,
       rootPath
     })
+
+    if (!serverCommand) {
+      throw new Error(
+        "typescript-language-server is not available from the workspace or Etyon desktop dependencies."
+      )
+    }
+
+    const formattedServerCommand = formatShellCommand(serverCommand)
     const preparedCommand = await sandbox.prepareShellCommand({
-      command: `${quoteShellArg(serverCommand)} --stdio`,
+      command: formattedServerCommand,
       cwd: rootPath,
       env: process.env
     })
@@ -946,6 +1448,33 @@ export const createAgentLspManager = ({
           type: "lsp_diagnostics_collected"
         })
       },
+      onRequest: (message) => {
+        switch (message.method) {
+          case "client/registerCapability":
+          case "client/unregisterCapability":
+          case "window/workDoneProgress/create":
+          case "workspace/diagnostic/refresh": {
+            return null
+          }
+          case "workspace/configuration": {
+            const params = asRecord(message.params)
+            const items = Array.isArray(params?.items) ? params.items : []
+
+            return items.map(() => null)
+          }
+          case "workspace/workspaceFolders": {
+            return [
+              {
+                name: path.basename(rootPath),
+                uri: toFileUri(rootPath)
+              }
+            ]
+          }
+          default: {
+            return null
+          }
+        }
+      },
       process: lspProcess
     })
 
@@ -956,6 +1485,12 @@ export const createAgentLspManager = ({
           capabilities: {
             textDocument: {
               definition: {},
+              documentSymbol: {
+                hierarchicalDocumentSymbolSupport: true,
+                symbolKind: {
+                  valueSet: LSP_SYMBOL_KIND_VALUE_SET
+                }
+              },
               hover: {
                 contentFormat: ["markdown", "plaintext"]
               },
@@ -972,6 +1507,12 @@ export const createAgentLspManager = ({
               }
             },
             workspace: {
+              symbol: {
+                dynamicRegistration: false,
+                symbolKind: {
+                  valueSet: LSP_SYMBOL_KIND_VALUE_SET
+                }
+              },
               workspaceFolders: true
             }
           },
@@ -1004,7 +1545,7 @@ export const createAgentLspManager = ({
     connection.notify("initialized", {})
     void eventSink?.({
       payload: {
-        command: serverCommand,
+        command: formattedServerCommand,
         pid: lspProcess.pid ?? null,
         root: toProjectRelativePath({
           projectPath: normalizedProjectPath,
@@ -1061,21 +1602,199 @@ export const createAgentLspManager = ({
     return clientPromise
   }
 
-  const inspect = async ({
-    line,
-    match,
+  const documentSymbols = async ({
     path: requestedPath
-  }: LspInspectInput): Promise<LspInspectResult> => {
+  }: LspDocumentSymbolsInput): Promise<LspDocumentSymbolsResult> => {
     const textFile = await fileSystem.readTextFile(requestedPath)
 
     if (!textFile.ok) {
-      throw new Error(textFile.error.message)
+      return createUnavailableDocumentSymbolsResult({
+        error: textFile.error.message,
+        path: requestedPath,
+        status: "failed"
+      })
     }
 
     const absolutePath = await fileSystem.absolutePath(requestedPath)
 
     if (!absolutePath.ok) {
-      throw new Error(absolutePath.error.message)
+      return createUnavailableDocumentSymbolsResult({
+        error: absolutePath.error.message,
+        path: requestedPath,
+        status: "failed"
+      })
+    }
+
+    const canonicalPath = await fileSystem.canonicalPath(requestedPath)
+    const resultPath = canonicalPath.ok ? canonicalPath.value : requestedPath
+
+    if (isUnsupportedPath(resultPath)) {
+      return createUnavailableDocumentSymbolsResult({
+        error: "No LSP server is configured for this file type.",
+        path: resultPath,
+        status: "unsupported"
+      })
+    }
+
+    const languageId = getLanguageId(resultPath)
+
+    if (!languageId) {
+      return createUnavailableDocumentSymbolsResult({
+        error: "Unsupported language id.",
+        path: resultPath,
+        status: "unsupported"
+      })
+    }
+
+    let client: LspClientState
+
+    try {
+      client = await getClient(
+        resolveTypescriptLspRoot({
+          filePath: absolutePath.value,
+          projectPath: normalizedProjectPath
+        })
+      )
+    } catch (error) {
+      return createUnavailableDocumentSymbolsResult({
+        error: error instanceof Error ? error.message : "LSP server failed.",
+        path: resultPath,
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "unavailable"
+      })
+    }
+
+    const uri = toFileUri(absolutePath.value)
+
+    openLspDocument({
+      client,
+      content: textFile.value,
+      languageId,
+      uri
+    })
+
+    try {
+      const symbols = await client.connection.request(
+        "textDocument/documentSymbol",
+        {
+          textDocument: {
+            uri
+          }
+        },
+        5000
+      )
+
+      return {
+        path: resultPath,
+        status: "success",
+        symbols: convertDocumentSymbols({
+          fallbackPath: resultPath,
+          projectPath: normalizedProjectPath,
+          symbols
+        })
+      }
+    } catch (error) {
+      return createUnavailableDocumentSymbolsResult({
+        error:
+          error instanceof Error ? error.message : "Failed to list symbols.",
+        path: resultPath,
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "failed"
+      })
+    }
+  }
+
+  const workspaceSymbols = async ({
+    query
+  }: LspWorkspaceSymbolsInput): Promise<LspWorkspaceSymbolsResult> => {
+    const rootPath = normalizedProjectPath
+    const rootProjectPath = toProjectRelativePath({
+      projectPath: normalizedProjectPath,
+      targetPath: rootPath
+    })
+    let client: LspClientState
+
+    try {
+      client = await getClient(rootPath)
+    } catch (error) {
+      return createUnavailableWorkspaceSymbolsResult({
+        error: error instanceof Error ? error.message : "LSP server failed.",
+        query,
+        rootPath: rootProjectPath,
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "unavailable"
+      })
+    }
+
+    try {
+      const symbols = await client.connection.request(
+        "workspace/symbol",
+        {
+          query
+        },
+        5000
+      )
+
+      return {
+        query,
+        rootPath: rootProjectPath,
+        status: "success",
+        symbols: convertDocumentSymbols({
+          fallbackPath: rootProjectPath,
+          projectPath: normalizedProjectPath,
+          symbols
+        })
+      }
+    } catch (error) {
+      return createUnavailableWorkspaceSymbolsResult({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to search workspace symbols.",
+        query,
+        rootPath: rootProjectPath,
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "failed"
+      })
+    }
+  }
+
+  const inspect = async ({
+    line,
+    match,
+    path: requestedPath
+  }: LspInspectInput): Promise<LspInspectResult> => {
+    const fallbackColumn = getInspectFallbackColumn(match)
+    const textFile = await fileSystem.readTextFile(requestedPath)
+
+    if (!textFile.ok) {
+      return createUnavailableInspectResult({
+        column: fallbackColumn,
+        error: textFile.error.message,
+        line,
+        path: requestedPath,
+        status: "failed"
+      })
+    }
+
+    const absolutePath = await fileSystem.absolutePath(requestedPath)
+
+    if (!absolutePath.ok) {
+      return createUnavailableInspectResult({
+        column: fallbackColumn,
+        error: absolutePath.error.message,
+        line,
+        path: requestedPath,
+        status: "failed"
+      })
     }
 
     const canonicalPath = await fileSystem.canonicalPath(requestedPath)
@@ -1174,7 +1893,13 @@ export const createAgentLspManager = ({
         uri
       }
     }
-    const [hover, definition, implementation, references] = await Promise.all([
+    const [
+      hover,
+      definition,
+      implementation,
+      references,
+      preparedCallHierarchy
+    ] = await Promise.all([
       safeLspRequest(
         client.connection.request("textDocument/hover", positionParams, 5000)
       ),
@@ -1198,14 +1923,58 @@ export const createAgentLspManager = ({
           referencesParams,
           5000
         )
+      ),
+      safeLspRequest(
+        client.connection.request(
+          "textDocument/prepareCallHierarchy",
+          positionParams,
+          5000
+        )
       )
     ])
+    const callHierarchyItem = getFirstCallHierarchyItem(preparedCallHierarchy)
+    const [incomingCalls, outgoingCalls] = callHierarchyItem
+      ? await Promise.all([
+          safeLspRequest(
+            client.connection.request(
+              "callHierarchy/incomingCalls",
+              {
+                item: callHierarchyItem
+              },
+              5000
+            )
+          ),
+          safeLspRequest(
+            client.connection.request(
+              "callHierarchy/outgoingCalls",
+              {
+                item: callHierarchyItem
+              },
+              5000
+            )
+          )
+        ])
+      : [undefined, undefined]
     const diagnostics = getCurrentLineDiagnostics({
       diagnostics: fileDiagnostics,
       line
     })
 
     return {
+      calls: {
+        incoming: convertCallHierarchyCalls({
+          calls: incomingCalls,
+          direction: "incoming",
+          originUri: uri,
+          projectPath: normalizedProjectPath
+        }),
+        outgoing: convertCallHierarchyCalls({
+          calls: outgoingCalls,
+          direction: "outgoing",
+          originUri: uri,
+          projectPath: normalizedProjectPath
+        })
+      },
       column: markerColumn,
       definition: convertLocations({
         locations: definition,
@@ -1370,9 +2139,11 @@ export const createAgentLspManager = ({
   return {
     cleanup,
     diagnostics: touchFile,
+    documentSymbols,
     hasClients,
     inspect,
     status,
-    touchFile
+    touchFile,
+    workspaceSymbols
   }
 }

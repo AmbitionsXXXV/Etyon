@@ -35,6 +35,8 @@ export interface FauxProvider {
   setResponses: (responses: LanguageModelV3StreamResult[]) => void
 }
 
+export type QueuedMockLanguageModel = FauxProvider
+
 const createFauxReadableStream = <TChunk>(
   chunks: readonly TChunk[]
 ): ReadableStream<TChunk> =>
@@ -221,21 +223,192 @@ export const createFauxToolCallResponse = ({
   ])
 })
 
-export const createFauxProvider = ({
+export const createFauxToolInputDeltaResponse = ({
+  finishReason = {
+    raw: "tool_calls",
+    unified: "tool-calls"
+  },
+  id = "response-1",
+  input,
+  inputChunks,
   modelId = DEFAULT_MODEL_ID,
-  provider = DEFAULT_PROVIDER
+  timestamp = new Date("2026-05-24T00:00:00.000Z"),
+  toolCallId,
+  toolName,
+  usage = EMPTY_USAGE
 }: {
+  finishReason?: LanguageModelV3FinishReason
+  id?: string
+  input: unknown
+  inputChunks?: readonly string[]
+  modelId?: string
+  timestamp?: Date
+  toolCallId: string
+  toolName: string
+  usage?: LanguageModelV3Usage
+}): LanguageModelV3StreamResult => {
+  const serializedInput = JSON.stringify(input)
+  const chunks = inputChunks ?? [serializedInput]
+
+  return {
+    stream: createFauxReadableStream<LanguageModelV3StreamPart>([
+      {
+        type: "stream-start",
+        warnings: []
+      },
+      {
+        id,
+        modelId,
+        timestamp,
+        type: "response-metadata"
+      },
+      {
+        id: toolCallId,
+        toolName,
+        type: "tool-input-start"
+      },
+      ...chunks.map(
+        (delta): LanguageModelV3StreamPart => ({
+          delta,
+          id: toolCallId,
+          type: "tool-input-delta"
+        })
+      ),
+      {
+        id: toolCallId,
+        type: "tool-input-end"
+      },
+      {
+        finishReason,
+        type: "finish",
+        usage
+      }
+    ])
+  }
+}
+
+export const createFauxProviderToolResultResponse = ({
+  finishReason = {
+    raw: "stop",
+    unified: "stop"
+  },
+  id = "response-1",
+  input,
+  isError = false,
+  modelId = DEFAULT_MODEL_ID,
+  output,
+  timestamp = new Date("2026-05-24T00:00:00.000Z"),
+  toolCallId,
+  toolName,
+  usage = EMPTY_USAGE
+}: {
+  finishReason?: LanguageModelV3FinishReason
+  id?: string
+  input: unknown
+  isError?: boolean
+  modelId?: string
+  output: NonNullable<
+    LanguageModelV3StreamPart & { type: "tool-result" }
+  >["result"]
+  timestamp?: Date
+  toolCallId: string
+  toolName: string
+  usage?: LanguageModelV3Usage
+}): LanguageModelV3StreamResult => ({
+  stream: createFauxReadableStream<LanguageModelV3StreamPart>([
+    {
+      type: "stream-start",
+      warnings: []
+    },
+    {
+      id,
+      modelId,
+      timestamp,
+      type: "response-metadata"
+    },
+    {
+      input: JSON.stringify(input),
+      providerExecuted: true,
+      toolCallId,
+      toolName,
+      type: "tool-call"
+    },
+    {
+      ...(isError ? { isError } : {}),
+      result: output,
+      toolCallId,
+      toolName,
+      type: "tool-result"
+    },
+    {
+      finishReason,
+      type: "finish",
+      usage
+    }
+  ])
+})
+
+export const createFauxErrorResponse = (
+  error: unknown,
+  {
+    finishReason = {
+      raw: "error",
+      unified: "error"
+    },
+    id = "response-1",
+    modelId = DEFAULT_MODEL_ID,
+    timestamp = new Date("2026-05-24T00:00:00.000Z"),
+    usage = EMPTY_USAGE
+  }: {
+    finishReason?: LanguageModelV3FinishReason
+    id?: string
+    modelId?: string
+    timestamp?: Date
+    usage?: LanguageModelV3Usage
+  } = {}
+): LanguageModelV3StreamResult => ({
+  stream: createFauxReadableStream<LanguageModelV3StreamPart>([
+    {
+      type: "stream-start",
+      warnings: []
+    },
+    {
+      id,
+      modelId,
+      timestamp,
+      type: "response-metadata"
+    },
+    {
+      error,
+      type: "error"
+    },
+    {
+      finishReason,
+      type: "finish",
+      usage
+    }
+  ])
+})
+
+export const createMockLanguageModel = ({
+  generateResponses = [],
+  modelId = DEFAULT_MODEL_ID,
+  provider = DEFAULT_PROVIDER,
+  streamResponses = []
+}: {
+  generateResponses?: readonly LanguageModelV3GenerateResult[]
   modelId?: string
   provider?: string
-} = {}): FauxProvider => {
-  const generateResponseQueue: LanguageModelV3GenerateResult[] = []
-  const responseQueue: LanguageModelV3StreamResult[] = []
+  streamResponses?: readonly LanguageModelV3StreamResult[]
+} = {}): QueuedMockLanguageModel => {
+  const generateResponseQueue = [...generateResponses]
+  const responseQueue = [...streamResponses]
   const model = new MockLanguageModelV3({
     doGenerate: (_options: LanguageModelV3CallOptions) => {
       const response = generateResponseQueue.shift()
 
       if (!response) {
-        throw new Error("Faux provider generate response queue is empty.")
+        throw new Error("Mock language model generate response queue is empty.")
       }
 
       return Promise.resolve(response)
@@ -244,7 +417,7 @@ export const createFauxProvider = ({
       const response = responseQueue.shift()
 
       if (!response) {
-        throw new Error("Faux provider response queue is empty.")
+        throw new Error("Mock language model stream response queue is empty.")
       }
 
       return Promise.resolve(response)
@@ -273,6 +446,18 @@ export const createFauxProvider = ({
     }
   }
 }
+
+export const createFauxProvider = ({
+  modelId = DEFAULT_MODEL_ID,
+  provider = DEFAULT_PROVIDER
+}: {
+  modelId?: string
+  provider?: string
+} = {}): FauxProvider =>
+  createMockLanguageModel({
+    modelId,
+    provider
+  })
 
 export const collectFauxTextStream = async (
   stream: ReadableStream<LanguageModelV3StreamPart>

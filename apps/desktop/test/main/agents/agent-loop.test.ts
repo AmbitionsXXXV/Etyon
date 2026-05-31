@@ -25,6 +25,25 @@ const cloneMessages = (
   messages: readonly AgentLoopMessage[]
 ): AgentLoopMessage[] => structuredClone(messages) as AgentLoopMessage[]
 
+interface MutableNestedLoopResources {
+  diagnostics: {
+    status: string
+  }
+}
+
+interface MutableLoopTextMessage {
+  content: string
+  role: "user"
+}
+
+interface MutableLoopToolCall {
+  input: {
+    path: string
+  }
+  toolCallId: string
+  toolName: string
+}
+
 const sequentialBatchModel: AgentLoopModel = ({ messages }) => {
   if (messages.some((message) => message.role === "tool")) {
     return {
@@ -172,6 +191,107 @@ describe("agent loop", () => {
       "assistant_message_appended",
       "tool_execution_started",
       "tool_execution_finished",
+      "tool_result_appended",
+      "agent_turn_started",
+      "assistant_message_appended",
+      "agent_loop_finished"
+    ])
+  })
+
+  it("appends provider-completed tool results without executing the local tool", async () => {
+    const execute = vi.fn(() => "local result")
+    const modelMessages: AgentLoopMessage[][] = []
+    const events: AgentLoopEvent[] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "Provider already ran the tool.",
+          toolCalls: [
+            {
+              input: {
+                path: "src/main.ts"
+              },
+              toolCallId: "provider-tool-call-1",
+              toolName: "readFile"
+            }
+          ],
+          toolResults: [
+            {
+              input: {
+                path: "src/main.ts"
+              },
+              isError: false,
+              output: {
+                content: "provider file content"
+              },
+              toolCallId: "provider-tool-call-1",
+              toolName: "readFile"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Provider result handled.",
+        toolCalls: []
+      }
+    })
+
+    const result = await runAgentLoop({
+      maxTurns: 5,
+      messages: [
+        {
+          content: "Read src/main.ts.",
+          role: "user"
+        }
+      ],
+      model,
+      onEvent: (event) => {
+        events.push(event)
+      },
+      tools: {
+        readFile: {
+          execute
+        }
+      }
+    })
+
+    expect(execute).not.toHaveBeenCalled()
+    expect(model).toHaveBeenCalledTimes(2)
+    expect(modelMessages[1]).toEqual([
+      {
+        content: "Read src/main.ts.",
+        role: "user"
+      },
+      {
+        content: "Provider already ran the tool.",
+        role: "assistant",
+        toolCalls: [
+          {
+            input: {
+              path: "src/main.ts"
+            },
+            toolCallId: "provider-tool-call-1",
+            toolName: "readFile"
+          }
+        ]
+      },
+      {
+        isError: false,
+        output: {
+          content: "provider file content"
+        },
+        role: "tool",
+        toolCallId: "provider-tool-call-1",
+        toolName: "readFile"
+      }
+    ])
+    expect(result.stopReason).toBe("final")
+    expect(events.map((event) => event.type)).toEqual([
+      "agent_turn_started",
+      "assistant_message_appended",
       "tool_result_appended",
       "agent_turn_started",
       "assistant_message_appended",
@@ -579,6 +699,162 @@ describe("agent loop", () => {
     ])
   })
 
+  it("keeps beforeToolCall object mutations isolated from committed tool calls", async () => {
+    const executeEcho = vi.fn((input: unknown) => input)
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will call a tool.",
+          toolCalls: [
+            {
+              input: {
+                path: "original.txt"
+              },
+              toolCallId: "tool-call-1",
+              toolName: "echo"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    await runAgentLoop({
+      beforeToolCall: (toolCall, context) => {
+        const mutableToolCall = toolCall as MutableLoopToolCall
+        const mutableContextToolCall = context.toolCall as MutableLoopToolCall
+
+        mutableToolCall.input.path = "mutated.txt"
+        mutableToolCall.toolCallId = "mutated-tool-call"
+        mutableContextToolCall.toolName = "mutatedTool"
+
+        return {}
+      },
+      maxTurns: 3,
+      messages: [
+        {
+          content: "Run echo.",
+          role: "user"
+        }
+      ],
+      model,
+      tools: {
+        echo: {
+          execute: executeEcho
+        }
+      }
+    })
+
+    expect(executeEcho).toHaveBeenCalledWith(
+      {
+        path: "original.txt"
+      },
+      expect.objectContaining({
+        toolCall: {
+          input: {
+            path: "original.txt"
+          },
+          toolCallId: "tool-call-1",
+          toolName: "echo"
+        }
+      })
+    )
+    expect(modelMessages[1]?.slice(1)).toEqual([
+      {
+        content: "I will call a tool.",
+        role: "assistant",
+        toolCalls: [
+          {
+            input: {
+              path: "original.txt"
+            },
+            toolCallId: "tool-call-1",
+            toolName: "echo"
+          }
+        ]
+      },
+      {
+        isError: false,
+        output: {
+          path: "original.txt"
+        },
+        role: "tool",
+        toolCallId: "tool-call-1",
+        toolName: "echo"
+      }
+    ])
+  })
+
+  it("keeps event payload mutations isolated from appended tool results", async () => {
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will call a tool.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "tool-call-1",
+              toolName: "echo"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    await runAgentLoop({
+      maxTurns: 3,
+      messages: [
+        {
+          content: "Run echo.",
+          role: "user"
+        }
+      ],
+      model,
+      onEvent: (event) => {
+        if (
+          event.type === "tool_execution_finished" &&
+          typeof event.output === "object" &&
+          event.output !== null &&
+          "path" in event.output
+        ) {
+          event.output.path = "mutated-event.txt"
+        }
+      },
+      tools: {
+        echo: {
+          execute: () => ({
+            path: "original.txt"
+          })
+        }
+      }
+    })
+
+    expect(modelMessages[1]?.at(-1)).toEqual({
+      isError: false,
+      output: {
+        path: "original.txt"
+      },
+      role: "tool",
+      toolCallId: "tool-call-1",
+      toolName: "echo"
+    })
+  })
+
   it("blocks inactive tools without executing registered implementations", async () => {
     const executeReadFile = vi.fn(() => "file content")
     const executeEditFile = vi.fn(() => "edited")
@@ -773,6 +1049,62 @@ describe("agent loop", () => {
     ])
   })
 
+  it("keeps injected user messages isolated from source mutations", async () => {
+    const steeringMessage = {
+      content: "Now focus only on failing tests.",
+      role: "user" as const
+    }
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        return {
+          content: "I will inspect first.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "tool-call-1",
+              toolName: "readFile"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    await runAgentLoop({
+      getSteeringMessages: () => [steeringMessage],
+      maxTurns: 5,
+      messages: [
+        {
+          content: "Inspect the file.",
+          role: "user"
+        }
+      ],
+      model,
+      onEvent: (event) => {
+        if (event.type === "steering_message_appended") {
+          steeringMessage.content = "Mutated after append."
+        }
+      },
+      tools: {
+        readFile: {
+          execute: () => "file content"
+        }
+      }
+    })
+
+    expect(modelMessages[1]?.at(-1)).toEqual({
+      content: "Now focus only on failing tests.",
+      role: "user"
+    })
+  })
+
   it("runs follow-up messages after a final assistant turn", async () => {
     const modelMessages: AgentLoopMessage[][] = []
     const model: AgentLoopModel = vi.fn(({ messages }) => {
@@ -930,6 +1262,119 @@ describe("agent loop", () => {
         diagnostics: "updated"
       }
     ])
+  })
+
+  it("keeps model-visible resources isolated from later model mutation", async () => {
+    const modelResources: unknown[] = []
+    const model: AgentLoopModel = vi.fn(({ resources }) => {
+      modelResources.push(structuredClone(resources))
+
+      if (modelResources.length === 1) {
+        const mutableResources = resources as MutableNestedLoopResources
+
+        mutableResources.diagnostics.status = "tampered"
+
+        return {
+          content: "I will inspect.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "tool-call-1",
+              toolName: "inspect"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    await runAgentLoop({
+      maxTurns: 3,
+      messages: [
+        {
+          content: "Start.",
+          role: "user"
+        }
+      ],
+      model,
+      resources: {
+        diagnostics: {
+          status: "clean"
+        }
+      },
+      tools: {
+        inspect: {
+          execute: () => "ok"
+        }
+      }
+    })
+
+    expect(modelResources).toEqual([
+      {
+        diagnostics: {
+          status: "clean"
+        }
+      },
+      {
+        diagnostics: {
+          status: "clean"
+        }
+      }
+    ])
+  })
+
+  it("keeps model-visible messages isolated from later model mutation", async () => {
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      if (modelMessages.length === 1) {
+        const [message] = messages as MutableLoopTextMessage[]
+
+        message.content = "Tampered."
+
+        return {
+          content: "I will inspect.",
+          toolCalls: [
+            {
+              input: {},
+              toolCallId: "tool-call-1",
+              toolName: "inspect"
+            }
+          ]
+        }
+      }
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+
+    await runAgentLoop({
+      maxTurns: 3,
+      messages: [
+        {
+          content: "Start.",
+          role: "user"
+        }
+      ],
+      model,
+      tools: {
+        inspect: {
+          execute: () => "ok"
+        }
+      }
+    })
+
+    expect(modelMessages[1]?.[0]).toEqual({
+      content: "Start.",
+      role: "user"
+    })
   })
 
   it("lets prepareNextTurn replace the next model and thinking level", async () => {

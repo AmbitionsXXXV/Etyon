@@ -231,6 +231,7 @@ const ANT_THINKING_BLOCK_PATTERN = /<antThinking>[\s\S]*?<\/antThinking>/gu
 const COMMAND_TRANSCRIPT_BLOCK_PATTERN =
   /(?:^|\n)Executed in [^\n]*(?:\r?\n)(?:bash|fish|sh|zsh)(?:\r?\n)[\s\S]*?(?:\r?\n)-?\d+(?=\r?\n|$)/gu
 const EXCESS_BLANK_LINES_PATTERN = /\n{3,}/gu
+const DELEGATION_PARENT_APPROVAL_MARKER = "needs_parent_approval"
 const FUNCTION_CALLS_BLOCK_PATTERN =
   /<function_calls>[\s\S]*?<\/function_calls>/gu
 const MODEL_MESSAGE_ROLES = new Set(["assistant", "system", "tool", "user"])
@@ -315,11 +316,20 @@ const AGENT_TOOL_PROMPT_SNIPPETS: Record<string, string> = {
   searchFiles: "Search project file contents with ripgrep",
   smartEdit: "Replace a named TS/JS declaration with an AST-bounded edit",
   stat: "Read project path metadata",
+  symbolSearch: "Search workspace symbols with sandboxed LSP",
+  symbols: "List source symbols with sandboxed LSP",
   webExtract: "Extract bounded text from a public web page",
   webSearch: "Search the public web",
   write: "Create or overwrite files",
   writeFile: "Create or overwrite a UTF-8 text file"
 }
+
+const DELEGATION_AGENT_TOOL_NAMES = new Set<string>([
+  "agentCoder",
+  "agentExplore",
+  "agentPlan",
+  "agentReview"
+])
 
 const getToolPromptSnippet = (toolName: string): string =>
   AGENT_TOOL_PROMPT_SNIPPETS[toolName] ?? "Use this tool only when needed"
@@ -420,11 +430,41 @@ const getToolRetryErrorMessage = (output: unknown): string => {
     return output.error
   }
 
+  if (isRecord(output) && typeof output.reason === "string") {
+    return output.reason
+  }
+
   if (typeof output === "string") {
     return output
   }
 
   return getErrorMessage(output)
+}
+
+const getToolFailureErrorMessage = (output: unknown): string => {
+  if (isRecord(output) && typeof output.summary === "string") {
+    return output.summary
+  }
+
+  return getToolRetryErrorMessage(output)
+}
+
+const normalizeParentDelegationToolResult = (
+  result: AgentLoopExecutedToolResult
+): AgentLoopExecutedToolResult => {
+  if (
+    result.isError ||
+    !DELEGATION_AGENT_TOOL_NAMES.has(result.toolCall.toolName) ||
+    !isRecord(result.output) ||
+    (result.output.status !== "failed" && result.output.status !== "rejected")
+  ) {
+    return result
+  }
+
+  return {
+    ...result,
+    isError: true
+  }
 }
 
 const createAgentLoopToolRetryPolicy = (
@@ -656,6 +696,10 @@ const getToolResultOutputValue = (output: unknown): unknown => {
 
 const getToolResultErrorText = (output: unknown): string => {
   const value = getToolResultOutputValue(output)
+
+  if (isRecord(value) && typeof value.reason === "string") {
+    return value.reason
+  }
 
   return typeof value === "string" ? value : JSON.stringify(value)
 }
@@ -1433,6 +1477,7 @@ const buildDelegationPrompt = ({
   [
     "You are a delegated child agent. Work only on the bounded task below.",
     "Do not assume access to the parent conversation beyond the provided context.",
+    `If the task requires an unavailable high-risk or approval-gated operation, do not call hidden tools. Start the final answer with ${DELEGATION_PARENT_APPROVAL_MARKER}, then state the narrow action and reason.`,
     "Return a concise summary with concrete evidence and any remaining uncertainty.",
     "",
     `Task:\n${task}`,
@@ -1441,6 +1486,63 @@ const buildDelegationPrompt = ({
   ]
     .filter(Boolean)
     .join("\n\n")
+
+const resolveDelegationOutcome = ({
+  summary,
+  truncated
+}: {
+  summary: string
+  truncated: boolean
+}): {
+  status: "needs_parent_approval" | "succeeded"
+  summary: string
+  truncated: boolean
+} => {
+  const lines = summary.split("\n")
+  const markerIndex = lines.findIndex((line) => line.trim().length > 0)
+
+  if (markerIndex === -1) {
+    return {
+      status: "succeeded",
+      summary,
+      truncated
+    }
+  }
+
+  const markerLine = lines[markerIndex]?.trim() ?? ""
+  const markerPrefix = `${DELEGATION_PARENT_APPROVAL_MARKER}:`
+  const normalizedMarkerLine = markerLine.toLowerCase()
+
+  if (
+    normalizedMarkerLine !== DELEGATION_PARENT_APPROVAL_MARKER &&
+    !normalizedMarkerLine.startsWith(markerPrefix)
+  ) {
+    return {
+      status: "succeeded",
+      summary,
+      truncated
+    }
+  }
+
+  const inlineReason = normalizedMarkerLine.startsWith(markerPrefix)
+    ? markerLine.slice(markerPrefix.length)
+    : ""
+  const remainingSummary = [
+    ...lines.slice(0, markerIndex),
+    inlineReason,
+    ...lines.slice(markerIndex + 1)
+  ]
+    .join("\n")
+    .trim()
+
+  return {
+    status: "needs_parent_approval",
+    summary:
+      remainingSummary ||
+      "Child agent needs parent approval before it can continue.",
+    truncated
+  }
+}
 
 const getMessageContentParts = (message: ModelMessage): unknown[] =>
   Array.isArray(message.content) ? message.content : []
@@ -2404,6 +2506,7 @@ const createAgentToolLifecycleHandlers = ({
       db,
       errorMessage,
       id: toolCall.toolCallId,
+      ...(output === undefined ? {} : { output }),
       runId: run.id,
       state: "failed"
     })
@@ -2411,6 +2514,7 @@ const createAgentToolLifecycleHandlers = ({
       payload: {
         code: runtimeError.code,
         error: errorMessage,
+        ...(output === undefined ? {} : { output }),
         ...parentToolPayload,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName
@@ -2756,13 +2860,14 @@ export const streamAgentChat = async ({
           const toolError = effectiveResult.isError
             ? toAgentRuntimeError({
                 cause: effectiveResult.output,
-                code: "tool"
+                code: "tool",
+                message: getToolFailureErrorMessage(effectiveResult.output)
               })
             : null
 
           await childLifecycleHandlers.onToolCallFinish({
             ...(toolError
-              ? { error: toolError }
+              ? { error: toolError, output: effectiveResult.output }
               : { output: effectiveResult.output }),
             success: !effectiveResult.isError,
             toolCall: effectiveResult.toolCall
@@ -2834,6 +2939,7 @@ export const streamAgentChat = async ({
           })
         )
       )
+      const delegationOutcome = resolveDelegationOutcome(summary)
       const finishReason = toMainLoopFinishReason(childLoopResult.stopReason)
 
       await applyAgentStreamResponseHooks({
@@ -2866,7 +2972,7 @@ export const streamAgentChat = async ({
           childRunId: childRun.id,
           parentToolCallId,
           profileId: childProfile.id,
-          status: "succeeded"
+          status: delegationOutcome.status
         },
         type: "subagent_finished"
       })
@@ -2876,18 +2982,19 @@ export const streamAgentChat = async ({
         parentRunId: run.id,
         parentToolCallId,
         profileId: childProfile.id,
-        status: "succeeded",
-        summary: summary.summary,
-        truncated: summary.truncated,
+        status: delegationOutcome.status,
+        summary: delegationOutcome.summary,
+        truncated: delegationOutcome.truncated,
         type: "delegation_finished"
       })
 
       return {
         profileId: childProfile.id,
         runId: childRun.id,
-        status: "succeeded",
+        status: delegationOutcome.status,
         subRunId: childRun.id,
-        ...summary
+        summary: delegationOutcome.summary,
+        truncated: delegationOutcome.truncated
       }
     } catch (error) {
       const message = getErrorMessage(error)
@@ -3185,7 +3292,31 @@ export const streamAgentChat = async ({
         streamCallbacks: {
           onFinish: liveSink.finishText,
           onTextDelta: liveSink.writeTextDelta,
-          onToolCall: liveSink.writeToolCall
+          onToolCall: liveSink.writeToolCall,
+          onToolResult: async (toolResult) => {
+            const toolCall = {
+              input: toolResult.input,
+              toolCallId: toolResult.toolCallId,
+              toolName: toolResult.toolName
+            }
+
+            liveSink.writeToolResult({
+              isError: toolResult.isError,
+              output: toolResult.output,
+              toolCall
+            })
+            await lifecycleHandlers.onToolCallStart({
+              toolCall
+            })
+            await lifecycleHandlers.onToolCallFinish({
+              error: toolResult.isError
+                ? getToolRetryErrorMessage(toolResult.output)
+                : undefined,
+              output: toolResult.output,
+              success: !toolResult.isError,
+              toolCall
+            })
+          }
         },
         system: preparedSystemPrompt,
         tools: agentTools
@@ -3212,21 +3343,24 @@ export const streamAgentChat = async ({
         abortSignal: agentAbortSignal,
         activeToolNames: toolNames,
         afterToolCall: async (result, context) => {
-          const effectiveResult = await applyExtensionAfterToolCall({
-            context,
-            hooks: extensionToolHooks,
-            result
-          })
+          const effectiveResult = normalizeParentDelegationToolResult(
+            await applyExtensionAfterToolCall({
+              context,
+              hooks: extensionToolHooks,
+              result
+            })
+          )
           const toolError = effectiveResult.isError
             ? toAgentRuntimeError({
                 cause: effectiveResult.output,
-                code: "tool"
+                code: "tool",
+                message: getToolFailureErrorMessage(effectiveResult.output)
               })
             : null
 
           await lifecycleHandlers.onToolCallFinish({
             ...(toolError
-              ? { error: toolError }
+              ? { error: toolError, output: effectiveResult.output }
               : { output: effectiveResult.output }),
             success: !effectiveResult.isError,
             toolCall: effectiveResult.toolCall

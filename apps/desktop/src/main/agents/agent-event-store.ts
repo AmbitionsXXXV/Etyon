@@ -13,6 +13,8 @@ import {
 } from "@/main/db/schema"
 
 export type AgentEventType =
+  | "agent_model_fallback_used"
+  | "agent_tool_result_summary_cached"
   | "agent_run_graph_checkpoint_created"
   | "agent_run_graph_instantiated"
   | "agent_run_graph_node_failed"
@@ -31,7 +33,9 @@ export type AgentEventType =
   | "agent_runtime_snapshot_created"
   | "agent_session_entry_appended"
   | "agent_session_runtime_disposed"
+  | "agent_session_runtime_disposing"
   | "agent_session_runtime_started"
+  | "agent_session_runtime_starting"
   | "agent_session_save_point_created"
   | "agent_stream_disconnected"
   | "agent_ui_stream_snapshot_created"

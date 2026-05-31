@@ -84,15 +84,13 @@ const wrapHookError = (error: unknown): AgentRuntimeError => {
   })
 }
 
+const cloneHookValue = <TValue>(value: TValue): TValue => structuredClone(value)
+
 const cloneRequestOptions = (
   requestOptions: AgentProviderRequestOptions
 ): AgentProviderRequestOptions => ({
-  headers: {
-    ...requestOptions.headers
-  },
-  metadata: {
-    ...requestOptions.metadata
-  }
+  headers: cloneHookValue(requestOptions.headers),
+  metadata: cloneHookValue(requestOptions.metadata)
 })
 
 const applyRecordPatch = <TValue>(
@@ -171,9 +169,7 @@ export const prepareAgentStreamRequest = async ({
   payload,
   requestOptions
 }: PrepareAgentStreamRequestOptions): Promise<PreparedAgentStreamRequest> => {
-  const nextPayload = {
-    ...payload
-  }
+  const nextPayload = cloneHookValue(payload)
   let nextRequestOptions = cloneRequestOptions(requestOptions)
 
   try {
@@ -212,10 +208,12 @@ export const applyAgentStreamResponseHooks = async ({
   hooks,
   response
 }: ApplyAgentStreamResponseHooksOptions): Promise<void> => {
+  const nextResponse = cloneHookValue(response)
+
   try {
     for (const hook of toHookList(hooks?.afterProviderResponse)) {
       await hook({
-        response
+        response: nextResponse
       })
     }
   } catch (error) {

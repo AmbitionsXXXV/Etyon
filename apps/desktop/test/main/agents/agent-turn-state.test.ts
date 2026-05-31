@@ -68,6 +68,82 @@ describe("agent turn state", () => {
     expect(Object.isFrozen(turnState.streamOptions.metadata)).toBe(true)
   })
 
+  it("keeps message objects isolated from later caller mutation", async () => {
+    const messages = [
+      {
+        content: [
+          {
+            text: "Original user text.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      }
+    ]
+
+    const turnState = await createAgentTurnState({
+      messages,
+      model: "gpt-5",
+      systemPrompt: "You are an agent.",
+      tools: {}
+    })
+
+    messages[0].content[0].text = "Mutated after snapshot."
+    messages[0].content.push({
+      text: "Late part.",
+      type: "text"
+    })
+
+    expect(turnState.messages).toEqual([
+      {
+        content: [
+          {
+            text: "Original user text.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      }
+    ])
+    expect(Object.isFrozen(turnState.messages[0])).toBe(true)
+    expect(Object.isFrozen(turnState.messages[0].content)).toBe(true)
+    expect(Object.isFrozen(turnState.messages[0].content[0])).toBe(true)
+  })
+
+  it("keeps nested stream option metadata isolated from later caller mutation", async () => {
+    const streamOptions = {
+      headers: {
+        "x-run-id": "run-1"
+      },
+      metadata: {
+        nested: {
+          source: "chat"
+        }
+      }
+    }
+
+    const turnState = await createAgentTurnState({
+      messages: [],
+      model: "gpt-5",
+      streamOptions,
+      systemPrompt: "You are an agent.",
+      tools: {}
+    })
+
+    streamOptions.metadata.nested.source = "settings"
+    const nestedMetadata = turnState.streamOptions.metadata.nested as {
+      source: string
+    }
+
+    expect(turnState.streamOptions.metadata).toEqual({
+      nested: {
+        source: "chat"
+      }
+    })
+    expect(Object.isFrozen(turnState.streamOptions.metadata)).toBe(true)
+    expect(Object.isFrozen(nestedMetadata)).toBe(true)
+  })
+
   it("resolves system prompt providers once per turn state", async () => {
     const systemPrompt = vi.fn(() => Promise.resolve("Dynamic system prompt"))
 

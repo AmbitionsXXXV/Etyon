@@ -1,3 +1,5 @@
+import type { ParsedSkill } from "@etyon/rpc"
+
 import { toAgentRuntimeError } from "@/main/agents/agent-errors"
 import { runAgentLoop } from "@/main/agents/agent-loop"
 import type {
@@ -18,6 +20,7 @@ import type {
 } from "@/main/agents/agent-state"
 import { formatPromptTemplateInvocation } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
+import { formatSkillInvocation } from "@/main/skills"
 
 export { AgentRuntimeError } from "@/main/agents/agent-errors"
 
@@ -34,7 +37,7 @@ export interface AgentSnapshot {
 export type AgentListener = (snapshot: AgentSnapshot) => Promise<void> | void
 
 export type AgentQueueDrainMode = "all" | "one-at-a-time"
-export type AgentQueueName = "follow-up" | "steer"
+export type AgentQueueName = "follow-up" | "next-turn" | "steer"
 
 export interface AgentQueuedMessage {
   content: string
@@ -81,6 +84,7 @@ export interface Agent {
   continue: () => Promise<RunAgentLoopResult>
   followUp: (content: string) => void
   getSnapshot: () => AgentSnapshot
+  nextTurn: (content: string) => void
   prompt: (content: string) => Promise<RunAgentLoopResult>
   promptFromTemplate: (
     template: PromptTemplate,
@@ -93,6 +97,10 @@ export interface Agent {
   setSystemPrompt: (systemPrompt: string) => void
   setThinkingLevel: (thinkingLevel?: string) => void
   setTools: (tools: Readonly<Record<string, AgentLoopTool>>) => void
+  skill: (
+    skill: ParsedSkill,
+    additionalInstructions?: string
+  ) => Promise<RunAgentLoopResult>
   steer: (content: string) => void
   subscribe: (listener: AgentListener) => () => void
   waitForIdle: () => Promise<void>
@@ -110,7 +118,7 @@ interface AgentMutableState {
 
 const cloneAgentMessages = (
   messages: readonly AgentLoopMessage[]
-): AgentLoopMessage[] => [...messages]
+): AgentLoopMessage[] => structuredClone([...messages]) as AgentLoopMessage[]
 
 const cloneActiveToolNames = (
   activeToolNames: readonly string[] | undefined
@@ -118,7 +126,8 @@ const cloneActiveToolNames = (
 
 const cloneAgentResources = (
   resources: AgentLoopResources | undefined
-): AgentLoopResources | undefined => (resources ? { ...resources } : undefined)
+): AgentLoopResources | undefined =>
+  resources ? (structuredClone(resources) as AgentLoopResources) : undefined
 
 const drainAgentLoopUserMessageQueue = (
   queue: AgentLoopUserMessage[],
@@ -240,6 +249,10 @@ export const createAgent = ({
   const followUpQueue = createQueuedLoopUserMessages({
     initialQueuedMessages,
     queue: "follow-up"
+  })
+  const nextTurnQueue = createQueuedLoopUserMessages({
+    initialQueuedMessages,
+    queue: "next-turn"
   })
   const runtimeState = createAgentRuntimeState()
   const listeners = new Set<AgentListener>()
@@ -419,6 +432,10 @@ export const createAgent = ({
     activeAbortController = abortController
 
     try {
+      state.messages.push(
+        ...drainAgentLoopUserMessageQueue(nextTurnQueue, "all")
+      )
+
       if (nextUserMessage) {
         state.messages.push(nextUserMessage)
       }
@@ -557,6 +574,16 @@ export const createAgent = ({
       })
     },
     getSnapshot,
+    nextTurn: (content) => {
+      nextTurnQueue.push({
+        content,
+        role: "user"
+      })
+      trackQueuedMessageWrite({
+        content,
+        queue: "next-turn"
+      })
+    },
     prompt: (content) => {
       const userMessage: AgentLoopMessage = {
         content,
@@ -600,6 +627,11 @@ export const createAgent = ({
       state.tools = nextTools
       notifyListenersWithoutAwait()
     },
+    skill: (skill, additionalInstructions) =>
+      runTurn({
+        content: formatSkillInvocation(skill, additionalInstructions),
+        role: "user"
+      }),
     steer: (content) => {
       steeringQueue.push({
         content,

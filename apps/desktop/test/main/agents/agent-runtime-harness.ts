@@ -1,4 +1,5 @@
 import fsPromises from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 
 import { AppSettingsSchema } from "@etyon/rpc"
@@ -117,6 +118,27 @@ export interface AgentRuntimeHarnessStreamOptions {
   streamOptions?: StreamAgentChatOptions["streamOptions"]
   systemPrompts?: string[]
   toolPackages?: StreamAgentChatOptions["toolPackages"]
+}
+
+export interface AgentTempWorkspace {
+  cleanup: () => Promise<void>
+  path: (...segments: string[]) => string
+  projectPath: string
+  rootPath: string
+  writeFile: (relativePath: string, content: Buffer | string) => Promise<string>
+}
+
+export interface AgentTempWorkspaceOptions {
+  files?: Record<string, Buffer | string>
+  prefix?: string
+}
+
+export interface AgentEventSequenceEntry {
+  type: string
+}
+
+export interface ExpectEventSequenceOptions {
+  mode?: "containsInOrder" | "exact"
 }
 
 const DEFAULT_MODEL_ID = "mock-model"
@@ -261,6 +283,103 @@ const subscribeHarnessEvents = ({
       listener(event)
     }
   })
+
+export const collectUiStream = async <TChunk>(
+  stream: ReadableStream<TChunk>
+): Promise<TChunk[]> => {
+  const reader = stream.getReader()
+  const chunks: TChunk[] = []
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    chunks.push(value)
+  }
+
+  return chunks
+}
+
+const includesEventTypesInOrder = (
+  actualTypes: readonly string[],
+  expectedTypes: readonly string[]
+): boolean => {
+  let nextExpectedIndex = 0
+
+  for (const actualType of actualTypes) {
+    if (actualType === expectedTypes[nextExpectedIndex]) {
+      nextExpectedIndex += 1
+    }
+
+    if (nextExpectedIndex === expectedTypes.length) {
+      return true
+    }
+  }
+
+  return expectedTypes.length === 0
+}
+
+export const expectEventSequence = (
+  events: readonly AgentEventSequenceEntry[],
+  expectedTypes: readonly string[],
+  { mode = "exact" }: ExpectEventSequenceOptions = {}
+): void => {
+  const actualTypes = events.map((event) => event.type)
+  const matches =
+    mode === "exact"
+      ? actualTypes.length === expectedTypes.length &&
+        actualTypes.every((type, index) => type === expectedTypes[index])
+      : includesEventTypesInOrder(actualTypes, expectedTypes)
+
+  if (!matches) {
+    throw new Error(
+      `Expected event sequence ${JSON.stringify(expectedTypes)} with mode ${mode}, got ${JSON.stringify(actualTypes)}.`
+    )
+  }
+}
+
+export const createTempWorkspace = async ({
+  files = {},
+  prefix = "etyon-agent-test-"
+}: AgentTempWorkspaceOptions = {}): Promise<AgentTempWorkspace> => {
+  const rootPath = await fsPromises.mkdtemp(path.join(os.tmpdir(), prefix))
+  const projectPath = path.join(rootPath, "project")
+  const resolvePath = (...segments: string[]): string =>
+    path.join(projectPath, ...segments)
+  const writeFile = async (
+    relativePath: string,
+    content: Buffer | string
+  ): Promise<string> => {
+    const filePath = resolvePath(relativePath)
+
+    await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
+    await fsPromises.writeFile(filePath, content)
+
+    return filePath
+  }
+
+  await fsPromises.mkdir(projectPath, { recursive: true })
+
+  for (const [relativePath, content] of Object.entries(files)) {
+    await writeFile(relativePath, content)
+  }
+
+  return {
+    cleanup: async () => {
+      await fsPromises.rm(rootPath, {
+        force: true,
+        recursive: true
+      })
+    },
+    path: resolvePath,
+    projectPath,
+    rootPath,
+    writeFile
+  }
+}
 
 export const createAgentRuntimeHarness = async ({
   modelId = DEFAULT_MODEL_ID,

@@ -101,7 +101,7 @@ export interface AppendAgentSessionQueuedMessageEventOptions {
   run: AgentRun
 }
 
-export type AgentSessionQueuedMessageQueue = "follow-up" | "steer"
+export type AgentSessionQueuedMessageQueue = "follow-up" | "next-turn" | "steer"
 
 export interface AgentSessionQueuedMessage {
   createdAt: string
@@ -143,7 +143,7 @@ export type AgentSessionQueuedMessageWriter = (
 ) => Promise<AgentSessionQueuedMessage>
 
 const MODEL_MESSAGE_ROLES = new Set(["assistant", "system", "tool", "user"])
-const QUEUED_MESSAGE_QUEUES = new Set(["follow-up", "steer"])
+const QUEUED_MESSAGE_QUEUES = new Set(["follow-up", "next-turn", "steer"])
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -239,6 +239,7 @@ const getQueuedMessageFromCustomMessage = ({
 
   if (
     (queue === "follow-up" && message.type !== "follow-up") ||
+    (queue === "next-turn" && message.type !== "next-turn") ||
     (queue === "steer" && message.type !== "steering")
   ) {
     return null
@@ -574,6 +575,36 @@ export const appendAgentSessionQueuedFollowUpEvent = async ({
   }
 }
 
+export const appendAgentSessionQueuedNextTurnEvent = async ({
+  id = randomUUID(),
+  message,
+  run
+}: AppendAgentSessionQueuedMessageEventOptions): Promise<AgentSessionQueuedMessage> => {
+  const event = await run.appendEvent({
+    payload: {
+      action: "appendCustomMessage",
+      message: {
+        data: {
+          id,
+          message,
+          queue: "next-turn"
+        },
+        type: "next-turn"
+      }
+    },
+    type: AGENT_SESSION_ENTRY_EVENT_TYPE
+  })
+
+  return {
+    createdAt: event.createdAt,
+    id,
+    message,
+    queue: "next-turn",
+    runId: event.runId,
+    sequence: event.sequence
+  }
+}
+
 export const appendAgentSessionQueuedSteeringEvent = async ({
   id = randomUUID(),
   message,
@@ -717,6 +748,12 @@ export const createAgentSessionQueuedMessageWriter =
     switch (queue) {
       case "follow-up": {
         return appendAgentSessionQueuedFollowUpEvent({
+          message: content,
+          run
+        })
+      }
+      case "next-turn": {
+        return appendAgentSessionQueuedNextTurnEvent({
           message: content,
           run
         })

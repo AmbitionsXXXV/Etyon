@@ -17,6 +17,8 @@ export const AGENT_TOOL_NAMES = [
   "ls",
   "stat",
   "inspect",
+  "symbolSearch",
+  "symbols",
   "mkdir",
   "delete",
   "requestAccess",

@@ -6,6 +6,26 @@ import {
   prepareAgentStreamRequest
 } from "@/main/agents/agent-stream-hooks"
 
+interface MutableHookMetadata {
+  nested: {
+    source: string
+  }
+}
+
+interface MutableHookMessage {
+  content: MutableHookTextPart[]
+  role: "user"
+}
+
+interface MutableHookTextPart {
+  text: string
+  type: "text"
+}
+
+interface MutableHookUsage {
+  totalTokens: number
+}
+
 describe("agent stream hooks", () => {
   it("applies provider request header and metadata patches in order", async () => {
     const requestOptions = {
@@ -131,6 +151,95 @@ describe("agent stream hooks", () => {
     })
   })
 
+  it("isolates nested hook input objects from caller-owned payload and options", async () => {
+    const payload = {
+      messages: [
+        {
+          content: [
+            {
+              text: "Original",
+              type: "text" as const
+            }
+          ],
+          role: "user" as const
+        }
+      ],
+      model: "gpt-5"
+    }
+    const requestOptions = {
+      headers: {
+        "x-base": "base"
+      },
+      metadata: {
+        nested: {
+          source: "chat"
+        }
+      }
+    }
+
+    const prepared = await prepareAgentStreamRequest({
+      hooks: {
+        beforeProviderPayload: ({
+          payload: hookPayload,
+          requestOptions: hookRequestOptions
+        }) => {
+          const [message] = hookPayload.messages as MutableHookMessage[]
+          const metadata = hookRequestOptions.metadata
+            .nested as MutableHookMetadata["nested"]
+
+          message.content[0].text = "Mutated by hook"
+          metadata.source = "hook"
+
+          return {
+            system: `${message.content[0].text}:${metadata.source}`
+          }
+        }
+      },
+      payload,
+      requestOptions
+    })
+
+    expect(prepared.payload).toEqual({
+      messages: [
+        {
+          content: [
+            {
+              text: "Mutated by hook",
+              type: "text"
+            }
+          ],
+          role: "user"
+        }
+      ],
+      model: "gpt-5",
+      system: "Mutated by hook:hook"
+    })
+    expect(payload).toEqual({
+      messages: [
+        {
+          content: [
+            {
+              text: "Original",
+              type: "text"
+            }
+          ],
+          role: "user"
+        }
+      ],
+      model: "gpt-5"
+    })
+    expect(requestOptions).toEqual({
+      headers: {
+        "x-base": "base"
+      },
+      metadata: {
+        nested: {
+          source: "chat"
+        }
+      }
+    })
+  })
+
   it("runs response hooks with the final response", async () => {
     const afterProviderResponse = vi.fn()
     const response = {
@@ -149,6 +258,34 @@ describe("agent stream hooks", () => {
 
     expect(afterProviderResponse).toHaveBeenCalledWith({
       response
+    })
+  })
+
+  it("isolates response hook input objects from caller-owned response", async () => {
+    const response = {
+      status: "succeeded",
+      usage: {
+        totalTokens: 42
+      }
+    }
+
+    await applyAgentStreamResponseHooks({
+      hooks: {
+        afterProviderResponse: ({ response: hookResponse }) => {
+          const usage = hookResponse.usage as MutableHookUsage
+
+          hookResponse.status = "mutated"
+          usage.totalTokens = 0
+        }
+      },
+      response
+    })
+
+    expect(response).toEqual({
+      status: "succeeded",
+      usage: {
+        totalTokens: 42
+      }
     })
   })
 

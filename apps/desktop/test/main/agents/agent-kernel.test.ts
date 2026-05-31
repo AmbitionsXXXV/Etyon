@@ -9,9 +9,15 @@ import {
   updateAgentRun
 } from "@/main/agents/agent-event-store"
 import { createAgentKernel } from "@/main/agents/agent-kernel"
+import type { AgentLoopModel } from "@/main/agents/agent-loop"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
+
+import {
+  createFauxGenerateTextResponse,
+  createMockLanguageModel
+} from "./faux-provider"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -222,6 +228,160 @@ describe("agent kernel", () => {
         type: "agent_run_started"
       })
     ])
+  })
+
+  it("routes graph child runs through profile preferred models", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const kernel = createTestKernel({
+      profiles: [
+        {
+          id: "plan",
+          name: "Plan",
+          preferredModel: "openai/planner",
+          readonly: true
+        }
+      ]
+    })
+    const session = await createChatSession({
+      db
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/user",
+      templateId: "investigation"
+    })
+    const firstStage = await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db,
+      rootRunId: instance.rootRun.id
+    })
+    const [childRun] = firstStage.startedRuns
+
+    if (!childRun) {
+      throw new Error("Expected graph plan child run to start.")
+    }
+
+    const events = await listAgentEvents({
+      db,
+      runId: instance.rootRun.id
+    })
+
+    expect(childRun).toMatchObject({
+      modelId: "openai/planner",
+      profileId: "plan"
+    })
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            modelId: "openai/planner",
+            modelRoute: expect.objectContaining({
+              fallbackChain: ["openai/user"],
+              modelId: "openai/planner",
+              reason: "profile",
+              stepKind: "plan"
+            }),
+            nodeId: "plan",
+            profileId: "plan"
+          }),
+          type: "agent_run_graph_node_started"
+        })
+      ])
+    )
+  })
+
+  it("falls back to the user model when a graph node profile model errors", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const kernel = createTestKernel({
+      profiles: [
+        {
+          id: "plan",
+          name: "Plan",
+          preferredModel: "openai/planner",
+          readonly: true
+        }
+      ]
+    })
+    const primaryProvider = createMockLanguageModel({
+      modelId: "openai/planner"
+    })
+    const fallbackProvider = createMockLanguageModel({
+      generateResponses: [
+        createFauxGenerateTextResponse("fallback plan"),
+        createFauxGenerateTextResponse("fallback summary")
+      ],
+      modelId: "openai/user"
+    })
+    const resolveModel = vi.fn((modelId?: string) => {
+      if (modelId === "openai/planner") {
+        return primaryProvider.model
+      }
+
+      if (modelId === "openai/user") {
+        return fallbackProvider.model
+      }
+
+      throw new Error(`Unexpected model id: ${modelId}`)
+    })
+    const session = await createChatSession({
+      db
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db,
+      modelId: "openai/user",
+      templateId: "investigation"
+    })
+
+    await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db,
+      rootRunId: instance.rootRun.id
+    })
+
+    const executed = await kernel.executeRunGraphNodeWithAiSdk({
+      chatSessionId: session.id,
+      db,
+      model: fallbackProvider.model,
+      projectPath: session.projectPath,
+      resolveModel,
+      rootRunId: instance.rootRun.id
+    })
+    const childEvents = await listAgentEvents({
+      db,
+      runId: executed.childRun.id
+    })
+
+    expect(primaryProvider.model.doGenerateCalls).toHaveLength(1)
+    expect(fallbackProvider.model.doGenerateCalls.length).toBeGreaterThan(0)
+    expect(executed).toMatchObject({
+      nodeId: "plan",
+      startedNodeIds: ["explore"],
+      stopReason: "final"
+    })
+    expect(childEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            error: "Mock language model generate response queue is empty.",
+            fallbackModelId: "openai/user",
+            fromModelId: "openai/planner",
+            graphNodeId: "plan",
+            modelRoute: expect.objectContaining({
+              fallbackChain: ["openai/user"],
+              modelId: "openai/planner",
+              reason: "profile"
+            })
+          }),
+          type: "agent_model_fallback_used"
+        })
+      ])
+    )
   })
 
   it("honors retry settings when automatic graph retries are disabled", async () => {
@@ -510,5 +670,103 @@ describe("agent kernel", () => {
     )
     expect(prompt).toContain("model summary used")
     expect(prompt).not.toContain(largePlanOutput)
+  })
+
+  it("caches dependency output summaries across sibling graph nodes", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const kernel = createTestKernel()
+    const session = await createChatSession({
+      db
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db,
+      templateId: "plan-execute-review"
+    })
+    const largePlanOutput = "shared plan output ".repeat(600)
+
+    await appendAgentEvent({
+      db,
+      payload: {
+        nodeId: "plan",
+        output: largePlanOutput
+      },
+      runId: instance.rootRun.id,
+      type: "agent_run_graph_node_succeeded"
+    })
+
+    await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db,
+      rootRunId: instance.rootRun.id
+    })
+
+    const processor = vi.fn(
+      ({
+        deterministicSummary
+      }: {
+        deterministicSummary: { totalChars: number }
+      }) => `cached summary from ${deterministicSummary.totalChars} chars`
+    )
+    const prompts: string[] = []
+    const model: AgentLoopModel = ({ messages }) => {
+      prompts.push(messages[0]?.role === "user" ? messages[0].content : "")
+
+      return {
+        content: "Explore summary.",
+        toolCalls: []
+      }
+    }
+
+    await kernel.executeRunGraphNode({
+      chatSessionId: session.id,
+      db,
+      model,
+      nodeId: "explore-code",
+      rootRunId: instance.rootRun.id,
+      toolResultSummaryProcessor: processor
+    })
+    await kernel.executeRunGraphNode({
+      chatSessionId: session.id,
+      db,
+      model,
+      nodeId: "explore-tests",
+      rootRunId: instance.rootRun.id,
+      toolResultSummaryProcessor: processor
+    })
+
+    const events = await listAgentEvents({
+      db,
+      runId: instance.rootRun.id
+    })
+    const cachedEvents = events.filter(
+      (event) => event.type === "agent_tool_result_summary_cached"
+    )
+
+    expect(processor).toHaveBeenCalledTimes(1)
+    expect(prompts).toHaveLength(2)
+    expect(prompts[0]).toContain(
+      `cached summary from ${largePlanOutput.length} chars`
+    )
+    expect(prompts[1]).toContain(
+      `cached summary from ${largePlanOutput.length} chars`
+    )
+    expect(cachedEvents).toEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          dependencyNodeId: "plan",
+          graphNodeId: "explore-code",
+          summary: expect.objectContaining({
+            content: `cached summary from ${largePlanOutput.length} chars`,
+            processor: "model"
+          }),
+          summaryCacheId: expect.stringContaining(
+            `${instance.rootRun.id}:plan:`
+          )
+        })
+      })
+    ])
   })
 })

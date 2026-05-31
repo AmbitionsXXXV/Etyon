@@ -57,7 +57,28 @@ describe("agent session runtime", () => {
         mode: "new",
         runId: "run-a",
         sessionId: "session-a",
+        type: "agent_session_runtime_starting"
+      }),
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        runId: "run-a",
+        sessionId: "session-a",
         type: "agent_session_runtime_started"
+      }),
+      expect.objectContaining({
+        generation: 2,
+        mode: "resume",
+        runId: "run-b",
+        sessionId: "session-b",
+        type: "agent_session_runtime_starting"
+      }),
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        runId: "run-a",
+        sessionId: "session-a",
+        type: "agent_session_runtime_disposing"
       }),
       expect.objectContaining({
         generation: 1,
@@ -74,6 +95,77 @@ describe("agent session runtime", () => {
         type: "agent_session_runtime_started"
       })
     ])
+  })
+
+  it("cancels a session switch before disposing the current agent", async () => {
+    const runtime = createAgentSessionRuntime()
+    const firstAgent = createAgentStub()
+    const nextAgentFactory = vi.fn(createAgentStub)
+
+    await runtime.start({
+      createAgent: () => firstAgent.agent,
+      mode: "new",
+      projectPath: "/repo",
+      runId: "run-a",
+      sessionId: "session-a"
+    })
+
+    const currentSession = runtime.getCurrent()
+
+    runtime.subscribe((event) => {
+      if (
+        event.type === "agent_session_runtime_starting" &&
+        event.sessionId === "session-b"
+      ) {
+        throw new Error("blocked by lifecycle hook")
+      }
+    })
+
+    await expect(
+      runtime.start({
+        createAgent: () => nextAgentFactory().agent,
+        mode: "fork",
+        projectPath: "/repo",
+        runId: "run-b",
+        sessionId: "session-b"
+      })
+    ).rejects.toMatchObject({
+      code: "hook",
+      message: "Agent session runtime listener failed."
+    })
+    expect(runtime.getCurrent()).toBe(currentSession)
+    expect(firstAgent.abort).not.toHaveBeenCalled()
+    expect(firstAgent.waitForIdle).not.toHaveBeenCalled()
+    expect(nextAgentFactory).not.toHaveBeenCalled()
+  })
+
+  it("cancels shutdown before aborting the current agent", async () => {
+    const runtime = createAgentSessionRuntime()
+    const agent = createAgentStub()
+
+    await runtime.start({
+      createAgent: () => agent.agent,
+      mode: "new",
+      projectPath: "/repo",
+      runId: "run-a",
+      sessionId: "session-a"
+    })
+
+    const currentSession = runtime.getCurrent()
+
+    runtime.subscribe((event) => {
+      if (event.type === "agent_session_runtime_disposing") {
+        throw new Error("blocked shutdown")
+      }
+    })
+
+    await expect(runtime.dispose()).rejects.toMatchObject({
+      code: "hook",
+      message: "Agent session runtime listener failed."
+    })
+    expect(runtime.getCurrent()).toBe(currentSession)
+    expect(agent.abort).not.toHaveBeenCalled()
+    expect(agent.waitForIdle).not.toHaveBeenCalled()
   })
 
   it("serializes concurrent session rebuilds", async () => {
@@ -162,7 +254,9 @@ describe("agent session runtime", () => {
     expect(agent.abort).toHaveBeenCalledOnce()
     expect(agent.waitForIdle).toHaveBeenCalledOnce()
     expect(events.map((event) => event.type)).toEqual([
+      "agent_session_runtime_starting",
       "agent_session_runtime_started",
+      "agent_session_runtime_disposing",
       "agent_session_runtime_disposed"
     ])
   })

@@ -5,6 +5,7 @@ import { AppSettingsSchema } from "@etyon/rpc"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { createAgentRun } from "@/main/agents/agent-event-store"
+import { createAgentWorkspaceOperations } from "@/main/agents/agent-workspace"
 import type {
   AgentWorkspace,
   AgentWorkspaceEvent
@@ -81,14 +82,16 @@ const createWorkspace = (events: AgentWorkspaceEvent[]): AgentWorkspace => {
     projectPath: testProjectPath,
     sandbox
   })
+  const eventSink = (event: AgentWorkspaceEvent): void => {
+    events.push(event)
+  }
 
   return {
-    eventSink: (event) => {
-      events.push(event)
-    },
+    eventSink,
     executionEnv,
     fileSystem: executionEnv.fileSystem,
     lsp: null,
+    operations: createAgentWorkspaceOperations(executionEnv, eventSink),
     projectPath: executionEnv.projectPath,
     sandbox
   }

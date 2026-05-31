@@ -113,4 +113,20 @@ describe("agent prompt templates", () => {
 
     expect(template).toBeUndefined()
   })
+
+  it("formats all positional arguments with the arguments placeholder", () => {
+    expect(
+      formatPromptTemplateInvocation(
+        {
+          body: "Review $1 with $ARGUMENTS. Literal $$ARGUMENTS stays.",
+          description: null,
+          name: "review",
+          path: "/templates/review.md"
+        },
+        ["src/main.ts", "--strict", "check types"]
+      )
+    ).toContain(
+      "Review src/main.ts with src/main.ts --strict check types. Literal $ARGUMENTS stays."
+    )
+  })
 })

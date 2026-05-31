@@ -273,6 +273,16 @@ describe("agent session events", () => {
           }
         }),
         createAgentEvent(4, {
+          action: "appendCustomMessage",
+          message: {
+            data: {
+              message: "Carry into the next prompt.",
+              queue: "next-turn"
+            },
+            type: "next-turn"
+          }
+        }),
+        createAgentEvent(5, {
           action: "appendMessage",
           message: {
             content: "Prefer concise output.",
@@ -289,6 +299,14 @@ describe("agent session events", () => {
         queue: "follow-up",
         runId: "run-1",
         sequence: 3
+      },
+      {
+        createdAt: "2026-05-24T06:00:00.000Z",
+        id: "event-4",
+        message: "Carry into the next prompt.",
+        queue: "next-turn",
+        runId: "run-1",
+        sequence: 4
       }
     ])
   })

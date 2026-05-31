@@ -44,12 +44,42 @@ const freezeRecord = <TValue>(
   record?: Readonly<Record<string, TValue>>
 ): Readonly<Record<string, TValue>> => Object.freeze({ ...record })
 
+const deepFreezeSnapshot = <TValue>(
+  value: TValue,
+  seen = new WeakSet<object>()
+): TValue => {
+  if (typeof value !== "object" || value === null) {
+    return value
+  }
+
+  if (seen.has(value)) {
+    return value
+  }
+
+  seen.add(value)
+
+  for (const key of Reflect.ownKeys(value)) {
+    deepFreezeSnapshot((value as Record<PropertyKey, unknown>)[key], seen)
+  }
+
+  return Object.freeze(value)
+}
+
+const deepFreezeRecordSnapshot = <TValue>(
+  record?: Readonly<Record<string, TValue>>
+): Readonly<Record<string, TValue>> =>
+  deepFreezeSnapshot(structuredClone({ ...record }))
+
+const createMessageSnapshot = <TMessage>(
+  messages: readonly TMessage[]
+): readonly TMessage[] => deepFreezeSnapshot(structuredClone([...messages]))
+
 const createAgentStreamOptions = (
   streamOptions?: CreateAgentTurnStateOptions<unknown, unknown>["streamOptions"]
 ): Readonly<AgentStreamOptions> =>
   Object.freeze({
-    headers: freezeRecord(streamOptions?.headers),
-    metadata: freezeRecord(streamOptions?.metadata)
+    headers: deepFreezeRecordSnapshot(streamOptions?.headers),
+    metadata: deepFreezeRecordSnapshot(streamOptions?.metadata)
   })
 
 const resolveSystemPrompt = <TMessage, TTool>({
@@ -83,7 +113,7 @@ const resolveSystemPrompt = <TMessage, TTool>({
 export const createAgentTurnState = async <TMessage, TTool>(
   options: CreateAgentTurnStateOptions<TMessage, TTool>
 ): Promise<AgentTurnState<TMessage, TTool>> => {
-  const messages = Object.freeze([...options.messages])
+  const messages = createMessageSnapshot(options.messages)
   const streamOptions = createAgentStreamOptions(options.streamOptions)
   const tools = freezeRecord(options.tools)
   const systemPrompt = await resolveSystemPrompt({

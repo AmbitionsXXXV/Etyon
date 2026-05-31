@@ -141,6 +141,129 @@ describe("agent chat projection", () => {
     ])
   })
 
+  it("projects persisted split approval responses through approval ids", () => {
+    const pendingMessages = buildAgentChatProjectionMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Write a file.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                input: {
+                  content: "generated",
+                  path: "generated.txt"
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-call"
+              },
+              {
+                approvalId: "approval-write-1",
+                toolCallId: "write-call-1",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        })
+      ],
+      runId: "run-1"
+    })
+
+    expect(pendingMessages[1]?.parts).toEqual([
+      {
+        approval: {
+          id: "approval-write-1"
+        },
+        input: {
+          content: "generated",
+          path: "generated.txt"
+        },
+        state: "approval-requested",
+        toolCallId: "write-call-1",
+        toolName: "write",
+        type: "dynamic-tool"
+      }
+    ])
+
+    const respondedMessages = buildAgentChatProjectionMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Write a file.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                input: {
+                  content: "generated",
+                  path: "generated.txt"
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-call"
+              },
+              {
+                approvalId: "approval-write-1",
+                toolCallId: "write-call-1",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                approvalId: "approval-write-1",
+                approved: false,
+                reason: "Do not write this file.",
+                type: "tool-approval-response"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        })
+      ],
+      runId: "run-1"
+    })
+
+    expect(respondedMessages[1]?.parts).toEqual([
+      {
+        approval: {
+          id: "approval-write-1"
+        },
+        input: {
+          content: "generated",
+          path: "generated.txt"
+        },
+        state: "approval-responded",
+        toolCallId: "write-call-1",
+        toolName: "write",
+        type: "dynamic-tool"
+      }
+    ])
+  })
+
   it("projects the latest active UI stream snapshot before terminal run events", () => {
     const messages = buildAgentChatProjectionMessages({
       events: [

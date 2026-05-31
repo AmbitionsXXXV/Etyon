@@ -14,6 +14,7 @@ import type {
   AgentLoopMessage,
   AgentLoopModel,
   AgentLoopModelContext,
+  AgentLoopModelToolResult,
   AgentLoopToolCall,
   AgentLoopTool
 } from "@/main/agents/agent-loop"
@@ -27,6 +28,7 @@ export interface AiSdkAgentLoopModelStreamCallbacks {
   onFinish?: () => void
   onTextDelta?: (text: string) => void
   onToolCall?: (toolCall: AgentLoopToolCall) => void
+  onToolResult?: (toolResult: AgentLoopModelToolResult) => Promise<void> | void
 }
 
 export interface CreateAiSdkAgentLoopModelOptions {
@@ -49,6 +51,16 @@ export interface CreateAiSdkToolResultSummaryProcessorOptions {
   maxInputChars?: number
   metadata?: Readonly<Record<string, unknown>>
   model: LanguageModel
+}
+
+interface PendingStreamToolInput {
+  chunks: string[]
+  toolName: string
+}
+
+interface CollectAiSdkStreamTurnOptions {
+  stream: AsyncIterable<TextStreamPart<ToolSet>>
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
 }
 
 const DEFAULT_TOOL_RESULT_SUMMARY_PROCESSOR_INPUT_MAX_CHARS = 24_000
@@ -80,6 +92,18 @@ const toJsonValue = (value: unknown): JSONValue | null => {
     return structuredClone(value) as JSONValue
   } catch {
     return null
+  }
+}
+
+const parseStreamedToolInput = (input: string): unknown => {
+  if (!input) {
+    return {}
+  }
+
+  try {
+    return JSON.parse(input)
+  } catch {
+    return input
   }
 }
 
@@ -360,6 +384,177 @@ const toAgentLoopStopReason = ({
   return finishReason === "error" ? "error" : "stop"
 }
 
+const createStreamToolCallAccumulator = (
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
+) => {
+  const emittedStreamToolCallIds = new Set<string>()
+  const pendingStreamToolInputs = new Map<string, PendingStreamToolInput>()
+  const toolCalls: AgentLoopToolCall[] = []
+  const toolCallsById = new Map<string, AgentLoopToolCall>()
+  const appendToolCall = (toolCall: AgentLoopToolCall): void => {
+    if (emittedStreamToolCallIds.has(toolCall.toolCallId)) {
+      return
+    }
+
+    emittedStreamToolCallIds.add(toolCall.toolCallId)
+    pendingStreamToolInputs.delete(toolCall.toolCallId)
+    toolCalls.push(toolCall)
+    toolCallsById.set(toolCall.toolCallId, toolCall)
+    streamCallbacks?.onToolCall?.(toolCall)
+  }
+
+  return {
+    appendDelta: ({ delta, id }: { delta: string; id: string }) => {
+      pendingStreamToolInputs.get(id)?.chunks.push(delta)
+    },
+    appendToolCall,
+    endInput: (id: string) => {
+      const pendingInput = pendingStreamToolInputs.get(id)
+
+      if (!pendingInput) {
+        return
+      }
+
+      appendToolCall({
+        input: parseStreamedToolInput(pendingInput.chunks.join("")),
+        toolCallId: id,
+        toolName: pendingInput.toolName
+      })
+    },
+    startInput: ({ id, toolName }: { id: string; toolName: string }) => {
+      pendingStreamToolInputs.set(id, {
+        chunks: [],
+        toolName
+      })
+    },
+    getToolCall: (toolCallId: string): AgentLoopToolCall | undefined =>
+      toolCallsById.get(toolCallId),
+    toolCalls
+  }
+}
+
+export const collectAiSdkStreamTurn = async ({
+  stream,
+  streamCallbacks
+}: CollectAiSdkStreamTurnOptions): Promise<{
+  content: string
+  finishReason?: string
+  toolCalls: AgentLoopToolCall[]
+  toolResults: AgentLoopModelToolResult[]
+}> => {
+  let content = ""
+  let finishReason: string | undefined
+  const toolCallAccumulator = createStreamToolCallAccumulator(streamCallbacks)
+  const toolResults: AgentLoopModelToolResult[] = []
+  const appendToolResult = async (
+    toolResult: AgentLoopModelToolResult
+  ): Promise<void> => {
+    const existingToolCall = toolCallAccumulator.getToolCall(
+      toolResult.toolCallId
+    )
+    const effectiveToolResult = {
+      ...toolResult,
+      input: toolResult.input ?? existingToolCall?.input
+    }
+
+    toolCallAccumulator.appendToolCall({
+      input: effectiveToolResult.input,
+      toolCallId: effectiveToolResult.toolCallId,
+      toolName: effectiveToolResult.toolName
+    })
+    toolResults.push(effectiveToolResult)
+    await streamCallbacks?.onToolResult?.(effectiveToolResult)
+  }
+
+  for await (const part of stream) {
+    switch (part.type) {
+      case "text-delta": {
+        content += part.text
+        streamCallbacks?.onTextDelta?.(part.text)
+        break
+      }
+      case "tool-input-start": {
+        toolCallAccumulator.startInput({
+          id: part.id,
+          toolName: part.toolName
+        })
+        break
+      }
+      case "tool-input-delta": {
+        toolCallAccumulator.appendDelta({
+          delta: part.delta,
+          id: part.id
+        })
+        break
+      }
+      case "tool-input-end": {
+        toolCallAccumulator.endInput(part.id)
+        break
+      }
+      case "tool-call": {
+        toolCallAccumulator.appendToolCall({
+          input: part.input,
+          toolCallId: part.toolCallId,
+          toolName: part.toolName
+        })
+        break
+      }
+      case "tool-result": {
+        await appendToolResult({
+          input: part.input,
+          isError: false,
+          output: part.output,
+          toolCallId: part.toolCallId,
+          toolName: part.toolName
+        })
+        break
+      }
+      case "tool-error": {
+        await appendToolResult({
+          input: part.input,
+          isError: true,
+          output: part.error,
+          toolCallId: part.toolCallId,
+          toolName: part.toolName
+        })
+        break
+      }
+      case "tool-output-denied": {
+        await appendToolResult({
+          input: undefined,
+          isError: true,
+          output: {
+            reason: "Provider denied tool output.",
+            type: "execution-denied"
+          },
+          toolCallId: part.toolCallId,
+          toolName: part.toolName
+        })
+        break
+      }
+      case "finish-step": {
+        ;({ finishReason } = part)
+        break
+      }
+      case "error": {
+        throw part.error
+      }
+      default: {
+        break
+      }
+    }
+  }
+
+  streamCallbacks?.onFinish?.()
+
+  return {
+    content,
+    finishReason,
+    toolCalls: toolCallAccumulator.toolCalls,
+    toolResults
+  }
+}
+
 export const createAiSdkToolResultSummaryProcessor =
   ({
     headers,
@@ -435,50 +630,19 @@ export const createAiSdkAgentLoopModel =
     try {
       if (mode === "stream") {
         const result = streamText(commonOptions)
-        let content = ""
-        let finishReason: string | undefined
-        const toolCalls: AgentLoopToolCall[] = []
-
-        for await (const part of result.fullStream as AsyncIterable<
-          TextStreamPart<ToolSet>
-        >) {
-          if (part.type === "text-delta") {
-            content += part.text
-            streamCallbacks?.onTextDelta?.(part.text)
-            continue
-          }
-
-          if (part.type === "tool-call") {
-            const toolCall = {
-              input: part.input,
-              toolCallId: part.toolCallId,
-              toolName: part.toolName
-            }
-
-            toolCalls.push(toolCall)
-            streamCallbacks?.onToolCall?.(toolCall)
-            continue
-          }
-
-          if (part.type === "finish-step") {
-            ;({ finishReason } = part)
-            continue
-          }
-
-          if (part.type === "error") {
-            throw part.error
-          }
-        }
-
-        streamCallbacks?.onFinish?.()
+        const streamTurn = await collectAiSdkStreamTurn({
+          stream: result.fullStream as AsyncIterable<TextStreamPart<ToolSet>>,
+          streamCallbacks
+        })
 
         return {
-          content,
+          content: streamTurn.content,
           stopReason: toAgentLoopStopReason({
             aborted: Boolean(context.abortSignal?.aborted),
-            finishReason
+            finishReason: streamTurn.finishReason
           }),
-          toolCalls
+          toolCalls: streamTurn.toolCalls,
+          toolResults: streamTurn.toolResults
         }
       }
 
@@ -496,6 +660,13 @@ export const createAiSdkAgentLoopModel =
           input: toolCall.input,
           toolCallId: toolCall.toolCallId,
           toolName: toolCall.toolName
+        })),
+        toolResults: result.toolResults.map((toolResult) => ({
+          input: toolResult.input,
+          isError: false,
+          output: toolResult.output,
+          toolCallId: toolResult.toolCallId,
+          toolName: toolResult.toolName
         }))
       }
     } catch (error) {

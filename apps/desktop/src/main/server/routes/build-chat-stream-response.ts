@@ -7,6 +7,7 @@ import { listAgentEvents } from "@/main/agents/agent-event-store"
 import type { streamAgentChat } from "@/main/agents/agent-runtime"
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
 import type { AgentRuntimeState } from "@/main/agents/agent-state"
+import { CODE_AGENT_READONLY_TOOL_ALIASES } from "@/main/agents/code-agent-tool-aliases"
 import {
   formatPromptTemplateInvocation,
   parseCommandArgs
@@ -24,12 +25,8 @@ const LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS = 2500
 const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
 const PLAN_MODE_FALLBACK_PROMPT = "Create a structured implementation plan."
 const PLAN_MODE_ACTIVE_TOOL_NAMES = [
-  "findFiles",
-  "fileInfo",
-  "searchFiles",
-  "readFile",
-  "gitDiff",
-  "memorySearch"
+  ...CODE_AGENT_READONLY_TOOL_ALIASES,
+  "requestAccess"
 ] as const
 const PLAN_MODE_SYSTEM_PROMPT = [
   "[PLAN MODE ACTIVE]",

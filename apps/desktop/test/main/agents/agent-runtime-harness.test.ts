@@ -11,9 +11,11 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 import * as z from "zod"
 
 import { stopActiveAgentRun } from "@/main/agents/active-agent-runs"
+import { readAgentArtifactTextContent } from "@/main/agents/agent-artifacts"
 import {
   createAgentRun,
   getAgentRun,
+  listAgentArtifacts,
   updateAgentRun
 } from "@/main/agents/agent-event-store"
 import { createAgentExtensionRunner } from "@/main/agents/agent-extensions"
@@ -25,12 +27,19 @@ import {
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
 import type { AgentStreamHooks } from "@/main/agents/agent-stream-hooks"
 
-import { createAgentRuntimeHarness } from "./agent-runtime-harness"
+import {
+  collectUiStream,
+  createAgentRuntimeHarness,
+  createTempWorkspace,
+  expectEventSequence
+} from "./agent-runtime-harness"
 import {
   createFauxGenerateTextResponse,
   createFauxGenerateToolCallResponse,
+  createFauxProviderToolResultResponse,
   createFauxTextResponse,
-  createFauxToolCallResponse
+  createFauxToolCallResponse,
+  createFauxToolInputDeltaResponse
 } from "./faux-provider"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
@@ -99,25 +108,6 @@ const beforeExploreProviderRequestHook: NonNullable<
         }
       }
     : undefined
-
-const readUiStreamChunks = async (
-  stream: ReadableStream<unknown>
-): Promise<unknown[]> => {
-  const reader = stream.getReader()
-  const chunks: unknown[] = []
-
-  while (true) {
-    const { done, value } = await reader.read()
-
-    if (done) {
-      break
-    }
-
-    chunks.push(value)
-  }
-
-  return chunks
-}
 
 const waitForCondition = async (
   predicate: () => boolean | Promise<boolean>
@@ -212,6 +202,33 @@ describe("agent runtime harness", () => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
   })
 
+  it("creates an isolated temp workspace fixture", async () => {
+    const workspace = await createTempWorkspace({
+      files: {
+        "src/example.ts": "export const value = 1\n"
+      }
+    })
+
+    try {
+      expect(workspace.projectPath).toContain(workspace.rootPath)
+      expect(fs.readFileSync(workspace.path("src/example.ts"), "utf-8")).toBe(
+        "export const value = 1\n"
+      )
+
+      const writtenPath = await workspace.writeFile(
+        "nested/output.txt",
+        "ready"
+      )
+
+      expect(writtenPath).toBe(workspace.path("nested/output.txt"))
+      expect(fs.readFileSync(writtenPath, "utf-8")).toBe("ready")
+    } finally {
+      await workspace.cleanup()
+    }
+
+    expect(fs.existsSync(workspace.rootPath)).toBe(false)
+  })
+
   it("creates a project session and streams through the faux provider", async () => {
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",
@@ -260,6 +277,24 @@ describe("agent runtime harness", () => {
 
     const events = await harness.session.listEvents()
 
+    expect(() =>
+      expectEventSequence(
+        events,
+        [
+          "agent_run_started",
+          "agent_session_entry_appended",
+          "agent_session_save_point_created",
+          "agent_session_runtime_started",
+          "agent_loop_event",
+          "agent_session_entry_appended",
+          "agent_session_save_point_created",
+          "agent_run_finished"
+        ],
+        {
+          mode: "containsInOrder"
+        }
+      )
+    ).not.toThrow()
     expect(events.map((event) => event.type)).toEqual(
       expect.arrayContaining([
         "agent_loop_event",
@@ -297,7 +332,7 @@ describe("agent runtime harness", () => {
         }
       ] satisfies ModelMessage[]
     })
-    const chunks = await readUiStreamChunks(result.toUIMessageStream())
+    const chunks = await collectUiStream(result.toUIMessageStream())
     const textDeltaIndex = chunks.findIndex(
       (chunk) =>
         typeof chunk === "object" &&
@@ -469,11 +504,16 @@ describe("agent runtime harness", () => {
       event.type.startsWith("agent_session_runtime_")
     )
 
-    expect(runtimeEvents.map((event) => event.type)).toEqual([
-      "agent_session_runtime_started",
-      "agent_session_runtime_disposed",
-      "agent_session_runtime_started"
-    ])
+    expect(() =>
+      expectEventSequence(runtimeEvents, [
+        "agent_session_runtime_starting",
+        "agent_session_runtime_started",
+        "agent_session_runtime_disposing",
+        "agent_session_runtime_disposed",
+        "agent_session_runtime_starting",
+        "agent_session_runtime_started"
+      ])
+    ).not.toThrow()
     expect(runtimeEvents.map((event) => event.payload)).toEqual([
       expect.objectContaining({
         generation: 1,
@@ -484,6 +524,24 @@ describe("agent runtime harness", () => {
       expect.objectContaining({
         generation: 1,
         mode: "new",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      }),
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      }),
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      }),
+      expect.objectContaining({
+        generation: 2,
+        mode: "fork",
         projectPath: harness.projectPath,
         sessionId: harness.session.id
       }),
@@ -1651,6 +1709,269 @@ describe("agent runtime harness", () => {
     ])
   })
 
+  it("executes streamed tool input deltas through the main runtime loop", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    fs.mkdirSync(`${harness.projectPath}/src`, { recursive: true })
+    fs.writeFileSync(
+      `${harness.projectPath}/src/delta.ts`,
+      "export const delta = 1"
+    )
+    harness.faux.setResponses([
+      createFauxToolInputDeltaResponse({
+        input: {
+          path: "src/delta.ts"
+        },
+        inputChunks: ['{"path":', '"src/delta.ts"}'],
+        modelId: "mock-model",
+        toolCallId: "tool-call-delta-1",
+        toolName: "read"
+      }),
+      createFauxTextResponse("Read delta source.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      activeToolNames: ["read"],
+      messages: [
+        {
+          content: "Read the delta source file.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    expect(await harness.session.listToolCalls()).toEqual([
+      expect.objectContaining({
+        approvalState: "not_required",
+        id: "tool-call-delta-1",
+        input: {
+          path: "src/delta.ts"
+        },
+        state: "finished",
+        toolName: "read"
+      })
+    ])
+    expect(await harness.session.listModelMessages()).toEqual(
+      expect.arrayContaining([
+        {
+          content: [
+            expect.objectContaining({
+              toolCallId: "tool-call-delta-1",
+              toolName: "read",
+              type: "tool-result"
+            })
+          ],
+          role: "tool",
+          type: "model"
+        }
+      ])
+    )
+  })
+
+  it("records provider-completed tool results without local execution", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+    const providerOutput = {
+      content: [
+        {
+          text: "provider supplied content",
+          type: "text"
+        }
+      ],
+      details: {
+        path: "src/provider.ts"
+      }
+    }
+
+    harness.faux.setResponses([
+      createFauxProviderToolResultResponse({
+        input: {
+          path: "src/provider.ts"
+        },
+        modelId: "mock-model",
+        output: providerOutput,
+        toolCallId: "tool-call-provider-1",
+        toolName: "read"
+      }),
+      createFauxTextResponse("Provider result was accepted.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      activeToolNames: ["read"],
+      messages: [
+        {
+          content: "Use the provider-completed read result.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+    const chunks = await collectUiStream(result.toUIMessageStream())
+
+    expect(chunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          input: {
+            path: "src/provider.ts"
+          },
+          toolCallId: "tool-call-provider-1",
+          toolName: "read",
+          type: "tool-input-available"
+        }),
+        expect.objectContaining({
+          output: providerOutput,
+          toolCallId: "tool-call-provider-1",
+          type: "tool-output-available"
+        })
+      ])
+    )
+    expect(await harness.session.listToolCalls()).toEqual([
+      expect.objectContaining({
+        approvalState: "not_required",
+        errorMessage: null,
+        id: "tool-call-provider-1",
+        input: {
+          path: "src/provider.ts"
+        },
+        output: providerOutput,
+        state: "finished",
+        toolName: "read"
+      })
+    ])
+    expect(await harness.session.listModelMessages()).toEqual(
+      expect.arrayContaining([
+        {
+          content: [
+            expect.objectContaining({
+              input: {
+                path: "src/provider.ts"
+              },
+              toolCallId: "tool-call-provider-1",
+              toolName: "read",
+              type: "tool-call"
+            })
+          ],
+          role: "assistant",
+          type: "model"
+        },
+        {
+          content: [
+            expect.objectContaining({
+              toolCallId: "tool-call-provider-1",
+              toolName: "read",
+              type: "tool-result"
+            })
+          ],
+          role: "tool",
+          type: "model"
+        }
+      ])
+    )
+  })
+
+  it("records invalid provider tool calls as model-visible tool errors", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          path: 123
+        },
+        modelId: "mock-model",
+        toolCallId: "tool-call-invalid-provider-1",
+        toolName: "read"
+      }),
+      createFauxTextResponse("Invalid provider tool call was handled.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      activeToolNames: ["read"],
+      messages: [
+        {
+          content: "Read with an invalid provider tool call.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+    const chunks = await collectUiStream(result.toUIMessageStream())
+    const toolOutputError = chunks.find(
+      (chunk) =>
+        typeof chunk === "object" &&
+        chunk !== null &&
+        "type" in chunk &&
+        chunk.type === "tool-output-error" &&
+        "toolCallId" in chunk &&
+        chunk.toolCallId === "tool-call-invalid-provider-1"
+    )
+    const toolCalls = await harness.session.listToolCalls()
+    const modelMessages = await harness.session.listModelMessages()
+    const toolMessages = modelMessages.filter(
+      (message) => message.role === "tool"
+    )
+
+    expect(toolOutputError).toEqual(
+      expect.objectContaining({
+        errorText: expect.any(String),
+        toolCallId: "tool-call-invalid-provider-1",
+        type: "tool-output-error"
+      })
+    )
+    expect(toolCalls).toEqual([
+      expect.objectContaining({
+        errorMessage: expect.any(String),
+        id: "tool-call-invalid-provider-1",
+        state: "failed",
+        toolName: "read"
+      })
+    ])
+    expect(toolCalls[0]?.errorMessage).not.toBe("")
+    expect(toolMessages).toEqual(
+      expect.arrayContaining([
+        {
+          content: [
+            expect.objectContaining({
+              toolCallId: "tool-call-invalid-provider-1",
+              toolName: "read",
+              type: "tool-result"
+            })
+          ],
+          role: "tool",
+          type: "model"
+        }
+      ])
+    )
+  })
+
   it("records structured tool failures as typed runtime errors", async () => {
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",
@@ -1837,7 +2158,7 @@ describe("agent runtime harness", () => {
     )
   })
 
-  it("filters runtime tools through selected skill capabilities", async () => {
+  it("keeps profile tools while selected skill capabilities bind supplemental tools", async () => {
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",
       rootPath: mockedHomeDir,
@@ -1870,10 +2191,19 @@ describe("agent runtime harness", () => {
     const events = await harness.session.listEvents()
 
     expect(harness.faux.listLastStreamToolNames().toSorted()).toEqual([
+      "bash",
       "delete",
       "edit",
+      "find",
+      "grep",
+      "ls",
       "mkdir",
+      "processOutput",
+      "read",
+      "requestAccess",
       "smartEdit",
+      "stat",
+      "stopProcess",
       "write"
     ])
     expect(events).toEqual(
@@ -1882,7 +2212,22 @@ describe("agent runtime harness", () => {
           payload: expect.objectContaining({
             profileId: "coder",
             source: "chat",
-            toolNames: ["mkdir", "delete", "edit", "smartEdit", "write"]
+            toolNames: [
+              "read",
+              "grep",
+              "find",
+              "ls",
+              "stat",
+              "bash",
+              "processOutput",
+              "stopProcess",
+              "mkdir",
+              "delete",
+              "edit",
+              "smartEdit",
+              "write",
+              "requestAccess"
+            ]
           }),
           type: "agent_run_started"
         })
@@ -2079,6 +2424,139 @@ describe("agent runtime harness", () => {
           toolName: "etyonPackageEcho"
         })
       ])
+    )
+  })
+
+  it("records tool output references as durable artifact catalog entries", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+    const fullOutput = "full output line 1\nfull output line 2\n"
+    const artifactPath = `${harness.projectPath}/tool-output.txt`
+
+    fs.writeFileSync(artifactPath, fullOutput)
+
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {},
+        modelId: "mock-model",
+        toolCallId: "artifact-tool-1",
+        toolName: "etyonArtifactOutput"
+      }),
+      createFauxTextResponse("artifact recorded", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Run the artifact-producing tool.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      skillCapabilities: ["extension.artifacts"],
+      toolPackages: [
+        {
+          id: "artifact-tool-package",
+          owner: "project",
+          tools: [
+            {
+              description: "Return a preview with a full output reference.",
+              execute: () => ({
+                outputRef: {
+                  byteLength: Buffer.byteLength(fullOutput),
+                  kind: "command-output",
+                  path: artifactPath
+                },
+                preview: "full output line 1",
+                truncated: true
+              }),
+              inputSchema: z.object({}),
+              name: "etyonArtifactOutput",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["extension.artifacts"],
+              riskLevel: "safe"
+            }
+          ]
+        }
+      ]
+    })
+    const chunks = await collectUiStream(result.toUIMessageStream())
+    const [run] = await harness.session.listRuns()
+
+    if (!run) {
+      throw new Error("Expected the artifact test to create an agent run.")
+    }
+
+    const artifacts = await listAgentArtifacts({
+      db: harness.db,
+      runId: run.id
+    })
+    const [artifact] = artifacts
+
+    if (!artifact) {
+      throw new Error("Expected the tool output reference to be cataloged.")
+    }
+
+    const events = await harness.session.listEvents()
+    const finishedEvent = events.find(
+      (event) => event.type === "tool_call_finished"
+    )
+    const artifactContent = await readAgentArtifactTextContent({
+      artifact,
+      maxChars: 18
+    })
+
+    expect(chunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          output: expect.objectContaining({
+            outputRef: expect.objectContaining({
+              path: artifactPath
+            }),
+            preview: "full output line 1",
+            truncated: true
+          }),
+          toolCallId: "artifact-tool-1",
+          type: "tool-output-available"
+        })
+      ])
+    )
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        byteLength: Buffer.byteLength(fullOutput),
+        kind: "command-output",
+        path: artifactPath,
+        toolCallId: "artifact-tool-1"
+      })
+    ])
+    expect(artifactContent).toEqual({
+      content: "full output line 1",
+      omittedChars: fullOutput.length - "full output line 1".length,
+      totalChars: fullOutput.length,
+      truncated: true
+    })
+    expect(finishedEvent).toEqual(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          artifactIds: [artifact.id],
+          output: expect.objectContaining({
+            outputRef: expect.objectContaining({
+              path: artifactPath
+            })
+          }),
+          toolCallId: "artifact-tool-1",
+          toolName: "etyonArtifactOutput"
+        })
+      })
     )
   })
 
@@ -2414,6 +2892,184 @@ describe("agent runtime harness", () => {
             status: "succeeded"
           }),
           type: "subagent_finished"
+        })
+      ])
+    )
+  })
+
+  it("surfaces delegated child parent-approval requests as structured output", async () => {
+    const delegationEvents: AgentExtensionLifecycleEvent[] = []
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "parent-approval-observer",
+          register: (context) => {
+            context.on("delegation_finished", (event) => {
+              delegationEvents.push(event)
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          allowSubagentDelegation: true,
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setGenerateResponses([
+      createFauxGenerateTextResponse(
+        [
+          "needs_parent_approval",
+          "Need approval to edit src/settings.ts."
+        ].join("\n"),
+        {
+          modelId: "mock-model"
+        }
+      )
+    ])
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          task: "Update the settings file."
+        },
+        modelId: "mock-model",
+        toolCallId: "delegate-parent-approval-1",
+        toolName: "agentExplore"
+      }),
+      createFauxTextResponse("Parent will request approval.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Use a child agent.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    const childGenerateCall = harness.faux.model.doGenerateCalls.at(-1)
+    const childPromptJson = JSON.stringify(childGenerateCall?.prompt)
+    const toolCalls = await harness.session.listToolCalls()
+    const events = await harness.session.listEvents()
+
+    expect(childPromptJson).toContain("needs_parent_approval")
+    expect(toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "delegate-parent-approval-1",
+          output: expect.objectContaining({
+            status: "needs_parent_approval",
+            summary: "Need approval to edit src/settings.ts."
+          }),
+          state: "finished",
+          toolName: "agentExplore"
+        })
+      ])
+    )
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            parentToolCallId: "delegate-parent-approval-1",
+            status: "needs_parent_approval"
+          }),
+          type: "subagent_finished"
+        })
+      ])
+    )
+    expect(delegationEvents).toEqual([
+      expect.objectContaining({
+        parentToolCallId: "delegate-parent-approval-1",
+        status: "needs_parent_approval",
+        summary: "Need approval to edit src/settings.ts.",
+        type: "delegation_finished"
+      })
+    ])
+  })
+
+  it("turns delegated child failures into parent-visible tool errors without stopping the parent run", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          allowSubagentDelegation: true,
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setGenerateResponses([])
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          task: "Delegate a child task that will fail."
+        },
+        modelId: "mock-model",
+        toolCallId: "delegate-child-failure-1",
+        toolName: "agentExplore"
+      }),
+      createFauxTextResponse("Parent recovered from child failure.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: [
+        {
+          content: "Use a child agent.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    const runs = await harness.session.listRuns()
+    const toolCalls = await harness.session.listToolCalls()
+
+    expect(runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          parentRunId: null,
+          profileId: "coder",
+          status: "succeeded"
+        }),
+        expect.objectContaining({
+          profileId: "explore",
+          status: "failed"
+        })
+      ])
+    )
+    expect(toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          errorMessage: expect.stringContaining(
+            "Mock language model generate response queue is empty."
+          ),
+          id: "delegate-child-failure-1",
+          output: expect.objectContaining({
+            status: "failed",
+            summary: expect.stringContaining(
+              "Mock language model generate response queue is empty."
+            )
+          }),
+          state: "failed",
+          toolName: "agentExplore"
         })
       ])
     )

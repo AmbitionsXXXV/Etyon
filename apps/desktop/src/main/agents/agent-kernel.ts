@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 
 import type { AgentSettings, MemorySettings } from "@etyon/rpc"
 import type {
@@ -37,6 +37,11 @@ import {
   createAiSdkAgentLoopTools,
   createAiSdkToolResultSummaryProcessor
 } from "@/main/agents/agent-loop-ai-sdk"
+import {
+  getAgentModelFallbackCandidates,
+  resolveAgentModelRoute
+} from "@/main/agents/agent-model-router"
+import type { AgentModelRoute } from "@/main/agents/agent-model-router"
 import { isRetryableAgentFailure } from "@/main/agents/agent-plan-progress"
 import type {
   AgentRunGraphTemplate,
@@ -51,10 +56,14 @@ import { resolveActiveAgentProfile } from "@/main/agents/profiles"
 import { compileAgentToolNames } from "@/main/agents/tool-policy"
 import { buildAgentTools } from "@/main/agents/tool-registry"
 import {
-  formatToolResultSummaryAnnotation,
-  summarizeToolResultWithProcessor
+  createToolResultSummaryCache,
+  formatToolResultSummaryAnnotation
 } from "@/main/agents/truncate"
-import type { AgentToolResultSummaryProcessor } from "@/main/agents/truncate"
+import type {
+  AgentToolResultSummary,
+  AgentToolResultSummaryCache,
+  AgentToolResultSummaryProcessor
+} from "@/main/agents/truncate"
 import type { AgentToolName } from "@/main/agents/types"
 import type { AppDatabase } from "@/main/db"
 
@@ -65,6 +74,13 @@ export type AgentRunGraphExecutionNodeStatus =
   | "skipped"
   | "succeeded"
   | "suspended"
+
+const RUN_GRAPH_DEPENDENCY_SUMMARY_MAX_CHARS = 4000
+const RUN_GRAPH_TOOL_RESULT_SUMMARY_CACHE_MAX_ENTRIES = 500
+const runGraphToolResultSummaryCache = createToolResultSummaryCache({
+  maxChars: RUN_GRAPH_DEPENDENCY_SUMMARY_MAX_CHARS,
+  maxEntries: RUN_GRAPH_TOOL_RESULT_SUMMARY_CACHE_MAX_ENTRIES
+})
 
 export interface AgentRunGraphExecutionNode {
   activeToolNames: AgentToolName[]
@@ -99,6 +115,12 @@ export interface AgentRunGraphExecutionPlan {
   retryPolicy?: AgentSettings["retry"]
   stages: AgentRunGraphExecutionStage[]
   task?: string
+}
+
+interface RunGraphToolResultSummaryCachedEvent {
+  dependencyNodeId: string
+  summary: AgentToolResultSummary
+  summaryCacheId: string
 }
 
 export interface InstantiateAgentRunGraphTemplateOptions {
@@ -165,6 +187,7 @@ export interface ExecuteAgentRunGraphNodeWithAiSdkOptions extends Omit<
   metadata?: Readonly<Record<string, unknown>>
   model: LanguageModel
   projectPath: string
+  resolveModel?: (modelId?: string) => LanguageModel
   skillCapabilities?: readonly string[]
   systemPrompts?: readonly string[]
 }
@@ -344,7 +367,13 @@ const isAgentLoopSuccessStopReason = (
   stopReason === "terminated" ||
   stopReason === "user_stopped"
 
-const canUseInspectTool = (settings: AgentSettings): boolean =>
+const LSP_AGENT_TOOL_NAMES = new Set<AgentToolName>([
+  "inspect",
+  "symbolSearch",
+  "symbols"
+])
+
+const canUseLspTool = (settings: AgentSettings): boolean =>
   settings.lsp.enabled && settings.sandbox.enabled
 
 const isRunGraphDependencySatisfied = (
@@ -369,7 +398,7 @@ const filterUnavailableNodeToolNames = ({
   toolNames: AgentToolName[]
 }): AgentToolName[] =>
   toolNames.filter(
-    (toolName) => toolName !== "inspect" || canUseInspectTool(settings)
+    (toolName) => !LSP_AGENT_TOOL_NAMES.has(toolName) || canUseLspTool(settings)
   )
 
 const resolveNodeToolNames = ({
@@ -1052,14 +1081,23 @@ const startRunGraphNode = async ({
   db,
   node,
   retryOfChildRunId,
-  rootRun
+  rootRun,
+  settings
 }: {
   db: AppDatabase
   node: AgentRunGraphExecutionNode
   retryOfChildRunId?: string
   rootRun: AgentRun
+  settings: AgentSettings
 }): Promise<AgentRun> => {
   const attempt = node.attempt + 1
+  const profile = resolveActiveAgentProfile(settings, node.profileId)
+  const modelRoute = resolveAgentModelRoute({
+    fallbackChain: [rootRun.modelId],
+    profile,
+    stepKind: node.role,
+    userSelectedModel: rootRun.modelId
+  })
   const childRun = await startAgentRun({
     chatSessionId: rootRun.chatSessionId,
     db,
@@ -1069,13 +1107,14 @@ const startRunGraphNode = async ({
       graphNodeId: node.id,
       graphRootRunId: rootRun.id,
       graphStage: node.stage,
+      modelRoute,
       outputContract: node.outputContract,
       parentRunId: rootRun.id,
       ...(retryOfChildRunId ? { retryOfChildRunId } : {}),
       role: node.role,
       toolScope: node.toolScope
     },
-    modelId: rootRun.modelId,
+    modelId: modelRoute.modelId,
     parentRunId: rootRun.id,
     profileId: node.profileId,
     source: "run-graph-node"
@@ -1086,6 +1125,8 @@ const startRunGraphNode = async ({
       activeToolNames: node.activeToolNames,
       attempt,
       childRunId: childRun.id,
+      modelId: modelRoute.modelId,
+      modelRoute,
       nodeId: node.id,
       outputContract: node.outputContract,
       profileId: node.profileId,
@@ -1100,13 +1141,76 @@ const startRunGraphNode = async ({
   return childRun
 }
 
+const getRunGraphToolResultSummaryCacheId = ({
+  content,
+  dependencyNodeId,
+  rootRunId
+}: {
+  content: string
+  dependencyNodeId: string
+  rootRunId: string
+}): string => {
+  const contentHash = createHash("sha256").update(content).digest("hex")
+
+  return `${rootRunId}:${dependencyNodeId}:${contentHash}`
+}
+
+const getCachedRunGraphDependencySummary = async ({
+  cache,
+  content,
+  dependencyNodeId,
+  onCached,
+  rootRunId,
+  toolResultSummaryProcessor
+}: {
+  cache: AgentToolResultSummaryCache
+  content: string
+  dependencyNodeId: string
+  onCached?: (
+    event: RunGraphToolResultSummaryCachedEvent
+  ) => Promise<void> | void
+  rootRunId: string
+  toolResultSummaryProcessor?: AgentToolResultSummaryProcessor
+}): Promise<AgentToolResultSummary> => {
+  const summaryCacheId = getRunGraphToolResultSummaryCacheId({
+    content,
+    dependencyNodeId,
+    rootRunId
+  })
+  const cachedSummary = cache.get(summaryCacheId)
+
+  if (cachedSummary) {
+    return cachedSummary
+  }
+
+  const summary = await cache.setWithProcessor(summaryCacheId, content, {
+    processor: toolResultSummaryProcessor
+  })
+
+  await onCached?.({
+    dependencyNodeId,
+    summary,
+    summaryCacheId
+  })
+
+  return summary
+}
+
 const getRunGraphNodePrompt = async ({
   node,
+  onToolResultSummaryCached,
   plan,
+  rootRunId,
+  summaryCache = runGraphToolResultSummaryCache,
   toolResultSummaryProcessor
 }: {
   node: AgentRunGraphExecutionNode
+  onToolResultSummaryCached?: (
+    event: RunGraphToolResultSummaryCachedEvent
+  ) => Promise<void> | void
   plan: AgentRunGraphExecutionPlan
+  rootRunId: string
+  summaryCache?: AgentToolResultSummaryCache
   toolResultSummaryProcessor?: AgentToolResultSummaryProcessor
 }): Promise<string> => {
   const dependencies =
@@ -1138,13 +1242,14 @@ const getRunGraphNodePrompt = async ({
       continue
     }
 
-    const summary = await summarizeToolResultWithProcessor(
-      dependencyNode.lastOutput,
-      {
-        maxChars: 4000,
-        processor: toolResultSummaryProcessor
-      }
-    )
+    const summary = await getCachedRunGraphDependencySummary({
+      cache: summaryCache,
+      content: dependencyNode.lastOutput,
+      dependencyNodeId: dependencyNode.id,
+      onCached: onToolResultSummaryCached,
+      rootRunId,
+      toolResultSummaryProcessor
+    })
     const annotation = formatToolResultSummaryAnnotation(summary)
 
     dependencyOutputBlocks.push(
@@ -1595,11 +1700,76 @@ const getRunGraphNodeSettings = ({
   }
 }
 
+const createRoutedAgentLoopModel = ({
+  childRun,
+  createModel,
+  fallbackChain,
+  graphNodeId,
+  graphRootRunId,
+  modelRoute,
+  primaryModel,
+  resolveModel
+}: {
+  childRun?: AgentRun | null
+  createModel: (model: LanguageModel) => AgentLoopModel
+  fallbackChain: readonly string[]
+  graphNodeId: string
+  graphRootRunId: string
+  modelRoute: AgentModelRoute
+  primaryModel: LanguageModel
+  resolveModel?: (modelId?: string) => LanguageModel
+}): AgentLoopModel => {
+  const primaryLoopModel = createModel(primaryModel)
+
+  if (!resolveModel || fallbackChain.length === 0) {
+    return primaryLoopModel
+  }
+
+  return async (context) => {
+    let failedModelId = modelRoute.modelId
+
+    try {
+      return await primaryLoopModel(context)
+    } catch (error) {
+      let lastError = error
+
+      for (const fallbackModelId of fallbackChain) {
+        await childRun?.appendEvent({
+          payload: {
+            error:
+              lastError instanceof Error
+                ? lastError.message
+                : String(lastError),
+            fallbackModelId,
+            fromModelId: failedModelId,
+            graphNodeId,
+            graphRootRunId,
+            modelRoute
+          },
+          type: "agent_model_fallback_used"
+        })
+
+        try {
+          return await createModel(resolveModel(fallbackModelId))(context)
+        } catch (fallbackError) {
+          failedModelId = fallbackModelId
+          lastError = fallbackError
+        }
+      }
+
+      throw lastError
+    }
+  }
+}
+
 const startNextRunGraphStage = async ({
   chatSessionId,
   db,
-  rootRunId
-}: StartAgentRunGraphNextStageOptions): Promise<AgentRunGraphScheduleResult> => {
+  rootRunId,
+  settings
+}: StartAgentRunGraphNextStageOptions & {
+  settings: AgentSettings
+}): Promise<AgentRunGraphScheduleResult> => {
   const { plan, rootRun } = await getRunGraphState({
     chatSessionId,
     db,
@@ -1637,7 +1807,8 @@ const startNextRunGraphStage = async ({
       await startRunGraphNode({
         db,
         node,
-        rootRun
+        rootRun,
+        settings
       })
     )
   }
@@ -1738,7 +1909,8 @@ const advanceRunGraph = async ({
       chatSessionId,
       db,
       nodeId: autoRetryNode.id,
-      rootRunId
+      rootRunId,
+      settings
     })
 
     return {
@@ -1750,7 +1922,8 @@ const advanceRunGraph = async ({
   const scheduleResult = await startNextRunGraphStage({
     chatSessionId,
     db,
-    rootRunId
+    rootRunId,
+    settings
   })
 
   if (settledNodeIds.length > 0 && scheduleResult.startedNodeIds.length === 0) {
@@ -1796,8 +1969,11 @@ const retryRunGraphNode = async ({
   chatSessionId,
   db,
   nodeId,
-  rootRunId
-}: RetryAgentRunGraphNodeOptions): Promise<AgentRunGraphRetryResult> => {
+  rootRunId,
+  settings
+}: RetryAgentRunGraphNodeOptions & {
+  settings: AgentSettings
+}): Promise<AgentRunGraphRetryResult> => {
   const { plan, rootRun } = await getRunGraphState({
     chatSessionId,
     db,
@@ -1843,7 +2019,8 @@ const retryRunGraphNode = async ({
     db,
     node,
     retryOfChildRunId: node.childRunId,
-    rootRun
+    rootRun,
+    settings
   })
   const { plan: retriedPlan } = await getRunGraphState({
     chatSessionId,
@@ -1876,8 +2053,11 @@ const skipRunGraphNode = async ({
   db,
   nodeId,
   reason,
-  rootRunId
-}: SkipAgentRunGraphNodeOptions): Promise<AgentRunGraphSkipResult> => {
+  rootRunId,
+  settings
+}: SkipAgentRunGraphNodeOptions & {
+  settings: AgentSettings
+}): Promise<AgentRunGraphSkipResult> => {
   const { plan, rootRun } = await getRunGraphState({
     chatSessionId,
     db,
@@ -1926,7 +2106,8 @@ const skipRunGraphNode = async ({
   const scheduleResult = await startNextRunGraphStage({
     chatSessionId,
     db,
-    rootRunId
+    rootRunId,
+    settings
   })
 
   return {
@@ -2095,6 +2276,7 @@ const resumeRunGraphNodeApprovalWithAiSdk = async ({
   model,
   projectPath,
   reason,
+  resolveModel,
   resources,
   rootRunId,
   settings,
@@ -2148,6 +2330,17 @@ const resumeRunGraphNodeApprovalWithAiSdk = async ({
     node,
     settings
   })
+  const profile = resolveActiveAgentProfile(settings, node.profileId)
+  const modelRoute = resolveAgentModelRoute({
+    fallbackChain: [rootRun.modelId],
+    profile,
+    stepKind: node.role,
+    userSelectedModel: rootRun.modelId
+  })
+  const routedModel = resolveModel
+    ? resolveModel(modelRoute.modelId ?? undefined)
+    : model
+  const fallbackChain = getAgentModelFallbackCandidates(modelRoute)
   const tools = buildAgentTools({
     chatSessionId,
     db,
@@ -2163,18 +2356,30 @@ const resumeRunGraphNodeApprovalWithAiSdk = async ({
     ...metadata,
     graphNodeId: node.id,
     graphRootRunId: rootRunId,
+    modelRoute,
     profileId: node.profileId
   }
-  const loopModel = createAiSdkAgentLoopModel({
-    headers,
-    metadata: graphMetadata,
-    model,
-    system: getRunGraphNodeSystemPrompt({
-      node,
-      settings,
-      systemPrompts
-    }),
-    tools
+  const system = getRunGraphNodeSystemPrompt({
+    node,
+    settings,
+    systemPrompts
+  })
+  const loopModel = createRoutedAgentLoopModel({
+    childRun,
+    createModel: (nextModel) =>
+      createAiSdkAgentLoopModel({
+        headers,
+        metadata: graphMetadata,
+        model: nextModel,
+        system,
+        tools
+      }),
+    fallbackChain,
+    graphNodeId: node.id,
+    graphRootRunId: rootRunId,
+    modelRoute,
+    primaryModel: routedModel,
+    resolveModel
   })
   const errorMessage = approved ? null : (reason ?? "Tool approval denied.")
 
@@ -2394,7 +2599,24 @@ const executeRunGraphNode = async ({
     {
       content: await getRunGraphNodePrompt({
         node,
+        onToolResultSummaryCached: async ({
+          dependencyNodeId,
+          summary,
+          summaryCacheId
+        }) => {
+          await rootRun.appendEvent({
+            payload: {
+              dependencyNodeId,
+              graphNodeId: node.id,
+              graphRootRunId: rootRun.id,
+              summary,
+              summaryCacheId
+            },
+            type: "agent_tool_result_summary_cached"
+          })
+        },
         plan,
+        rootRunId,
         toolResultSummaryProcessor
       }),
       role: "user" as const
@@ -2541,6 +2763,7 @@ const executeRunGraphNodeWithAiSdk = async ({
   model,
   nodeId,
   projectPath,
+  resolveModel,
   resources,
   rootRunId,
   settings,
@@ -2550,7 +2773,7 @@ const executeRunGraphNodeWithAiSdk = async ({
 }: ExecuteAgentRunGraphNodeWithAiSdkOptions & {
   settings: AgentSettings
 }): Promise<AgentRunGraphNodeExecutionResult> => {
-  const { plan } = await getRunGraphState({
+  const { plan, rootRun } = await getRunGraphState({
     chatSessionId,
     db,
     rootRunId
@@ -2559,10 +2782,28 @@ const executeRunGraphNodeWithAiSdk = async ({
     nodeId,
     plan
   })
+  const childRun = node.childRunId
+    ? await requireRunGraphRootRun({
+        chatSessionId,
+        db,
+        rootRunId: node.childRunId
+      })
+    : null
   const nodeSettings = getRunGraphNodeSettings({
     node,
     settings
   })
+  const profile = resolveActiveAgentProfile(settings, node.profileId)
+  const modelRoute = resolveAgentModelRoute({
+    fallbackChain: [rootRun.modelId],
+    profile,
+    stepKind: node.role,
+    userSelectedModel: rootRun.modelId
+  })
+  const routedModel = resolveModel
+    ? resolveModel(modelRoute.modelId ?? undefined)
+    : model
+  const fallbackChain = getAgentModelFallbackCandidates(modelRoute)
   const tools = buildAgentTools({
     chatSessionId,
     db,
@@ -2575,18 +2816,30 @@ const executeRunGraphNodeWithAiSdk = async ({
     ...metadata,
     graphNodeId: node.id,
     graphRootRunId: rootRunId,
+    modelRoute,
     profileId: node.profileId
   }
-  const loopModel = createAiSdkAgentLoopModel({
-    headers,
-    metadata: graphMetadata,
-    model,
-    system: getRunGraphNodeSystemPrompt({
-      node,
-      settings,
-      systemPrompts
-    }),
-    tools
+  const system = getRunGraphNodeSystemPrompt({
+    node,
+    settings,
+    systemPrompts
+  })
+  const loopModel = createRoutedAgentLoopModel({
+    childRun,
+    createModel: (nextModel) =>
+      createAiSdkAgentLoopModel({
+        headers,
+        metadata: graphMetadata,
+        model: nextModel,
+        system,
+        tools
+      }),
+    fallbackChain,
+    graphNodeId: node.id,
+    graphRootRunId: rootRunId,
+    modelRoute,
+    primaryModel: routedModel,
+    resolveModel
   })
   const defaultMaxTurns = Math.min(
     nodeSettings.maxSteps,
@@ -2607,7 +2860,7 @@ const executeRunGraphNodeWithAiSdk = async ({
     toolResultSummaryProcessor: createAiSdkToolResultSummaryProcessor({
       headers,
       metadata: graphMetadata,
-      model
+      model: routedModel
     }),
     toolNeedsApproval: (toolCall, context) =>
       getAiSdkToolNeedsApproval({
@@ -2847,7 +3100,11 @@ export const createAgentKernel = ({
       settings,
       templateId
     }),
-  retryRunGraphNode,
+  retryRunGraphNode: (options) =>
+    retryRunGraphNode({
+      ...options,
+      settings
+    }),
   resumeRunGraphNodeApprovalWithAiSdk: (options) =>
     resumeRunGraphNodeApprovalWithAiSdk({
       ...options,
@@ -2859,7 +3116,15 @@ export const createAgentKernel = ({
       settings
     }),
   startRun: startAgentRun,
-  skipRunGraphNode,
-  startNextRunGraphStage,
+  skipRunGraphNode: (options) =>
+    skipRunGraphNode({
+      ...options,
+      settings
+    }),
+  startNextRunGraphStage: (options) =>
+    startNextRunGraphStage({
+      ...options,
+      settings
+    }),
   updateRunGraphRetryPolicy
 })

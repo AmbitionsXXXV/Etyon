@@ -3,7 +3,7 @@ import path from "node:path"
 
 const FRONTMATTER_DELIMITER = "---"
 const FRONTMATTER_LINE_PATTERN = /\r?\n/u
-const POSITIONAL_PARAMETER_PATTERN = /\$(\$|\d+)/gu
+const POSITIONAL_PARAMETER_PATTERN = /\$(\$|ARGUMENTS|\d+)/gu
 const XML_ESCAPE_PATTERN = /[&<>"']/gu
 const XML_ESCAPES: Record<string, string> = {
   '"': "&quot;",
@@ -141,6 +141,10 @@ const replacePositionalParameters = (
   content.replaceAll(POSITIONAL_PARAMETER_PATTERN, (_match, value: string) => {
     if (value === "$") {
       return "$"
+    }
+
+    if (value === "ARGUMENTS") {
+      return args.join(" ")
     }
 
     const argIndex = Number(value) - 1

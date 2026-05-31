@@ -29,7 +29,23 @@ export type AgentSessionRuntimeEvent =
       projectPath: string
       runId: string
       sessionId: string
+      type: "agent_session_runtime_disposing"
+    }
+  | {
+      generation: number
+      mode: AgentSessionRuntimeMode
+      projectPath: string
+      runId: string
+      sessionId: string
       type: "agent_session_runtime_started"
+    }
+  | {
+      generation: number
+      mode: AgentSessionRuntimeMode
+      projectPath: string
+      runId: string
+      sessionId: string
+      type: "agent_session_runtime_starting"
     }
 
 export type AgentSessionRuntimeListener = (
@@ -68,6 +84,21 @@ const createDisposedEvent = ({
   type: "agent_session_runtime_disposed"
 })
 
+const createDisposingEvent = ({
+  generation,
+  mode,
+  projectPath,
+  runId,
+  sessionId
+}: AgentSessionRuntimeSession): AgentSessionRuntimeEvent => ({
+  generation,
+  mode,
+  projectPath,
+  runId,
+  sessionId,
+  type: "agent_session_runtime_disposing"
+})
+
 const createStartedEvent = ({
   generation,
   mode,
@@ -81,6 +112,18 @@ const createStartedEvent = ({
   runId,
   sessionId,
   type: "agent_session_runtime_started"
+})
+
+const createStartingEvent = (
+  { mode, projectPath, runId, sessionId }: AgentSessionRuntimeStartOptions,
+  generation: number
+): AgentSessionRuntimeEvent => ({
+  generation,
+  mode,
+  projectPath,
+  runId,
+  sessionId,
+  type: "agent_session_runtime_starting"
 })
 
 export const createAgentSessionRuntime = (): AgentSessionRuntime => {
@@ -115,6 +158,8 @@ export const createAgentSessionRuntime = (): AgentSessionRuntime => {
     if (!session) {
       return
     }
+
+    await emit(createDisposingEvent(session))
 
     currentSession = null
     session.agent.abort()
@@ -158,6 +203,7 @@ export const createAgentSessionRuntime = (): AgentSessionRuntime => {
     getCurrent: () => currentSession,
     start: (options) =>
       enqueue(async () => {
+        await emit(createStartingEvent(options, generation + 1))
         await disposeCurrentSession()
 
         let agent: Agent

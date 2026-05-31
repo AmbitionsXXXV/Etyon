@@ -97,6 +97,7 @@ export type AgentFileErrorCode =
   | "not-file"
   | "not-found"
   | "outside-project"
+  | "stale-write"
 
 export interface AgentFileError {
   causeCode?: string

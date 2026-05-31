@@ -18,6 +18,17 @@ const cloneMessages = (
   messages: readonly AgentLoopMessage[]
 ): AgentLoopMessage[] => structuredClone(messages) as AgentLoopMessage[]
 
+interface MutableAgentTextMessage {
+  content: string
+  role: "user"
+}
+
+interface MutableNestedAgentResources {
+  diagnostics: {
+    status: string
+  }
+}
+
 const initialAgentModel: AgentLoopModel = () => ({
   content: "initial",
   toolCalls: []
@@ -111,6 +122,81 @@ describe("agent", () => {
       }
     ])
     expect(snapshots.at(-1)?.phase).toBe("idle")
+  })
+
+  it("keeps snapshot messages isolated from caller mutation", async () => {
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      return {
+        content: `turn ${modelMessages.length}`,
+        toolCalls: []
+      }
+    })
+    const agent = createAgent({
+      maxTurns: 1,
+      model,
+      tools: {}
+    })
+
+    await agent.prompt("Start.")
+
+    const [snapshotMessage] = agent.getSnapshot().messages
+    const mutableSnapshotMessage = snapshotMessage as MutableAgentTextMessage
+
+    mutableSnapshotMessage.content = "Tampered."
+
+    await agent.continue()
+
+    expect(modelMessages[1]).toEqual([
+      {
+        content: "Start.",
+        role: "user"
+      },
+      {
+        content: "turn 1",
+        role: "assistant",
+        toolCalls: []
+      }
+    ])
+  })
+
+  it("keeps snapshot resources isolated from caller mutation", async () => {
+    const modelResources: unknown[] = []
+    const model: AgentLoopModel = vi.fn(({ resources }) => {
+      modelResources.push(structuredClone(resources))
+
+      return {
+        content: `turn ${modelResources.length}`,
+        toolCalls: []
+      }
+    })
+    const agent = createAgent({
+      maxTurns: 1,
+      model,
+      resources: {
+        diagnostics: {
+          status: "clean"
+        }
+      },
+      tools: {}
+    })
+
+    await agent.prompt("Start.")
+
+    const snapshotDiagnostics = agent.getSnapshot().resources
+      ?.diagnostics as MutableNestedAgentResources["diagnostics"]
+
+    snapshotDiagnostics.status = "tampered"
+
+    await agent.continue()
+
+    expect(modelResources[1]).toEqual({
+      diagnostics: {
+        status: "clean"
+      }
+    })
   })
 
   it("applies mutators to the next turn", async () => {
@@ -1018,6 +1104,43 @@ describe("agent", () => {
     })
   })
 
+  it("injects queued next-turn messages before the next prompt", async () => {
+    const modelMessages: AgentLoopMessage[][] = []
+    const queuedWrites: string[] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      return {
+        content: "Done.",
+        toolCalls: []
+      }
+    })
+    const agent = createAgent({
+      maxTurns: 5,
+      model,
+      onQueuedMessage: ({ content, queue }) => {
+        queuedWrites.push(`${queue}:${content}`)
+      },
+      tools: {}
+    })
+
+    agent.nextTurn("Carry this into the next prompt.")
+    await agent.prompt("Start.")
+
+    expect(model).toHaveBeenCalledTimes(1)
+    expect(modelMessages[0]).toEqual([
+      {
+        content: "Carry this into the next prompt.",
+        role: "user"
+      },
+      {
+        content: "Start.",
+        role: "user"
+      }
+    ])
+    expect(queuedWrites).toEqual(["next-turn:Carry this into the next prompt."])
+  })
+
   it("replays initial queued follow-up messages", async () => {
     const modelMessages: AgentLoopMessage[][] = []
     const model: AgentLoopModel = vi.fn(({ messages }) => {
@@ -1165,6 +1288,65 @@ describe("agent", () => {
         "Review current diff against doc/agents.md.",
         "</content>",
         "</prompt_template>"
+      ].join("\n"),
+      role: "user"
+    })
+  })
+
+  it("prompts from a direct skill invocation", async () => {
+    const modelMessages: AgentLoopMessage[][] = []
+    const model: AgentLoopModel = vi.fn(({ messages }) => {
+      modelMessages.push(cloneMessages(messages))
+
+      return {
+        content: "skilled",
+        toolCalls: []
+      }
+    })
+    const agent = createAgent({
+      maxTurns: 1,
+      model,
+      tools: {}
+    })
+
+    await agent.skill(
+      {
+        body: "Use inspection tools.",
+        capabilities: ["read-fs"],
+        commands: [],
+        description: "Inspect things.",
+        extensions: [],
+        modelVisible: true,
+        name: "inspect",
+        path: "/tmp/project/.agents/skills/inspect/SKILL.md",
+        projectPath: "/tmp/project",
+        scope: "project",
+        shortDescription: null,
+        visible: true
+      },
+      "Check errors."
+    )
+
+    expect(modelMessages[0]?.[0]).toEqual({
+      content: [
+        "<skill_invocation>",
+        "<skill>",
+        "<name>inspect</name>",
+        "<description>Inspect things.</description>",
+        "<path>/tmp/project/.agents/skills/inspect/SKILL.md</path>",
+        "<scope>project</scope>",
+        "<reference_root>/tmp/project/.agents/skills/inspect</reference_root>",
+        "<capabilities>",
+        "<capability>read-fs</capability>",
+        "</capabilities>",
+        "<instructions>",
+        "Use inspection tools.",
+        "</instructions>",
+        "</skill>",
+        "<additional_instructions>",
+        "Check errors.",
+        "</additional_instructions>",
+        "</skill_invocation>"
       ].join("\n"),
       role: "user"
     })

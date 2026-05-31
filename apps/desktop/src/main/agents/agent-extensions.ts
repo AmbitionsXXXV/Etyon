@@ -97,7 +97,7 @@ export type AgentExtensionLifecycleEvent =
       parentRunId: string
       parentToolCallId: string
       profileId: string
-      status: "failed" | "succeeded"
+      status: "failed" | "needs_parent_approval" | "succeeded"
       summary?: string
       truncated?: boolean
       type: "delegation_finished"

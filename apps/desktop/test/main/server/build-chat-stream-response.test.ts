@@ -213,12 +213,12 @@ describe("buildChatStreamResponse", () => {
     const streamOptions = streamAgentChatMock.mock.calls[0]?.[0]
 
     expect(streamOptions?.activeToolNames).toEqual([
-      "findFiles",
-      "fileInfo",
-      "searchFiles",
-      "readFile",
-      "gitDiff",
-      "memorySearch"
+      "read",
+      "grep",
+      "find",
+      "ls",
+      "stat",
+      "requestAccess"
     ])
     expect(streamOptions?.settings.agents).toMatchObject({
       allowSubagentDelegation: false,

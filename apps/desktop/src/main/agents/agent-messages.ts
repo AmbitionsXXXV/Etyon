@@ -8,6 +8,7 @@ export type AgentCustomMessageType =
   | "chat-branch"
   | "compaction-summary"
   | "follow-up"
+  | "next-turn"
   | "plan-mode"
   | "queued-message-removed"
   | "queued-message-updated"

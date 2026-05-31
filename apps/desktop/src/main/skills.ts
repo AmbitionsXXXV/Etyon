@@ -763,6 +763,39 @@ export const formatSkillCommandInvocation = ({
     .filter(Boolean)
     .join("\n")
 
+export const formatSkillInvocation = (
+  skill: ParsedSkill,
+  additionalInstructions?: string
+): string =>
+  [
+    "<skill_invocation>",
+    "<skill>",
+    `<name>${escapeXml(skill.name)}</name>`,
+    `<description>${escapeXml(skill.description)}</description>`,
+    skill.shortDescription
+      ? `<short_description>${escapeXml(skill.shortDescription)}</short_description>`
+      : "",
+    `<path>${escapeXml(skill.path)}</path>`,
+    `<scope>${escapeXml(skill.scope)}</scope>`,
+    `<reference_root>${escapeXml(path.dirname(skill.path))}</reference_root>`,
+    formatSkillCapabilitiesForSystemPrompt(skill.capabilities),
+    formatSkillCommandsForSystemPrompt(skill.commands),
+    skill.modelVisible
+      ? ["<instructions>", escapeXml(skill.body), "</instructions>"].join("\n")
+      : "<instructions_model_visible>false</instructions_model_visible>",
+    "</skill>",
+    additionalInstructions
+      ? [
+          "<additional_instructions>",
+          escapeXml(additionalInstructions),
+          "</additional_instructions>"
+        ].join("\n")
+      : "",
+    "</skill_invocation>"
+  ]
+    .filter(Boolean)
+    .join("\n")
+
 export const listSkills = ({
   projectPaths = []
 }: {

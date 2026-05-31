@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   buildSkillsSystemPrompt,
+  formatSkillInvocation,
   formatModelDisabledSkillReferencesForSystemPrompt,
   formatSkillsForSystemPrompt,
   listSkillPromptTemplates,
@@ -417,6 +418,50 @@ describe("skills", () => {
         }
       ])
     ).toContain("<capability>tools</capability>")
+  })
+
+  it("formats a direct skill invocation with additional instructions", () => {
+    expect(
+      formatSkillInvocation(
+        {
+          body: 'Use <inspection> tools & "quote" findings.',
+          capabilities: ["read-fs"],
+          commands: [],
+          description: "Inspect things.",
+          extensions: [],
+          modelVisible: true,
+          name: "inspect",
+          path: "/tmp/project/.agents/skills/inspect/SKILL.md",
+          projectPath: "/tmp/project",
+          scope: "project",
+          shortDescription: "Inspect",
+          visible: true
+        },
+        "Check errors."
+      )
+    ).toBe(
+      [
+        "<skill_invocation>",
+        "<skill>",
+        "<name>inspect</name>",
+        "<description>Inspect things.</description>",
+        "<short_description>Inspect</short_description>",
+        "<path>/tmp/project/.agents/skills/inspect/SKILL.md</path>",
+        "<scope>project</scope>",
+        "<reference_root>/tmp/project/.agents/skills/inspect</reference_root>",
+        "<capabilities>",
+        "<capability>read-fs</capability>",
+        "</capabilities>",
+        "<instructions>",
+        "Use &lt;inspection&gt; tools &amp; &quot;quote&quot; findings.",
+        "</instructions>",
+        "</skill>",
+        "<additional_instructions>",
+        "Check errors.",
+        "</additional_instructions>",
+        "</skill_invocation>"
+      ].join("\n")
+    )
   })
 
   it("formats model-disabled skills as references without instructions", () => {

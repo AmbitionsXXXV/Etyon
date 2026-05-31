@@ -22,6 +22,7 @@
       "queue": "キューに追加",
       "queueEdit": "キュー済みメッセージを編集",
       "queueFollowUp": "フォローアップに追加",
+      "queueNextTurn": "次のリクエストに追加",
       "queueRemove": "キュー済みメッセージを削除",
       "queueReorder": "キュー済みメッセージを並べ替え",
       "queueSteer": "現在の実行を調整",

@@ -424,6 +424,7 @@ export const RespondAgentRunGraphApprovalOutputSchema =
 
 export const AgentSessionQueuedMessageQueueSchema = z.enum([
   "follow-up",
+  "next-turn",
   "steer"
 ])
 

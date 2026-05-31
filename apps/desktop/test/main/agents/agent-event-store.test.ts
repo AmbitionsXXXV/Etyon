@@ -31,6 +31,7 @@ import {
   appendAgentSessionMoveEvent,
   appendAgentSessionPlanModeEvent,
   appendAgentSessionQueuedFollowUpEvent,
+  appendAgentSessionQueuedNextTurnEvent,
   appendAgentSessionQueuedSteeringEvent,
   buildAgentSessionTreeFromEvents,
   createAgentSessionQueuedMessageWriter,
@@ -232,7 +233,7 @@ describe("agent event store", () => {
     ])
   })
 
-  it("persists queued steering and follow-up messages as custom session entries", async () => {
+  it("persists queued steering, follow-up, and next-turn messages as custom session entries", async () => {
     await ensureDatabaseReady()
 
     const db = getDb()
@@ -259,6 +260,10 @@ describe("agent event store", () => {
     })
     await appendAgentSessionQueuedFollowUpEvent({
       message: "Continue after the final answer.",
+      run
+    })
+    await appendAgentSessionQueuedNextTurnEvent({
+      message: "Carry into the next prompt.",
       run
     })
 
@@ -294,6 +299,13 @@ describe("agent event store", () => {
           queue: "follow-up"
         }),
         type: "follow-up"
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: "Carry into the next prompt.",
+          queue: "next-turn"
+        }),
+        type: "next-turn"
       })
     ])
   })
@@ -318,6 +330,10 @@ describe("agent event store", () => {
     await writeQueuedMessage({
       content: "Continue after the final answer.",
       queue: "follow-up"
+    })
+    await writeQueuedMessage({
+      content: "Carry into the next prompt.",
+      queue: "next-turn"
     })
 
     expect(
@@ -346,6 +362,14 @@ describe("agent event store", () => {
           queue: "follow-up"
         },
         type: "follow-up"
+      },
+      {
+        data: {
+          id: expect.any(String),
+          message: "Carry into the next prompt.",
+          queue: "next-turn"
+        },
+        type: "next-turn"
       }
     ])
   })
@@ -406,6 +430,7 @@ describe("agent event store", () => {
 
     await agent.prompt("Start.")
     agent.followUp("Persist this follow-up.")
+    agent.nextTurn("Persist this next-turn context.")
     await agent.waitForIdle()
 
     const events = await listAgentEvents({
@@ -445,6 +470,10 @@ describe("agent event store", () => {
       expect.objectContaining({
         message: "Persist this follow-up.",
         queue: "follow-up"
+      }),
+      expect.objectContaining({
+        message: "Persist this next-turn context.",
+        queue: "next-turn"
       })
     ])
   })

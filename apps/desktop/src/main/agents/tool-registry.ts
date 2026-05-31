@@ -24,10 +24,16 @@ import type {
   AgentExtensionToolExecutionContext
 } from "@/main/agents/agent-extensions"
 import { toAgentExtensionErrorMessage } from "@/main/agents/agent-extensions"
-import { createAgentWorkspace } from "@/main/agents/agent-workspace"
+import {
+  createAgentWorkspace,
+  createAgentWorkspaceOperations
+} from "@/main/agents/agent-workspace"
 import type {
   AgentWorkspace,
-  AgentWorkspaceEvent
+  AgentWorkspaceEvent,
+  AgentWorkspaceOperations,
+  AgentWorkspaceWebExtractOutput,
+  AgentWorkspaceWebSearchOutput
 } from "@/main/agents/agent-workspace"
 import { ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES } from "@/main/agents/code-agent-tool-aliases"
 import {
@@ -38,19 +44,18 @@ import {
   writeAgentCommandOutputArtifact
 } from "@/main/agents/execution-env"
 import type {
-  AgentBackgroundProcessEvent,
   AgentBackgroundProcessRecoverInput,
   AgentBackgroundProcessSnapshot,
   AgentCommandOutput,
   AgentExecutionError,
   AgentFileError,
-  AgentResult,
-  AgentShellEvent,
-  AgentShellResult
+  AgentResult
 } from "@/main/agents/execution-env"
 import type {
+  LspCallHierarchyCall,
   LspDiagnostic,
-  LspDiagnosticsResult
+  LspDiagnosticsResult,
+  LspSymbol
 } from "@/main/agents/lsp-manager"
 import {
   evaluateAgentToolPermission,
@@ -60,9 +65,6 @@ import { resolveActiveAgentProfile } from "@/main/agents/profiles"
 import { compileAgentToolNames } from "@/main/agents/tool-policy"
 import type { AgentToolName } from "@/main/agents/types"
 import type { AppDatabase } from "@/main/db"
-import { getGitProjectDiff } from "@/main/git-project-status"
-import { retrieveMemoryEntries } from "@/main/memory/retrieval"
-import { listProjectSnapshotFiles } from "@/main/project-snapshot"
 
 export { AGENT_TOOL_OUTPUT_MAX_CHARS }
 
@@ -73,7 +75,6 @@ const DEFAULT_MEMORY_SEARCH_LIMIT = 5
 const DEFAULT_TOOL_COMMAND_TIMEOUT_MS = 120_000
 const DEFAULT_TREE_LIMIT = 80
 const DEFAULT_WEB_SEARCH_LIMIT = 5
-const DUCKDUCKGO_SEARCH_URL = "https://api.duckduckgo.com/"
 const FIND_FILES_SNAPSHOT_LIMIT = 5000
 const MEMORY_SEARCH_ENTRY_MAX_CHARS = 1200
 const TOOL_READ_FILE_MAX_SIZE = 5 * 1024 * 1024
@@ -89,7 +90,6 @@ const SECRET_SEARCH_EXCLUDE_GLOBS = [
   "!**/*.pem",
   "!**/*.pfx"
 ] as const
-const SHELL_SAFE_ARG_PATTERN = /^[\w./:=@%+,-]+$/u
 
 const AgentEventsSearchInputSchema = z.object({
   limit: z.number().int().min(1).max(200).default(50),
@@ -391,6 +391,43 @@ const CodeAgentInspectInputSchema = z
   })
   .strict()
 
+const CodeAgentSymbolsInputSchema = z
+  .object({
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .default(100)
+      .describe("Maximum number of symbols to return."),
+    path: z
+      .string()
+      .min(1)
+      .describe("Path to the source file to inspect, relative or absolute."),
+    query: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Filter symbols by name, kind, detail, or container.")
+  })
+  .strict()
+
+const CodeAgentSymbolSearchInputSchema = z
+  .object({
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .default(100)
+      .describe("Maximum number of symbols to return."),
+    query: z
+      .string()
+      .min(1)
+      .describe("Symbol name or fuzzy query to search across the workspace.")
+  })
+  .strict()
+
 const CodeAgentLsInputSchema = z
   .object({
     limit: z
@@ -587,25 +624,8 @@ interface AgentSearchFilesOutput {
   truncated: boolean
 }
 
-interface AgentWebSearchResult {
-  snippet: string
-  title: string
-  url: string
-}
-
-interface AgentWebSearchOutput {
-  query: string
-  results: AgentWebSearchResult[]
-  truncated: boolean
-}
-
-interface AgentWebExtractOutput {
-  content: string
-  contentType: string
-  title: null | string
-  truncated: boolean
-  url: string
-}
+type AgentWebSearchOutput = AgentWorkspaceWebSearchOutput
+type AgentWebExtractOutput = AgentWorkspaceWebExtractOutput
 
 interface CodeAgentTextContent {
   text: string
@@ -667,7 +687,7 @@ interface AgentRunInspectOutput {
 export interface AgentDelegationOutput {
   profileId: string
   runId: string | null
-  status: "failed" | "rejected" | "succeeded"
+  status: "failed" | "needs_parent_approval" | "rejected" | "succeeded"
   subRunId: string | null
   summary: string
   truncated: boolean
@@ -759,6 +779,8 @@ type ExecutableAgentToolName =
   | "smartEdit"
   | "stat"
   | "stopProcess"
+  | "symbolSearch"
+  | "symbols"
   | "webExtract"
   | "webSearch"
   | "write"
@@ -818,6 +840,8 @@ const EXECUTABLE_AGENT_TOOL_NAMES = [
   "smartEdit",
   "stat",
   "stopProcess",
+  "symbolSearch",
+  "symbols",
   "webExtract",
   "webSearch",
   "write",
@@ -863,7 +887,13 @@ const canExposeMemorySearchTool = ({
 }): boolean =>
   Boolean(db && memorySettings?.enabled && memorySettings.autoRetrieve)
 
-const canExposeInspectTool = (settings: AgentSettings): boolean =>
+const LSP_AGENT_TOOL_NAMES = new Set<AgentToolName>([
+  "inspect",
+  "symbolSearch",
+  "symbols"
+])
+
+const canExposeLspTool = (settings: AgentSettings): boolean =>
   Boolean(settings.lsp?.enabled && settings.sandbox?.enabled)
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -881,15 +911,6 @@ const createCodeAgentTextOutput = (
   ],
   ...(details ? { details } : {})
 })
-
-const getRecordString = (
-  record: Record<string, unknown>,
-  key: string
-): string => {
-  const value = record[key]
-
-  return typeof value === "string" ? value.trim() : ""
-}
 
 const getModelMessageContentParts = (message: ModelMessage): unknown[] =>
   Array.isArray(message.content) ? message.content : []
@@ -942,17 +963,6 @@ const hasApprovedToolExecution = ({
   return false
 }
 
-const buildDuckDuckGoSearchUrl = (query: string): string => {
-  const searchUrl = new URL(DUCKDUCKGO_SEARCH_URL)
-
-  searchUrl.searchParams.set("q", query)
-  searchUrl.searchParams.set("format", "json")
-  searchUrl.searchParams.set("no_redirect", "1")
-  searchUrl.searchParams.set("no_html", "1")
-
-  return searchUrl.toString()
-}
-
 const executeRequestAccess = (input: unknown): AgentRequestAccessOutput => {
   const request = RequestAccessInputSchema.parse(input)
 
@@ -963,168 +973,6 @@ const executeRequestAccess = (input: unknown): AgentRequestAccessOutput => {
     scope: request.scope
   }
 }
-
-const getWebSearchTitleFromText = (text: string): string => {
-  const title = text.split(" - ")[0]?.trim()
-
-  return title || text.slice(0, 120).trim()
-}
-
-const getWebSearchTitleFromUrl = (url: string): string => {
-  try {
-    return new URL(url).hostname.replace(/^www\./u, "")
-  } catch {
-    return url
-  }
-}
-
-const createWebSearchResult = ({
-  heading,
-  text,
-  url
-}: {
-  heading: string
-  text: string
-  url: string
-}): AgentWebSearchResult | null => {
-  if (!(text && url)) {
-    return null
-  }
-
-  return {
-    snippet: text,
-    title:
-      heading ||
-      getWebSearchTitleFromText(text) ||
-      getWebSearchTitleFromUrl(url),
-    url
-  }
-}
-
-const addUniqueWebSearchResult = (
-  results: AgentWebSearchResult[],
-  seenUrls: Set<string>,
-  result: AgentWebSearchResult | null
-): void => {
-  if (!result || seenUrls.has(result.url)) {
-    return
-  }
-
-  seenUrls.add(result.url)
-  results.push(result)
-}
-
-const collectDuckDuckGoRelatedTopics = (
-  value: unknown
-): Record<string, unknown>[] => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  const topics: Record<string, unknown>[] = []
-
-  for (const item of value) {
-    if (!isRecord(item)) {
-      continue
-    }
-
-    topics.push(item)
-    topics.push(...collectDuckDuckGoRelatedTopics(item.Topics))
-  }
-
-  return topics
-}
-
-const getDuckDuckGoWebSearchResults = (
-  payload: unknown,
-  maxResults: number
-): Pick<AgentWebSearchOutput, "results" | "truncated"> => {
-  if (!isRecord(payload)) {
-    return {
-      results: [],
-      truncated: false
-    }
-  }
-
-  const results: AgentWebSearchResult[] = []
-  const seenUrls = new Set<string>()
-
-  addUniqueWebSearchResult(
-    results,
-    seenUrls,
-    createWebSearchResult({
-      heading: getRecordString(payload, "Heading"),
-      text: getRecordString(payload, "AbstractText"),
-      url: getRecordString(payload, "AbstractURL")
-    })
-  )
-
-  for (const topic of collectDuckDuckGoRelatedTopics(payload.RelatedTopics)) {
-    addUniqueWebSearchResult(
-      results,
-      seenUrls,
-      createWebSearchResult({
-        heading: "",
-        text: getRecordString(topic, "Text"),
-        url: getRecordString(topic, "FirstURL")
-      })
-    )
-  }
-
-  return {
-    results: results.slice(0, maxResults),
-    truncated: results.length > maxResults
-  }
-}
-
-const decodeHtmlEntities = (text: string): string =>
-  text
-    .replaceAll("&nbsp;", " ")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll(/&#(\d+);/gu, (_, codePoint: string) =>
-      String.fromCodePoint(Number(codePoint))
-    )
-    .replaceAll(/&#x([\da-f]+);/giu, (_, codePoint: string) =>
-      String.fromCodePoint(Number.parseInt(codePoint, 16))
-    )
-
-const normalizeWebExtractText = (text: string): string =>
-  decodeHtmlEntities(text)
-    .replaceAll(/\r\n?/gu, "\n")
-    .replaceAll(/[ \t\f\v]+/gu, " ")
-    .replaceAll(/[ \t]*\n[ \t]*/gu, "\n")
-    .replaceAll(/\n{2,}/gu, "\n")
-    .trim()
-
-const extractHtmlTitle = (html: string): null | string => {
-  const match = /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(html)
-  const title = match ? normalizeWebExtractText(match[1] ?? "") : ""
-
-  return title || null
-}
-
-const extractHtmlText = (html: string): string =>
-  normalizeWebExtractText(
-    html
-      .replaceAll(/<script\b[^>]*>[\s\S]*?<\/script>/giu, " ")
-      .replaceAll(/<style\b[^>]*>[\s\S]*?<\/style>/giu, " ")
-      .replaceAll(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/giu, " ")
-      .replaceAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/giu, " ")
-      .replaceAll(/<(?:br|hr)\b[^>]*>/giu, "\n")
-      .replaceAll(
-        /<\/(?:article|aside|blockquote|div|footer|h[1-6]|header|li|main|nav|p|pre|section|tr)>/giu,
-        "\n"
-      )
-      .replaceAll(/<[^>]+>/gu, " ")
-  )
-
-const isLikelyHtmlContent = (contentType: string, content: string): boolean =>
-  /\bhtml\b/iu.test(contentType) ||
-  /<html[\s>]|<!doctype html|<body[\s>]/iu.test(content.slice(0, 2048))
 
 const getScopedAgentRun = async ({
   chatSessionId,
@@ -1203,6 +1051,9 @@ const getToolFileErrorMessage = (error: AgentFileError): string => {
     case "io-error": {
       return error.message
     }
+    case "stale-write": {
+      return error.message
+    }
     default: {
       const exhaustiveErrorCode: never = error.code
 
@@ -1214,6 +1065,39 @@ const getToolFileErrorMessage = (error: AgentFileError): string => {
 const throwToolFileError = (error: AgentFileError): never => {
   throw new Error(getToolFileErrorMessage(error))
 }
+
+const getToolFileResultValue = <TValue>(
+  result: AgentResult<TValue, AgentFileError>
+): TValue =>
+  "value" in result ? result.value : throwToolFileError(result.error)
+
+const getToolAbsolutePath = async (
+  operations: AgentWorkspaceOperations,
+  requestedPath: string,
+  signal?: AbortSignal
+): Promise<string> => {
+  const result = await operations.absolutePath(requestedPath, signal)
+
+  return getToolFileResultValue(result)
+}
+
+const getToolWorkspaceOperations = (
+  projectPath: string,
+  sandboxSettings?: AgentSettings["sandbox"],
+  workspace?: AgentWorkspace,
+  eventSink?: (event: AgentWorkspaceEvent) => Promise<void> | void
+): AgentWorkspaceOperations =>
+  workspace && !eventSink
+    ? workspace.operations
+    : createAgentWorkspaceOperations(
+        workspace?.executionEnv ??
+          createAgentExecutionEnv({
+            projectPath,
+            sandboxSettings
+          }),
+        eventSink,
+        workspace?.lsp
+      )
 
 const getCommandErrorPreview = (error: AgentExecutionError): string => {
   switch (error.code) {
@@ -1239,153 +1123,6 @@ const emitCommandWorkspaceEvent = (
   void eventSink?.(event)
 }
 
-const createShellWorkspaceEventBridge = ({
-  command,
-  emitSandboxEvents,
-  eventSink,
-  resolvedCwd
-}: {
-  command: string
-  emitSandboxEvents: boolean
-  eventSink: ((event: AgentWorkspaceEvent) => Promise<void> | void) | undefined
-  resolvedCwd: string
-}): {
-  getFinishedEvent: () => AgentShellEvent | null
-  onEvent: (event: AgentShellEvent) => void
-} => {
-  let finishedEvent: AgentShellEvent | null = null
-
-  return {
-    getFinishedEvent: () => finishedEvent,
-    onEvent: (event) => {
-      if (!emitSandboxEvents) {
-        return
-      }
-
-      switch (event.type) {
-        case "finished": {
-          finishedEvent = event
-          break
-        }
-        case "output": {
-          emitCommandWorkspaceEvent(eventSink, {
-            payload: {
-              channel: event.channel,
-              chunk: event.chunk,
-              command,
-              cwd: resolvedCwd,
-              sequence: event.outputSequence
-            },
-            type: "sandbox_command_output"
-          })
-          break
-        }
-        case "started": {
-          emitCommandWorkspaceEvent(eventSink, {
-            payload: {
-              args: event.args,
-              command,
-              cwd: resolvedCwd,
-              pid: event.pid,
-              sandboxed: event.sandboxed,
-              startedAt: event.startedAt
-            },
-            type: "sandbox_command_started"
-          })
-          break
-        }
-        default: {
-          const exhaustiveEvent: never = event
-
-          throw new Error(`Unknown shell event: ${exhaustiveEvent}`)
-        }
-      }
-    }
-  }
-}
-
-const createBackgroundProcessWorkspaceEventBridge = ({
-  eventSink
-}: {
-  eventSink: ((event: AgentWorkspaceEvent) => Promise<void> | void) | undefined
-}): ((event: AgentBackgroundProcessEvent) => void) => {
-  const emitProcessEvent = (event: AgentBackgroundProcessEvent): void => {
-    switch (event.type) {
-      case "finished": {
-        emitCommandWorkspaceEvent(eventSink, {
-          payload: {
-            command: event.command,
-            cwd: event.cwd,
-            durationMs: event.durationMs,
-            exitCode: event.exitCode,
-            finishedAt: event.finishedAt,
-            processId: event.processId,
-            sandboxed: event.sandboxed,
-            status: event.status,
-            stderrChars: event.stderrChars,
-            stdoutChars: event.stdoutChars
-          },
-          type: "background_process_finished"
-        })
-        break
-      }
-      case "output": {
-        emitCommandWorkspaceEvent(eventSink, {
-          payload: {
-            channel: event.channel,
-            chunk: event.chunk,
-            processId: event.processId,
-            sequence: event.sequence
-          },
-          type: "background_process_output"
-        })
-        break
-      }
-      case "started": {
-        emitCommandWorkspaceEvent(eventSink, {
-          payload: {
-            command: event.command,
-            cwd: event.cwd,
-            pid: event.pid,
-            processId: event.processId,
-            sandboxed: event.sandboxed,
-            startedAt: event.startedAt
-          },
-          type: "background_process_started"
-        })
-        break
-      }
-      default: {
-        const exhaustiveEvent: never = event
-
-        throw new Error(`Unknown background process event: ${exhaustiveEvent}`)
-      }
-    }
-  }
-
-  return emitProcessEvent
-}
-
-const getCommandDurationMs = ({
-  result,
-  shellFinishedEvent,
-  startedAt
-}: {
-  result: AgentResult<AgentShellResult, AgentExecutionError>
-  shellFinishedEvent: AgentShellEvent | null
-  startedAt: number
-}): number => {
-  if ("value" in result) {
-    return result.value.durationMs
-  }
-
-  if (shellFinishedEvent?.type === "finished") {
-    return shellFinishedEvent.durationMs
-  }
-
-  return Date.now() - startedAt
-}
-
 const executeCommandTool = async ({
   abortSignal,
   command,
@@ -1397,31 +1134,21 @@ const executeCommandTool = async ({
   timeoutMs,
   workspace
 }: ExecuteCommandToolOptions): Promise<AgentCommandOutput> => {
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
   const activeEventSink = eventSink ?? workspace?.eventSink
-  const startedAt = Date.now()
-  const resolvedCwd = env.resolveCwd(cwd)
-  const emitSandboxEvents = Boolean(activeEventSink && env.sandbox.enabled)
-  const shellWorkspaceEventBridge = createShellWorkspaceEventBridge({
-    command,
-    emitSandboxEvents,
-    eventSink: activeEventSink,
-    resolvedCwd
-  })
-
-  const result = await env.shell.exec(command, {
-    abortSignal,
-    cwd,
-    onEvent: shellWorkspaceEventBridge.onEvent,
-    stdin,
-    timeout: timeoutMs
-  })
-  const shellFinishedEvent = shellWorkspaceEventBridge.getFinishedEvent()
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace,
+    activeEventSink
+  )
+  const { durationMs, eventsEnabled, resolvedCwd, result, shellFinishedEvent } =
+    await operations.executeCommand(command, {
+      abortSignal,
+      cwd,
+      emitEvents: Boolean(activeEventSink),
+      stdin,
+      timeoutMs
+    })
   const stdout =
     "value" in result ? result.value.stdout : (result.error.stdout ?? "")
   const stderr =
@@ -1435,11 +1162,6 @@ const executeCommandTool = async ({
   const stderrOutput = clampToolOutput(stderr)
   const stdoutOutput = clampToolOutput(stdout)
   const truncated = stderrOutput.truncated || stdoutOutput.truncated
-  const durationMs = getCommandDurationMs({
-    result,
-    shellFinishedEvent,
-    startedAt
-  })
   const outputRef = truncated
     ? await writeAgentCommandOutputArtifact({
         command,
@@ -1452,7 +1174,7 @@ const executeCommandTool = async ({
   const status =
     "value" in result && result.value.exitCode === 0 ? "success" : "failed"
 
-  if (emitSandboxEvents) {
+  if (eventsEnabled) {
     emitCommandWorkspaceEvent(activeEventSink, {
       payload: {
         command,
@@ -1460,7 +1182,7 @@ const executeCommandTool = async ({
         durationMs,
         exitCode,
         outputRef,
-        ...(shellFinishedEvent?.type === "finished"
+        ...(shellFinishedEvent
           ? {
               sandboxed: shellFinishedEvent.sandboxed,
               shellStatus: shellFinishedEvent.status,
@@ -1595,101 +1317,6 @@ const toListFilesOutput = (
   snapshotId: result.snapshotId,
   truncated: result.files.length >= limit
 })
-
-const shellQuoteArgument = (value: string): string =>
-  SHELL_SAFE_ARG_PATTERN.test(value)
-    ? value
-    : `'${value.replaceAll("'", "'\\''")}'`
-
-const runRipgrepJson = async ({
-  abortSignal,
-  args,
-  projectPath,
-  requestedCwd,
-  sandboxSettings,
-  workspace
-}: {
-  abortSignal?: AbortSignal
-  args: string[]
-  projectPath: string
-  requestedCwd: string
-  sandboxSettings?: AgentSettings["sandbox"]
-  workspace?: AgentWorkspace
-}): Promise<string> => {
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
-  const result = await env.shell.exec(
-    ["rg", ...args].map(shellQuoteArgument).join(" "),
-    {
-      abortSignal,
-      cwd: requestedCwd,
-      timeout: DEFAULT_TOOL_COMMAND_TIMEOUT_MS
-    }
-  )
-
-  if ("error" in result) {
-    throw new Error(result.error.message)
-  }
-
-  if (result.value.exitCode === 0 || result.value.exitCode === 1) {
-    return result.value.stdout
-  }
-
-  if (result.value.exitCode === 127) {
-    throw new Error("ripgrep (rg) is required for file content search.")
-  }
-
-  throw new Error(result.value.stderr.trim() || "Failed to execute ripgrep.")
-}
-
-const runFdFind = async ({
-  abortSignal,
-  args,
-  projectPath,
-  requestedCwd,
-  sandboxSettings,
-  workspace
-}: {
-  abortSignal?: AbortSignal
-  args: string[]
-  projectPath: string
-  requestedCwd: string
-  sandboxSettings?: AgentSettings["sandbox"]
-  workspace?: AgentWorkspace
-}): Promise<string> => {
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
-  const result = await env.shell.exec(
-    ["fd", ...args].map(shellQuoteArgument).join(" "),
-    {
-      abortSignal,
-      cwd: requestedCwd,
-      timeout: DEFAULT_TOOL_COMMAND_TIMEOUT_MS
-    }
-  )
-
-  if ("error" in result) {
-    throw new Error(result.error.message)
-  }
-
-  if (result.value.exitCode === 0) {
-    return result.value.stdout
-  }
-
-  if (result.value.exitCode === 127) {
-    throw new Error("fd is required for file path search.")
-  }
-
-  throw new Error(result.value.stderr.trim() || "Failed to execute fd.")
-}
 
 const parseRipgrepMatch = ({
   cwd,
@@ -1992,15 +1619,18 @@ const generateEditDiff = (
 
 const executeEditFile = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentEditFileOutput> => {
   const { edits, path: requestedPath } = EditFileInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
-  const canonicalPath = await env.fileSystem.canonicalPath(requestedPath)
+  const canonicalPath = await operations.canonicalPath(requestedPath)
   const canonicalRelativePath =
     "value" in canonicalPath
       ? canonicalPath.value
@@ -2008,9 +1638,11 @@ const executeEditFile = async (
 
   assertNonSecretToolPath(canonicalRelativePath)
 
-  const textFile = await env.fileSystem.readTextFile(requestedPath)
-  let content =
+  const textFile = await operations.view(requestedPath)
+  const textFileValue =
     "value" in textFile ? textFile.value : throwToolFileError(textFile.error)
+  const { content: textFileContent, info: textFileInfo } = textFileValue
+  let content = textFileContent
 
   for (const edit of edits) {
     const matches = countOccurrences(content, edit.oldText)
@@ -2024,25 +1656,16 @@ const executeEditFile = async (
     content = content.replace(edit.oldText, edit.newText)
   }
 
-  const writeResult = await env.fileSystem.writeFile(requestedPath, content)
-
-  if ("error" in writeResult) {
-    throwToolFileError(writeResult.error)
-  }
-
+  const writeResult = await operations.writeFile(requestedPath, content, {
+    expectedMtimeMs: textFileInfo.mtimeMs
+  })
+  const writtenFile = getToolFileResultValue(writeResult)
   const diff = clampToolOutput(generateEditDiff(edits))
-  const targetPath = await env.fileSystem.absolutePath(requestedPath)
-  const absoluteTargetPath =
-    "value" in targetPath
-      ? targetPath.value
-      : throwToolFileError(targetPath.error)
 
   return {
     applied: true,
     diff: diff.content,
-    path: normalizeToolPath(
-      nodePath.relative(nodePath.resolve(projectPath), absoluteTargetPath)
-    ),
+    path: writtenFile.info.path,
     replacements: edits.length,
     truncated: diff.truncated
   }
@@ -2050,57 +1673,49 @@ const executeEditFile = async (
 
 const executeWriteFile = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace,
+  options?: {
+    requireReadSnapshot?: boolean
+  }
 ): Promise<AgentWriteFileOutput> => {
   const { content, path: requestedPath } = WriteFileInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
 
-  const parentDirectory = await env.fileSystem.createDir(
-    nodePath.dirname(requestedPath),
-    { recursive: true }
-  )
-
-  if ("error" in parentDirectory) {
-    throwToolFileError(parentDirectory.error)
-  }
-
-  const writeResult = await env.fileSystem.writeFile(requestedPath, content)
-
-  if ("error" in writeResult) {
-    throwToolFileError(writeResult.error)
-  }
-
-  const targetPath = await env.fileSystem.absolutePath(requestedPath)
-  const absoluteTargetPath =
-    "value" in targetPath
-      ? targetPath.value
-      : throwToolFileError(targetPath.error)
+  const writeResult = await operations.writeFile(requestedPath, content, {
+    createParentDirectories: true,
+    requireReadSnapshot: options?.requireReadSnapshot
+  })
+  const writtenFile = getToolFileResultValue(writeResult)
 
   return {
-    bytesWritten: Buffer.byteLength(content, "utf-8"),
-    path: normalizeToolPath(
-      nodePath.relative(nodePath.resolve(projectPath), absoluteTargetPath)
-    ),
+    bytesWritten: writtenFile.bytesWritten,
+    path: writtenFile.info.path,
     written: true
   }
 }
 
 const executeFileInfo = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentFileInfoOutput> => {
   const { path: requestedPath } = FileInfoInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
 
-  const canonicalParent = await env.fileSystem.canonicalPath(
+  const canonicalParent = await operations.canonicalPath(
     nodePath.dirname(requestedPath)
   )
 
@@ -2111,7 +1726,7 @@ const executeFileInfo = async (
 
   assertNonSecretToolPath(canonicalParentPath)
 
-  const fileInfo = await env.fileSystem.fileInfo(requestedPath)
+  const fileInfo = await operations.fileStat(requestedPath)
   const { value } =
     "value" in fileInfo ? fileInfo : throwToolFileError(fileInfo.error)
 
@@ -2127,9 +1742,10 @@ const executeFileInfo = async (
 
 const executeCodeAgentStat = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
-  const result = await executeFileInfo(input, projectPath)
+  const result = await executeFileInfo(input, projectPath, workspace)
   const modifiedAt = new Date(result.mtimeMs).toISOString()
 
   return createCodeAgentTextOutput(
@@ -2153,92 +1769,87 @@ const executeCodeAgentStat = async (
 
 const executeCodeAgentMkdir = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const { path: requestedPath, recursive } =
     CodeAgentMkdirInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
 
-  const createResult = await env.fileSystem.createDir(requestedPath, {
+  const createResult = await operations.mkdir(requestedPath, {
     recursive
   })
+  const directoryInfo = getToolFileResultValue(createResult)
 
-  if ("error" in createResult) {
-    throwToolFileError(createResult.error)
-  }
-
-  const directoryInfo = await env.fileSystem.fileInfo(requestedPath)
-  const directoryInfoValue =
-    "value" in directoryInfo
-      ? directoryInfo.value
-      : throwToolFileError(directoryInfo.error)
-
-  return createCodeAgentTextOutput(
-    `Created directory ${directoryInfoValue.path}.`,
-    {
-      path: directoryInfoValue.path,
-      recursive
-    }
-  )
+  return createCodeAgentTextOutput(`Created directory ${directoryInfo.path}.`, {
+    path: directoryInfo.path,
+    recursive
+  })
 }
 
 const executeCodeAgentDelete = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const { path: requestedPath, recursive } =
     CodeAgentDeleteInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
 
-  const fileInfo = await env.fileSystem.fileInfo(requestedPath)
-  const fileInfoValue =
-    "value" in fileInfo ? fileInfo.value : throwToolFileError(fileInfo.error)
-  const removeResult = await env.fileSystem.remove(requestedPath, {
+  const removeResult = await operations.deleteFile(requestedPath, {
     recursive
   })
-
-  if ("error" in removeResult) {
-    throwToolFileError(removeResult.error)
-  }
+  const removedFile = getToolFileResultValue(removeResult)
 
   return createCodeAgentTextOutput(
-    `Deleted ${fileInfoValue.kind} ${fileInfoValue.path}.`,
+    `Deleted ${removedFile.kind} ${removedFile.path}.`,
     {
-      kind: fileInfoValue.kind,
-      path: fileInfoValue.path,
+      kind: removedFile.kind,
+      path: removedFile.path,
       recursive,
-      size: fileInfoValue.size
+      size: removedFile.size
     }
   )
 }
 
-const executeFindFiles = (
+const executeFindFiles = async (
   input: unknown,
-  projectPath: string
-): AgentFindFilesOutput => {
+  projectPath: string,
+  workspace?: AgentWorkspace
+): Promise<AgentFindFilesOutput> => {
   const { cwd, limit, query } = FindFilesInputSchema.parse(input)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   if (cwd) {
     assertNonSecretToolPath(cwd)
   }
 
-  const resolvedCwd = createAgentExecutionEnv({
-    projectPath
-  }).resolveCwd(cwd)
+  const absoluteCwd = await operations.absolutePath(cwd ?? "")
+  const resolvedCwd =
+    "value" in absoluteCwd
+      ? absoluteCwd.value
+      : throwToolFileError(absoluteCwd.error)
   const normalizedProjectPath = nodePath.resolve(projectPath)
   const relativeCwd = normalizeToolCwd(normalizedProjectPath, resolvedCwd)
   const cwdPrefix = relativeCwd === "." ? "" : `${relativeCwd}/`
-  const result = listProjectSnapshotFiles({
+  const result = operations.listProjectSnapshotFiles({
     limit: FIND_FILES_SNAPSHOT_LIMIT,
-    projectPath,
     query
   })
   const matchingFiles = result.files.filter(
@@ -2261,18 +1872,21 @@ const executeFindFiles = (
 
 const executeListDirectory = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentListDirectoryOutput> => {
   const { limit, path: requestedPath } = ListDirectoryInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   if (requestedPath) {
     assertNonSecretToolPath(requestedPath)
   }
 
-  const directory = await env.fileSystem.listDir(requestedPath)
+  const directory = await operations.listDir(requestedPath)
 
   const directoryEntries =
     "value" in directory ? directory.value : throwToolFileError(directory.error)
@@ -2307,15 +1921,22 @@ const executeListDirectory = async (
 
 const executeGitDiff = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentGitDiffOutput> => {
   const { maxChars = AGENT_TOOL_OUTPUT_MAX_CHARS, paths } =
     GitDiffInputSchema.parse(input)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
+
   for (const requestedPath of paths ?? []) {
     assertNonSecretToolPath(requestedPath)
   }
 
-  const result = await getGitProjectDiff(projectPath, {
+  const result = await operations.gitDiff({
     excludeSecretPaths: true,
     paths
   })
@@ -2331,12 +1952,17 @@ const executeGitDiff = async (
 
 const executeListProjectTree = (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): AgentListFilesOutput => {
   const { limit } = ListProjectTreeInputSchema.parse(input)
-  const result = listProjectSnapshotFiles({
-    limit,
+  const operations = getToolWorkspaceOperations(
     projectPath,
+    undefined,
+    workspace
+  )
+  const result = operations.listProjectSnapshotFiles({
+    limit,
     query: ""
   })
 
@@ -2362,24 +1988,26 @@ const executeMemorySearch = async (
   db: AppDatabase | undefined,
   input: unknown,
   memorySettings: MemorySettings | undefined,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentMemorySearchOutput> => {
   const { limit, query } = MemorySearchInputSchema.parse(input)
   const settings = requireMemorySettings(memorySettings)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
   const visibleLimit = Math.min(limit, settings.maxRetrievedMemories)
   const retrievalLimit = Math.min(
     visibleLimit + 1,
     settings.maxRetrievedMemories
   )
-  const entries = await retrieveMemoryEntries({
+  const entries = await operations.memorySearch({
     db: requireAgentDatabase(db),
-    embeddingModel: settings.embeddingModel,
-    projectPath,
+    maxResults: retrievalLimit,
     query,
-    settings: {
-      ...settings,
-      maxRetrievedMemories: retrievalLimit
-    }
+    settings
   })
   const visibleEntries = entries.slice(0, visibleLimit)
 
@@ -2392,7 +2020,8 @@ const executeMemorySearch = async (
 
 const executeReadFile = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<AgentReadFileOutput> => {
   const {
     endLine,
@@ -2400,9 +2029,11 @@ const executeReadFile = async (
     path,
     startLine
   } = ReadFileInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
   const decision = evaluateAgentToolPermission({
     input: {
       path
@@ -2415,7 +2046,7 @@ const executeReadFile = async (
     throw new Error(decision.reason)
   }
 
-  const canonicalPath = await env.fileSystem.canonicalPath(path)
+  const canonicalPath = await operations.canonicalPath(path)
   const canonicalRelativePath =
     "value" in canonicalPath
       ? canonicalPath.value
@@ -2423,7 +2054,7 @@ const executeReadFile = async (
 
   assertNonSecretToolPath(canonicalRelativePath)
 
-  const fileInfo = await env.fileSystem.fileInfo(path)
+  const fileInfo = await operations.fileStat(path)
   const fileInfoValue =
     "value" in fileInfo ? fileInfo.value : throwToolFileError(fileInfo.error)
 
@@ -2433,7 +2064,7 @@ const executeReadFile = async (
     )
   }
 
-  const textFile = await env.fileSystem.readTextFile(path)
+  const textFile = await operations.readTextFile(path)
   const contentValue =
     "value" in textFile ? textFile.value : throwToolFileError(textFile.error)
 
@@ -2539,15 +2170,14 @@ const executeSearchFiles = async (
     assertNonSecretToolPath(cwd)
   }
 
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
-  const resolvedCwd = env.resolveCwd(cwd)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace
+  )
+  const resolvedCwd = await getToolAbsolutePath(operations, cwd, abortSignal)
   const effectiveMaxResults = maxResults ?? limit ?? DEFAULT_FILE_SEARCH_LIMIT
-  const stdout = await runRipgrepJson({
+  const searchResult = await operations.searchContent({
     abortSignal,
     args: [
       "--json",
@@ -2566,24 +2196,27 @@ const executeSearchFiles = async (
       query,
       "."
     ],
-    projectPath,
     requestedCwd: cwd,
-    sandboxSettings,
-    workspace
+    timeoutMs: DEFAULT_TOOL_COMMAND_TIMEOUT_MS
   })
+
+  if (!searchResult.ok) {
+    throw new Error(getCommandErrorPreview(searchResult.error))
+  }
 
   return toSearchFilesOutput({
     cwd: resolvedCwd,
     maxResults: effectiveMaxResults,
     projectPath: nodePath.resolve(projectPath),
     query,
-    stdout
+    stdout: searchResult.value
   })
 }
 
 const executeCodeAgentRead = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const { limit, offset, path } = CodeAgentReadInputSchema.parse(input)
   const startLine = offset ?? 1
@@ -2593,7 +2226,8 @@ const executeCodeAgentRead = async (
       path,
       startLine
     },
-    projectPath
+    projectPath,
+    workspace
   )
 
   if (startLine > result.lineCount) {
@@ -2632,15 +2266,9 @@ const executeCodeAgentBash = async (
       throw new Error("Background bash requires an active Etyon workspace.")
     }
 
-    const result = await workspace.executionEnv.backgroundProcesses.start(
-      command,
-      {
-        cwd: "",
-        onEvent: createBackgroundProcessWorkspaceEventBridge({
-          eventSink: workspace.eventSink
-        })
-      }
-    )
+    const result = await workspace.operations.startProcess(command, {
+      cwd: ""
+    })
 
     if (!result.ok) {
       throw new Error(getCommandErrorPreview(result.error))
@@ -2881,11 +2509,7 @@ const recoverBackgroundProcessFromEventLog = async ({
       continue
     }
 
-    return workspace.executionEnv.backgroundProcesses.recover(input, {
-      onEvent: createBackgroundProcessWorkspaceEventBridge({
-        eventSink: workspace.eventSink
-      })
-    })
+    return workspace.operations.recoverProcess(input)
   }
 
   return null
@@ -2897,7 +2521,7 @@ const getBackgroundProcessSnapshot = async ({
   processId,
   workspace
 }: BackgroundProcessEventLogRecoveryOptions): Promise<AgentBackgroundProcessSnapshot | null> =>
-  workspace.executionEnv.backgroundProcesses.get(processId) ??
+  workspace.operations.getProcess(processId) ??
   (await recoverBackgroundProcessFromEventLog({
     chatSessionId,
     db,
@@ -2950,8 +2574,7 @@ const executeCodeAgentStopProcess = async (
     processId,
     workspace
   })
-  const result =
-    await workspace.executionEnv.backgroundProcesses.stop(processId)
+  const result = await workspace.operations.stopProcess(processId)
 
   if (!result.ok) {
     throw new Error(getCommandErrorPreview(result.error))
@@ -2989,6 +2612,28 @@ const formatPostWriteLspDiagnostics = (
     .join("\n")}`
 }
 
+const formatLspCallHierarchyCall = (call: LspCallHierarchyCall): string => {
+  const rangeText =
+    call.ranges.length === 0
+      ? ""
+      : ` (${call.ranges
+          .map((range) => `${range.path}:${range.line}:${range.column}`)
+          .join(", ")})`
+
+  return `- ${call.name} ${call.kind} ${call.path}:${call.line}:${call.column}${rangeText}`
+}
+
+const formatLspCallHierarchy = ({
+  calls,
+  label
+}: {
+  calls: LspCallHierarchyCall[]
+  label: string
+}): string =>
+  calls.length === 0
+    ? `${label}: none`
+    : `${label}:\n${calls.map(formatLspCallHierarchyCall).join("\n")}`
+
 const collectPostWriteLspDiagnostics = async ({
   path: editedPath,
   workspace
@@ -2996,23 +2641,11 @@ const collectPostWriteLspDiagnostics = async ({
   path: string
   workspace?: AgentWorkspace
 }): Promise<LspDiagnosticsResult | null> => {
-  if (!workspace?.lsp) {
+  if (!workspace) {
     return null
   }
 
-  try {
-    return await workspace.lsp.touchFile(editedPath)
-  } catch (error) {
-    return {
-      diagnostics: [],
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to collect diagnostics.",
-      path: editedPath,
-      status: "failed"
-    }
-  }
+  return await workspace.operations.lspTouchFile(editedPath)
 }
 
 type CodeAgentSmartEditKind = z.infer<typeof CodeAgentSmartEditKindSchema>
@@ -3188,7 +2821,7 @@ const executeCodeAgentEdit = async (
   workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const parsedInput = CodeAgentEditInputSchema.parse(input)
-  const result = await executeEditFile(parsedInput, projectPath)
+  const result = await executeEditFile(parsedInput, projectPath, workspace)
   const diagnostics = await collectPostWriteLspDiagnostics({
     path: result.path,
     workspace
@@ -3222,13 +2855,15 @@ const executeCodeAgentSmartEdit = async (
     replacement,
     symbol
   } = CodeAgentSmartEditInputSchema.parse(input)
-  const env = createAgentExecutionEnv({
-    projectPath
-  })
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    undefined,
+    workspace
+  )
 
   assertNonSecretToolPath(requestedPath)
 
-  const canonicalPath = await env.fileSystem.canonicalPath(requestedPath)
+  const canonicalPath = await operations.canonicalPath(requestedPath)
   const canonicalRelativePath =
     "value" in canonicalPath
       ? canonicalPath.value
@@ -3236,7 +2871,7 @@ const executeCodeAgentSmartEdit = async (
 
   assertNonSecretToolPath(canonicalRelativePath)
 
-  const fileInfo = await env.fileSystem.fileInfo(requestedPath)
+  const fileInfo = await operations.fileStat(requestedPath)
   const fileInfoValue =
     "value" in fileInfo ? fileInfo.value : throwToolFileError(fileInfo.error)
 
@@ -3244,7 +2879,7 @@ const executeCodeAgentSmartEdit = async (
     throw new Error("smartEdit target must be a file.")
   }
 
-  const textFile = await env.fileSystem.readTextFile(requestedPath)
+  const textFile = await operations.readTextFile(requestedPath)
   const content =
     "value" in textFile ? textFile.value : throwToolFileError(textFile.error)
 
@@ -3259,7 +2894,9 @@ const executeCodeAgentSmartEdit = async (
     symbol
   })
   const nextContent = `${content.slice(0, target.start)}${replacement}${content.slice(target.end)}`
-  const writeResult = await env.fileSystem.writeFile(requestedPath, nextContent)
+  const writeResult = await operations.writeFile(requestedPath, nextContent, {
+    expectedMtimeMs: fileInfoValue.mtimeMs
+  })
 
   if ("error" in writeResult) {
     throwToolFileError(writeResult.error)
@@ -3298,7 +2935,9 @@ const executeCodeAgentWrite = async (
   projectPath: string,
   workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
-  const result = await executeWriteFile(input, projectPath)
+  const result = await executeWriteFile(input, projectPath, workspace, {
+    requireReadSnapshot: true
+  })
   const diagnostics = await collectPostWriteLspDiagnostics({
     path: result.path,
     workspace
@@ -3341,8 +2980,12 @@ const executeCodeAgentInspect = async (
         })
       : undefined)
 
-  if (!activeWorkspace?.lsp) {
+  if (!activeWorkspace) {
     return createCodeAgentTextOutput("LSP inspect is not enabled.", {
+      calls: {
+        incoming: [],
+        outgoing: []
+      },
       column: match.indexOf("<<<") + 1,
       definition: [],
       diagnostics: [],
@@ -3355,7 +2998,7 @@ const executeCodeAgentInspect = async (
     })
   }
 
-  const result = await activeWorkspace.lsp.inspect(parsedInput)
+  const result = await activeWorkspace.operations.lspInspect(parsedInput)
   const diagnosticText =
     result.diagnostics.length === 0
       ? "diagnostics: none"
@@ -3393,6 +3036,14 @@ const executeCodeAgentInspect = async (
           )
           .join("\n")}`
   const hoverText = result.hover ? `hover:\n${result.hover}` : "hover: none"
+  const incomingCallsText = formatLspCallHierarchy({
+    calls: result.calls.incoming,
+    label: "incoming calls"
+  })
+  const outgoingCallsText = formatLspCallHierarchy({
+    calls: result.calls.outgoing,
+    label: "outgoing calls"
+  })
   const statusText =
     result.status === "success"
       ? `LSP inspect ${result.path}:${result.line}:${result.column}`
@@ -3405,11 +3056,14 @@ const executeCodeAgentInspect = async (
       definitionText,
       implementationText,
       referencesText,
+      incomingCallsText,
+      outgoingCallsText,
       diagnosticText
     ]
       .filter(Boolean)
       .join("\n\n"),
     {
+      calls: result.calls,
       column: result.column,
       definition: result.definition,
       diagnostics: result.diagnostics,
@@ -3422,6 +3076,137 @@ const executeCodeAgentInspect = async (
       status: result.status
     }
   )
+}
+
+const matchesCodeAgentSymbolQuery = (
+  symbol: LspSymbol,
+  normalizedQuery: string
+): boolean =>
+  [
+    symbol.containerName,
+    symbol.detail,
+    symbol.kind,
+    symbol.name,
+    symbol.path
+  ].some((value) => value?.toLowerCase().includes(normalizedQuery))
+
+const formatCodeAgentSymbolLine = (symbol: LspSymbol): string => {
+  const detail = symbol.detail ? ` ${symbol.detail}` : ""
+  const container = symbol.containerName ? ` in ${symbol.containerName}` : ""
+
+  return `- ${symbol.kind} ${symbol.name}${detail}${container} ${symbol.path}:${symbol.line}:${symbol.column}-${symbol.endLine}:${symbol.endColumn}`
+}
+
+const executeCodeAgentSymbols = async (
+  input: unknown,
+  projectPath: string,
+  settings?: AgentSettings,
+  workspace?: AgentWorkspace
+): Promise<CodeAgentTextOutput> => {
+  const parsedInput = CodeAgentSymbolsInputSchema.parse(input)
+  const { limit, path, query } = parsedInput
+  const activeWorkspace =
+    workspace ??
+    (settings
+      ? createAgentWorkspace({
+          projectPath,
+          settings
+        })
+      : undefined)
+
+  if (!activeWorkspace) {
+    return createCodeAgentTextOutput("LSP symbols is not enabled.", {
+      limit,
+      path,
+      ...(query ? { query } : {}),
+      status: "unavailable",
+      symbols: [],
+      totalMatches: 0,
+      truncated: false
+    })
+  }
+
+  const result = await activeWorkspace.operations.lspDocumentSymbols({ path })
+  const normalizedQuery = query?.trim().toLowerCase()
+  const matchingSymbols = normalizedQuery
+    ? result.symbols.filter((symbol) =>
+        matchesCodeAgentSymbolQuery(symbol, normalizedQuery)
+      )
+    : result.symbols
+  const symbols = matchingSymbols.slice(0, limit)
+  const truncated = matchingSymbols.length > symbols.length
+  const statusText =
+    result.status === "success"
+      ? `LSP symbols ${result.path} (${symbols.length}${truncated ? ` of ${matchingSymbols.length}` : ""})`
+      : `LSP symbols ${result.status}: ${result.error ?? "no details"}`
+  const symbolsText =
+    symbols.length === 0
+      ? "symbols: none"
+      : `symbols:\n${symbols.map(formatCodeAgentSymbolLine).join("\n")}`
+
+  return createCodeAgentTextOutput([statusText, symbolsText].join("\n\n"), {
+    ...(result.error ? { error: result.error } : {}),
+    limit,
+    path: result.path,
+    ...(query ? { query } : {}),
+    status: result.status,
+    symbols,
+    totalMatches: matchingSymbols.length,
+    truncated
+  })
+}
+
+const executeCodeAgentSymbolSearch = async (
+  input: unknown,
+  projectPath: string,
+  settings?: AgentSettings,
+  workspace?: AgentWorkspace
+): Promise<CodeAgentTextOutput> => {
+  const parsedInput = CodeAgentSymbolSearchInputSchema.parse(input)
+  const { limit, query } = parsedInput
+  const activeWorkspace =
+    workspace ??
+    (settings
+      ? createAgentWorkspace({
+          projectPath,
+          settings
+        })
+      : undefined)
+
+  if (!activeWorkspace) {
+    return createCodeAgentTextOutput("LSP symbol search is not enabled.", {
+      limit,
+      query,
+      rootPath: ".",
+      status: "unavailable",
+      symbols: [],
+      totalMatches: 0,
+      truncated: false
+    })
+  }
+
+  const result = await activeWorkspace.operations.lspWorkspaceSymbols({ query })
+  const symbols = result.symbols.slice(0, limit)
+  const truncated = result.symbols.length > symbols.length
+  const statusText =
+    result.status === "success"
+      ? `LSP symbol search ${JSON.stringify(query)} (${symbols.length}${truncated ? ` of ${result.symbols.length}` : ""})`
+      : `LSP symbol search ${result.status}: ${result.error ?? "no details"}`
+  const symbolsText =
+    symbols.length === 0
+      ? "symbols: none"
+      : `symbols:\n${symbols.map(formatCodeAgentSymbolLine).join("\n")}`
+
+  return createCodeAgentTextOutput([statusText, symbolsText].join("\n\n"), {
+    ...(result.error ? { error: result.error } : {}),
+    limit,
+    query,
+    rootPath: result.rootPath,
+    status: result.status,
+    symbols,
+    totalMatches: result.symbols.length,
+    truncated
+  })
 }
 
 const formatCodeAgentGrepPath = ({
@@ -3459,14 +3244,14 @@ const formatCodeAgentGrepPath = ({
 
 const readCodeAgentGrepContextLines = async ({
   abortSignal,
-  env,
-  matchPath
+  matchPath,
+  operations
 }: {
   abortSignal?: AbortSignal
-  env: ReturnType<typeof createAgentExecutionEnv>
   matchPath: string
+  operations: AgentWorkspaceOperations
 }): Promise<string[] | null> => {
-  const fileResult = await env.fileSystem.readTextFile(matchPath, abortSignal)
+  const fileResult = await operations.readTextFile(matchPath, abortSignal)
 
   if (!fileResult.ok) {
     return null
@@ -3481,17 +3266,17 @@ const readCodeAgentGrepContextLines = async ({
 const formatCodeAgentGrepMatch = async ({
   abortSignal,
   context,
-  env,
   isSearchDirectory,
   match,
+  operations,
   projectPath,
   resolvedSearchPath
 }: {
   abortSignal?: AbortSignal
   context: number
-  env: ReturnType<typeof createAgentExecutionEnv>
   isSearchDirectory: boolean
   match: AgentRipgrepMatch
+  operations: AgentWorkspaceOperations
   projectPath: string
   resolvedSearchPath: string
 }): Promise<string[]> => {
@@ -3508,8 +3293,8 @@ const formatCodeAgentGrepMatch = async ({
 
   const fileLines = await readCodeAgentGrepContextLines({
     abortSignal,
-    env,
-    matchPath: match.path
+    matchPath: match.path,
+    operations
   })
 
   if (!fileLines) {
@@ -3554,21 +3339,24 @@ const executeCodeAgentGrep = async (
     assertNonSecretToolPath(requestedPath)
   }
 
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
-  const searchInfo = await env.fileSystem.fileInfo(searchPath, abortSignal)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace
+  )
+  const searchInfo = await operations.fileStat(searchPath, abortSignal)
 
   if (!searchInfo.ok) {
     throw new Error(getToolFileErrorMessage(searchInfo.error))
   }
 
-  const resolvedSearchPath = env.resolveCwd(searchPath)
+  const resolvedSearchPath = await getToolAbsolutePath(
+    operations,
+    searchPath,
+    abortSignal
+  )
   const isSearchDirectory = searchInfo.value.kind === "folder"
-  const stdout = await runRipgrepJson({
+  const searchResult = await operations.searchContent({
     abortSignal,
     args: [
       "--json",
@@ -3591,23 +3379,26 @@ const executeCodeAgentGrep = async (
       pattern,
       searchPath
     ],
-    projectPath,
     requestedCwd: "",
-    sandboxSettings,
-    workspace
+    timeoutMs: DEFAULT_TOOL_COMMAND_TIMEOUT_MS
   })
+
+  if (!searchResult.ok) {
+    throw new Error(getCommandErrorPreview(searchResult.error))
+  }
+
   const { matches, matchLimitReached } = listRipgrepMatches({
     limit,
-    stdout
+    stdout: searchResult.value
   })
   const lineGroups = await Promise.all(
     matches.map((match) =>
       formatCodeAgentGrepMatch({
         abortSignal,
         context: context ?? 0,
-        env,
         isSearchDirectory,
         match,
+        operations,
         projectPath,
         resolvedSearchPath
       })
@@ -3674,20 +3465,23 @@ const executeCodeAgentFind = async (
     assertNonSecretToolPath(requestedPath)
   }
 
-  const env =
-    workspace?.executionEnv ??
-    createAgentExecutionEnv({
-      projectPath,
-      sandboxSettings
-    })
   const searchPath = requestedPath || "."
-  const searchInfo = await env.fileSystem.fileInfo(searchPath, abortSignal)
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace
+  )
+  const searchInfo = await operations.fileStat(searchPath, abortSignal)
 
   if (!searchInfo.ok) {
     throw new Error(getToolFileErrorMessage(searchInfo.error))
   }
 
-  const resolvedSearchPath = env.resolveCwd(searchPath)
+  const resolvedSearchPath = await getToolAbsolutePath(
+    operations,
+    searchPath,
+    abortSignal
+  )
   const fdArgs: string[] = [
     "--glob",
     "--color=never",
@@ -3710,15 +3504,18 @@ const executeCodeAgentFind = async (
     }
   }
 
-  const stdout = await runFdFind({
+  const findResult = await operations.findFiles({
     abortSignal,
     args: [...fdArgs, "--", effectivePattern, resolvedSearchPath],
-    projectPath,
     requestedCwd: "",
-    sandboxSettings,
-    workspace
+    timeoutMs: DEFAULT_TOOL_COMMAND_TIMEOUT_MS
   })
-  const matchingPaths = stdout
+
+  if (!findResult.ok) {
+    throw new Error(getCommandErrorPreview(findResult.error))
+  }
+
+  const matchingPaths = findResult.value
     .split(/\r?\n/u)
     .map((line) =>
       getCodeAgentFindRelativePath({
@@ -3743,7 +3540,8 @@ const executeCodeAgentFind = async (
 
 const executeCodeAgentLs = async (
   input: unknown,
-  projectPath: string
+  projectPath: string,
+  workspace?: AgentWorkspace
 ): Promise<CodeAgentTextOutput> => {
   const { limit, path } = CodeAgentLsInputSchema.parse(input)
   const result = await executeListDirectory(
@@ -3751,7 +3549,8 @@ const executeCodeAgentLs = async (
       limit,
       path: path ?? ""
     },
-    projectPath
+    projectPath,
+    workspace
   )
   const entries = result.entries
     .toSorted((first, second) =>
@@ -3767,67 +3566,52 @@ const executeCodeAgentLs = async (
 
 const executeWebSearch = async (
   input: unknown,
-  abortSignal?: AbortSignal
+  projectPath: string,
+  abortSignal?: AbortSignal,
+  sandboxSettings?: AgentSettings["sandbox"],
+  workspace?: AgentWorkspace
 ): Promise<AgentWebSearchOutput> => {
   const { maxResults, query } = WebSearchInputSchema.parse(input)
-  const searchUrl = buildDuckDuckGoSearchUrl(query)
-  const response = await fetch(searchUrl, {
-    headers: {
-      accept: "application/json",
-      "user-agent": "Etyon Agent Web Search"
-    },
-    signal: abortSignal
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace
+  )
+  const result = await operations.webSearch(query, {
+    abortSignal,
+    maxResults
   })
 
-  if (!response.ok) {
-    throw new Error(`webSearch request failed with HTTP ${response.status}.`)
+  if (!result.ok) {
+    throw new Error(getCommandErrorPreview(result.error))
   }
 
-  const payload = (await response.json()) as unknown
-  const { results, truncated } = getDuckDuckGoWebSearchResults(
-    payload,
-    maxResults
-  )
-
-  return {
-    query,
-    results,
-    truncated
-  }
+  return result.value
 }
 
 const executeWebExtract = async (
   input: unknown,
-  abortSignal?: AbortSignal
+  projectPath: string,
+  abortSignal?: AbortSignal,
+  sandboxSettings?: AgentSettings["sandbox"],
+  workspace?: AgentWorkspace
 ): Promise<AgentWebExtractOutput> => {
   const { maxChars, url } = WebExtractInputSchema.parse(input)
-  const response = await fetch(url, {
-    headers: {
-      accept: "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.1",
-      "user-agent": "Etyon Agent Web Extract"
-    },
-    signal: abortSignal
+  const operations = getToolWorkspaceOperations(
+    projectPath,
+    sandboxSettings,
+    workspace
+  )
+  const result = await operations.webExtract(url, {
+    abortSignal,
+    maxChars
   })
 
-  if (!response.ok) {
-    throw new Error(`webExtract request failed with HTTP ${response.status}.`)
+  if (!result.ok) {
+    throw new Error(getCommandErrorPreview(result.error))
   }
 
-  const contentType = response.headers.get("content-type") ?? ""
-  const rawContent = await response.text()
-  const isHtml = isLikelyHtmlContent(contentType, rawContent)
-  const content = isHtml
-    ? extractHtmlText(rawContent)
-    : normalizeWebExtractText(rawContent)
-  const truncated = content.length > maxChars
-
-  return {
-    content: content.slice(0, maxChars),
-    contentType,
-    title: isHtml ? extractHtmlTitle(rawContent) : null,
-    truncated,
-    url
-  }
+  return result.value
 }
 
 const assertAgentToolExecutionAllowed = ({
@@ -3924,18 +3708,30 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
-  delete: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentDelete(input, projectPath),
+  delete: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentDelete(input, projectPath, workspace),
   edit: async ({
     input,
     projectPath,
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentEdit(input, projectPath, workspace),
-  editFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeEditFile(input, projectPath),
-  fileInfo: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeFileInfo(input, projectPath),
+  editFile: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeEditFile(input, projectPath, workspace),
+  fileInfo: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeFileInfo(input, projectPath, workspace),
   find: async ({
     abortSignal,
     input,
@@ -3950,10 +3746,18 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
-  findFiles: ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    executeFindFiles(input, projectPath),
-  gitDiff: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeGitDiff(input, projectPath),
+  findFiles: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeFindFiles(input, projectPath, workspace),
+  gitDiff: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeGitDiff(input, projectPath, workspace),
   grep: async ({
     abortSignal,
     input,
@@ -3975,24 +3779,58 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentInspect(input, projectPath, settings, workspace),
+  symbolSearch: async ({
+    input,
+    projectPath,
+    settings,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentSymbolSearch(input, projectPath, settings, workspace),
+  symbols: async ({
+    input,
+    projectPath,
+    settings,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentSymbols(input, projectPath, settings, workspace),
   listDirectory: async ({
     input,
-    projectPath
+    projectPath,
+    workspace
   }: ExecuteAgentToolHandlerOptions) =>
-    await executeListDirectory(input, projectPath),
-  listProjectTree: ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    executeListProjectTree(input, projectPath),
-  ls: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentLs(input, projectPath),
+    await executeListDirectory(input, projectPath, workspace),
+  listProjectTree: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeListProjectTree(input, projectPath, workspace),
+  ls: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentLs(input, projectPath, workspace),
   memorySearch: async ({
     db,
     input,
     memorySettings,
-    projectPath
+    projectPath,
+    workspace
   }: ExecuteAgentToolHandlerOptions) =>
-    await executeMemorySearch(db, input, memorySettings, projectPath),
-  mkdir: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentMkdir(input, projectPath),
+    await executeMemorySearch(
+      db,
+      input,
+      memorySettings,
+      projectPath,
+      workspace
+    ),
+  mkdir: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentMkdir(input, projectPath, workspace),
   processOutput: async ({
     chatSessionId,
     db,
@@ -4000,10 +3838,18 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentProcessOutput(input, chatSessionId, db, workspace),
-  read: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentRead(input, projectPath),
-  readFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeReadFile(input, projectPath),
+  read: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentRead(input, projectPath, workspace),
+  readFile: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeReadFile(input, projectPath, workspace),
   requestAccess: ({ input }: ExecuteAgentToolHandlerOptions) =>
     executeRequestAccess(input),
   rtkCommand: async ({
@@ -4054,8 +3900,12 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentSmartEdit(input, projectPath, workspace),
-  stat: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeCodeAgentStat(input, projectPath),
+  stat: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentStat(input, projectPath, workspace),
   stopProcess: async ({
     chatSessionId,
     db,
@@ -4063,18 +3913,46 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentStopProcess(input, chatSessionId, db, workspace),
-  webExtract: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
-    await executeWebExtract(input, abortSignal),
-  webSearch: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
-    await executeWebSearch(input, abortSignal),
+  webExtract: async ({
+    abortSignal,
+    input,
+    projectPath,
+    settings,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeWebExtract(
+      input,
+      projectPath,
+      abortSignal,
+      settings?.sandbox,
+      workspace
+    ),
+  webSearch: async ({
+    abortSignal,
+    input,
+    projectPath,
+    settings,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeWebSearch(
+      input,
+      projectPath,
+      abortSignal,
+      settings?.sandbox,
+      workspace
+    ),
   write: async ({
     input,
     projectPath,
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentWrite(input, projectPath, workspace),
-  writeFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
-    await executeWriteFile(input, projectPath)
+  writeFile: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeWriteFile(input, projectPath, workspace)
 } as const satisfies Record<ExecutableAgentToolName, ExecuteAgentToolHandler>
 
 export const executeAgentTool = async ({
@@ -4214,8 +4092,16 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     inputSchema: CodeAgentGrepInputSchema
   },
   inspect: {
-    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.inspect.etyonName}. Inspect a source position with sandboxed LSP hover, definition, implementation, references, and current-line diagnostics.`,
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.inspect.etyonName}. Inspect a source position with sandboxed LSP hover, definition, implementation, references, call hierarchy, and current-line diagnostics.`,
     inputSchema: CodeAgentInspectInputSchema
+  },
+  symbolSearch: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.symbolSearch.etyonName}. Search workspace symbols with a sandboxed LSP server.`,
+    inputSchema: CodeAgentSymbolSearchInputSchema
+  },
+  symbols: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.symbols.etyonName}. List document symbols with a sandboxed LSP server.`,
+    inputSchema: CodeAgentSymbolsInputSchema
   },
   listDirectory: {
     description:
@@ -4278,13 +4164,11 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     inputSchema: FileInfoInputSchema
   },
   webExtract: {
-    description:
-      "Fetch a public web page and extract bounded readable text. This requires approval because the URL leaves the local workspace.",
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.webExtract.etyonName}. Fetch a public web page and extract bounded readable text. This requires approval because the URL leaves the local workspace.`,
     inputSchema: WebExtractInputSchema
   },
   webSearch: {
-    description:
-      "Search the public web for current external information. This requires approval because the query leaves the local workspace.",
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.webSearch.etyonName}. Search the public web for current external information. This requires approval because the query leaves the local workspace.`,
     inputSchema: WebSearchInputSchema
   },
   write: {
@@ -4625,8 +4509,7 @@ export const buildAgentTools = ({
   })
   const allowedToolNames = compileAgentToolNames({
     allowedToolNames: profile.toolPolicy.allowedToolNames,
-    restrictToSafeTools: !includeApprovalTools,
-    skillCapabilities
+    restrictToSafeTools: !includeApprovalTools
   })
   const supplementalToolNames = getSkillCapabilitySupplementalToolNames({
     includeApprovalTools,
@@ -4645,7 +4528,7 @@ export const buildAgentTools = ({
       continue
     }
 
-    if (toolName === "inspect" && !canExposeInspectTool(settings)) {
+    if (LSP_AGENT_TOOL_NAMES.has(toolName) && !canExposeLspTool(settings)) {
       continue
     }
 

@@ -22,6 +22,7 @@
       "queue": "Queue message",
       "queueEdit": "Edit queued message",
       "queueFollowUp": "Queue follow-up",
+      "queueNextTurn": "Queue for next request",
       "queueRemove": "Remove queued message",
       "queueReorder": "Reorder queued message",
       "queueSteer": "Steer current run",

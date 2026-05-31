@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import fsSync from "node:fs"
 import fs from "node:fs/promises"
 import os from "node:os"
@@ -18,7 +19,7 @@ export interface WorkspaceSandboxCommandInput {
 }
 
 export interface WorkspaceSandboxError {
-  code: "unavailable" | "unsupported"
+  code: "cwd-outside-project" | "unavailable" | "unsupported"
   message: string
 }
 
@@ -106,6 +107,21 @@ const findExecutable = (name: string): string | undefined => {
 
 const isSecretEnvName = (name: string): boolean =>
   SECRET_ENV_VARIABLES.has(name) || SECRET_ENV_PATTERN.test(name)
+
+const isPathInsideProject = ({
+  candidatePath,
+  projectPath
+}: {
+  candidatePath: string
+  projectPath: string
+}): boolean => {
+  const relativePath = path.relative(projectPath, candidatePath)
+
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  )
+}
 
 export const sanitizeWorkspaceSandboxEnv = (
   env: NodeJS.ProcessEnv
@@ -239,12 +255,26 @@ export const createWorkspaceSandbox = ({
       })
     }
 
+    const resolvedCwd = path.resolve(input.cwd)
+
+    if (
+      !isPathInsideProject({
+        candidatePath: resolvedCwd,
+        projectPath: normalizedProjectPath
+      })
+    ) {
+      return createSandboxError({
+        code: "cwd-outside-project",
+        message: `Sandbox cwd must stay inside project: ${input.cwd}`
+      })
+    }
+
     const env = sanitizeWorkspaceSandboxEnv(input.env)
 
     if (support.engine === "macos-seatbelt") {
       const profilePath = path.join(
         os.tmpdir(),
-        `etyon-agent-sandbox-${process.pid}-${Date.now()}.sb`
+        `etyon-agent-sandbox-${process.pid}-${randomUUID()}.sb`
       )
       const profile = createMacosSeatbeltProfile({
         allowNetwork: settings?.allowNetwork ?? false,
@@ -260,7 +290,7 @@ export const createWorkspaceSandbox = ({
           await fs.rm(profilePath, { force: true })
         },
         command: sandboxExecPath ?? "sandbox-exec",
-        cwd: input.cwd,
+        cwd: resolvedCwd,
         env,
         sandboxed: true
       })
@@ -280,14 +310,14 @@ export const createWorkspaceSandbox = ({
           "--tmpfs",
           "/tmp",
           "--chdir",
-          input.cwd,
+          resolvedCwd,
           DEFAULT_SHELL_PATH,
           "-fc",
           input.command
         ],
         cleanup: () => Promise.resolve(),
         command: bwrapPath ?? "bwrap",
-        cwd: input.cwd,
+        cwd: resolvedCwd,
         env,
         sandboxed: true
       })

@@ -3,17 +3,20 @@ import fs from "node:fs"
 import path from "node:path"
 
 import { AppSettingsSchema } from "@etyon/rpc"
+import type { MemoryEntry } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 import * as z from "zod"
 
 import { createAgentExtensionRunner } from "@/main/agents/agent-extensions"
+import { createAgentWorkspaceOperations } from "@/main/agents/agent-workspace"
 import type {
   AgentWorkspace,
   AgentWorkspaceEvent
 } from "@/main/agents/agent-workspace"
 import {
   CODE_AGENT_LSP_TOOL_ALIASES,
+  CODE_AGENT_NETWORK_TOOL_ALIASES,
   CODE_AGENT_TOOL_ALIASES,
   ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES
 } from "@/main/agents/code-agent-tool-aliases"
@@ -106,14 +109,16 @@ const createFakeSandboxedWorkspace = ({
     projectPath: testProjectPath,
     sandbox
   })
+  const eventSink = (event: AgentWorkspaceEvent): void => {
+    events.push(event)
+  }
 
   return {
-    eventSink: (event) => {
-      events.push(event)
-    },
+    eventSink,
     executionEnv,
     fileSystem: executionEnv.fileSystem,
     lsp: null,
+    operations: createAgentWorkspaceOperations(executionEnv, eventSink),
     projectPath: executionEnv.projectPath,
     sandbox
   }
@@ -157,6 +162,7 @@ const createFakeWorkspaceCommandOutput = ({
     executionEnv,
     fileSystem: executionEnv.fileSystem,
     lsp: null,
+    operations: createAgentWorkspaceOperations(executionEnv),
     projectPath: executionEnv.projectPath,
     sandbox
   }
@@ -178,9 +184,72 @@ const createFakeLspManager = (): AgentLspManager => ({
       path: filePath,
       status: "success"
     }),
+  documentSymbols: ({ path: filePath }) =>
+    Promise.resolve({
+      path: filePath,
+      status: "success",
+      symbols: [
+        {
+          column: 1,
+          detail: "() => number",
+          endColumn: 12,
+          endLine: 1,
+          kind: "function",
+          line: 1,
+          name: "makeValue",
+          path: filePath
+        },
+        {
+          column: 7,
+          endColumn: 12,
+          endLine: 2,
+          kind: "variable",
+          line: 2,
+          name: "result",
+          path: filePath
+        }
+      ]
+    }),
+  workspaceSymbols: ({ query }) =>
+    Promise.resolve({
+      query,
+      rootPath: ".",
+      status: "success",
+      symbols: [
+        {
+          column: 4,
+          detail: "(input: number) => number",
+          endColumn: 13,
+          endLine: 5,
+          kind: "function",
+          line: 5,
+          name: "makeValue",
+          path: "src/symbol-target.ts"
+        }
+      ]
+    }),
   hasClients: () => true,
   inspect: ({ line, path: filePath }) =>
     Promise.resolve({
+      calls: {
+        incoming: [
+          {
+            column: 14,
+            kind: "function",
+            line: 2,
+            name: "callValue",
+            path: "src/caller.ts",
+            ranges: [
+              {
+                column: 20,
+                line: 2,
+                path: "src/caller.ts"
+              }
+            ]
+          }
+        ],
+        outgoing: []
+      },
       column: 1,
       definition: [],
       diagnostics: [],
@@ -221,6 +290,23 @@ const createFakeLspManager = (): AgentLspManager => ({
       status: "success"
     })
 })
+
+const createFakeLspWorkspace = (events: AgentWorkspaceEvent[] = []) => {
+  const workspace = createFakeSandboxedWorkspace({
+    events
+  })
+  const lsp = createFakeLspManager()
+
+  return {
+    ...workspace,
+    lsp,
+    operations: createAgentWorkspaceOperations(
+      workspace.executionEnv,
+      workspace.eventSink,
+      lsp
+    )
+  }
+}
 
 const getCodeAgentTextContent = (
   result: Awaited<ReturnType<typeof executeAgentTool>>
@@ -288,7 +374,12 @@ describe("agent tool registry", () => {
       "smartEdit",
       "write"
     ])
-    expect(CODE_AGENT_LSP_TOOL_ALIASES).toEqual(["inspect"])
+    expect(CODE_AGENT_LSP_TOOL_ALIASES).toEqual([
+      "inspect",
+      "symbolSearch",
+      "symbols"
+    ])
+    expect(CODE_AGENT_NETWORK_TOOL_ALIASES).toEqual(["webExtract", "webSearch"])
     expect(ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES).toEqual({
       bash: {
         etyonName: "execute_command",
@@ -338,6 +429,22 @@ describe("agent tool registry", () => {
         etyonName: "file_stat",
         etyonWorkspaceTool: "etyon_workspace_file_stat"
       },
+      symbolSearch: {
+        etyonName: "lsp_workspace_symbols",
+        etyonWorkspaceTool: "etyon_workspace_lsp_workspace_symbols"
+      },
+      symbols: {
+        etyonName: "lsp_symbols",
+        etyonWorkspaceTool: "etyon_workspace_lsp_symbols"
+      },
+      webExtract: {
+        etyonName: "web_extract",
+        etyonWorkspaceTool: "etyon_workspace_web_extract"
+      },
+      webSearch: {
+        etyonName: "web_search",
+        etyonWorkspaceTool: "etyon_workspace_web_search"
+      },
       stopProcess: {
         etyonName: "stop_process",
         etyonWorkspaceTool: "etyon_workspace_stop_process"
@@ -373,7 +480,7 @@ describe("agent tool registry", () => {
     expect(tools).not.toHaveProperty("write")
   })
 
-  it("exposes inspect only when both LSP and sandbox are enabled", () => {
+  it("exposes LSP tools only when both LSP and sandbox are enabled", () => {
     const lspOnlySettings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "explore",
@@ -414,9 +521,33 @@ describe("agent tool registry", () => {
     expect(
       buildAgentTools({
         projectPath: testProjectPath,
+        settings: lspOnlySettings
+      })
+    ).not.toHaveProperty("symbolSearch")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: lspOnlySettings
+      })
+    ).not.toHaveProperty("symbols")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
         settings: sandboxOnlySettings
       })
     ).not.toHaveProperty("inspect")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: sandboxOnlySettings
+      })
+    ).not.toHaveProperty("symbolSearch")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: sandboxOnlySettings
+      })
+    ).not.toHaveProperty("symbols")
     expect(
       Object.keys(
         buildAgentTools({
@@ -424,10 +555,19 @@ describe("agent tool registry", () => {
           settings: sandboxedLspSettings
         })
       ).toSorted()
-    ).toEqual(["find", "grep", "inspect", "ls", "read", "stat"])
+    ).toEqual([
+      "find",
+      "grep",
+      "inspect",
+      "ls",
+      "read",
+      "stat",
+      "symbolSearch",
+      "symbols"
+    ])
   })
 
-  it("narrows profile tools with selected skill capabilities", () => {
+  it("keeps profile tools when selected skills declare capabilities", () => {
     const settings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
@@ -441,15 +581,24 @@ describe("agent tool registry", () => {
     })
 
     expect(Object.keys(tools).toSorted()).toEqual([
+      "bash",
       "delete",
       "edit",
+      "find",
+      "grep",
+      "ls",
       "mkdir",
+      "processOutput",
+      "read",
+      "requestAccess",
       "smartEdit",
+      "stat",
+      "stopProcess",
       "write"
     ])
   })
 
-  it("exposes web tools only for selected network-capable skills", () => {
+  it("adds web tools for selected network-capable skills", () => {
     const settings = AppSettingsSchema.parse({
       agents: {
         enabled: true
@@ -475,8 +624,18 @@ describe("agent tool registry", () => {
           settings,
           skillCapabilities: ["network"]
         })
-      )
-    ).toEqual(["webExtract", "webSearch"])
+      ).toSorted()
+    ).toEqual(["find", "grep", "ls", "read", "stat", "webExtract", "webSearch"])
+    expect(
+      Object.keys(
+        buildAgentTools({
+          includeApprovalTools: false,
+          projectPath: testProjectPath,
+          settings,
+          skillCapabilities: ["network"]
+        })
+      ).toSorted()
+    ).toEqual(["find", "grep", "ls", "read", "stat"])
     expect(
       buildAgentTools({
         includeApprovalTools: false,
@@ -581,6 +740,98 @@ describe("agent tool registry", () => {
     })
 
     expect(tools).not.toHaveProperty("memorySearch")
+  })
+
+  it("routes memorySearch through the active workspace operations", async () => {
+    const appSettings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      },
+      memory: {
+        autoRetrieve: true,
+        enabled: true,
+        maxRetrievedMemories: 2
+      }
+    })
+    const workspace = createFakeSandboxedWorkspace({
+      events: []
+    })
+    let memorySearchOptions:
+      | Parameters<AgentWorkspace["operations"]["memorySearch"]>[0]
+      | undefined
+    const now = new Date().toISOString()
+    const entries: MemoryEntry[] = [
+      {
+        accessCount: 0,
+        archivedAt: null,
+        content: "Alpha memory belongs here.",
+        createdAt: now,
+        id: "memory-1",
+        kind: "semantic",
+        lastAccessedAt: null,
+        projectPath: testProjectPath,
+        scope: "project",
+        sessionId: null,
+        source: "chat-session",
+        sourceId: "source-1",
+        updatedAt: now
+      },
+      {
+        accessCount: 0,
+        archivedAt: null,
+        content: "Second alpha memory.",
+        createdAt: now,
+        id: "memory-2",
+        kind: "semantic",
+        lastAccessedAt: null,
+        projectPath: testProjectPath,
+        scope: "project",
+        sessionId: null,
+        source: "chat-session",
+        sourceId: "source-2",
+        updatedAt: now
+      }
+    ]
+    const routedWorkspace: AgentWorkspace = {
+      ...workspace,
+      operations: {
+        ...workspace.operations,
+        memorySearch: (options) => {
+          memorySearchOptions = options
+
+          return Promise.resolve(entries)
+        }
+      }
+    }
+
+    const result = await executeAgentTool({
+      db: {} as AppDatabase,
+      input: {
+        limit: 1,
+        query: "Alpha"
+      },
+      memorySettings: appSettings.memory,
+      name: "memorySearch",
+      projectPath: testProjectPath,
+      workspace: routedWorkspace
+    })
+
+    if (!("entries" in result)) {
+      throw new Error("Expected memorySearch output.")
+    }
+
+    expect(memorySearchOptions).toMatchObject({
+      maxResults: 2,
+      query: "Alpha",
+      settings: appSettings.memory
+    })
+    expect(result.entries).toEqual([
+      expect.objectContaining({
+        content: "Alpha memory belongs here.",
+        id: "memory-1"
+      })
+    ])
+    expect(result.truncated).toBe(true)
   })
 
   it("exposes permissioned write and check tools for the coder profile", () => {
@@ -789,7 +1040,6 @@ describe("agent tool registry", () => {
   it("appends LSP diagnostics after code-agent edit when LSP is active", async () => {
     writeProjectFile("src/edit-with-diagnostics.ts", "export const value = 1\n")
 
-    const events: AgentWorkspaceEvent[] = []
     const settings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
@@ -802,12 +1052,7 @@ describe("agent tool registry", () => {
         }
       }
     }).agents
-    const workspace = {
-      ...createFakeSandboxedWorkspace({
-        events
-      }),
-      lsp: createFakeLspManager()
-    }
+    const workspace = createFakeLspWorkspace()
     const result = await executeAgentTool({
       approvalContext: createApprovedToolContext(),
       input: {
@@ -844,6 +1089,195 @@ describe("agent tool registry", () => {
         status: "success"
       }
     })
+  })
+
+  it("rejects code-agent edit when the file changes after it is read", async () => {
+    const relativePath = "src/edit-stale.ts"
+    const absolutePath = path.join(testProjectPath, relativePath)
+
+    writeProjectFile(relativePath, "export const value = 1\n")
+
+    const workspace = createFakeSandboxedWorkspace({
+      events: []
+    })
+    const { writeFile } = workspace.operations
+    const operations = {
+      ...workspace.operations,
+      writeFile: async (
+        requestedPath: string,
+        content: string | Uint8Array,
+        options?: Parameters<typeof writeFile>[2]
+      ) => {
+        fs.writeFileSync(absolutePath, "export const value = 3\n")
+        fs.utimesSync(
+          absolutePath,
+          new Date(Date.now() + 2000),
+          new Date(Date.now() + 2000)
+        )
+
+        return await writeFile(requestedPath, content, options)
+      }
+    }
+
+    await expect(
+      executeAgentTool({
+        approvalContext: createApprovedToolContext("edit-stale-call-1"),
+        input: {
+          edits: [
+            {
+              newText: "export const value = 2",
+              oldText: "export const value = 1"
+            }
+          ],
+          path: relativePath
+        },
+        name: "edit",
+        projectPath: testProjectPath,
+        workspace: {
+          ...workspace,
+          operations
+        }
+      })
+    ).rejects.toThrow("changed since it was read")
+    expect(fs.readFileSync(absolutePath, "utf-8")).toBe(
+      "export const value = 3\n"
+    )
+  })
+
+  it("executes read as a paged code-agent workspace alias", async () => {
+    writeProjectFile(
+      "src/read-alias.ts",
+      ["one", "two", "three", "four", ""].join("\n")
+    )
+
+    const result = await executeAgentTool({
+      input: {
+        limit: 2,
+        offset: 2,
+        path: "src/read-alias.ts"
+      },
+      name: "read",
+      projectPath: testProjectPath
+    })
+
+    expect(getCodeAgentTextContent(result)).toBe(
+      "two\nthree\n\n[1 more lines in file. Use offset=4 to continue.]"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      lineCount: 4,
+      path: "src/read-alias.ts",
+      truncated: false
+    })
+  })
+
+  it("executes write as an approval-gated code-agent workspace alias", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = createFakeLspWorkspace()
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        content: "export const generated = 'wrong'\n",
+        path: "src/generated/write-alias.ts"
+      },
+      name: "write",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(
+      fs.readFileSync(
+        path.join(testProjectPath, "src/generated/write-alias.ts"),
+        "utf-8"
+      )
+    ).toBe("export const generated = 'wrong'\n")
+    expect(getCodeAgentTextContent(result)).toContain(
+      "Successfully wrote 33 bytes to src/generated/write-alias.ts"
+    )
+    expect(getCodeAgentTextContent(result)).toContain(
+      "LSP diagnostics:\n- error 1:7 Type mismatch"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      diagnostics: {
+        path: "src/generated/write-alias.ts",
+        status: "success"
+      },
+      path: "src/generated/write-alias.ts"
+    })
+  })
+
+  it("rejects code-agent write when overwriting a file that was not read first", async () => {
+    const targetPath = path.join(testProjectPath, "src/write-unread.ts")
+
+    writeProjectFile("src/write-unread.ts", "export const value = 1\n")
+
+    const workspace = createFakeSandboxedWorkspace({
+      events: []
+    })
+
+    await expect(
+      executeAgentTool({
+        approvalContext: createApprovedToolContext("write-unread-call-1"),
+        input: {
+          content: "export const value = 2\n",
+          path: "src/write-unread.ts"
+        },
+        name: "write",
+        projectPath: testProjectPath,
+        workspace
+      })
+    ).rejects.toThrow("must be read before overwriting")
+    expect(fs.readFileSync(targetPath, "utf-8")).toBe(
+      "export const value = 1\n"
+    )
+  })
+
+  it("allows code-agent write to overwrite a file after reading its current snapshot", async () => {
+    const targetPath = path.join(testProjectPath, "src/write-after-read.ts")
+
+    writeProjectFile("src/write-after-read.ts", "export const value = 1\n")
+
+    const workspace = createFakeSandboxedWorkspace({
+      events: []
+    })
+
+    await executeAgentTool({
+      input: {
+        path: "src/write-after-read.ts"
+      },
+      name: "read",
+      projectPath: testProjectPath,
+      workspace
+    })
+
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext("write-after-read-call-1"),
+      input: {
+        content: "export const value = 2\n",
+        path: "src/write-after-read.ts"
+      },
+      name: "write",
+      projectPath: testProjectPath,
+      workspace
+    })
+
+    expect(fs.readFileSync(targetPath, "utf-8")).toBe(
+      "export const value = 2\n"
+    )
+    expect(getCodeAgentTextContent(result)).toContain(
+      "Successfully wrote 23 bytes to src/write-after-read.ts"
+    )
   })
 
   it("executes smartEdit with an AST-bounded named declaration replacement", async () => {
@@ -976,12 +1410,7 @@ describe("agent tool registry", () => {
         }
       }
     }).agents
-    const workspace = {
-      ...createFakeSandboxedWorkspace({
-        events: []
-      }),
-      lsp: createFakeLspManager()
-    }
+    const workspace = createFakeLspWorkspace()
     const result = await executeAgentTool({
       input: {
         line: 1,
@@ -997,7 +1426,19 @@ describe("agent tool registry", () => {
     expect(getCodeAgentTextContent(result)).toContain(
       "references:\n- src/reference.ts:2:14"
     )
+    expect(getCodeAgentTextContent(result)).toContain(
+      "incoming calls:\n- callValue function src/caller.ts:2:14 (src/caller.ts:2:20)"
+    )
     expect(getCodeAgentDetails(result)).toMatchObject({
+      calls: {
+        incoming: [
+          {
+            name: "callValue",
+            path: "src/caller.ts"
+          }
+        ],
+        outgoing: []
+      },
       references: [
         {
           column: 14,
@@ -1006,6 +1447,94 @@ describe("agent tool registry", () => {
         }
       ],
       status: "success"
+    })
+  })
+
+  it("returns LSP document symbols from code-agent symbols", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = createFakeLspWorkspace()
+    const result = await executeAgentTool({
+      input: {
+        path: "src/symbol-target.ts",
+        query: "make"
+      },
+      name: "symbols",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(getCodeAgentTextContent(result)).toContain(
+      "symbols:\n- function makeValue () => number src/symbol-target.ts:1:1-1:12"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      status: "success",
+      symbols: [
+        {
+          kind: "function",
+          name: "makeValue",
+          path: "src/symbol-target.ts"
+        }
+      ],
+      totalMatches: 1,
+      truncated: false
+    })
+  })
+
+  it("returns LSP workspace symbols from code-agent symbolSearch", async () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true,
+        lsp: {
+          enabled: true
+        },
+        sandbox: {
+          enabled: true
+        }
+      }
+    }).agents
+    const workspace = createFakeLspWorkspace()
+    const result = await executeAgentTool({
+      input: {
+        query: "make"
+      },
+      name: "symbolSearch",
+      projectPath: testProjectPath,
+      settings,
+      workspace
+    })
+
+    expect(getCodeAgentTextContent(result)).toContain(
+      'LSP symbol search "make" (1)'
+    )
+    expect(getCodeAgentTextContent(result)).toContain(
+      "symbols:\n- function makeValue (input: number) => number src/symbol-target.ts:5:4-5:13"
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      query: "make",
+      rootPath: ".",
+      status: "success",
+      symbols: [
+        {
+          kind: "function",
+          name: "makeValue",
+          path: "src/symbol-target.ts"
+        }
+      ],
+      totalMatches: 1,
+      truncated: false
     })
   })
 
@@ -1408,6 +1937,18 @@ describe("agent tool registry", () => {
           ? grepStdout
           : `${path.join(testProjectPath, "src/sandbox-grep.ts")}\n`
     })
+    const absolutePathCalls: string[] = []
+    const routedWorkspace: AgentWorkspace = {
+      ...workspace,
+      operations: {
+        ...workspace.operations,
+        absolutePath: (requestedPath, signal) => {
+          absolutePathCalls.push(requestedPath)
+
+          return workspace.operations.absolutePath(requestedPath, signal)
+        }
+      }
+    }
     const settings = AppSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
@@ -1425,7 +1966,7 @@ describe("agent tool registry", () => {
       name: "grep",
       projectPath: testProjectPath,
       settings,
-      workspace
+      workspace: routedWorkspace
     })
     const findResult = await executeAgentTool({
       input: {
@@ -1434,7 +1975,7 @@ describe("agent tool registry", () => {
       name: "find",
       projectPath: testProjectPath,
       settings,
-      workspace
+      workspace: routedWorkspace
     })
     const searchResult = await executeAgentTool({
       input: {
@@ -1443,13 +1984,14 @@ describe("agent tool registry", () => {
       name: "searchFiles",
       projectPath: testProjectPath,
       settings,
-      workspace
+      workspace: routedWorkspace
     })
 
     expect(commands).toHaveLength(3)
     expect(commands[0]).toContain("rg ")
     expect(commands[1]).toContain("fd ")
     expect(commands[2]).toContain("rg ")
+    expect(absolutePathCalls).toEqual([".", ".", ""])
     expect(getCodeAgentTextContent(grepResult)).toContain(
       "src/sandbox-grep.ts:1: export const sandboxNeedle = true"
     )
@@ -2518,7 +3060,7 @@ describe("agent tool registry", () => {
       })
     )
     expect(result).toEqual({
-      content: "Etyon & Agents\nEtyon\nLoc",
+      content: "Etyon\nLocal agent & work",
       contentType: "text/html; charset=utf-8",
       title: "Etyon & Agents",
       truncated: true,
@@ -2588,6 +3130,130 @@ describe("agent tool registry", () => {
         recursive: true
       })
     }
+  })
+
+  it("routes gitDiff through the active workspace operations", async () => {
+    const events: AgentWorkspaceEvent[] = []
+    const workspace = createFakeSandboxedWorkspace({
+      events
+    })
+    let gitDiffOptions:
+      | Parameters<AgentWorkspace["operations"]["gitDiff"]>[0]
+      | undefined
+    const routedWorkspace: AgentWorkspace = {
+      ...workspace,
+      operations: {
+        ...workspace.operations,
+        gitDiff: (options) => {
+          gitDiffOptions = options
+
+          return Promise.resolve({
+            fileSnapshots: [],
+            hasPatch: true,
+            patch: "diff --git a/src/one.ts b/src/one.ts\n+changed\n",
+            projectPath: testProjectPath,
+            truncated: false
+          })
+        }
+      }
+    }
+
+    const result = await executeAgentTool({
+      input: {
+        paths: ["src/one.ts"]
+      },
+      name: "gitDiff",
+      projectPath: testProjectPath,
+      workspace: routedWorkspace
+    })
+
+    if (!("patch" in result)) {
+      throw new Error("Expected gitDiff output.")
+    }
+
+    expect(gitDiffOptions).toEqual({
+      excludeSecretPaths: true,
+      paths: ["src/one.ts"]
+    })
+    expect(result.patch).toContain("+changed")
+  })
+
+  it("routes project snapshot tools through the active workspace operations", async () => {
+    const events: AgentWorkspaceEvent[] = []
+    const workspace = createFakeSandboxedWorkspace({
+      events
+    })
+    const snapshotCalls: Parameters<
+      AgentWorkspace["operations"]["listProjectSnapshotFiles"]
+    >[0][] = []
+    const routedWorkspace: AgentWorkspace = {
+      ...workspace,
+      operations: {
+        ...workspace.operations,
+        listProjectSnapshotFiles: (options) => {
+          snapshotCalls.push(options)
+
+          return {
+            files: [
+              {
+                kind: "file",
+                language: "typescript",
+                mtimeMs: 1,
+                path: path.join(testProjectPath, "src/matched.ts"),
+                relativePath: "src/matched.ts",
+                size: 12,
+                snapshotId: "fake-snapshot"
+              }
+            ],
+            snapshotId: "fake-snapshot"
+          }
+        }
+      }
+    }
+
+    const findResult = await executeAgentTool({
+      input: {
+        cwd: "src",
+        limit: 5,
+        query: "matched"
+      },
+      name: "findFiles",
+      projectPath: testProjectPath,
+      workspace: routedWorkspace
+    })
+    const treeResult = await executeAgentTool({
+      input: {
+        limit: 5
+      },
+      name: "listProjectTree",
+      projectPath: testProjectPath,
+      workspace: routedWorkspace
+    })
+
+    if (!("files" in findResult) || !("files" in treeResult)) {
+      throw new Error("Expected project snapshot tool outputs.")
+    }
+
+    expect(snapshotCalls).toEqual([
+      {
+        limit: 5000,
+        query: "matched"
+      },
+      {
+        limit: 5,
+        query: ""
+      }
+    ])
+    expect(findResult.files).toEqual([
+      expect.objectContaining({
+        relativePath: "src/matched.ts"
+      })
+    ])
+    expect(treeResult.files).toEqual([
+      expect.objectContaining({
+        relativePath: "src/matched.ts"
+      })
+    ])
   })
 
   it("denies gitDiff for explicit secret-like paths", async () => {

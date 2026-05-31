@@ -617,18 +617,36 @@ const PromptInputSuggestions = ({
 
 const getQueueLabel = ({
   followUpLabel,
+  nextTurnLabel,
   queue,
   steerLabel
 }: {
   followUpLabel: string
+  nextTurnLabel: string
   queue: AgentSessionQueuedMessageQueue
   steerLabel: string
-}): string => (queue === "follow-up" ? followUpLabel : steerLabel)
+}): string => {
+  if (queue === "follow-up") {
+    return followUpLabel
+  }
+
+  if (queue === "next-turn") {
+    return nextTurnLabel
+  }
+
+  return steerLabel
+}
+
+const getNextQueue = (
+  queue: AgentSessionQueuedMessageQueue
+): AgentSessionQueuedMessageQueue =>
+  queue === "follow-up" ? "steer" : "follow-up"
 
 const QueuedPromptMessageList = ({
   editLabel,
   followUpLabel,
   messages,
+  nextTurnLabel,
   onEdit,
   onRemove,
   onReorder,
@@ -641,6 +659,7 @@ const QueuedPromptMessageList = ({
   editLabel: string
   followUpLabel: string
   messages: AgentSessionQueuedMessage[]
+  nextTurnLabel: string
   onEdit: (message: AgentSessionQueuedMessage) => void
   onRemove?: (id: string) => Promise<void> | void
   onReorder?: (ids: string[]) => Promise<void> | void
@@ -670,17 +689,16 @@ const QueuedPromptMessageList = ({
         values={messages}
       >
         {messages.map((message) => {
-          const nextQueue =
-            message.queue === "follow-up"
-              ? ("steer" as const)
-              : ("follow-up" as const)
+          const nextQueue = getNextQueue(message.queue)
           const queueLabel = getQueueLabel({
             followUpLabel,
+            nextTurnLabel,
             queue: message.queue,
             steerLabel
           })
           const nextQueueLabel = getQueueLabel({
             followUpLabel,
+            nextTurnLabel,
             queue: nextQueue,
             steerLabel
           })
@@ -904,6 +922,7 @@ export const PromptInput = ({
   promptTemplateItems = EMPTY_PROMPT_TEMPLATE_ITEMS,
   queueEditLabel,
   queueFollowUpLabel,
+  queueNextTurnLabel,
   queueRemoveLabel,
   queueReorderLabel,
   queueSteerLabel,
@@ -961,6 +980,7 @@ export const PromptInput = ({
   promptTemplateItems?: PromptTemplate[]
   queueEditLabel: string
   queueFollowUpLabel: string
+  queueNextTurnLabel: string
   queueRemoveLabel: string
   queueReorderLabel: string
   queueSteerLabel: string
@@ -1592,6 +1612,7 @@ export const PromptInput = ({
         editLabel={queueEditLabel}
         followUpLabel={queueFollowUpLabel}
         messages={queuedMessages}
+        nextTurnLabel={queueNextTurnLabel}
         onEdit={handleStartEditQueuedMessage}
         onRemove={onQueuedMessageRemove}
         onReorder={onQueuedMessageReorder}

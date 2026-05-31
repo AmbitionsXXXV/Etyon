@@ -22,6 +22,7 @@
       "queue": "加入队列",
       "queueEdit": "编辑队列消息",
       "queueFollowUp": "作为后续任务",
+      "queueNextTurn": "带入下一次请求",
       "queueRemove": "移除队列消息",
       "queueReorder": "重排队列消息",
       "queueSteer": "转向当前运行",
