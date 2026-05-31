@@ -5,7 +5,9 @@ import path from "node:path"
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { ModelMessage } from "ai"
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
+import * as z from "zod"
 
+import { createAgentExtensionRunner } from "@/main/agents/agent-extensions"
 import type {
   AgentWorkspace,
   AgentWorkspaceEvent
@@ -276,10 +278,14 @@ describe("agent tool registry", () => {
       "grep",
       "find",
       "ls",
+      "stat",
       "bash",
       "processOutput",
       "stopProcess",
+      "mkdir",
+      "delete",
       "edit",
+      "smartEdit",
       "write"
     ])
     expect(CODE_AGENT_LSP_TOOL_ALIASES).toEqual(["inspect"])
@@ -287,6 +293,10 @@ describe("agent tool registry", () => {
       bash: {
         etyonName: "execute_command",
         etyonWorkspaceTool: "etyon_workspace_execute_command"
+      },
+      delete: {
+        etyonName: "delete_file",
+        etyonWorkspaceTool: "etyon_workspace_delete_file"
       },
       edit: {
         etyonName: "string_replace_lsp",
@@ -308,13 +318,25 @@ describe("agent tool registry", () => {
         etyonName: "find_files",
         etyonWorkspaceTool: "etyon_workspace_list_files"
       },
-      read: {
-        etyonName: "view",
-        etyonWorkspaceTool: "etyon_workspace_read_file"
+      mkdir: {
+        etyonName: "mkdir",
+        etyonWorkspaceTool: "etyon_workspace_mkdir"
       },
       processOutput: {
         etyonName: "process_output",
         etyonWorkspaceTool: "etyon_workspace_process_output"
+      },
+      read: {
+        etyonName: "view",
+        etyonWorkspaceTool: "etyon_workspace_read_file"
+      },
+      smartEdit: {
+        etyonName: "ast_smart_edit",
+        etyonWorkspaceTool: "etyon_workspace_ast_smart_edit"
+      },
+      stat: {
+        etyonName: "file_stat",
+        etyonWorkspaceTool: "etyon_workspace_file_stat"
       },
       stopProcess: {
         etyonName: "stop_process",
@@ -342,7 +364,8 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
     ])
     expect(tools).not.toHaveProperty("applyPatch")
     expect(tools).not.toHaveProperty("bash")
@@ -401,7 +424,7 @@ describe("agent tool registry", () => {
           settings: sandboxedLspSettings
         })
       ).toSorted()
-    ).toEqual(["find", "grep", "inspect", "ls", "read"])
+    ).toEqual(["find", "grep", "inspect", "ls", "read", "stat"])
   })
 
   it("narrows profile tools with selected skill capabilities", () => {
@@ -417,7 +440,105 @@ describe("agent tool registry", () => {
       skillCapabilities: ["write-fs"]
     })
 
-    expect(Object.keys(tools).toSorted()).toEqual(["edit", "write"])
+    expect(Object.keys(tools).toSorted()).toEqual([
+      "delete",
+      "edit",
+      "mkdir",
+      "smartEdit",
+      "write"
+    ])
+  })
+
+  it("exposes web tools only for selected network-capable skills", () => {
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      }
+    }).agents
+
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings
+      })
+    ).not.toHaveProperty("webSearch")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings
+      })
+    ).not.toHaveProperty("webExtract")
+    expect(
+      Object.keys(
+        buildAgentTools({
+          projectPath: testProjectPath,
+          settings,
+          skillCapabilities: ["network"]
+        })
+      )
+    ).toEqual(["webExtract", "webSearch"])
+    expect(
+      buildAgentTools({
+        includeApprovalTools: false,
+        projectPath: testProjectPath,
+        settings,
+        skillCapabilities: ["network"]
+      })
+    ).not.toHaveProperty("webSearch")
+    expect(
+      buildAgentTools({
+        includeApprovalTools: false,
+        projectPath: testProjectPath,
+        settings,
+        skillCapabilities: ["network"]
+      })
+    ).not.toHaveProperty("webExtract")
+  })
+
+  it("exposes requestAccess only for profiles that can ask for scoped handoff approval", () => {
+    const generalSettings = AppSettingsSchema.parse({
+      agents: {
+        enabled: true
+      }
+    }).agents
+    const planSettings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "plan",
+        enabled: true
+      }
+    }).agents
+    const coderSettings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: generalSettings
+      })
+    ).not.toHaveProperty("requestAccess")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: planSettings
+      })
+    ).toHaveProperty("requestAccess")
+    expect(
+      buildAgentTools({
+        projectPath: testProjectPath,
+        settings: coderSettings
+      })
+    ).toHaveProperty("requestAccess")
+    expect(
+      buildAgentTools({
+        includeApprovalTools: false,
+        projectPath: testProjectPath,
+        settings: planSettings
+      })
+    ).not.toHaveProperty("requestAccess")
   })
 
   it("keeps read-only profiles aligned to Etyon aliases even when memory retrieval is enabled", () => {
@@ -437,7 +558,8 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
     ])
     expect(tools).not.toHaveProperty("memorySearch")
   })
@@ -475,12 +597,17 @@ describe("agent tool registry", () => {
 
     expect(Object.keys(tools).toSorted()).toEqual([
       "bash",
+      "delete",
       "edit",
       "find",
       "grep",
       "ls",
+      "mkdir",
       "processOutput",
       "read",
+      "requestAccess",
+      "smartEdit",
+      "stat",
       "stopProcess",
       "write"
     ])
@@ -512,9 +639,32 @@ describe("agent tool registry", () => {
       })
     ).toBe(true)
     expect(
+      resolveNeedsApproval(tools.smartEdit?.needsApproval, {
+        path: "src/value.ts",
+        replacement: "export const value = 2",
+        symbol: "value"
+      })
+    ).toBe(true)
+    expect(
+      resolveNeedsApproval(tools.mkdir?.needsApproval, {
+        path: "src/generated"
+      })
+    ).toBe(true)
+    expect(
+      resolveNeedsApproval(tools.delete?.needsApproval, {
+        path: "src/generated.ts"
+      })
+    ).toBe(true)
+    expect(
       resolveNeedsApproval(tools.write?.needsApproval, {
         content: "export {}\n",
         path: "src/value.ts"
+      })
+    ).toBe(true)
+    expect(
+      resolveNeedsApproval(tools.requestAccess?.needsApproval, {
+        reason: "Need approval before delegating implementation.",
+        scope: "current task"
       })
     ).toBe(true)
   })
@@ -696,6 +846,123 @@ describe("agent tool registry", () => {
     })
   })
 
+  it("executes smartEdit with an AST-bounded named declaration replacement", async () => {
+    writeProjectFile(
+      "src/smart-edit-target.ts",
+      [
+        "export const keep = 1",
+        "",
+        "export function makeLabel(value: string) {",
+        `  return \`old \${value}\``,
+        "}",
+        "",
+        "export const tail = true",
+        ""
+      ].join("\n")
+    )
+
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext("smart-edit-call-1"),
+      input: {
+        kind: "function",
+        path: "src/smart-edit-target.ts",
+        replacement: [
+          "export function makeLabel(value: string) {",
+          `  return \`new \${value}\``,
+          "}"
+        ].join("\n"),
+        symbol: "makeLabel"
+      },
+      name: "smartEdit",
+      projectPath: testProjectPath
+    })
+
+    expect(getCodeAgentTextContent(result)).toContain(
+      "Successfully smart-edited function makeLabel in src/smart-edit-target.ts."
+    )
+    expect(getCodeAgentDetails(result)).toMatchObject({
+      kind: "function",
+      path: "src/smart-edit-target.ts",
+      startLine: 3,
+      symbol: "makeLabel"
+    })
+    expect(
+      fs.readFileSync(
+        path.join(testProjectPath, "src/smart-edit-target.ts"),
+        "utf-8"
+      )
+    ).toBe(
+      [
+        "export const keep = 1",
+        "",
+        "export function makeLabel(value: string) {",
+        `  return \`new \${value}\``,
+        "}",
+        "",
+        "export const tail = true",
+        ""
+      ].join("\n")
+    )
+  })
+
+  it("rejects smartEdit when the named declaration is ambiguous", async () => {
+    writeProjectFile(
+      "src/smart-edit-duplicate.ts",
+      [
+        "export function duplicate() {",
+        "  return 1",
+        "}",
+        "export function duplicate() {",
+        "  return 2",
+        "}",
+        ""
+      ].join("\n")
+    )
+
+    await expect(
+      executeAgentTool({
+        approvalContext: createApprovedToolContext("smart-edit-call-2"),
+        input: {
+          path: "src/smart-edit-duplicate.ts",
+          replacement: "export function duplicate() { return 3 }",
+          symbol: "duplicate"
+        },
+        name: "smartEdit",
+        projectPath: testProjectPath
+      })
+    ).rejects.toThrow("Expected exactly one declaration named duplicate")
+  })
+
+  it("executes requestAccess only after approval and returns the approved scope", async () => {
+    const input = {
+      actions: ["delegate to coder", "run targeted checks"],
+      reason: "Need approval before moving from planning to implementation.",
+      scope: "current task"
+    }
+
+    await expect(
+      executeAgentTool({
+        input,
+        name: "requestAccess",
+        projectPath: testProjectPath
+      })
+    ).rejects.toThrow("requestAccess requires approval before execution.")
+
+    await expect(
+      executeAgentTool({
+        approvalContext: createApprovedToolContext("access-call-1"),
+        input,
+        name: "requestAccess",
+        projectPath: testProjectPath
+      })
+    ).resolves.toEqual({
+      actions: ["delegate to coder", "run targeted checks"],
+      approved: true,
+      reason: "Need approval before moving from planning to implementation.",
+      scope: "current task"
+    })
+  })
+
   it("returns LSP references from code-agent inspect", async () => {
     const settings = AppSettingsSchema.parse({
       agents: {
@@ -771,12 +1038,17 @@ describe("agent tool registry", () => {
       "agentPlan",
       "agentReview",
       "bash",
+      "delete",
       "edit",
       "find",
       "grep",
       "ls",
+      "mkdir",
       "processOutput",
       "read",
+      "requestAccess",
+      "smartEdit",
+      "stat",
       "stopProcess",
       "write"
     ])
@@ -1326,7 +1598,8 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
     ])
   })
 
@@ -1350,7 +1623,86 @@ describe("agent tool registry", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
+    ])
+  })
+
+  it("filters extension tools through risk metadata and child approval scope", async () => {
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "tool-registry-extension",
+          register: (context) => {
+            context.registerTool({
+              description: "Safe extension read.",
+              execute: () => "safe",
+              inputSchema: z.object({}),
+              name: "etyonSafeTool",
+              profiles: ["coder"],
+              riskLevel: "safe"
+            })
+            context.registerTool({
+              description: "Default-risk extension action.",
+              execute: () => "default",
+              inputSchema: z.object({}),
+              name: "etyonDefaultRiskTool",
+              profiles: ["coder"]
+            })
+            context.registerTool({
+              description: "Explicit approval extension action.",
+              execute: () => "approval",
+              inputSchema: z.object({}),
+              name: "etyonApprovalTool",
+              profiles: ["coder"],
+              requiresApproval: true,
+              riskLevel: "safe"
+            })
+          }
+        }
+      ]
+    })
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+    const tools = buildAgentTools({
+      extensionRunner,
+      projectPath: testProjectPath,
+      settings
+    })
+    const childTools = buildAgentTools({
+      extensionRunner,
+      includeApprovalTools: false,
+      projectPath: testProjectPath,
+      settings
+    })
+
+    expect(Object.keys(tools)).toEqual(
+      expect.arrayContaining([
+        "etyonApprovalTool",
+        "etyonDefaultRiskTool",
+        "etyonSafeTool"
+      ])
+    )
+    expect(resolveNeedsApproval(tools.etyonSafeTool?.needsApproval, {})).toBe(
+      undefined
+    )
+    expect(
+      resolveNeedsApproval(tools.etyonDefaultRiskTool?.needsApproval, {})
+    ).toBe(true)
+    expect(
+      resolveNeedsApproval(tools.etyonApprovalTool?.needsApproval, {})
+    ).toBe(true)
+    expect(Object.keys(childTools).toSorted()).toEqual([
+      "etyonSafeTool",
+      "find",
+      "grep",
+      "ls",
+      "read",
+      "stat"
     ])
   })
 
@@ -1572,6 +1924,91 @@ describe("agent tool registry", () => {
     fs.rmSync(outsideFilePath, { force: true })
   })
 
+  it("executes stat as a code-agent metadata alias", async () => {
+    writeProjectFile("src/stat-target.ts", "export const statTarget = true\n")
+
+    const result = await executeAgentTool({
+      input: {
+        path: "src/stat-target.ts"
+      },
+      name: "stat",
+      projectPath: testProjectPath
+    })
+
+    if (
+      !("content" in result) ||
+      !Array.isArray(result.content) ||
+      !("details" in result)
+    ) {
+      throw new Error("Expected stat output.")
+    }
+
+    expect(result.content[0]?.text).toContain("src/stat-target.ts: file")
+    expect(result.details).toMatchObject({
+      isSymlink: false,
+      kind: "file",
+      language: "typescript",
+      path: "src/stat-target.ts",
+      size: 31
+    })
+  })
+
+  it("executes mkdir and delete as approval-gated workspace aliases", async () => {
+    const directoryPath = path.join(testProjectPath, "src/generated-dir/nested")
+
+    const mkdirResult = await executeAgentTool({
+      approvalContext: createApprovedToolContext("mkdir-call-1"),
+      input: {
+        path: "src/generated-dir/nested"
+      },
+      name: "mkdir",
+      projectPath: testProjectPath
+    })
+
+    if (
+      !("content" in mkdirResult) ||
+      !Array.isArray(mkdirResult.content) ||
+      !("details" in mkdirResult)
+    ) {
+      throw new Error("Expected mkdir output.")
+    }
+
+    expect(fs.existsSync(directoryPath)).toBe(true)
+    expect(mkdirResult.details).toMatchObject({
+      path: "src/generated-dir/nested",
+      recursive: true
+    })
+
+    writeProjectFile("src/generated-dir/nested/value.ts", "export {}\n")
+
+    const deleteResult = await executeAgentTool({
+      approvalContext: createApprovedToolContext("delete-call-1"),
+      input: {
+        path: "src/generated-dir",
+        recursive: true
+      },
+      name: "delete",
+      projectPath: testProjectPath
+    })
+
+    if (
+      !("content" in deleteResult) ||
+      !Array.isArray(deleteResult.content) ||
+      !("details" in deleteResult)
+    ) {
+      throw new Error("Expected delete output.")
+    }
+
+    expect(fs.existsSync(path.join(testProjectPath, "src/generated-dir"))).toBe(
+      false
+    )
+    expect(deleteResult.details).toMatchObject({
+      kind: "folder",
+      path: "src/generated-dir",
+      recursive: true
+    })
+  })
+
   it("denies readFile for secret-like project files", async () => {
     writeProjectFile(".env.local", "OPENAI_API_KEY=secret\n")
 
@@ -1686,6 +2123,42 @@ describe("agent tool registry", () => {
     expect(
       fs.existsSync(path.join(testProjectPath, "src/direct-bypass.ts"))
     ).toBe(false)
+
+    await expect(
+      executeAgentTool({
+        input: {
+          path: "src/direct-created-dir"
+        },
+        name: "mkdir",
+        projectPath: testProjectPath
+      })
+    ).rejects.toThrow("requires approval")
+    expect(
+      fs.existsSync(path.join(testProjectPath, "src/direct-created-dir"))
+    ).toBe(false)
+
+    writeProjectFile(
+      "src/direct-smart-edit.ts",
+      "export function directSmartEdit() {\n  return 1\n}\n"
+    )
+
+    await expect(
+      executeAgentTool({
+        input: {
+          path: "src/direct-smart-edit.ts",
+          replacement: "export function directSmartEdit() { return 2 }",
+          symbol: "directSmartEdit"
+        },
+        name: "smartEdit",
+        projectPath: testProjectPath
+      })
+    ).rejects.toThrow("requires approval")
+    expect(
+      fs.readFileSync(
+        path.join(testProjectPath, "src/direct-smart-edit.ts"),
+        "utf-8"
+      )
+    ).toBe("export function directSmartEdit() {\n  return 1\n}\n")
   })
 
   it("executes editFile with exact replacements and a diff summary", async () => {
@@ -1991,6 +2464,65 @@ describe("agent tool registry", () => {
         }
       ],
       truncated: true
+    })
+  })
+
+  it("executes webExtract with bounded readable text", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "content-type"
+              ? "text/html; charset=utf-8"
+              : null
+        },
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(`
+            <!doctype html>
+            <html>
+              <head>
+                <title>Etyon &amp; Agents</title>
+                <style>.hidden { display: none; }</style>
+              </head>
+              <body>
+                <h1>Etyon</h1>
+                <script>window.secret = true;</script>
+                <p>Local agent &amp; workspace runtime.</p>
+              </body>
+            </html>
+          `)
+      })
+    )
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const result = await executeAgentTool({
+      approvalContext: createApprovedToolContext(),
+      input: {
+        maxChars: 24,
+        url: "https://example.com/etyon"
+      },
+      name: "webExtract",
+      projectPath: testProjectPath
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/etyon",
+      expect.objectContaining({
+        headers: {
+          accept: "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.1",
+          "user-agent": "Etyon Agent Web Extract"
+        }
+      })
+    )
+    expect(result).toEqual({
+      content: "Etyon & Agents\nEtyon\nLoc",
+      contentType: "text/html; charset=utf-8",
+      title: "Etyon & Agents",
+      truncated: true,
+      url: "https://example.com/etyon"
     })
   })
 

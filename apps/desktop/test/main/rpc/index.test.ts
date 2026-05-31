@@ -1629,7 +1629,7 @@ describe("message-port rpc", () => {
     expect(faux.model.doGenerateCalls).toHaveLength(2)
     expect(
       faux.model.doGenerateCalls[0]?.tools?.map((item) => item.name).toSorted()
-    ).toEqual(["find", "grep", "ls", "read"])
+    ).toEqual(["find", "grep", "ls", "read", "stat"])
     expect(secondProviderPrompt).toContain("providerFlag")
     expect(executed).toMatchObject({
       nodeId: "plan",

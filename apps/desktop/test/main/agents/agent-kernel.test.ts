@@ -117,20 +117,20 @@ describe("agent kernel", () => {
     ])
     expect(plan.nodes).toEqual([
       expect.objectContaining({
-        activeToolNames: ["read", "grep", "find", "ls"],
+        activeToolNames: ["read", "grep", "find", "ls", "stat"],
         id: "plan",
         stage: 0,
         status: "pending",
         toolScope: "read-only"
       }),
       expect.objectContaining({
-        activeToolNames: ["read", "grep", "find", "ls"],
+        activeToolNames: ["read", "grep", "find", "ls", "stat"],
         id: "explore-code",
         parallelGroup: "explore",
         stage: 1
       }),
       expect.objectContaining({
-        activeToolNames: ["read", "grep", "find", "ls"],
+        activeToolNames: ["read", "grep", "find", "ls", "stat"],
         id: "explore-tests",
         parallelGroup: "explore",
         stage: 1
@@ -141,11 +141,16 @@ describe("agent kernel", () => {
           "grep",
           "find",
           "ls",
+          "stat",
           "bash",
           "processOutput",
           "stopProcess",
+          "mkdir",
+          "delete",
           "edit",
+          "smartEdit",
           "write",
+          "requestAccess",
           "agentExplore",
           "agentPlan",
           "agentReview"
@@ -155,12 +160,12 @@ describe("agent kernel", () => {
         toolScope: "approval-gated"
       }),
       expect.objectContaining({
-        activeToolNames: ["read", "grep", "find", "ls"],
+        activeToolNames: ["read", "grep", "find", "ls", "stat"],
         id: "review",
         stage: 3
       }),
       expect.objectContaining({
-        activeToolNames: ["read", "grep", "find", "ls"],
+        activeToolNames: ["read", "grep", "find", "ls", "stat"],
         id: "final",
         stage: 4
       })

@@ -30,7 +30,8 @@ describe("agent extensions", () => {
               }),
               name: "etyonEcho",
               profiles: ["coder"],
-              requiredSkillCapabilities: ["extension.echo"]
+              requiredSkillCapabilities: ["extension.echo"],
+              riskLevel: "safe"
             })
           }
         }
@@ -56,6 +57,233 @@ describe("agent extensions", () => {
       })
     ).toEqual([])
     expect(events).toEqual(["tool_registered"])
+  })
+
+  it("filters extension tools by risk when approval tools are excluded", async () => {
+    const runner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "risk-extension",
+          register: (context: AgentExtensionRegistrationContext) => {
+            context.registerTool({
+              description: "Safe extension tool.",
+              execute: () => "safe",
+              inputSchema: z.object({}),
+              name: "etyonSafeExtension",
+              riskLevel: "safe"
+            })
+            context.registerTool({
+              capabilities: ["network"],
+              description: "External lookup extension tool.",
+              execute: () => "network",
+              inputSchema: z.object({}),
+              name: "etyonNetworkExtension",
+              riskLevel: "high"
+            })
+            context.registerTool({
+              description: "Default risk extension tool.",
+              execute: () => "default",
+              inputSchema: z.object({}),
+              name: "etyonDefaultRiskExtension"
+            })
+            context.registerTool({
+              description: "Safe but approval-gated extension tool.",
+              execute: () => "approval",
+              inputSchema: z.object({}),
+              name: "etyonApprovalExtension",
+              requiresApproval: true,
+              riskLevel: "safe"
+            })
+          }
+        }
+      ]
+    })
+
+    expect(
+      runner
+        .listTools({
+          profileId: "coder"
+        })
+        .map(({ capabilities, name, owner, riskLevel }) => ({
+          capabilities,
+          name,
+          owner,
+          riskLevel
+        }))
+    ).toEqual([
+      {
+        capabilities: [],
+        name: "etyonSafeExtension",
+        owner: "skill",
+        riskLevel: "safe"
+      },
+      {
+        capabilities: ["network"],
+        name: "etyonNetworkExtension",
+        owner: "skill",
+        riskLevel: "high"
+      },
+      {
+        capabilities: [],
+        name: "etyonDefaultRiskExtension",
+        owner: "skill",
+        riskLevel: "medium"
+      },
+      {
+        capabilities: [],
+        name: "etyonApprovalExtension",
+        owner: "skill",
+        riskLevel: "safe"
+      }
+    ])
+    expect(
+      runner
+        .listTools({
+          includeApprovalTools: false,
+          profileId: "coder"
+        })
+        .map(({ name }) => name)
+    ).toEqual(["etyonSafeExtension"])
+  })
+
+  it("registers structured tool packages with owner metadata and hooks", async () => {
+    const runner = await createAgentExtensionRunner({
+      toolPackages: [
+        {
+          id: "project-tool-package",
+          owner: "project",
+          toolHooks: [
+            {
+              beforeToolCall: () => ({
+                input: {
+                  projectHook: true
+                }
+              }),
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["project.tools"]
+            }
+          ],
+          tools: [
+            {
+              capabilities: ["read-fs"],
+              description: "Project package file reader.",
+              execute: () => "package-read",
+              inputSchema: z.object({}),
+              name: "etyonProjectRead",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["project.tools"],
+              riskLevel: "safe"
+            }
+          ]
+        },
+        {
+          id: "mcp-tool-package",
+          owner: "mcp",
+          streamHooks: [
+            {
+              beforeProviderPayload: () => ({
+                mcpPackage: true
+              }),
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["project.tools"]
+            }
+          ],
+          tools: [
+            {
+              capabilities: ["network"],
+              description: "MCP package lookup.",
+              execute: () => "mcp",
+              inputSchema: z.object({}),
+              name: "etyonMcpLookup",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["project.tools"],
+              riskLevel: "high"
+            }
+          ]
+        }
+      ]
+    })
+
+    expect(
+      runner
+        .listTools({
+          profileId: "coder",
+          skillCapabilities: ["project.tools"]
+        })
+        .map(({ extensionId, name, owner, riskLevel }) => ({
+          extensionId,
+          name,
+          owner,
+          riskLevel
+        }))
+    ).toEqual([
+      {
+        extensionId: "project-tool-package",
+        name: "etyonProjectRead",
+        owner: "project",
+        riskLevel: "safe"
+      },
+      {
+        extensionId: "mcp-tool-package",
+        name: "etyonMcpLookup",
+        owner: "mcp",
+        riskLevel: "high"
+      }
+    ])
+    expect(
+      runner
+        .listTools({
+          includeApprovalTools: false,
+          profileId: "coder",
+          skillCapabilities: ["project.tools"]
+        })
+        .map(({ name }) => name)
+    ).toEqual(["etyonProjectRead"])
+
+    const toolHooks = runner.getToolHooks({
+      profileId: "coder",
+      skillCapabilities: ["project.tools"]
+    })
+    const streamHooks = runner.getStreamHooks({
+      profileId: "coder",
+      skillCapabilities: ["project.tools"]
+    })
+
+    await expect(
+      toolHooks?.beforeToolCall?.(
+        {
+          input: {},
+          toolCallId: "package-call-1",
+          toolName: "etyonProjectRead"
+        },
+        {
+          messages: [],
+          toolCall: {
+            input: {},
+            toolCallId: "package-call-1",
+            toolName: "etyonProjectRead"
+          }
+        }
+      )
+    ).resolves.toEqual({
+      input: {
+        projectHook: true
+      }
+    })
+    await expect(
+      prepareAgentStreamRequest({
+        hooks: streamHooks,
+        payload: {},
+        requestOptions: {
+          headers: {},
+          metadata: {}
+        }
+      })
+    ).resolves.toMatchObject({
+      payload: {
+        mcpPackage: true
+      }
+    })
   })
 
   it("rejects built-in and duplicate tool names", async () => {

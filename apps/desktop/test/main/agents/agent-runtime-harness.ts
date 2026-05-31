@@ -116,6 +116,7 @@ export interface AgentRuntimeHarnessStreamOptions {
   streamHooks?: StreamAgentChatOptions["streamHooks"]
   streamOptions?: StreamAgentChatOptions["streamOptions"]
   systemPrompts?: string[]
+  toolPackages?: StreamAgentChatOptions["toolPackages"]
 }
 
 const DEFAULT_MODEL_ID = "mock-model"
@@ -420,7 +421,8 @@ export const createAgentRuntimeHarness = async ({
       skillCapabilities,
       streamHooks,
       streamOptions,
-      systemPrompts = []
+      systemPrompts = [],
+      toolPackages
     } = {}) =>
       streamAgentChat({
         abortSignal,
@@ -438,7 +440,8 @@ export const createAgentRuntimeHarness = async ({
         skillCapabilities,
         streamHooks,
         streamOptions,
-        systemPrompts
+        systemPrompts,
+        toolPackages
       })
   }
 }

@@ -30,6 +30,8 @@ export type AgentEventType =
   | "agent_run_started"
   | "agent_runtime_snapshot_created"
   | "agent_session_entry_appended"
+  | "agent_session_runtime_disposed"
+  | "agent_session_runtime_started"
   | "agent_session_save_point_created"
   | "agent_stream_disconnected"
   | "agent_ui_stream_snapshot_created"

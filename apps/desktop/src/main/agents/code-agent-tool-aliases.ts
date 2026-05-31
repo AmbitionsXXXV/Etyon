@@ -5,10 +5,14 @@ export const CODE_AGENT_TOOL_ALIASES = [
   "grep",
   "find",
   "ls",
+  "stat",
   "bash",
   "processOutput",
   "stopProcess",
+  "mkdir",
+  "delete",
   "edit",
+  "smartEdit",
   "write"
 ] as const satisfies readonly AgentToolName[]
 
@@ -28,7 +32,8 @@ export const CODE_AGENT_READONLY_TOOL_ALIASES = [
   "read",
   "grep",
   "find",
-  "ls"
+  "ls",
+  "stat"
 ] as const satisfies readonly CodeAgentToolAlias[]
 
 export interface CodeAgentWorkspaceToolAlias {
@@ -40,6 +45,10 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
   bash: {
     etyonName: "execute_command",
     etyonWorkspaceTool: "etyon_workspace_execute_command"
+  },
+  delete: {
+    etyonName: "delete_file",
+    etyonWorkspaceTool: "etyon_workspace_delete_file"
   },
   edit: {
     etyonName: "string_replace_lsp",
@@ -61,6 +70,10 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
     etyonName: "find_files",
     etyonWorkspaceTool: "etyon_workspace_list_files"
   },
+  mkdir: {
+    etyonName: "mkdir",
+    etyonWorkspaceTool: "etyon_workspace_mkdir"
+  },
   processOutput: {
     etyonName: "process_output",
     etyonWorkspaceTool: "etyon_workspace_process_output"
@@ -69,9 +82,17 @@ export const ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES = {
     etyonName: "view",
     etyonWorkspaceTool: "etyon_workspace_read_file"
   },
+  smartEdit: {
+    etyonName: "ast_smart_edit",
+    etyonWorkspaceTool: "etyon_workspace_ast_smart_edit"
+  },
   stopProcess: {
     etyonName: "stop_process",
     etyonWorkspaceTool: "etyon_workspace_stop_process"
+  },
+  stat: {
+    etyonName: "file_stat",
+    etyonWorkspaceTool: "etyon_workspace_file_stat"
   },
   write: {
     etyonName: "write_file",

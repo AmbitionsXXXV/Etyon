@@ -963,12 +963,17 @@ describe("agent approval execution", () => {
 
     expect(modelCall?.tools?.map((tool) => tool.name).toSorted()).toEqual([
       "bash",
+      "delete",
       "edit",
       "find",
       "grep",
       "ls",
+      "mkdir",
       "processOutput",
       "read",
+      "requestAccess",
+      "smartEdit",
+      "stat",
       "stopProcess",
       "write"
     ])
@@ -1039,12 +1044,17 @@ describe("agent approval execution", () => {
       childGenerateCall?.tools?.map((tool) => tool.name).toSorted()
     ).toEqual([
       "bash",
+      "delete",
       "edit",
       "find",
       "grep",
       "ls",
+      "mkdir",
       "processOutput",
       "read",
+      "requestAccess",
+      "smartEdit",
+      "stat",
       "stopProcess",
       "write"
     ])

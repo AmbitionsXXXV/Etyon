@@ -35,7 +35,12 @@ import {
 import type { AgentRun } from "@/main/agents/agent-event-store"
 import type {
   AgentExtensionRunner,
+  AgentToolPackage,
   AgentExtensionToolHooks
+} from "@/main/agents/agent-extensions"
+import {
+  createAgentExtensionRunner,
+  mergeAgentExtensionRunners
 } from "@/main/agents/agent-extensions"
 import { startAgentRun } from "@/main/agents/agent-kernel"
 import type {
@@ -73,6 +78,8 @@ import type {
   AgentSessionChatBranchKind,
   AgentSessionChatBranchTrigger
 } from "@/main/agents/agent-session-events"
+import { getAgentSessionRuntime } from "@/main/agents/agent-session-runtime"
+import type { AgentSessionRuntimeMode } from "@/main/agents/agent-session-runtime"
 import type {
   AgentRuntimePhaseHandle,
   AgentRuntimeState as AgentPhaseRuntimeState
@@ -101,6 +108,20 @@ export interface AgentChatLifecycleBranch {
   trigger: AgentSessionChatBranchTrigger
 }
 
+const getAgentSessionRuntimeMode = ({
+  chatLifecycleBranch,
+  resumedRun
+}: {
+  chatLifecycleBranch?: AgentChatLifecycleBranch
+  resumedRun: AgentRun | null
+}): AgentSessionRuntimeMode => {
+  if (chatLifecycleBranch) {
+    return "fork"
+  }
+
+  return resumedRun ? "resume" : "new"
+}
+
 export interface StreamAgentChatOptions {
   abortSignal?: AbortSignal
   activeToolNames?: readonly string[]
@@ -118,6 +139,7 @@ export interface StreamAgentChatOptions {
   streamHooks?: AgentStreamHooks
   streamOptions?: AgentRuntimeStreamOptions
   systemPrompts: string[]
+  toolPackages?: readonly AgentToolPackage[]
 }
 
 interface AgentToolCallEvent {
@@ -271,6 +293,7 @@ const AGENT_TOOL_PROMPT_SNIPPETS: Record<string, string> = {
   agentRunInspect: "Inspect an agent run trace",
   applyPatch: "Apply a unified patch inside the active project",
   bash: "Execute bash commands",
+  delete: "Delete project files or directories",
   edit: "Make surgical edits to files with exact replacements",
   editFile: "Apply exact oldText/newText replacements",
   fileInfo: "Read file metadata without following symlinks",
@@ -283,11 +306,16 @@ const AGENT_TOOL_PROMPT_SNIPPETS: Record<string, string> = {
   listProjectTree: "List project files and folders",
   ls: "List directory contents",
   memorySearch: "Search enabled long-term memory",
+  mkdir: "Create project directories",
   read: "Read file contents",
   readFile: "Read a UTF-8 text file",
+  requestAccess: "Ask the user to approve a narrow access checkpoint",
   rtkCommand: "Run a command through the project RTK wrapper",
   runCheck: "Run a bounded project check command",
   searchFiles: "Search project file contents with ripgrep",
+  smartEdit: "Replace a named TS/JS declaration with an AST-bounded edit",
+  stat: "Read project path metadata",
+  webExtract: "Extract bounded text from a public web page",
   webSearch: "Search the public web",
   write: "Create or overwrite files",
   writeFile: "Create or overwrite a UTF-8 text file"
@@ -2397,6 +2425,24 @@ const createAgentToolLifecycleHandlers = ({
   }
 }
 
+const createEffectiveExtensionRunner = async ({
+  extensionRunner,
+  toolPackages
+}: {
+  extensionRunner?: AgentExtensionRunner
+  toolPackages?: readonly AgentToolPackage[]
+}): Promise<AgentExtensionRunner | undefined> => {
+  if (!toolPackages || toolPackages.length === 0) {
+    return extensionRunner
+  }
+
+  const toolPackageRunner = await createAgentExtensionRunner({
+    toolPackages
+  })
+
+  return mergeAgentExtensionRunners(extensionRunner, toolPackageRunner)
+}
+
 export const streamAgentChat = async ({
   abortSignal: requestAbortSignal,
   activeToolNames,
@@ -2413,7 +2459,8 @@ export const streamAgentChat = async ({
   skillCapabilities,
   streamHooks,
   streamOptions,
-  systemPrompts
+  systemPrompts,
+  toolPackages
 }: StreamAgentChatOptions): Promise<AgentChatStreamResult> => {
   if (!settings.agents.enabled) {
     const result = streamText({
@@ -2445,14 +2492,18 @@ export const streamAgentChat = async ({
     ...settings.agents,
     defaultProfileId: profile.id
   }
+  const effectiveExtensionRunner = await createEffectiveExtensionRunner({
+    extensionRunner,
+    toolPackages
+  })
   const effectiveStreamHooks = mergeAgentStreamHooks(
     streamHooks,
-    extensionRunner?.getStreamHooks({
+    effectiveExtensionRunner?.getStreamHooks({
       profileId: profile.id,
       skillCapabilities
     })
   )
-  const extensionToolHooks = extensionRunner?.getToolHooks({
+  const extensionToolHooks = effectiveExtensionRunner?.getToolHooks({
     profileId: profile.id,
     skillCapabilities
   })
@@ -2483,17 +2534,27 @@ export const streamAgentChat = async ({
     const childProfile = resolveActiveAgentProfile(settings.agents, profileId)
     const childStreamHooks = mergeAgentStreamHooks(
       streamHooks,
-      extensionRunner?.getStreamHooks({
+      effectiveExtensionRunner?.getStreamHooks({
         profileId: childProfile.id,
         skillCapabilities
       })
     )
-    const childExtensionToolHooks = extensionRunner?.getToolHooks({
+    const childExtensionToolHooks = effectiveExtensionRunner?.getToolHooks({
       profileId: childProfile.id,
       skillCapabilities
     })
 
     if (childProfile.id !== profileId) {
+      await effectiveExtensionRunner?.emit({
+        extensionId: "etyon",
+        parentRunId: run.id,
+        parentToolCallId,
+        profileId,
+        reason: `Agent profile is unavailable: ${profileId}`,
+        task: input.task,
+        type: "delegation_rejected"
+      })
+
       return {
         profileId,
         runId: null,
@@ -2505,6 +2566,16 @@ export const streamAgentChat = async ({
     }
 
     if (activeSubagentCount >= settings.agents.maxConcurrentSubagents) {
+      await effectiveExtensionRunner?.emit({
+        extensionId: "etyon",
+        parentRunId: run.id,
+        parentToolCallId,
+        profileId,
+        reason: "Sub-agent concurrency budget is exhausted.",
+        task: input.task,
+        type: "delegation_rejected"
+      })
+
       return {
         profileId,
         runId: null,
@@ -2540,7 +2611,7 @@ export const streamAgentChat = async ({
       eventSink: async (event) => {
         await childRun.appendEvent(event)
       },
-      extensionRunner,
+      extensionRunner: effectiveExtensionRunner,
       includeApprovalTools,
       memorySettings: settings.memory,
       projectPath,
@@ -2575,6 +2646,17 @@ export const streamAgentChat = async ({
     })
 
     try {
+      await effectiveExtensionRunner?.emit({
+        childRunId: childRun.id,
+        extensionId: "etyon",
+        includeApprovalTools,
+        parentRunId: run.id,
+        parentToolCallId,
+        profileId: childProfile.id,
+        task: input.task,
+        type: "delegation_started"
+      })
+
       const childMessages: ModelMessage[] = [
         {
           content: buildDelegationPrompt(input),
@@ -2788,6 +2870,17 @@ export const streamAgentChat = async ({
         },
         type: "subagent_finished"
       })
+      await effectiveExtensionRunner?.emit({
+        childRunId: childRun.id,
+        extensionId: "etyon",
+        parentRunId: run.id,
+        parentToolCallId,
+        profileId: childProfile.id,
+        status: "succeeded",
+        summary: summary.summary,
+        truncated: summary.truncated,
+        type: "delegation_finished"
+      })
 
       return {
         profileId: childProfile.id,
@@ -2821,6 +2914,18 @@ export const streamAgentChat = async ({
         },
         type: "subagent_finished"
       })
+      await effectiveExtensionRunner?.emit({
+        childRunId: childRun.id,
+        error: message,
+        extensionId: "etyon",
+        parentRunId: run.id,
+        parentToolCallId,
+        profileId: childProfile.id,
+        status: "failed",
+        summary: message,
+        truncated: false,
+        type: "delegation_finished"
+      })
 
       return {
         profileId: childProfile.id,
@@ -2843,7 +2948,7 @@ export const streamAgentChat = async ({
         await run.appendEvent(event)
       },
       executeDelegation,
-      extensionRunner,
+      extensionRunner: effectiveExtensionRunner,
       memorySettings: settings.memory,
       projectPath,
       settings: runtimeAgentSettings,
@@ -3215,7 +3320,22 @@ export const streamAgentChat = async ({
           tools: agentTools
         })
       })
-      const loopResult = await runtimeAgent.continue()
+      const sessionRuntime = getAgentSessionRuntime({
+        db,
+        projectPath,
+        sessionId
+      })
+      const sessionRuntimeSession = await sessionRuntime.start({
+        createAgent: () => runtimeAgent,
+        mode: getAgentSessionRuntimeMode({
+          chatLifecycleBranch,
+          resumedRun
+        }),
+        projectPath,
+        runId: run.id,
+        sessionId
+      })
+      const loopResult = await sessionRuntimeSession.agent.continue()
       const loopResponseMessages = loopResult.messages.slice(
         initialLoopMessages.length
       )

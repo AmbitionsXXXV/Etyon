@@ -17,6 +17,7 @@ import {
   updateAgentRun
 } from "@/main/agents/agent-event-store"
 import { createAgentExtensionRunner } from "@/main/agents/agent-extensions"
+import type { AgentExtensionLifecycleEvent } from "@/main/agents/agent-extensions"
 import {
   appendAgentSessionQueuedFollowUpEvent,
   appendAgentSessionQueuedSteeringEvent
@@ -397,7 +398,8 @@ describe("agent runtime harness", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
     ])
     expect(events).toEqual(
       expect.arrayContaining([
@@ -405,12 +407,93 @@ describe("agent runtime harness", () => {
           payload: expect.objectContaining({
             profileId: "general-purpose",
             source: "chat",
-            toolNames: ["read", "grep", "find", "ls"]
+            toolNames: ["read", "grep", "find", "ls", "stat"]
           }),
           type: "agent_run_started"
         })
       ])
     )
+  })
+
+  it("records session runtime lifecycle events for chat session rebuilds", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true,
+          maxSteps: 5
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxTextResponse("first", {
+        modelId: "mock-model"
+      }),
+      createFauxTextResponse("forked", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const firstResult = await harness.stream({
+      messages: [
+        {
+          content: "Start a runtime session.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await firstResult.consumeStream()
+
+    const forkResult = await harness.stream({
+      chatLifecycleBranch: {
+        branchKind: "regenerate",
+        messageId: "assistant-1",
+        retainedMessageIds: ["user-1"],
+        trigger: "regenerate-message"
+      },
+      messages: [
+        {
+          content: "Fork the current runtime session.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await forkResult.consumeStream()
+
+    const events = await harness.session.listEvents()
+    const runtimeEvents = events.filter((event) =>
+      event.type.startsWith("agent_session_runtime_")
+    )
+
+    expect(runtimeEvents.map((event) => event.type)).toEqual([
+      "agent_session_runtime_started",
+      "agent_session_runtime_disposed",
+      "agent_session_runtime_started"
+    ])
+    expect(runtimeEvents.map((event) => event.payload)).toEqual([
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      }),
+      expect.objectContaining({
+        generation: 1,
+        mode: "new",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      }),
+      expect.objectContaining({
+        generation: 2,
+        mode: "fork",
+        projectPath: harness.projectPath,
+        sessionId: harness.session.id
+      })
+    ])
   })
 
   it("keeps agent runs detached from chat request aborts", async () => {
@@ -1787,7 +1870,10 @@ describe("agent runtime harness", () => {
     const events = await harness.session.listEvents()
 
     expect(harness.faux.listLastStreamToolNames().toSorted()).toEqual([
+      "delete",
       "edit",
+      "mkdir",
+      "smartEdit",
       "write"
     ])
     expect(events).toEqual(
@@ -1796,7 +1882,7 @@ describe("agent runtime harness", () => {
           payload: expect.objectContaining({
             profileId: "coder",
             source: "chat",
-            toolNames: ["edit", "write"]
+            toolNames: ["mkdir", "delete", "edit", "smartEdit", "write"]
           }),
           type: "agent_run_started"
         })
@@ -1825,7 +1911,8 @@ describe("agent runtime harness", () => {
               }),
               name: "etyonEcho",
               profiles: ["coder"],
-              requiredSkillCapabilities: ["extension.echo"]
+              requiredSkillCapabilities: ["extension.echo"],
+              riskLevel: "safe"
             })
           }
         }
@@ -1889,6 +1976,110 @@ describe("agent runtime harness", () => {
       "tool_call_started",
       "tool_call_finished"
     ])
+  })
+
+  it("binds request-level tool packages into the runtime tool loop", async () => {
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "runtime-extension",
+          register: (context) => {
+            context.registerTool({
+              description: "Existing extension tool.",
+              execute: () => ({
+                source: "extension"
+              }),
+              inputSchema: z.object({}),
+              name: "etyonExtensionEcho",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["extension.echo"],
+              riskLevel: "safe"
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          message: "from package"
+        },
+        modelId: "mock-model",
+        toolCallId: "package-tool-1",
+        toolName: "etyonPackageEcho"
+      }),
+      createFauxTextResponse("package done", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Use the package tool.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[],
+      skillCapabilities: ["extension.echo", "provider.tools"],
+      toolPackages: [
+        {
+          id: "provider-tool-package",
+          owner: "provider",
+          tools: [
+            {
+              description: "Provider package echo.",
+              execute: (input, executionContext) => {
+                const { message } = input as { message: string }
+
+                return {
+                  message,
+                  projectPath: executionContext.projectPath,
+                  source: "package"
+                }
+              },
+              inputSchema: z.object({
+                message: z.string()
+              }),
+              name: "etyonPackageEcho",
+              profiles: ["coder"],
+              requiredSkillCapabilities: ["provider.tools"],
+              riskLevel: "safe"
+            }
+          ]
+        }
+      ]
+    })
+
+    await result.consumeStream()
+
+    expect(harness.faux.listLastStreamToolNames()).toEqual(
+      expect.arrayContaining(["etyonExtensionEcho", "etyonPackageEcho"])
+    )
+    expect(await harness.session.listToolCalls()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          output: expect.objectContaining({
+            message: "from package",
+            projectPath: harness.projectPath,
+            source: "package"
+          }),
+          state: "finished",
+          toolName: "etyonPackageEcho"
+        })
+      ])
+    )
   })
 
   it("applies selected extension tool hooks inside the runtime tool loop", async () => {
@@ -2188,7 +2379,7 @@ describe("agent runtime harness", () => {
     ])
     expect(
       childGenerateCall?.tools?.map((tool) => tool.name).toSorted()
-    ).toEqual(["find", "grep", "ls", "read"])
+    ).toEqual(["find", "grep", "ls", "read", "stat"])
     expect(childPromptJson).toContain("Find the settings tab files.")
     expect(childPromptJson).not.toContain("parent-only-history")
     expect(await harness.session.listToolCalls()).toEqual([
@@ -2226,6 +2417,92 @@ describe("agent runtime harness", () => {
         })
       ])
     )
+  })
+
+  it("emits extension lifecycle events for delegated child agents", async () => {
+    const delegationEvents: AgentExtensionLifecycleEvent[] = []
+    const extensionRunner = await createAgentExtensionRunner({
+      extensions: [
+        {
+          id: "delegation-observer",
+          register: (context) => {
+            context.on("delegation_started", (event) => {
+              delegationEvents.push(event)
+            })
+            context.on("delegation_finished", (event) => {
+              delegationEvents.push(event)
+            })
+          }
+        }
+      ]
+    })
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          allowSubagentDelegation: true,
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+
+    harness.faux.setGenerateResponses([
+      createFauxGenerateTextResponse("Child lifecycle summary.", {
+        modelId: "mock-model"
+      })
+    ])
+    harness.faux.setResponses([
+      createFauxToolCallResponse({
+        input: {
+          task: "Trace delegated lifecycle."
+        },
+        modelId: "mock-model",
+        toolCallId: "delegate-call-1",
+        toolName: "agentExplore"
+      }),
+      createFauxTextResponse("Parent done.", {
+        modelId: "mock-model"
+      })
+    ])
+
+    const result = await harness.stream({
+      extensionRunner,
+      messages: [
+        {
+          content: "Delegate with lifecycle events.",
+          role: "user"
+        }
+      ] satisfies ModelMessage[]
+    })
+
+    await result.consumeStream()
+
+    const runs = await harness.session.listRuns()
+    const childRun = runs.find((run) => run.profileId === "explore")
+
+    expect(delegationEvents).toEqual([
+      expect.objectContaining({
+        childRunId: childRun?.id,
+        extensionId: "etyon",
+        includeApprovalTools: false,
+        parentToolCallId: "delegate-call-1",
+        profileId: "explore",
+        task: "Trace delegated lifecycle.",
+        type: "delegation_started"
+      }),
+      expect.objectContaining({
+        childRunId: childRun?.id,
+        extensionId: "etyon",
+        parentToolCallId: "delegate-call-1",
+        profileId: "explore",
+        status: "succeeded",
+        summary: "Child lifecycle summary.",
+        truncated: false,
+        type: "delegation_finished"
+      })
+    ])
   })
 
   it("bounds delegated child turns and keeps child aborts on the run signal", async () => {

@@ -279,7 +279,10 @@ export const evaluateAgentToolPermission = ({
 }: EvaluateAgentToolPermissionOptions): AgentPermissionDecision => {
   const manifest = getAgentToolManifest(name)
 
-  if (hasToolCapability(name, "read-fs")) {
+  if (
+    hasToolCapability(name, "read-fs") ||
+    hasToolCapability(name, "write-fs")
+  ) {
     const pathDecision = evaluateReadOnlyPath(input, workspaceRoot)
 
     if (pathDecision) {
@@ -303,6 +306,15 @@ export const evaluateAgentToolPermission = ({
         "Network tools can send queries outside the workspace and require approval.",
       risk: "high",
       ruleId: "network-requires-approval"
+    })
+  }
+
+  if (hasToolCapability(name, "ui")) {
+    return buildDecision({
+      action: "ask",
+      reason: "User access requests require explicit approval.",
+      risk: "medium",
+      ruleId: "ui-requires-approval"
     })
   }
 

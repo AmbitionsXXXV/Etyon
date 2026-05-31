@@ -114,6 +114,7 @@ export const BUILT_IN_AGENT_PROFILES = [
       allowWrites: false,
       allowedToolNames: [
         ...CODE_AGENT_READONLY_TOOL_ALIASES,
+        "requestAccess",
         "agentCoder",
         "agentExplore"
       ],
@@ -147,6 +148,7 @@ export const BUILT_IN_AGENT_PROFILES = [
       allowedToolNames: [
         ...CODE_AGENT_TOOL_ALIASES,
         ...CODE_AGENT_LSP_TOOL_ALIASES,
+        "requestAccess",
         "agentExplore",
         "agentPlan",
         "agentReview"

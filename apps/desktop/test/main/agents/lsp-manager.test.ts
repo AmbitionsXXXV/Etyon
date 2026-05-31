@@ -564,6 +564,34 @@ describe("agent LSP manager", () => {
     expect(spawnedProcesses).toHaveLength(0)
   })
 
+  it("fails inspect before spawning when the marked text does not match the requested line", async () => {
+    const preparedCommands: string[] = []
+    const env = createAgentExecutionEnv({
+      projectPath: testProjectPath
+    })
+    const { manager, spawnedProcesses } = createFakeLspProcessManager()
+    const lsp = createAgentLspManager({
+      fileSystem: env.fileSystem,
+      processManager: manager,
+      projectPath: testProjectPath,
+      sandbox: createFakeWorkspaceSandbox(preparedCommands),
+      settings: lspSettings
+    })
+
+    await expect(
+      lsp.inspect({
+        line: 1,
+        match: "const <<<missing = 1",
+        path: "src/example.ts"
+      })
+    ).resolves.toMatchObject({
+      error: "inspect match does not match the requested line.",
+      status: "failed"
+    })
+    expect(preparedCommands).toEqual([])
+    expect(spawnedProcesses).toHaveLength(0)
+  })
+
   it("reports initialize timeout as a timeout result", async () => {
     const env = createAgentExecutionEnv({
       projectPath: testProjectPath

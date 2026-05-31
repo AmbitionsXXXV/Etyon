@@ -26,6 +26,21 @@ describe("agent tool manifests", () => {
       owner: "builtin",
       riskLevel: "medium"
     })
+    expect(getAgentToolManifest("smartEdit")).toMatchObject({
+      capabilities: ["lsp", "write-fs"],
+      owner: "builtin",
+      riskLevel: "medium"
+    })
+    expect(getAgentToolManifest("delete")).toMatchObject({
+      capabilities: ["write-fs"],
+      owner: "builtin",
+      riskLevel: "medium"
+    })
+    expect(getAgentToolManifest("mkdir")).toMatchObject({
+      capabilities: ["write-fs"],
+      owner: "builtin",
+      riskLevel: "medium"
+    })
     expect(getAgentToolManifest("bash")).toMatchObject({
       capabilities: ["shell"],
       owner: "builtin",
@@ -45,6 +60,21 @@ describe("agent tool manifests", () => {
       capabilities: ["memory"],
       owner: "builtin",
       riskLevel: "safe"
+    })
+    expect(getAgentToolManifest("stat")).toMatchObject({
+      capabilities: ["read-fs"],
+      owner: "builtin",
+      riskLevel: "safe"
+    })
+    expect(getAgentToolManifest("requestAccess")).toMatchObject({
+      capabilities: ["ui"],
+      owner: "builtin",
+      riskLevel: "medium"
+    })
+    expect(getAgentToolManifest("webExtract")).toMatchObject({
+      capabilities: ["network"],
+      owner: "builtin",
+      riskLevel: "high"
     })
     expect(getAgentToolManifest("webSearch")).toMatchObject({
       capabilities: ["network"],

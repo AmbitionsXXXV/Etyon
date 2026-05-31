@@ -103,6 +103,13 @@ const AGENT_TOOL_MANIFESTS = {
     riskLevel: "high",
     summary: "Execute a bash command in the current project."
   }),
+  delete: createManifest({
+    capabilities: ["write-fs"],
+    id: "delete",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Delete one project file or directory."
+  }),
   processOutput: createManifest({
     capabilities: ["sandbox"],
     id: "processOutput",
@@ -123,6 +130,13 @@ const AGENT_TOOL_MANIFESTS = {
     owner: "builtin",
     riskLevel: "medium",
     summary: "Edit one project file with exact text replacements."
+  }),
+  smartEdit: createManifest({
+    capabilities: ["lsp", "write-fs"],
+    id: "smartEdit",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Replace one named TS/JS declaration with an AST-bounded edit."
   }),
   find: createManifest({
     capabilities: ["read-fs"],
@@ -152,12 +166,26 @@ const AGENT_TOOL_MANIFESTS = {
     riskLevel: "safe",
     summary: "List one project directory."
   }),
+  mkdir: createManifest({
+    capabilities: ["write-fs"],
+    id: "mkdir",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Create one project directory."
+  }),
   read: createManifest({
     capabilities: ["read-fs"],
     id: "read",
     owner: "builtin",
     riskLevel: "safe",
     summary: "Read a bounded project file preview."
+  }),
+  requestAccess: createManifest({
+    capabilities: ["ui"],
+    id: "requestAccess",
+    owner: "builtin",
+    riskLevel: "medium",
+    summary: "Ask the user to approve a scoped access checkpoint."
   }),
   editFile: createManifest({
     capabilities: ["write-fs"],
@@ -235,6 +263,20 @@ const AGENT_TOOL_MANIFESTS = {
     owner: "builtin",
     riskLevel: "safe",
     summary: "Search project file contents with ripgrep."
+  }),
+  stat: createManifest({
+    capabilities: ["read-fs"],
+    id: "stat",
+    owner: "builtin",
+    riskLevel: "safe",
+    summary: "Read structured metadata for one project path."
+  }),
+  webExtract: createManifest({
+    capabilities: ["network"],
+    id: "webExtract",
+    owner: "builtin",
+    riskLevel: "high",
+    summary: "Fetch and extract bounded text from a public web page."
   }),
   webSearch: createManifest({
     capabilities: ["network"],

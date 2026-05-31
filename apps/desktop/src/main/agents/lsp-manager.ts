@@ -141,6 +141,17 @@ interface LspClientState {
   rootPath: string
 }
 
+type LspMarkedLinePosition =
+  | {
+      column: number
+      ok: true
+    }
+  | {
+      column: number
+      error: string
+      ok: false
+    }
+
 const CONTENT_LENGTH_PATTERN = /Content-Length:\s*(\d+)/iu
 const HEADER_SEPARATOR = "\r\n\r\n"
 const HEADER_SEPARATOR_BYTE_LENGTH = Buffer.byteLength(HEADER_SEPARATOR)
@@ -298,14 +309,65 @@ const toPositionParams = ({
   }
 })
 
-const getMarkerColumn = (match: string): number => {
+const getMarkerIndex = (match: string): number => {
   const markerIndex = match.indexOf("<<<")
 
   if (markerIndex === -1) {
     throw new Error("inspect match must include the <<< cursor marker.")
   }
 
-  return markerIndex + 1
+  if (markerIndex !== match.lastIndexOf("<<<")) {
+    throw new Error("inspect match must include exactly one <<< cursor marker.")
+  }
+
+  return markerIndex
+}
+
+const getMarkedLinePosition = ({
+  content,
+  line,
+  match
+}: {
+  content: string
+  line: number
+  match: string
+}): LspMarkedLinePosition => {
+  const markerIndex = getMarkerIndex(match)
+  const fallbackColumn = markerIndex + 1
+  const markedText = match.replace("<<<", "")
+
+  if (markedText.length === 0) {
+    return {
+      column: fallbackColumn,
+      error: "inspect match must include source text around the cursor marker.",
+      ok: false
+    }
+  }
+
+  const lineText = content.split(/\r?\n/u)[line - 1]
+
+  if (lineText === undefined) {
+    return {
+      column: fallbackColumn,
+      error: `inspect line ${line} is outside the file.`,
+      ok: false
+    }
+  }
+
+  const matchIndex = lineText.indexOf(markedText)
+
+  if (matchIndex === -1) {
+    return {
+      column: fallbackColumn,
+      error: "inspect match does not match the requested line.",
+      ok: false
+    }
+  }
+
+  return {
+    column: matchIndex + markerIndex + 1,
+    ok: true
+  }
 }
 
 const normalizeDiagnosticSeverity = (
@@ -1004,7 +1066,6 @@ export const createAgentLspManager = ({
     match,
     path: requestedPath
   }: LspInspectInput): Promise<LspInspectResult> => {
-    const markerColumn = getMarkerColumn(match)
     const textFile = await fileSystem.readTextFile(requestedPath)
 
     if (!textFile.ok) {
@@ -1019,6 +1080,22 @@ export const createAgentLspManager = ({
 
     const canonicalPath = await fileSystem.canonicalPath(requestedPath)
     const resultPath = canonicalPath.ok ? canonicalPath.value : requestedPath
+    const markedPosition = getMarkedLinePosition({
+      content: textFile.value,
+      line,
+      match
+    })
+    const markerColumn = markedPosition.column
+
+    if (!markedPosition.ok) {
+      return createUnavailableInspectResult({
+        column: markerColumn,
+        error: markedPosition.error,
+        line,
+        path: resultPath,
+        status: "failed"
+      })
+    }
 
     if (isUnsupportedPath(resultPath)) {
       return createUnavailableInspectResult({

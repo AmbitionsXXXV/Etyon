@@ -15,9 +15,15 @@ import type {
 import { mergeAgentStreamHooks } from "@/main/agents/agent-stream-hooks"
 import type { AgentStreamHooks } from "@/main/agents/agent-stream-hooks"
 import type { AgentWorkspace } from "@/main/agents/agent-workspace"
-import type { AgentToolCapability } from "@/main/agents/tool-manifest"
+import type {
+  AgentToolCapability,
+  AgentToolOwner,
+  AgentToolRiskLevel
+} from "@/main/agents/tool-manifest"
 import { AGENT_TOOL_NAMES } from "@/main/agents/types"
 import type { AppDatabase } from "@/main/db"
+
+type AgentExternalToolOwner = Exclude<AgentToolOwner, "builtin">
 
 export interface AgentExtensionToolExecutionContext {
   abortSignal?: AbortSignal
@@ -40,6 +46,7 @@ export interface AgentExtensionToolDefinition<TInput = unknown> {
   ) => Promise<unknown> | unknown
   inputSchema: z.ZodType<TInput>
   name: string
+  owner?: AgentExternalToolOwner
   profiles?: readonly string[]
   requiredSkillCapabilities?: readonly string[]
   requiresApproval?:
@@ -48,6 +55,7 @@ export interface AgentExtensionToolDefinition<TInput = unknown> {
         input: TInput,
         context: AgentExtensionToolExecutionContext
       ) => boolean | Promise<boolean>)
+  riskLevel?: AgentToolRiskLevel
 }
 
 export interface AgentExtensionStreamHooksDefinition extends AgentStreamHooks {
@@ -72,6 +80,37 @@ export interface AgentExtensionToolHooksDefinition extends AgentExtensionToolHoo
 }
 
 export type AgentExtensionLifecycleEvent =
+  | {
+      childRunId: string
+      extensionId: string
+      includeApprovalTools: boolean
+      parentRunId: string
+      parentToolCallId: string
+      profileId: string
+      task: string
+      type: "delegation_started"
+    }
+  | {
+      childRunId: string
+      error?: string
+      extensionId: string
+      parentRunId: string
+      parentToolCallId: string
+      profileId: string
+      status: "failed" | "succeeded"
+      summary?: string
+      truncated?: boolean
+      type: "delegation_finished"
+    }
+  | {
+      extensionId: string
+      parentRunId: string
+      parentToolCallId: string
+      profileId: string
+      reason: string
+      task: string
+      type: "delegation_rejected"
+    }
   | {
       extensionId: string
       toolName: string
@@ -128,10 +167,21 @@ export type AgentExtensionFactory = () =>
   | AgentExtension
   | Promise<AgentExtension>
 
+export interface AgentToolPackage {
+  id: string
+  owner: AgentExternalToolOwner
+  streamHooks?: readonly AgentExtensionStreamHooksDefinition[]
+  toolHooks?: readonly AgentExtensionToolHooksDefinition[]
+  tools?: readonly AgentExtensionToolDefinition<unknown>[]
+}
+
 export interface AgentExtensionRegisteredTool<
   TInput = unknown
 > extends AgentExtensionToolDefinition<TInput> {
+  capabilities: readonly AgentToolCapability[]
   extensionId: string
+  owner: AgentExternalToolOwner
+  riskLevel: AgentToolRiskLevel
 }
 
 export interface AgentExtensionRegisteredStreamHooks extends AgentExtensionStreamHooksDefinition {
@@ -157,9 +207,11 @@ export interface AgentExtensionRunner {
 
 export interface CreateAgentExtensionRunnerOptions {
   extensions?: readonly (AgentExtension | AgentExtensionFactory)[]
+  toolPackages?: readonly AgentToolPackage[]
 }
 
 export interface ListAgentExtensionToolsOptions {
+  includeApprovalTools?: boolean
   profileId: string
   skillCapabilities?: readonly string[]
 }
@@ -179,8 +231,18 @@ interface ExtensionVisibilityFilter {
   requiredSkillCapabilities?: readonly string[]
 }
 
+interface RegisterAgentToolDefinitionOptions {
+  definition: AgentExtensionToolDefinition<unknown>
+  extensionId: string
+  owner: AgentExternalToolOwner
+  registeredToolNames: Set<string>
+  toolDefinitions: AgentExtensionRegisteredTool[]
+}
+
 const EXTENSION_TOOL_NAME_PATTERN = /^[A-Za-z_][\w-]{0,63}$/u
 const BUILTIN_TOOL_NAMES = new Set<string>(AGENT_TOOL_NAMES)
+const DEFAULT_EXTENSION_TOOL_OWNER = "skill" as const
+const DEFAULT_EXTENSION_TOOL_RISK_LEVEL = "medium" as const
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -193,6 +255,31 @@ const assertExtensionToolName = (name: string): void => {
   if (BUILTIN_TOOL_NAMES.has(name)) {
     throw new Error(`Agent extension tool shadows built-in tool: ${name}`)
   }
+}
+
+const registerAgentToolDefinition = ({
+  definition,
+  extensionId,
+  owner,
+  registeredToolNames,
+  toolDefinitions
+}: RegisterAgentToolDefinitionOptions): void => {
+  assertExtensionToolName(definition.name)
+
+  if (registeredToolNames.has(definition.name)) {
+    throw new Error(
+      `Duplicate agent extension tool registered: ${definition.name}`
+    )
+  }
+
+  registeredToolNames.add(definition.name)
+  toolDefinitions.push({
+    ...definition,
+    capabilities: [...(definition.capabilities ?? [])],
+    extensionId,
+    owner: definition.owner ?? owner,
+    riskLevel: definition.riskLevel ?? DEFAULT_EXTENSION_TOOL_RISK_LEVEL
+  })
 }
 
 const resolveExtension = async (
@@ -250,6 +337,22 @@ const matchesSkillCapabilities = (
     capabilitySet.has(capability)
   )
 }
+
+const hasApprovalBoundary = (
+  definition: Pick<
+    AgentExtensionRegisteredTool,
+    "requiresApproval" | "riskLevel"
+  >
+): boolean =>
+  Boolean(definition.requiresApproval) || definition.riskLevel !== "safe"
+
+const matchesApprovalScope = (
+  definition: Pick<
+    AgentExtensionRegisteredTool,
+    "requiresApproval" | "riskLevel"
+  >,
+  includeApprovalTools = true
+): boolean => includeApprovalTools || !hasApprovalBoundary(definition)
 
 export const mergeAgentExtensionToolHooks = (
   definitions: readonly AgentExtensionToolHooks[]
@@ -362,13 +465,40 @@ export const mergeAgentExtensionToolHooks = (
 }
 
 export const createAgentExtensionRunner = async ({
-  extensions = []
+  extensions = [],
+  toolPackages = []
 }: CreateAgentExtensionRunnerOptions = {}): Promise<AgentExtensionRunner> => {
   const handlers: RegisteredLifecycleHandler[] = []
   const streamHookDefinitions: AgentExtensionRegisteredStreamHooks[] = []
   const toolHookDefinitions: AgentExtensionRegisteredToolHooks[] = []
   const toolDefinitions: AgentExtensionRegisteredTool[] = []
   const registeredToolNames = new Set<string>()
+
+  for (const toolPackage of toolPackages) {
+    for (const streamHookDefinition of toolPackage.streamHooks ?? []) {
+      streamHookDefinitions.push({
+        ...streamHookDefinition,
+        extensionId: toolPackage.id
+      })
+    }
+
+    for (const toolHookDefinition of toolPackage.toolHooks ?? []) {
+      toolHookDefinitions.push({
+        ...toolHookDefinition,
+        extensionId: toolPackage.id
+      })
+    }
+
+    for (const toolDefinition of toolPackage.tools ?? []) {
+      registerAgentToolDefinition({
+        definition: toolDefinition,
+        extensionId: toolPackage.id,
+        owner: toolPackage.owner,
+        registeredToolNames,
+        toolDefinitions
+      })
+    }
+  }
 
   for (const extensionInput of extensions) {
     const extension = await resolveExtension(extensionInput)
@@ -393,21 +523,12 @@ export const createAgentExtensionRunner = async ({
         })
       },
       registerTool: (definition) => {
-        assertExtensionToolName(definition.name)
-
-        if (registeredToolNames.has(definition.name)) {
-          throw new Error(
-            `Duplicate agent extension tool registered: ${definition.name}`
-          )
-        }
-
-        const registeredDefinition =
-          definition as AgentExtensionToolDefinition<unknown>
-
-        registeredToolNames.add(definition.name)
-        toolDefinitions.push({
-          ...registeredDefinition,
-          extensionId: extension.id
+        registerAgentToolDefinition({
+          definition: definition as AgentExtensionToolDefinition<unknown>,
+          extensionId: extension.id,
+          owner: DEFAULT_EXTENSION_TOOL_OWNER,
+          registeredToolNames,
+          toolDefinitions
         })
       }
     })
@@ -437,11 +558,16 @@ export const createAgentExtensionRunner = async ({
             matchesSkillCapabilities(definition, skillCapabilities)
         )
       ),
-    listTools: ({ profileId, skillCapabilities }) =>
+    listTools: ({
+      includeApprovalTools = true,
+      profileId,
+      skillCapabilities
+    }) =>
       toolDefinitions.filter(
         (toolDefinition) =>
           matchesProfile(toolDefinition, profileId) &&
-          matchesSkillCapabilities(toolDefinition, skillCapabilities)
+          matchesSkillCapabilities(toolDefinition, skillCapabilities) &&
+          matchesApprovalScope(toolDefinition, includeApprovalTools)
       )
   }
 
@@ -454,6 +580,58 @@ export const createAgentExtensionRunner = async ({
   }
 
   return runner
+}
+
+export const mergeAgentExtensionRunners = (
+  ...runners: readonly (AgentExtensionRunner | undefined)[]
+): AgentExtensionRunner | undefined => {
+  const activeRunners = runners.filter(
+    (runner): runner is AgentExtensionRunner => runner !== undefined
+  )
+
+  if (activeRunners.length === 0) {
+    return undefined
+  }
+
+  if (activeRunners.length === 1) {
+    return activeRunners[0]
+  }
+
+  return {
+    emit: async (event) => {
+      for (const runner of activeRunners) {
+        await runner.emit(event)
+      }
+    },
+    getStreamHooks: (options) =>
+      mergeAgentStreamHooks(
+        ...activeRunners.map((runner) => runner.getStreamHooks(options))
+      ),
+    getToolHooks: (options) =>
+      mergeAgentExtensionToolHooks(
+        activeRunners.flatMap((runner) => {
+          const hooks = runner.getToolHooks(options)
+
+          return hooks ? [hooks] : []
+        })
+      ),
+    listTools: (options) => {
+      const tools = activeRunners.flatMap((runner) => runner.listTools(options))
+      const toolNames = new Set<string>()
+
+      for (const toolDefinition of tools) {
+        if (toolNames.has(toolDefinition.name)) {
+          throw new Error(
+            `Duplicate agent extension tool registered: ${toolDefinition.name}`
+          )
+        }
+
+        toolNames.add(toolDefinition.name)
+      }
+
+      return tools
+    }
+  }
 }
 
 export const loadAgentExtensions = async ({

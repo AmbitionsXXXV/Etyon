@@ -66,9 +66,16 @@ describe("agent profiles", () => {
       ...CODE_AGENT_READONLY_TOOL_ALIASES,
       ...CODE_AGENT_LSP_TOOL_ALIASES
     ])
+    expect(getAgentProfileById("plan").toolPolicy.allowedToolNames).toEqual([
+      ...CODE_AGENT_READONLY_TOOL_ALIASES,
+      "requestAccess",
+      "agentCoder",
+      "agentExplore"
+    ])
     expect(getAgentProfileById("coder").toolPolicy.allowedToolNames).toEqual([
       ...CODE_AGENT_TOOL_ALIASES,
       ...CODE_AGENT_LSP_TOOL_ALIASES,
+      "requestAccess",
       "agentExplore",
       "agentPlan",
       "agentReview"

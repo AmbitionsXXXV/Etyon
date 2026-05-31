@@ -48,6 +48,7 @@ vi.mock("ai", () => ({
 }))
 
 vi.mock("@/main/agents/agent-event-store", () => ({
+  appendAgentEvent: vi.fn(() => Promise.resolve({ id: "event-1" })),
   createAgentRun: createAgentRunMock,
   getAgentRunForToolApproval: vi.fn(() => Promise.resolve(null)),
   getLatestCompletedAgentRunForSession: vi.fn(() => Promise.resolve(null)),

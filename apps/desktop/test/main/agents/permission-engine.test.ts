@@ -40,6 +40,19 @@ describe("agent permission engine", () => {
       action: "allow",
       ruleId: "readonly-project-tool"
     })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          path: "src/app.ts"
+        },
+        name: "stat",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "allow",
+      ruleId: "readonly-project-tool"
+    })
   })
 
   it("denies secret and cross-workspace reads before read-only allow rules", () => {
@@ -133,6 +146,34 @@ describe("agent permission engine", () => {
     expect(
       evaluateAgentToolPermission({
         input: {
+          path: "src/generated"
+        },
+        name: "mkdir",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "ask",
+      ruleId: "write-requires-approval"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          path: "src/generated.ts",
+          replacement: "export const value = 2",
+          symbol: "value"
+        },
+        name: "smartEdit",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "ask",
+      ruleId: "write-requires-approval"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
           command: "rtk git status --short",
           rawOutput: true
         },
@@ -142,6 +183,34 @@ describe("agent permission engine", () => {
     ).toMatchObject({
       action: "ask",
       ruleId: "raw-output-requires-approval"
+    })
+  })
+
+  it("denies secret and cross-workspace writes before approval", () => {
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          path: ".env.local"
+        },
+        name: "delete",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "deny",
+      ruleId: "secret-path"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        input: {
+          path: "../outside.ts"
+        },
+        name: "write",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "deny",
+      ruleId: "outside-workspace"
     })
   })
 
@@ -220,17 +289,36 @@ describe("agent permission engine", () => {
   })
 
   it("asks before running network tools", () => {
+    for (const [name, input] of [
+      ["webExtract", { url: "https://example.com" }],
+      ["webSearch", { query: "latest vite release" }]
+    ] as const) {
+      expect(
+        evaluateAgentToolPermission({
+          input,
+          name,
+          workspaceRoot
+        })
+      ).toMatchObject({
+        action: "ask",
+        ruleId: "network-requires-approval"
+      })
+    }
+  })
+
+  it("asks before approving user access checkpoints", () => {
     expect(
       evaluateAgentToolPermission({
         input: {
-          query: "latest vite release"
+          reason: "Need approval before delegating implementation.",
+          scope: "current task"
         },
-        name: "webSearch",
+        name: "requestAccess",
         workspaceRoot
       })
     ).toMatchObject({
       action: "ask",
-      ruleId: "network-requires-approval"
+      ruleId: "ui-requires-approval"
     })
   })
 

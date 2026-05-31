@@ -224,6 +224,7 @@ const consumeChatResponse = async (response: Response): Promise<void> => {
 }
 
 vi.mock("@/main/agents/agent-event-store", () => ({
+  appendAgentEvent: appendAgentEventMock,
   createAgentRun: createAgentRunMock,
   getLatestCompletedAgentRunForSession: vi.fn(() => Promise.resolve(null)),
   listAgentEvents: listAgentEventsMock,
@@ -761,7 +762,8 @@ describe("hono app", () => {
       "find",
       "grep",
       "ls",
-      "read"
+      "read",
+      "stat"
     ])
     expect(stepCountIsMock).toHaveBeenCalledWith(1)
     expect(streamOptions?.stopWhen).toEqual({
@@ -943,6 +945,7 @@ describe("hono app", () => {
       paths: extensionPaths
     })
     expect(extensionRunner.listTools).toHaveBeenCalledWith({
+      includeApprovalTools: true,
       profileId: "general-purpose",
       skillCapabilities: ["write-fs"]
     })

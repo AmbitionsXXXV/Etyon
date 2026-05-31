@@ -8,6 +8,7 @@ import type {
 } from "@etyon/rpc"
 import type { ModelMessage, ToolExecutionOptions, ToolSet } from "ai"
 import { tool } from "ai"
+import * as ts from "typescript"
 import * as z from "zod"
 
 import {
@@ -105,6 +106,27 @@ const AgentDelegationInputSchema = z.object({
   expectedOutput: z.string().default(""),
   task: z.string().min(1)
 })
+
+const RequestAccessInputSchema = z
+  .object({
+    actions: z
+      .array(z.string().min(1).max(160))
+      .max(10)
+      .default([])
+      .describe("Concrete actions the agent wants permission to take."),
+    reason: z
+      .string()
+      .min(1)
+      .max(2000)
+      .describe("Why this access is needed for the current task."),
+    scope: z
+      .string()
+      .min(1)
+      .max(500)
+      .default("current task")
+      .describe("The narrow scope this approval should cover.")
+  })
+  .strict()
 
 const CodeAgentReadInputSchema = z
   .object({
@@ -230,9 +252,62 @@ const CodeAgentEditInputSchema = z.preprocess(
   EditFileInputSchema.strict()
 )
 
+const CodeAgentSmartEditKindSchema = z.enum([
+  "any",
+  "class",
+  "enum",
+  "function",
+  "interface",
+  "type",
+  "variable"
+])
+
+const CodeAgentSmartEditInputSchema = z
+  .object({
+    kind: CodeAgentSmartEditKindSchema.default("any").describe(
+      "Expected declaration kind. Use any when unsure."
+    ),
+    path: z
+      .string()
+      .min(1)
+      .describe("Path to the TypeScript or JavaScript file to edit."),
+    replacement: z
+      .string()
+      .min(1)
+      .describe("Full replacement source for the matched declaration."),
+    symbol: z.string().min(1).describe("Name of the declaration to replace.")
+  })
+  .strict()
+
 const FileInfoInputSchema = z.object({
   path: z.string().min(1)
 })
+
+const CodeAgentMkdirInputSchema = z
+  .object({
+    path: z
+      .string()
+      .min(1)
+      .describe("Directory path to create, relative or absolute."),
+    recursive: z
+      .boolean()
+      .default(true)
+      .describe("Create missing parent directories.")
+  })
+  .strict()
+
+const CodeAgentDeleteInputSchema = z
+  .object({
+    path: z
+      .string()
+      .min(1)
+      .describe("File or directory path to delete, relative or absolute."),
+    recursive: z
+      .boolean()
+      .default(false)
+      .describe("Delete directories recursively.")
+  })
+  .strict()
 
 const CodeAgentFindInputSchema = z
   .object({
@@ -333,12 +408,7 @@ const CodeAgentLsInputSchema = z
   .strict()
 
 const GitDiffInputSchema = z.object({
-  maxChars: z
-    .number()
-    .int()
-    .min(1_000)
-    .max(AGENT_TOOL_OUTPUT_MAX_CHARS)
-    .optional(),
+  maxChars: z.number().int().min(1).max(AGENT_TOOL_OUTPUT_MAX_CHARS).optional(),
   paths: z.array(z.string().min(1)).max(50).optional()
 })
 
@@ -403,6 +473,23 @@ const SearchFilesInputSchema = z.object({
 const WebSearchInputSchema = z.object({
   maxResults: z.number().int().min(1).max(10).default(DEFAULT_WEB_SEARCH_LIMIT),
   query: z.string().min(1)
+})
+
+const WebExtractInputSchema = z.object({
+  maxChars: z
+    .number()
+    .int()
+    .min(1)
+    .max(AGENT_TOOL_OUTPUT_MAX_CHARS)
+    .default(12_000),
+  url: z
+    .string()
+    .url()
+    .refine((url) => {
+      const { protocol } = new URL(url)
+
+      return protocol === "http:" || protocol === "https:"
+    }, "URL must use http or https.")
 })
 
 interface AgentApplyPatchOutput {
@@ -512,6 +599,14 @@ interface AgentWebSearchOutput {
   truncated: boolean
 }
 
+interface AgentWebExtractOutput {
+  content: string
+  contentType: string
+  title: null | string
+  truncated: boolean
+  url: string
+}
+
 interface CodeAgentTextContent {
   text: string
   type: "text"
@@ -520,6 +615,13 @@ interface CodeAgentTextContent {
 interface CodeAgentTextOutput {
   content: CodeAgentTextContent[]
   details?: Record<string, unknown>
+}
+
+interface AgentRequestAccessOutput {
+  actions: string[]
+  approved: boolean
+  reason: string
+  scope: string
 }
 
 type AgentToolApprovalMode = "default" | "preapproved"
@@ -593,9 +695,11 @@ type AgentToolExecutionOutput =
   | AgentListDirectoryOutput
   | AgentListFilesOutput
   | AgentMemorySearchOutput
+  | AgentRequestAccessOutput
   | CodeAgentTextOutput
   | AgentReadFileOutput
   | AgentSearchFilesOutput
+  | AgentWebExtractOutput
   | AgentWebSearchOutput
   | AgentWriteFileOutput
 
@@ -631,6 +735,7 @@ type ExecutableAgentToolName =
   | "agentRunInspect"
   | "applyPatch"
   | "bash"
+  | "delete"
   | "edit"
   | "editFile"
   | "fileInfo"
@@ -643,13 +748,18 @@ type ExecutableAgentToolName =
   | "listProjectTree"
   | "ls"
   | "memorySearch"
+  | "mkdir"
   | "processOutput"
   | "read"
   | "readFile"
+  | "requestAccess"
   | "rtkCommand"
   | "runCheck"
   | "searchFiles"
+  | "smartEdit"
+  | "stat"
   | "stopProcess"
+  | "webExtract"
   | "webSearch"
   | "write"
   | "writeFile"
@@ -684,6 +794,7 @@ const EXECUTABLE_AGENT_TOOL_NAMES = [
   "agentRunInspect",
   "applyPatch",
   "bash",
+  "delete",
   "edit",
   "editFile",
   "fileInfo",
@@ -696,13 +807,18 @@ const EXECUTABLE_AGENT_TOOL_NAMES = [
   "listProjectTree",
   "ls",
   "memorySearch",
+  "mkdir",
   "processOutput",
   "read",
   "readFile",
+  "requestAccess",
   "rtkCommand",
   "runCheck",
   "searchFiles",
+  "smartEdit",
+  "stat",
   "stopProcess",
+  "webExtract",
   "webSearch",
   "write",
   "writeFile"
@@ -837,6 +953,17 @@ const buildDuckDuckGoSearchUrl = (query: string): string => {
   return searchUrl.toString()
 }
 
+const executeRequestAccess = (input: unknown): AgentRequestAccessOutput => {
+  const request = RequestAccessInputSchema.parse(input)
+
+  return {
+    actions: request.actions,
+    approved: true,
+    reason: request.reason,
+    scope: request.scope
+  }
+}
+
 const getWebSearchTitleFromText = (text: string): string => {
   const title = text.split(" - ")[0]?.trim()
 
@@ -949,6 +1076,55 @@ const getDuckDuckGoWebSearchResults = (
     truncated: results.length > maxResults
   }
 }
+
+const decodeHtmlEntities = (text: string): string =>
+  text
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll(/&#(\d+);/gu, (_, codePoint: string) =>
+      String.fromCodePoint(Number(codePoint))
+    )
+    .replaceAll(/&#x([\da-f]+);/giu, (_, codePoint: string) =>
+      String.fromCodePoint(Number.parseInt(codePoint, 16))
+    )
+
+const normalizeWebExtractText = (text: string): string =>
+  decodeHtmlEntities(text)
+    .replaceAll(/\r\n?/gu, "\n")
+    .replaceAll(/[ \t\f\v]+/gu, " ")
+    .replaceAll(/[ \t]*\n[ \t]*/gu, "\n")
+    .replaceAll(/\n{2,}/gu, "\n")
+    .trim()
+
+const extractHtmlTitle = (html: string): null | string => {
+  const match = /<title[^>]*>([\s\S]*?)<\/title>/iu.exec(html)
+  const title = match ? normalizeWebExtractText(match[1] ?? "") : ""
+
+  return title || null
+}
+
+const extractHtmlText = (html: string): string =>
+  normalizeWebExtractText(
+    html
+      .replaceAll(/<script\b[^>]*>[\s\S]*?<\/script>/giu, " ")
+      .replaceAll(/<style\b[^>]*>[\s\S]*?<\/style>/giu, " ")
+      .replaceAll(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/giu, " ")
+      .replaceAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/giu, " ")
+      .replaceAll(/<(?:br|hr)\b[^>]*>/giu, "\n")
+      .replaceAll(
+        /<\/(?:article|aside|blockquote|div|footer|h[1-6]|header|li|main|nav|p|pre|section|tr)>/giu,
+        "\n"
+      )
+      .replaceAll(/<[^>]+>/gu, " ")
+  )
+
+const isLikelyHtmlContent = (contentType: string, content: string): boolean =>
+  /\bhtml\b/iu.test(contentType) ||
+  /<html[\s>]|<!doctype html|<body[\s>]/iu.test(content.slice(0, 2048))
 
 const getScopedAgentRun = async ({
   chatSessionId,
@@ -1949,6 +2125,101 @@ const executeFileInfo = async (
   }
 }
 
+const executeCodeAgentStat = async (
+  input: unknown,
+  projectPath: string
+): Promise<CodeAgentTextOutput> => {
+  const result = await executeFileInfo(input, projectPath)
+  const modifiedAt = new Date(result.mtimeMs).toISOString()
+
+  return createCodeAgentTextOutput(
+    [
+      `${result.path}: ${result.kind}`,
+      `size: ${result.size} bytes`,
+      `language: ${result.language ?? "unknown"}`,
+      `symlink: ${result.isSymlink ? "yes" : "no"}`,
+      `modified: ${modifiedAt}`
+    ].join("\n"),
+    {
+      isSymlink: result.isSymlink,
+      kind: result.kind,
+      language: result.language,
+      mtimeMs: result.mtimeMs,
+      path: result.path,
+      size: result.size
+    }
+  )
+}
+
+const executeCodeAgentMkdir = async (
+  input: unknown,
+  projectPath: string
+): Promise<CodeAgentTextOutput> => {
+  const { path: requestedPath, recursive } =
+    CodeAgentMkdirInputSchema.parse(input)
+  const env = createAgentExecutionEnv({
+    projectPath
+  })
+
+  assertNonSecretToolPath(requestedPath)
+
+  const createResult = await env.fileSystem.createDir(requestedPath, {
+    recursive
+  })
+
+  if ("error" in createResult) {
+    throwToolFileError(createResult.error)
+  }
+
+  const directoryInfo = await env.fileSystem.fileInfo(requestedPath)
+  const directoryInfoValue =
+    "value" in directoryInfo
+      ? directoryInfo.value
+      : throwToolFileError(directoryInfo.error)
+
+  return createCodeAgentTextOutput(
+    `Created directory ${directoryInfoValue.path}.`,
+    {
+      path: directoryInfoValue.path,
+      recursive
+    }
+  )
+}
+
+const executeCodeAgentDelete = async (
+  input: unknown,
+  projectPath: string
+): Promise<CodeAgentTextOutput> => {
+  const { path: requestedPath, recursive } =
+    CodeAgentDeleteInputSchema.parse(input)
+  const env = createAgentExecutionEnv({
+    projectPath
+  })
+
+  assertNonSecretToolPath(requestedPath)
+
+  const fileInfo = await env.fileSystem.fileInfo(requestedPath)
+  const fileInfoValue =
+    "value" in fileInfo ? fileInfo.value : throwToolFileError(fileInfo.error)
+  const removeResult = await env.fileSystem.remove(requestedPath, {
+    recursive
+  })
+
+  if ("error" in removeResult) {
+    throwToolFileError(removeResult.error)
+  }
+
+  return createCodeAgentTextOutput(
+    `Deleted ${fileInfoValue.kind} ${fileInfoValue.path}.`,
+    {
+      kind: fileInfoValue.kind,
+      path: fileInfoValue.path,
+      recursive,
+      size: fileInfoValue.size
+    }
+  )
+}
+
 const executeFindFiles = (
   input: unknown,
   projectPath: string
@@ -2744,6 +3015,173 @@ const collectPostWriteLspDiagnostics = async ({
   }
 }
 
+type CodeAgentSmartEditKind = z.infer<typeof CodeAgentSmartEditKindSchema>
+
+interface CodeAgentSmartEditTarget {
+  end: number
+  endLine: number
+  kind: Exclude<CodeAgentSmartEditKind, "any">
+  oldText: string
+  start: number
+  startLine: number
+}
+
+const getSmartEditScriptKind = (filePath: string): ts.ScriptKind | null => {
+  switch (nodePath.extname(filePath).toLowerCase()) {
+    case ".cjs":
+    case ".js":
+    case ".mjs": {
+      return ts.ScriptKind.JS
+    }
+    case ".jsx": {
+      return ts.ScriptKind.JSX
+    }
+    case ".cts":
+    case ".mts":
+    case ".ts": {
+      return ts.ScriptKind.TS
+    }
+    case ".tsx": {
+      return ts.ScriptKind.TSX
+    }
+    default: {
+      return null
+    }
+  }
+}
+
+const getNamedDeclarationCandidate = ({
+  sourceFile,
+  statement,
+  symbol
+}: {
+  sourceFile: ts.SourceFile
+  statement: ts.Statement
+  symbol: string
+}): CodeAgentSmartEditTarget | null => {
+  const content = sourceFile.text
+  let kind: CodeAgentSmartEditTarget["kind"] | null = null
+  let nameNode: ts.Identifier | undefined
+  let targetNode: ts.Node = statement
+
+  if (ts.isFunctionDeclaration(statement)) {
+    kind = "function"
+    nameNode = statement.name
+  } else if (ts.isClassDeclaration(statement)) {
+    kind = "class"
+    nameNode = statement.name
+  } else if (ts.isInterfaceDeclaration(statement)) {
+    kind = "interface"
+    nameNode = statement.name
+  } else if (ts.isTypeAliasDeclaration(statement)) {
+    kind = "type"
+    nameNode = statement.name
+  } else if (ts.isEnumDeclaration(statement)) {
+    kind = "enum"
+    nameNode = statement.name
+  } else if (ts.isVariableStatement(statement)) {
+    const matchingDeclaration = statement.declarationList.declarations.find(
+      (declaration) =>
+        ts.isIdentifier(declaration.name) && declaration.name.text === symbol
+    )
+
+    if (!matchingDeclaration) {
+      return null
+    }
+
+    if (statement.declarationList.declarations.length !== 1) {
+      throw new Error(
+        "smartEdit only supports variable statements with a single declaration."
+      )
+    }
+
+    const matchingDeclarationName = matchingDeclaration.name
+
+    if (!ts.isIdentifier(matchingDeclarationName)) {
+      return null
+    }
+
+    kind = "variable"
+    nameNode = matchingDeclarationName
+    targetNode = statement
+  }
+
+  if (!kind || nameNode?.text !== symbol) {
+    return null
+  }
+
+  const start = targetNode.getStart(sourceFile)
+  const end = targetNode.getEnd()
+  const startLine = sourceFile.getLineAndCharacterOfPosition(start).line + 1
+  const endLine = sourceFile.getLineAndCharacterOfPosition(end).line + 1
+
+  return {
+    end,
+    endLine,
+    kind,
+    oldText: content.slice(start, end),
+    start,
+    startLine
+  }
+}
+
+const findSmartEditTarget = ({
+  content,
+  filePath,
+  kind,
+  symbol
+}: {
+  content: string
+  filePath: string
+  kind: CodeAgentSmartEditKind
+  symbol: string
+}): CodeAgentSmartEditTarget => {
+  const scriptKind = getSmartEditScriptKind(filePath)
+
+  if (!scriptKind) {
+    throw new Error("smartEdit supports TypeScript and JavaScript files only.")
+  }
+
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind
+  )
+  const matches = sourceFile.statements
+    .map((statement) =>
+      getNamedDeclarationCandidate({
+        sourceFile,
+        statement,
+        symbol
+      })
+    )
+    .filter((match): match is CodeAgentSmartEditTarget => {
+      if (!match) {
+        return false
+      }
+
+      return kind === "any" || match.kind === kind
+    })
+
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one ${kind === "any" ? "declaration" : kind} named ${symbol}, found ${matches.length}.`
+    )
+  }
+
+  const [match] = matches
+
+  if (!match) {
+    throw new Error(
+      `Expected exactly one ${kind === "any" ? "declaration" : kind} named ${symbol}, found 0.`
+    )
+  }
+
+  return match
+}
+
 const executeCodeAgentEdit = async (
   input: unknown,
   projectPath: string,
@@ -2769,6 +3207,88 @@ const executeCodeAgentEdit = async (
       path: result.path,
       replacements: result.replacements,
       truncated: result.truncated
+    }
+  )
+}
+
+const executeCodeAgentSmartEdit = async (
+  input: unknown,
+  projectPath: string,
+  workspace?: AgentWorkspace
+): Promise<CodeAgentTextOutput> => {
+  const {
+    kind,
+    path: requestedPath,
+    replacement,
+    symbol
+  } = CodeAgentSmartEditInputSchema.parse(input)
+  const env = createAgentExecutionEnv({
+    projectPath
+  })
+
+  assertNonSecretToolPath(requestedPath)
+
+  const canonicalPath = await env.fileSystem.canonicalPath(requestedPath)
+  const canonicalRelativePath =
+    "value" in canonicalPath
+      ? canonicalPath.value
+      : throwToolFileError(canonicalPath.error)
+
+  assertNonSecretToolPath(canonicalRelativePath)
+
+  const fileInfo = await env.fileSystem.fileInfo(requestedPath)
+  const fileInfoValue =
+    "value" in fileInfo ? fileInfo.value : throwToolFileError(fileInfo.error)
+
+  if (fileInfoValue.kind !== "file") {
+    throw new Error("smartEdit target must be a file.")
+  }
+
+  const textFile = await env.fileSystem.readTextFile(requestedPath)
+  const content =
+    "value" in textFile ? textFile.value : throwToolFileError(textFile.error)
+
+  if (!isToolTextContent(fileInfoValue.path, content)) {
+    throw new Error("Binary files are not supported.")
+  }
+
+  const target = findSmartEditTarget({
+    content,
+    filePath: fileInfoValue.path,
+    kind,
+    symbol
+  })
+  const nextContent = `${content.slice(0, target.start)}${replacement}${content.slice(target.end)}`
+  const writeResult = await env.fileSystem.writeFile(requestedPath, nextContent)
+
+  if ("error" in writeResult) {
+    throwToolFileError(writeResult.error)
+  }
+
+  const diff = clampToolOutput(
+    [`-${target.oldText}`, `+${replacement}`].join("\n")
+  )
+  const diagnostics = await collectPostWriteLspDiagnostics({
+    path: fileInfoValue.path,
+    workspace
+  })
+
+  return createCodeAgentTextOutput(
+    [
+      `Successfully smart-edited ${target.kind} ${symbol} in ${fileInfoValue.path}.`,
+      formatPostWriteLspDiagnostics(diagnostics)
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    {
+      ...(diagnostics ? { diagnostics } : {}),
+      diff: diff.content,
+      endLine: target.endLine,
+      kind: target.kind,
+      path: fileInfoValue.path,
+      startLine: target.startLine,
+      symbol,
+      truncated: diff.truncated
     }
   )
 }
@@ -3276,6 +3796,40 @@ const executeWebSearch = async (
   }
 }
 
+const executeWebExtract = async (
+  input: unknown,
+  abortSignal?: AbortSignal
+): Promise<AgentWebExtractOutput> => {
+  const { maxChars, url } = WebExtractInputSchema.parse(input)
+  const response = await fetch(url, {
+    headers: {
+      accept: "text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.1",
+      "user-agent": "Etyon Agent Web Extract"
+    },
+    signal: abortSignal
+  })
+
+  if (!response.ok) {
+    throw new Error(`webExtract request failed with HTTP ${response.status}.`)
+  }
+
+  const contentType = response.headers.get("content-type") ?? ""
+  const rawContent = await response.text()
+  const isHtml = isLikelyHtmlContent(contentType, rawContent)
+  const content = isHtml
+    ? extractHtmlText(rawContent)
+    : normalizeWebExtractText(rawContent)
+  const truncated = content.length > maxChars
+
+  return {
+    content: content.slice(0, maxChars),
+    contentType,
+    title: isHtml ? extractHtmlTitle(rawContent) : null,
+    truncated,
+    url
+  }
+}
+
 const assertAgentToolExecutionAllowed = ({
   approvalContext,
   input,
@@ -3370,6 +3924,8 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
+  delete: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentDelete(input, projectPath),
   edit: async ({
     input,
     projectPath,
@@ -3435,6 +3991,8 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     projectPath
   }: ExecuteAgentToolHandlerOptions) =>
     await executeMemorySearch(db, input, memorySettings, projectPath),
+  mkdir: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentMkdir(input, projectPath),
   processOutput: async ({
     chatSessionId,
     db,
@@ -3446,6 +4004,8 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     await executeCodeAgentRead(input, projectPath),
   readFile: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
     await executeReadFile(input, projectPath),
+  requestAccess: ({ input }: ExecuteAgentToolHandlerOptions) =>
+    executeRequestAccess(input),
   rtkCommand: async ({
     abortSignal,
     input,
@@ -3488,6 +4048,14 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
       settings?.sandbox,
       workspace
     ),
+  smartEdit: async ({
+    input,
+    projectPath,
+    workspace
+  }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentSmartEdit(input, projectPath, workspace),
+  stat: async ({ input, projectPath }: ExecuteAgentToolHandlerOptions) =>
+    await executeCodeAgentStat(input, projectPath),
   stopProcess: async ({
     chatSessionId,
     db,
@@ -3495,6 +4063,8 @@ const EXECUTE_AGENT_TOOL_HANDLERS = {
     workspace
   }: ExecuteAgentToolHandlerOptions) =>
     await executeCodeAgentStopProcess(input, chatSessionId, db, workspace),
+  webExtract: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
+    await executeWebExtract(input, abortSignal),
   webSearch: async ({ abortSignal, input }: ExecuteAgentToolHandlerOptions) =>
     await executeWebSearch(input, abortSignal),
   write: async ({
@@ -3599,6 +4169,10 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.bash.etyonName}. Execute a bash command in the current working directory. Returns stdout and stderr. Optionally provide timeout in seconds. Set background=true for a long-running Etyon-managed process, then use processOutput and stopProcess with the returned processId.`,
     inputSchema: CodeAgentBashInputSchema
   },
+  delete: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.delete.etyonName}. Delete one project file or directory. Directory deletion requires recursive=true. This always requires approval before execution.`,
+    inputSchema: CodeAgentDeleteInputSchema
+  },
   processOutput: {
     description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.processOutput.etyonName}. Read bounded stdout and stderr from an Etyon-managed background process.`,
     inputSchema: CodeAgentProcessInputSchema
@@ -3662,6 +4236,10 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
       "Search enabled long-term memory entries for relevant project and user context. This is read-only and respects memory scope settings.",
     inputSchema: MemorySearchInputSchema
   },
+  mkdir: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.mkdir.etyonName}. Create one project directory, optionally including missing parents. This always requires approval before execution.`,
+    inputSchema: CodeAgentMkdirInputSchema
+  },
   read: {
     description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.read.etyonName}. Read the contents of a file. For text files, output is bounded; use offset and limit for large files.`,
     inputSchema: CodeAgentReadInputSchema
@@ -3670,6 +4248,11 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     description:
       "Read a UTF-8 text file inside the active project by relative path. Output is bounded.",
     inputSchema: ReadFileInputSchema
+  },
+  requestAccess: {
+    description:
+      "Ask the user to approve a narrow access checkpoint before continuing. This does not execute any filesystem, shell, network, or delegation action by itself.",
+    inputSchema: RequestAccessInputSchema
   },
   rtkCommand: {
     description:
@@ -3685,6 +4268,19 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
     description:
       "Search project file contents with ripgrep and return bounded line matches.",
     inputSchema: SearchFilesInputSchema
+  },
+  smartEdit: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.smartEdit.etyonName}. Replace one uniquely named top-level TypeScript or JavaScript declaration using AST-bounded source ranges. This always requires approval before execution.`,
+    inputSchema: CodeAgentSmartEditInputSchema
+  },
+  stat: {
+    description: `Model-facing alias of Etyon workspace ${ETYON_CODE_AGENT_WORKSPACE_TOOL_ALIASES.stat.etyonName}. Read structured metadata for one project path without following symlinks.`,
+    inputSchema: FileInfoInputSchema
+  },
+  webExtract: {
+    description:
+      "Fetch a public web page and extract bounded readable text. This requires approval because the URL leaves the local workspace.",
+    inputSchema: WebExtractInputSchema
   },
   webSearch: {
     description:
@@ -3705,10 +4301,15 @@ const AGENT_TOOL_DEFINITION_CONFIGS = {
 const TOOL_APPROVAL_GATED_TOOL_NAMES = new Set<ExecutableAgentToolName>([
   "applyPatch",
   "bash",
+  "delete",
   "edit",
   "editFile",
+  "mkdir",
+  "requestAccess",
   "rtkCommand",
   "runCheck",
+  "smartEdit",
+  "webExtract",
   "webSearch",
   "write",
   "writeFile"
@@ -3839,7 +4440,8 @@ const getAgentExtensionToolNeedsApprovalConfig = ({
   settings: AgentSettings
   workspace: AgentWorkspace
 }): Pick<ToolSet[string], "needsApproval"> => {
-  const { requiresApproval } = definition
+  const requiresApproval =
+    definition.requiresApproval ?? definition.riskLevel !== "safe"
 
   if (!requiresApproval) {
     return {}
@@ -3974,6 +4576,29 @@ const canExposeDelegationTool = ({
   return targetProfile.id === targetProfileId && targetProfile.available
 }
 
+const SKILL_CAPABILITY_SUPPLEMENTAL_TOOL_NAMES = [
+  "webExtract",
+  "webSearch"
+] as const satisfies readonly AgentToolName[]
+
+const getSkillCapabilitySupplementalToolNames = ({
+  includeApprovalTools,
+  skillCapabilities
+}: {
+  includeApprovalTools: boolean
+  skillCapabilities?: readonly string[]
+}): AgentToolName[] => {
+  if (skillCapabilities === undefined) {
+    return []
+  }
+
+  return compileAgentToolNames({
+    allowedToolNames: SKILL_CAPABILITY_SUPPLEMENTAL_TOOL_NAMES,
+    restrictToSafeTools: !includeApprovalTools,
+    skillCapabilities
+  })
+}
+
 export const buildAgentTools = ({
   approvalMode = "default",
   chatSessionId,
@@ -4003,9 +4628,16 @@ export const buildAgentTools = ({
     restrictToSafeTools: !includeApprovalTools,
     skillCapabilities
   })
+  const supplementalToolNames = getSkillCapabilitySupplementalToolNames({
+    includeApprovalTools,
+    skillCapabilities
+  })
   const tools: ToolSet = {}
 
-  for (const toolName of allowedToolNames) {
+  for (const toolName of new Set([
+    ...allowedToolNames,
+    ...supplementalToolNames
+  ])) {
     if (
       toolName === "memorySearch" &&
       !canExposeMemorySearchTool({ db, memorySettings })
@@ -4046,6 +4678,7 @@ export const buildAgentTools = ({
 
   if (extensionRunner) {
     for (const extensionToolDefinition of extensionRunner.listTools({
+      includeApprovalTools,
       profileId: profile.id,
       skillCapabilities
     })) {
