@@ -776,6 +776,7 @@ export const buildChatStreamResponse = ({
 
         writer.merge(
           result.toUIMessageStream({
+            originalMessages: messages,
             sendReasoning: true
           })
         )

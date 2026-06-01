@@ -37,7 +37,7 @@ import type {
   ToolUIPart,
   UIMessage
 } from "ai"
-import { isToolUIPart } from "ai"
+import { getToolName, isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
@@ -99,7 +99,10 @@ import type {
   PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
-import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
+import type {
+  AssistantTextSegment,
+  AssistantToolApprovalResponseOptions
+} from "@/renderer/lib/chat/tool-ui"
 import { respondToAssistantToolApproval } from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
@@ -966,7 +969,11 @@ const ChatMessageBubble = ({
   isRequestPending: boolean
   liveWorkTimeStartedAt?: number
   message: ChatUiMessage
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => {
@@ -1077,7 +1084,11 @@ const ChatMessageItem = ({
   isRequestPending: boolean
   liveWorkTimeStartedAt?: number
   message: ChatUiMessage
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   onCancelEditMessage: () => void
   onEditingMessageTextChange: (value: string) => void
   onRegenerate: (messageId?: string) => void
@@ -1268,6 +1279,7 @@ const ChatRuntime = ({
   onPromptTemplateQueryChange,
   onProjectContextOpenChange,
   onRefreshProjectContext,
+  onSyncPersistedMessagesAfterFinish,
   onToggleProjectContext,
   onProjectContextViewChange,
   projectTreeItems,
@@ -1305,6 +1317,7 @@ const ChatRuntime = ({
   onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
   onRefreshProjectContext: () => void
+  onSyncPersistedMessagesAfterFinish: () => Promise<ChatUiMessage[]>
   onToggleProjectContext: () => void
   onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
@@ -1355,6 +1368,17 @@ const ChatRuntime = ({
     },
     onFinish: () => {
       setRequestPhase(null)
+
+      if (agentsEnabled) {
+        void (async () => {
+          try {
+            setMessages(await onSyncPersistedMessagesAfterFinish())
+          } catch {
+            // Keep the live messages if persisted repair cannot be loaded.
+          }
+        })()
+      }
+
       void queryClient.invalidateQueries({
         queryKey: queuedMessagesQueryOptions.queryKey
       })
@@ -1516,16 +1540,39 @@ const ChatRuntime = ({
   }, [messages])
 
   const handleToolApprovalResponse = useCallback(
-    (part: ChatToolPart, approved: boolean) => {
-      respondToAssistantToolApproval({
-        addToolApprovalResponse,
-        approved,
-        buildChatRequestOptions,
-        latestUserMentions,
-        part
-      })
+    (
+      part: ChatToolPart,
+      approved: boolean,
+      options?: AssistantToolApprovalResponseOptions
+    ) => {
+      void (async () => {
+        if (approved && options?.rememberCommand) {
+          try {
+            await rpcClient.agents.rememberCommandApproval({
+              input: part.input,
+              sessionId: selectedSession.id,
+              toolName: getToolName(part)
+            })
+          } catch {
+            // Approval should still resume even if the preference write fails.
+          }
+        }
+
+        respondToAssistantToolApproval({
+          addToolApprovalResponse,
+          approved,
+          buildChatRequestOptions,
+          latestUserMentions,
+          part
+        })
+      })()
     },
-    [addToolApprovalResponse, buildChatRequestOptions, latestUserMentions]
+    [
+      addToolApprovalResponse,
+      buildChatRequestOptions,
+      latestUserMentions,
+      selectedSession.id
+    ]
   )
 
   const handleSubmit = useCallback(
@@ -2431,6 +2478,13 @@ const ChatSessionPage = () => {
           onProjectContextOpenChange={handleProjectContextOpenChange}
           onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
+          onSyncPersistedMessagesAfterFinish={async () => {
+            const result = await queryClient.fetchQuery(
+              chatSessionMessagesQueryOptions
+            )
+
+            return result.messages.map(toRuntimeChatMessage)
+          }}
           onToggleProjectContext={handleToggleProjectContext}
           projectContextView={projectContextView}
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}

@@ -160,6 +160,9 @@ describe("AppSettingsSchema", () => {
 
     expect(settings.agents).toEqual({
       allowSubagentDelegation: false,
+      approvals: {
+        commandAllowlist: []
+      },
       defaultProfileId: "general-purpose",
       enabled: false,
       lsp: {
@@ -197,6 +200,9 @@ describe("AppSettingsSchema", () => {
 
     expect(update.agents).toEqual({
       allowSubagentDelegation: false,
+      approvals: {
+        commandAllowlist: []
+      },
       defaultProfileId: "coder",
       enabled: true,
       lsp: {

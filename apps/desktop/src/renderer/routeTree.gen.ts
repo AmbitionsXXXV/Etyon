@@ -85,18 +85,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agents/$sessionId': {
-      id: '/agents/$sessionId'
-      path: '/agents/$sessionId'
-      fullPath: '/agents/$sessionId'
-      preLoaderRoute: typeof AgentsSessionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/chat/$sessionId': {
       id: '/chat/$sessionId'
       path: '/chat/$sessionId'
       fullPath: '/chat/$sessionId'
       preLoaderRoute: typeof ChatSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/$sessionId': {
+      id: '/agents/$sessionId'
+      path: '/agents/$sessionId'
+      fullPath: '/agents/$sessionId'
+      preLoaderRoute: typeof AgentsSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

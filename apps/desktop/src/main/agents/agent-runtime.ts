@@ -56,7 +56,10 @@ import {
   createAiSdkAgentLoopModel,
   createAiSdkAgentLoopTools
 } from "@/main/agents/agent-loop-ai-sdk"
-import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/agent-messages"
+import {
+  buildProviderReadyModelMessages,
+  completeUnresolvedToolCallsInModelMessages
+} from "@/main/agents/agent-messages"
 import {
   isRetryableAgentFailure,
   parseStructuredPlanFromText,
@@ -2231,9 +2234,6 @@ const loadAgentRequestModelMessages = async ({
     persistedMessages: persistedSessionContext.messages,
     requestMessages: [
       ...approvalFilteredMessages,
-      ...buildApprovalResponseModelMessages(
-        approvalResumeMatch?.responseRecords ?? []
-      ),
       ...persistedSessionContext.queuedMessages,
       ...latestCompletedRunQueuedMessages
     ]
@@ -3072,6 +3072,8 @@ export const streamAgentChat = async ({
       run,
       sessionId
     })
+  const matchedApprovalResponseRecords =
+    approvalResumeMatch?.responseRecords ?? []
 
   await (resumedRun
     ? updateAgentRun({
@@ -3100,7 +3102,7 @@ export const streamAgentChat = async ({
 
   await recordToolApprovalResponses({
     db,
-    responseRecords: approvalResumeMatch?.responseRecords ?? [],
+    responseRecords: matchedApprovalResponseRecords,
     run
   })
 
@@ -3251,13 +3253,6 @@ export const streamAgentChat = async ({
 
   const execution = (async (): Promise<MainAgentLoopExecutionResult> => {
     try {
-      await sessionModelCommitter.commit(preparedMessages)
-      await appendAgentSessionSavePointEvent({
-        label: "provider-request-prepared",
-        messages: preparedMessages,
-        run
-      })
-
       const approvedToolResultMessages =
         await executeApprovedToolApprovalResponses({
           abortSignal: agentAbortSignal,
@@ -3266,9 +3261,23 @@ export const streamAgentChat = async ({
           lifecycleHandlers,
           messages: preparedMessages,
           metadata: preparedProviderRequest.requestOptions.metadata,
-          responseRecords: approvalResumeMatch?.responseRecords ?? [],
+          responseRecords: matchedApprovalResponseRecords,
           run
         })
+      const providerReadyMessages = buildProviderReadyModelMessages({
+        messages: preparedMessages,
+        toolResultMessages: [
+          ...buildApprovalResponseModelMessages(matchedApprovalResponseRecords),
+          ...approvedToolResultMessages
+        ]
+      })
+
+      await sessionModelCommitter.commit(providerReadyMessages)
+      await appendAgentSessionSavePointEvent({
+        label: "provider-request-prepared",
+        messages: providerReadyMessages,
+        run
+      })
 
       for (const message of approvedToolResultMessages) {
         writeToolMessageToLiveSink({
@@ -3277,12 +3286,9 @@ export const streamAgentChat = async ({
         })
       }
 
-      const initialModelMessages = [
-        ...preparedMessages,
-        ...approvedToolResultMessages
-      ]
-      const initialLoopMessages =
-        convertModelMessagesToAgentLoopMessages(initialModelMessages)
+      const initialLoopMessages = convertModelMessagesToAgentLoopMessages(
+        providerReadyMessages
+      )
       const pendingApprovalRequests: PendingLoopApprovalRequest[] = []
       const loopModel = createAiSdkAgentLoopModel({
         headers: preparedProviderRequest.requestOptions.headers,
@@ -3479,7 +3485,7 @@ export const streamAgentChat = async ({
       })
       const generatedMessages = stripPlanProgressFromModelMessages({
         executionMode: profile.executionMode,
-        messages: [...approvedToolResultMessages, ...providerResponseMessages]
+        messages: providerResponseMessages
       })
       const providerResponseText = getProviderResponseText({
         event: {},
@@ -3499,7 +3505,7 @@ export const streamAgentChat = async ({
       const failureMessage = getMainLoopFailureMessage(loopResult.stopReason)
 
       await sessionModelCommitter.commit([
-        ...preparedMessages,
+        ...providerReadyMessages,
         ...generatedMessages
       ])
       await appendPlanModeSessionEvents({
@@ -3509,7 +3515,7 @@ export const streamAgentChat = async ({
       })
       await appendAgentSessionSavePointEvent({
         label: "provider-response-committed",
-        messages: [...preparedMessages, ...generatedMessages],
+        messages: [...providerReadyMessages, ...generatedMessages],
         run
       })
       await updateAgentRun({

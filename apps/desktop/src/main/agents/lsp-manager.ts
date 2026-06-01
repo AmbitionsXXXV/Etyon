@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process"
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import fsSync from "node:fs"
-import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -12,6 +11,7 @@ import type {
   WorkspaceSandbox,
   WorkspaceSandboxSpawnConfig
 } from "@/main/agents/workspace-sandbox"
+import { mainRequire } from "@/main/main-require"
 
 type LspJsonValue =
   | boolean
@@ -253,7 +253,6 @@ const LSP_SYMBOL_KIND_NAMES = new Map<number, string>([
   [26, "type-parameter"]
 ])
 const LSP_SYMBOL_KIND_VALUE_SET = [...LSP_SYMBOL_KIND_NAMES.keys()]
-const requireFromLspManager = createRequire(import.meta.url)
 const TYPESCRIPT_LANGUAGE_SERVER_NAME = "typescript-language-server"
 const TYPESCRIPT_LANGUAGE_SERVER_PACKAGE_NAME = "typescript-language-server"
 const TYPESCRIPT_LSP_EXTENSIONS = new Set([
@@ -338,7 +337,7 @@ const getLocalTypescriptLanguageServerPath = (rootPath: string): string => {
 
 const resolveBundledTypescriptLanguageServerPath = (): string | null => {
   try {
-    const packageJsonPath = requireFromLspManager.resolve(
+    const packageJsonPath = mainRequire.resolve(
       `${TYPESCRIPT_LANGUAGE_SERVER_PACKAGE_NAME}/package.json`
     )
     const serverPath = path.join(

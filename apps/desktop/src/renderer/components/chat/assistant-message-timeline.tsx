@@ -16,7 +16,10 @@ import {
   shouldRenderAssistantToolPart,
   splitAssistantRenderableTextSegments
 } from "@/renderer/lib/chat/tool-ui"
-import type { AssistantTextSegment } from "@/renderer/lib/chat/tool-ui"
+import type {
+  AssistantTextSegment,
+  AssistantToolApprovalResponseOptions
+} from "@/renderer/lib/chat/tool-ui"
 import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
 
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
@@ -188,7 +191,11 @@ const AssistantTimelinePart = ({
   isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
   messageId: string
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   part: ChatUiMessage["parts"][number]
   partIndex: number
   showToolTraces: boolean
@@ -254,7 +261,11 @@ export const AssistantMessageTimeline = ({
   isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
   message: ChatUiMessage
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => (

@@ -146,6 +146,7 @@
     },
     "toolTrace": {
       "approve": "批准",
+      "approveAndRemember": "批准并记住",
       "childTrace": "子任务 Trace",
       "childTraceArtifacts": "Artifacts {count}",
       "childTraceEmpty": "没有子任务事件",

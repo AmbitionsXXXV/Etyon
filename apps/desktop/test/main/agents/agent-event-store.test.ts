@@ -1388,6 +1388,19 @@ describe("agent event store", () => {
       profileId: "coder"
     })
 
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T09:59:00.000Z"
+      })
+      .where(eq(agentRuns.id, runningRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, failedRun.id))
+
     await updateAgentRun({
       db: getDb(),
       errorMessage: "Provider stream failed.",
@@ -1434,6 +1447,160 @@ describe("agent event store", () => {
         })
       ])
     )
+  })
+
+  it("does not list failed top-level runs superseded by a newer top-level run", async () => {
+    await ensureDatabaseReady()
+
+    const ownerSession = await createChatSession({ db: getDb() })
+    const staleFailedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const newerRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, staleFailedRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, newerRun.id))
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Agent run was stopped.",
+      id: staleFailedRun.id,
+      status: "failed"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: newerRun.id,
+      status: "succeeded"
+    })
+
+    expect(
+      await listRecoverableAgentRuns({
+        chatSessionId: ownerSession.id,
+        db: getDb()
+      })
+    ).toEqual([])
+  })
+
+  it("does not list failed top-level runs while a newer top-level run is suspended", async () => {
+    await ensureDatabaseReady()
+
+    const ownerSession = await createChatSession({ db: getDb() })
+    const staleFailedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const suspendedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, staleFailedRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, suspendedRun.id))
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Agent run was stopped.",
+      id: staleFailedRun.id,
+      status: "failed"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: suspendedRun.id,
+      status: "suspended"
+    })
+
+    expect(
+      await listRecoverableAgentRuns({
+        chatSessionId: ownerSession.id,
+        db: getDb()
+      })
+    ).toEqual([])
+  })
+
+  it("lists only the latest failed top-level run for a session", async () => {
+    await ensureDatabaseReady()
+
+    const ownerSession = await createChatSession({ db: getDb() })
+    const olderFailedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const newerFailedRun = await createAgentRun({
+      chatSessionId: ownerSession.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, olderFailedRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, newerFailedRun.id))
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Older failure.",
+      id: olderFailedRun.id,
+      status: "failed"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      errorMessage: "Newer failure.",
+      id: newerFailedRun.id,
+      status: "failed"
+    })
+
+    expect(
+      await listRecoverableAgentRuns({
+        chatSessionId: ownerSession.id,
+        db: getDb()
+      })
+    ).toEqual([
+      expect.objectContaining({
+        errorMessage: "Newer failure.",
+        id: newerFailedRun.id,
+        status: "failed"
+      })
+    ])
   })
 
   it("marks agent runs as finished", async () => {

@@ -1002,7 +1002,6 @@ export const listRecoverableAgentRuns = async ({
   db
 }: ListRecoverableAgentRunsOptions): Promise<AgentRun[]> => {
   const conditions = [
-    eq(agentRuns.status, "failed"),
     isNull(agentRuns.parentRunId),
     ...(chatSessionId ? [eq(agentRuns.chatSessionId, chatSessionId)] : [])
   ]
@@ -1010,9 +1009,23 @@ export const listRecoverableAgentRuns = async ({
     .select()
     .from(agentRuns)
     .where(and(...conditions))
-    .orderBy(desc(agentRuns.finishedAt), desc(agentRuns.startedAt))
+    .orderBy(desc(agentRuns.startedAt), desc(agentRuns.finishedAt))
+  const seenSessionIds = new Set<string>()
+  const recoverableRows: typeof rows = []
 
-  return rows.map((row) => toAgentRun(db, row))
+  for (const row of rows) {
+    if (seenSessionIds.has(row.chatSessionId)) {
+      continue
+    }
+
+    seenSessionIds.add(row.chatSessionId)
+
+    if (row.status === "failed") {
+      recoverableRows.push(row)
+    }
+  }
+
+  return recoverableRows.map((row) => toAgentRun(db, row))
 }
 
 export const updateAgentRun = async ({

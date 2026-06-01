@@ -50,6 +50,8 @@ export {
   QueueAgentMessageOutputSchema,
   ReadAgentArtifactInputSchema,
   ReadAgentArtifactOutputSchema,
+  RememberAgentCommandApprovalInputSchema,
+  RememberAgentCommandApprovalOutputSchema,
   RemoveQueuedAgentMessageInputSchema,
   ReorderQueuedAgentMessagesInputSchema,
   RecoverableAgentRunsOutputSchema,
@@ -121,6 +123,8 @@ export type {
   QueueAgentMessageOutput,
   ReadAgentArtifactInput,
   ReadAgentArtifactOutput,
+  RememberAgentCommandApprovalInput,
+  RememberAgentCommandApprovalOutput,
   RemoveQueuedAgentMessageInput,
   ReorderQueuedAgentMessagesInput,
   RecoverableAgentRunsOutput,
@@ -340,6 +344,8 @@ export type {
   SkillSource
 } from "./schemas/skills"
 export {
+  AgentApprovalSettingsSchema,
+  AgentCommandApprovalRuleSchema,
   AgentExecutionModeSchema,
   AgentLspSettingsSchema,
   AgentProfileSchema,
@@ -371,6 +377,8 @@ export {
   UpdateSettingsSchema
 } from "./schemas/settings"
 export type {
+  AgentApprovalSettings,
+  AgentCommandApprovalRule,
   AgentExecutionMode,
   AgentLspSettings,
   AgentProfile,

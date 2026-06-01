@@ -14,7 +14,16 @@ export interface AgentPermissionDecision {
   ruleId: string
 }
 
+export interface AgentCommandApprovalAllowlistRule {
+  command: string
+  createdAt?: string
+  cwd?: string
+  projectPath: string
+  toolName: string
+}
+
 export interface EvaluateAgentToolPermissionOptions {
+  commandApprovalAllowlist?: readonly AgentCommandApprovalAllowlistRule[]
   input: unknown
   name: AgentToolName
   workspaceRoot: string
@@ -36,6 +45,8 @@ const SAFE_CHECK_COMMAND_PATTERNS = [
   /^(?:rtk\s+)?vp\s+test\s+run(?:\s+[\w@/:#.,=-]+)*$/u,
   /^(?:rtk\s+)?vp\s+run\s+[\w@/:#.-]+(?:\s+run(?:\s+[\w@/:#.,=-]+)*)?$/u
 ] as const
+const SAFE_READONLY_GIT_COMMAND_PATTERN =
+  /^git\s+(?:diff|log|show|status)(?:\s+[A-Za-z0-9_@%/:#.,=+\-~^*[\]{}]+)*$/u
 const SECRET_BASENAMES = new Set([
   ".env",
   ".env.local",
@@ -136,8 +147,47 @@ const isRiskyCommand = (command: string): boolean =>
 const isSafeCheckCommand = (command: string): boolean =>
   SAFE_CHECK_COMMAND_PATTERNS.some((pattern) => pattern.test(command))
 
+const isSafeReadonlyGitCommand = (command: string): boolean =>
+  SAFE_READONLY_GIT_COMMAND_PATTERN.test(command)
+
 const isUnsupportedPackageManagerCommand = (command: string): boolean =>
   COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN.test(command)
+
+const resolveCommandCwd = (cwd: string | undefined, workspaceRoot: string) =>
+  path.resolve(path.resolve(workspaceRoot), cwd?.trim() ?? "")
+
+const commandMatchesApprovalAllowlist = ({
+  allowlist,
+  command,
+  cwd,
+  name,
+  workspaceRoot
+}: {
+  allowlist?: readonly AgentCommandApprovalAllowlistRule[]
+  command: string
+  cwd?: string
+  name: AgentToolName
+  workspaceRoot: string
+}): boolean => {
+  if (!allowlist || allowlist.length === 0) {
+    return false
+  }
+
+  const normalizedCommand = command.trim()
+  const normalizedWorkspaceRoot = path.resolve(workspaceRoot)
+  const normalizedCwd = resolveCommandCwd(cwd, normalizedWorkspaceRoot)
+
+  return allowlist.some((rule) => {
+    const ruleWorkspaceRoot = path.resolve(rule.projectPath)
+
+    return (
+      rule.command.trim() === normalizedCommand &&
+      rule.toolName === name &&
+      ruleWorkspaceRoot === normalizedWorkspaceRoot &&
+      resolveCommandCwd(rule.cwd, ruleWorkspaceRoot) === normalizedCwd
+    )
+  })
+}
 
 const hasToolCapability = (
   name: AgentToolName,
@@ -176,10 +226,13 @@ const evaluateReadOnlyPath = (
 }
 
 const evaluateCommandPermission = (
+  allowlist: readonly AgentCommandApprovalAllowlistRule[] | undefined,
   input: unknown,
-  name: AgentToolName
+  name: AgentToolName,
+  workspaceRoot: string
 ): AgentPermissionDecision => {
   const command = getInputString(input, "command")?.trim() ?? ""
+  const cwd = getInputString(input, "cwd")
   const rawOutput = getInputBoolean(input, "rawOutput")
   const timeoutMs = getCommandTimeoutMs(input)
 
@@ -237,12 +290,41 @@ const evaluateCommandPermission = (
     })
   }
 
+  if (
+    commandMatchesApprovalAllowlist({
+      allowlist,
+      command,
+      cwd,
+      name,
+      workspaceRoot
+    })
+  ) {
+    return buildDecision({
+      action: "allow",
+      reason: "The command matches a remembered approval for this workspace.",
+      risk: "low",
+      ruleId: "command-approval-allowlist"
+    })
+  }
+
   if ((name === "bash" || name === "runCheck") && isSafeCheckCommand(command)) {
     return buildDecision({
       action: "allow",
       reason: "The command is a bounded project check.",
       risk: "low",
       ruleId: "safe-check-command"
+    })
+  }
+
+  if (
+    (name === "bash" || name === "rtkCommand") &&
+    isSafeReadonlyGitCommand(command)
+  ) {
+    return buildDecision({
+      action: "allow",
+      reason: "The command is a read-only Git inspection.",
+      risk: "low",
+      ruleId: "safe-readonly-git-command"
     })
   }
 
@@ -273,6 +355,7 @@ const evaluateCommandCwd = (
 }
 
 export const evaluateAgentToolPermission = ({
+  commandApprovalAllowlist,
   input,
   name,
   workspaceRoot
@@ -325,7 +408,12 @@ export const evaluateAgentToolPermission = ({
       return cwdDecision
     }
 
-    return evaluateCommandPermission(input, name)
+    return evaluateCommandPermission(
+      commandApprovalAllowlist,
+      input,
+      name,
+      workspaceRoot
+    )
   }
 
   if (name === "processOutput" || name === "stopProcess") {

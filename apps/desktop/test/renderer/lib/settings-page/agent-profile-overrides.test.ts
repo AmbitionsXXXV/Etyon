@@ -9,6 +9,9 @@ import {
 
 const baseAgents: AgentSettings = {
   allowSubagentDelegation: false,
+  approvals: {
+    commandAllowlist: []
+  },
   defaultProfileId: "coder",
   enabled: true,
   lsp: {

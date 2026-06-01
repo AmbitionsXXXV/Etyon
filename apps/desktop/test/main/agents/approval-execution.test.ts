@@ -470,6 +470,103 @@ describe("agent approval execution", () => {
     )
   })
 
+  it("keeps approved resume tool results adjacent to the original provider tool call", async () => {
+    const harness = await createAgentRuntimeHarness({
+      modelId: "mock-model",
+      rootPath: mockedHomeDir,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          defaultProfileId: "coder",
+          enabled: true
+        }
+      })
+    })
+    const approval = await harness.session.suspendForToolApproval({
+      approvalId: "approval-1",
+      input: {
+        content: "approved",
+        path: "approved-adjacent.txt"
+      },
+      profileId: "coder",
+      toolCallId: "tool-call-1",
+      toolName: "write"
+    })
+    const approvalMessages = approval.toModelMessages({
+      approved: true
+    })
+    const approvalRequestMessage = findRequiredModelMessage({
+      messages: approvalMessages,
+      role: "assistant"
+    })
+
+    await appendAgentSessionModelMessageEvents({
+      messages: [
+        {
+          content: "Persisted user request.",
+          role: "user"
+        },
+        approvalRequestMessage,
+        {
+          content: [
+            {
+              output: {
+                type: "error-text",
+                value:
+                  "Tool execution did not complete before the next user message."
+              },
+              toolCallId: "tool-call-1",
+              toolName: "write",
+              type: "tool-result"
+            }
+          ],
+          role: "tool"
+        },
+        {
+          content: "Later user context.",
+          role: "user"
+        }
+      ],
+      run: approval.run
+    })
+    harness.faux.setResponses([
+      createFauxTextResponse("resumed", {
+        modelId: harness.modelId
+      })
+    ])
+
+    const result = await harness.stream({
+      messages: approvalMessages
+    })
+
+    await result.consumeStream()
+
+    const [modelCall] = harness.faux.model.doStreamCalls
+    const prompt = modelCall?.prompt ?? []
+    const promptJson = JSON.stringify(prompt)
+    const toolCallIndex = prompt.findIndex(
+      (message) =>
+        message.role === "assistant" &&
+        JSON.stringify(message).includes("tool-call-1")
+    )
+    const toolResultIndex = prompt.findIndex(
+      (message) =>
+        message.role === "tool" &&
+        JSON.stringify(message).includes("tool-call-1")
+    )
+    const laterUserIndex = prompt.findIndex(
+      (message) =>
+        message.role === "user" &&
+        JSON.stringify(message).includes("Later user context.")
+    )
+
+    expect(promptJson).not.toContain("tool-approval-request")
+    expect(promptJson).not.toContain("tool-approval-response")
+    expect(promptJson).not.toContain("Tool execution did not complete")
+    expect(toolCallIndex).toBeGreaterThan(-1)
+    expect(toolResultIndex).toBe(toolCallIndex + 1)
+    expect(laterUserIndex).toBeGreaterThan(toolResultIndex)
+  })
+
   it("replays pending queued session messages when resuming a run", async () => {
     const harness = await createAgentRuntimeHarness({
       modelId: "mock-model",
@@ -574,10 +671,16 @@ describe("agent approval execution", () => {
       messages: approvalMessages,
       role: "assistant"
     })
-    const approvalResponseMessage = findRequiredModelMessage({
-      messages: approvalMessages,
-      role: "tool"
-    })
+    const approvalRequestParts = Array.isArray(approvalRequestMessage.content)
+      ? approvalRequestMessage.content
+      : []
+    const toolCallPart = approvalRequestParts.find(
+      (part) =>
+        typeof part === "object" &&
+        part !== null &&
+        "type" in part &&
+        part.type === "tool-call"
+    )
 
     await appendAgentSessionModelMessageEvents({
       messages: [userMessage],
@@ -605,15 +708,27 @@ describe("agent approval execution", () => {
     expect(modelMessages).toEqual(
       expect.arrayContaining([
         {
-          ...approvalRequestMessage,
+          content: [toolCallPart],
+          role: "assistant",
           type: "model"
         },
         {
-          ...approvalResponseMessage,
+          content: [
+            expect.objectContaining({
+              toolCallId: "tool-call-1",
+              toolName: "write",
+              type: "tool-result"
+            })
+          ],
+          role: "tool",
           type: "model"
         }
       ])
     )
+    expect(JSON.stringify(modelMessages)).not.toContain(
+      "tool-approval-response"
+    )
+    expect(JSON.stringify(modelMessages)).not.toContain("tool-approval-request")
   })
 
   it("keeps a resumed run suspended while another approval is still pending", async () => {

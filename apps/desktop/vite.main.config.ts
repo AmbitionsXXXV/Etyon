@@ -2,7 +2,14 @@ import { defineConfig } from "vite-plus"
 
 import { desktopAliases } from "./vite-aliases"
 
-const REQUIRE_POLYFILL = `import { createRequire } from "node:module"; const require = createRequire(import.meta.url);`
+const ESM_SHIMS = [
+  `import { createRequire as __etyonCreateRequire } from "node:module";`,
+  `import { fileURLToPath as __etyonFileURLToPath } from "node:url";`,
+  `import { dirname as __etyonDirname } from "node:path";`,
+  `const require = __etyonCreateRequire(import.meta.url);`,
+  `const __filename = __etyonFileURLToPath(import.meta.url);`,
+  `const __dirname = __etyonDirname(__filename);`
+].join(" ")
 
 export default defineConfig({
   build: {
@@ -14,7 +21,7 @@ export default defineConfig({
     rolldownOptions: {
       external: ["electron-liquid-glass", "font-list"],
       output: {
-        banner: REQUIRE_POLYFILL
+        banner: ESM_SHIMS
       }
     }
   },

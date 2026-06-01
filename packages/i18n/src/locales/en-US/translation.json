@@ -146,6 +146,7 @@
     },
     "toolTrace": {
       "approve": "Approve",
+      "approveAndRemember": "Approve and remember",
       "childTrace": "Child trace",
       "childTraceArtifacts": "Artifacts {count}",
       "childTraceEmpty": "No child events",

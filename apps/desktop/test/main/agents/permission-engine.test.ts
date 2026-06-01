@@ -346,6 +346,77 @@ describe("agent permission engine", () => {
     }
   })
 
+  it("allows safe read-only git inspection commands", () => {
+    for (const command of [
+      "git diff --staged -- apps/desktop/src/main/agents/agent-runtime.ts",
+      "git diff --cached --stat",
+      "git status --short",
+      "git log --oneline -n 5",
+      "git show HEAD~1:doc/agents.md"
+    ]) {
+      expect(
+        evaluateAgentToolPermission({
+          input: {
+            command
+          },
+          name: "bash",
+          workspaceRoot
+        })
+      ).toMatchObject({
+        action: "allow",
+        ruleId: "safe-readonly-git-command"
+      })
+    }
+  })
+
+  it("allows exact remembered shell commands after base command checks pass", () => {
+    expect(
+      evaluateAgentToolPermission({
+        commandApprovalAllowlist: [
+          {
+            command:
+              "git diff --staged -- apps/desktop/src/main/agents/agent-runtime.ts",
+            createdAt: "2026-06-01T00:00:00.000Z",
+            cwd: ".",
+            projectPath: workspaceRoot,
+            toolName: "bash"
+          }
+        ],
+        input: {
+          command:
+            "git diff --staged -- apps/desktop/src/main/agents/agent-runtime.ts",
+          cwd: "."
+        },
+        name: "bash",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "allow",
+      ruleId: "command-approval-allowlist"
+    })
+
+    expect(
+      evaluateAgentToolPermission({
+        commandApprovalAllowlist: [
+          {
+            command: "printf remembered-command",
+            createdAt: "2026-06-01T00:00:00.000Z",
+            projectPath: workspaceRoot,
+            toolName: "bash"
+          }
+        ],
+        input: {
+          command: "printf remembered-command extra"
+        },
+        name: "bash",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "ask",
+      ruleId: "command-requires-approval"
+    })
+  })
+
   it("denies command cwd outside the workspace", () => {
     expect(
       evaluateAgentToolPermission({

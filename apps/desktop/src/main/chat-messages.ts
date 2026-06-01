@@ -79,6 +79,20 @@ const hasAgentProjectionForRun = ({
       message.role === "assistant" && getAgentProjectionRunId(message) === runId
   )
 
+const hasEmptyAgentProjectionForRun = ({
+  messages,
+  runId
+}: {
+  messages: readonly UIMessage[]
+  runId: string
+}): boolean =>
+  messages.some(
+    (message) =>
+      message.role === "assistant" &&
+      getAgentProjectionRunId(message) === runId &&
+      message.parts.length === 0
+  )
+
 const getLatestUserMessageBoundary = (messages: readonly UIMessage[]): number =>
   messages.findLastIndex((message) => message.role === "user") + 1
 
@@ -305,10 +319,20 @@ export const listChatMessagesWithAgentProjectionRepair = async ({
     db
   })
 
-  if (
-    !latestRun ||
-    hasAgentProjectionForRun({ messages, runId: latestRun.id })
-  ) {
+  if (!latestRun) {
+    return messages
+  }
+
+  const hasLatestRunProjection = hasAgentProjectionForRun({
+    messages,
+    runId: latestRun.id
+  })
+  const hasStaleEmptyProjection = hasEmptyAgentProjectionForRun({
+    messages,
+    runId: latestRun.id
+  })
+
+  if (hasLatestRunProjection && !hasStaleEmptyProjection) {
     return messages
   }
 

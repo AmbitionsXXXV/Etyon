@@ -264,6 +264,279 @@ describe("agent chat projection", () => {
     ])
   })
 
+  it("merges approval-resume assistant continuation into the original assistant message", () => {
+    const messages = buildAgentChatProjectionMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Update the file.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                text: "I will update the file.",
+                type: "text"
+              },
+              {
+                input: {
+                  content: "updated",
+                  path: "generated.txt"
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-call"
+              },
+              {
+                approvalId: "approval-write-1",
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                approvalId: "approval-write-1",
+                approved: true,
+                type: "tool-approval-response"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(4, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                output: {
+                  type: "json",
+                  value: {
+                    ok: true
+                  }
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-result"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(5, {
+          action: "appendMessage",
+          message: {
+            content: "Done updating the file.",
+            role: "assistant",
+            type: "model"
+          }
+        })
+      ],
+      runId: "run-1"
+    })
+
+    expect(messages).toEqual([
+      {
+        id: "agent-run-1-0-user",
+        parts: [
+          {
+            text: "Update the file.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "agent-run-1-1-assistant",
+        metadata: {
+          agentProjection: {
+            runId: "run-1",
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            text: "I will update the file.",
+            type: "text"
+          },
+          {
+            approval: {
+              id: "approval-write-1"
+            },
+            input: {
+              content: "updated",
+              path: "generated.txt"
+            },
+            output: {
+              ok: true
+            },
+            state: "output-available",
+            toolCallId: "write-call-1",
+            toolName: "write",
+            type: "dynamic-tool"
+          },
+          {
+            text: "Done updating the file.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+  })
+
+  it("merges approval-only assistant resume entries into the original assistant message", () => {
+    const messages = buildAgentChatProjectionMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Check staged changes.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                input: {
+                  command: "git diff --staged"
+                },
+                toolCallId: "bash:18",
+                toolName: "bash",
+                type: "tool-call"
+              },
+              {
+                approvalId: "approval-bash-1",
+                input: {
+                  command: "git diff --staged"
+                },
+                toolCallId: "bash:18",
+                toolName: "bash",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                approvalId: "approval-bash-1",
+                toolCallId: "bash:18",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(4, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                approvalId: "approval-bash-1",
+                approved: true,
+                type: "tool-approval-response"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(5, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                output: {
+                  type: "text",
+                  value: "(no output)"
+                },
+                toolCallId: "bash:18",
+                toolName: "bash",
+                type: "tool-result"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(6, {
+          action: "appendMessage",
+          message: {
+            content: "当前暂存区为空。",
+            role: "assistant",
+            type: "model"
+          }
+        })
+      ],
+      runId: "run-1"
+    })
+
+    expect(messages).toEqual([
+      {
+        id: "agent-run-1-0-user",
+        parts: [
+          {
+            text: "Check staged changes.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "agent-run-1-1-assistant",
+        metadata: {
+          agentProjection: {
+            runId: "run-1",
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            approval: {
+              id: "approval-bash-1"
+            },
+            input: {
+              command: "git diff --staged"
+            },
+            output: "(no output)",
+            state: "output-available",
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "dynamic-tool"
+          },
+          {
+            text: "当前暂存区为空。",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+  })
+
   it("projects the latest active UI stream snapshot before terminal run events", () => {
     const messages = buildAgentChatProjectionMessages({
       events: [
@@ -456,6 +729,146 @@ describe("agent chat projection", () => {
         role: "assistant"
       }
     ])
+  })
+
+  it("strips trailing assistant from prefix when approval resume adds projected suffix", () => {
+    const messages: UIMessage[] = [
+      {
+        id: "user-1",
+        parts: [
+          {
+            text: "Update the file.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "assistant-from-first-stream",
+        parts: [
+          {
+            text: "I will update the file.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        id: "assistant-from-second-stream",
+        parts: [
+          {
+            text: "Done updating the file.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ]
+
+    const result = mergeAgentEventProjectionIntoChatMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Update the file.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                text: "I will update the file.",
+                type: "text"
+              },
+              {
+                input: {
+                  content: "updated",
+                  path: "generated.txt"
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-call"
+              },
+              {
+                approvalId: "approval-write-1",
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-approval-request"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                approvalId: "approval-write-1",
+                approved: true,
+                type: "tool-approval-response"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(4, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                output: {
+                  type: "json",
+                  value: {
+                    ok: true
+                  }
+                },
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "tool-result"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(5, {
+          action: "appendMessage",
+          message: {
+            content: "Done updating the file.",
+            role: "assistant",
+            type: "model"
+          }
+        })
+      ],
+      messages,
+      originalMessageCount: 2,
+      runId: "run-1"
+    })
+
+    const assistantMessages = result.filter((m) => m.role === "assistant")
+
+    expect(assistantMessages).toHaveLength(1)
+    expect(result).toHaveLength(2)
+    expect(result[0]).toBe(messages[0])
+    expect(result[1].role).toBe("assistant")
+    expect(result[1].parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "I will update the file.",
+          type: "text"
+        }),
+        expect.objectContaining({
+          text: "Done updating the file.",
+          type: "text"
+        })
+      ])
+    )
   })
 
   it("falls back to stream messages when no event-derived suffix exists", () => {

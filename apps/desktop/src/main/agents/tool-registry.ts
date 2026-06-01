@@ -3618,14 +3618,17 @@ const assertAgentToolExecutionAllowed = ({
   approvalContext,
   input,
   name,
-  projectPath
+  projectPath,
+  settings
 }: {
   approvalContext?: AgentToolApprovalContext
   input: unknown
   name: ExecutableAgentToolName
   projectPath: string
+  settings?: AgentSettings
 }): void => {
   const decision = evaluateAgentToolPermission({
+    commandApprovalAllowlist: settings?.approvals.commandAllowlist,
     input,
     name,
     workspaceRoot: projectPath
@@ -3971,7 +3974,8 @@ export const executeAgentTool = async ({
     approvalContext,
     input,
     name,
-    projectPath
+    projectPath,
+    settings
   })
 
   return await EXECUTE_AGENT_TOOL_HANDLERS[name]({
@@ -3988,11 +3992,16 @@ export const executeAgentTool = async ({
 }
 
 const needsApprovalForTool =
-  (name: ExecutableAgentToolName, projectPath: string) =>
+  (
+    name: ExecutableAgentToolName,
+    projectPath: string,
+    settings: AgentSettings
+  ) =>
   (input: unknown): boolean => {
     try {
       return (
         evaluateAgentToolPermission({
+          commandApprovalAllowlist: settings.approvals.commandAllowlist,
           input,
           name,
           workspaceRoot: projectPath
@@ -4006,18 +4015,25 @@ const needsApprovalForTool =
 const getToolNeedsApproval = (
   approvalMode: AgentToolApprovalMode,
   name: ExecutableAgentToolName,
-  projectPath: string
+  projectPath: string,
+  settings: AgentSettings
 ): ReturnType<typeof needsApprovalForTool> | undefined =>
   approvalMode === "preapproved"
     ? undefined
-    : needsApprovalForTool(name, projectPath)
+    : needsApprovalForTool(name, projectPath, settings)
 
 const getToolNeedsApprovalConfig = (
   approvalMode: AgentToolApprovalMode,
   name: ExecutableAgentToolName,
-  projectPath: string
+  projectPath: string,
+  settings: AgentSettings
 ): { needsApproval?: ReturnType<typeof needsApprovalForTool> } => {
-  const needsApproval = getToolNeedsApproval(approvalMode, name, projectPath)
+  const needsApproval = getToolNeedsApproval(
+    approvalMode,
+    name,
+    projectPath,
+    settings
+  )
 
   return needsApproval ? { needsApproval } : {}
 }
@@ -4209,7 +4225,7 @@ const createAgentTool = (
   memorySettings: MemorySettings | undefined,
   name: ExecutableAgentToolName,
   projectPath: string,
-  settings: AgentSettings | undefined,
+  settings: AgentSettings,
   workspace: AgentWorkspace | undefined
 ): ToolSet[string] => {
   const executeWithToolContext = (
@@ -4240,7 +4256,7 @@ const createAgentTool = (
     execute: executeWithToolContext,
     inputSchema: definition.inputSchema,
     ...(shouldAttachApprovalGate(name)
-      ? getToolNeedsApprovalConfig(approvalMode, name, projectPath)
+      ? getToolNeedsApprovalConfig(approvalMode, name, projectPath, settings)
       : {})
   })
 }

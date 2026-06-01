@@ -25,6 +25,11 @@ export interface AgentModelMessage {
   type: "model"
 }
 
+type ToolModelMessageContent = Extract<
+  ModelMessage,
+  { role: "tool" }
+>["content"]
+
 export interface AgentCustomMessageBase {
   data: Record<string, unknown>
   type: string
@@ -63,6 +68,11 @@ const getModelMessageContentParts = (message: ModelMessage): unknown[] =>
 interface ToolCallRecord {
   toolCallId: string
   toolName: string
+}
+
+interface ToolResultRecord {
+  part: Record<string, unknown>
+  toolCallId: string
 }
 
 const getPartToolCallId = (part: unknown): string | null => {
@@ -259,10 +269,110 @@ const getAssistantToolCallRecords = (
   })
 }
 
-const buildInterruptedToolResultMessage = (
+const getProviderToolResultRecords = (
+  message: ModelMessage
+): ToolResultRecord[] => {
+  if (message.role !== "tool") {
+    return []
+  }
+
+  return getModelMessageContentParts(message).flatMap((part) => {
+    if (!isRecord(part)) {
+      return []
+    }
+
+    const toolCallId = getPartToolCallId(part)
+
+    if (
+      (part.type !== "tool-result" && part.type !== "tool-error") ||
+      !toolCallId ||
+      typeof part.toolName !== "string"
+    ) {
+      return []
+    }
+
+    return [
+      {
+        part,
+        toolCallId
+      }
+    ]
+  })
+}
+
+const buildProviderAssistantMessage = ({
+  message,
+  seenToolCallIds
+}: {
+  message: ModelMessage
+  seenToolCallIds: Set<string>
+}): ModelMessage | null => {
+  if (message.role !== "assistant") {
+    return message
+  }
+
+  if (typeof message.content === "string") {
+    return message.content ? message : null
+  }
+
+  const content = getModelMessageContentParts(message)
+
+  if (content.length === 0) {
+    return null
+  }
+
+  const nextContent = content.filter((part) => {
+    if (!isRecord(part)) {
+      return true
+    }
+
+    if (part.type === "tool-approval-request") {
+      return false
+    }
+
+    const toolCall = getToolCallRecord(part)
+
+    if (!toolCall) {
+      return true
+    }
+
+    if (seenToolCallIds.has(toolCall.toolCallId)) {
+      return false
+    }
+
+    seenToolCallIds.add(toolCall.toolCallId)
+
+    return true
+  })
+
+  if (nextContent.length === 0) {
+    return null
+  }
+
+  return {
+    ...message,
+    content: nextContent
+  } as ModelMessage
+}
+
+const collectInjectedToolResults = (
+  messages: readonly ModelMessage[]
+): Map<string, ToolResultRecord[]> => {
+  const recordsById = new Map<string, ToolResultRecord[]>()
+
+  for (const message of messages) {
+    for (const record of getProviderToolResultRecords(message)) {
+      recordsById.set(record.toolCallId, [record])
+    }
+  }
+
+  return recordsById
+}
+
+const buildInterruptedToolResultParts = (
   toolCalls: readonly ToolCallRecord[]
-): ModelMessage => ({
-  content: toolCalls.map(({ toolCallId, toolName }) => ({
+): Record<string, unknown>[] =>
+  toolCalls.map(({ toolCallId, toolName }) => ({
     output: {
       type: "error-text",
       value: "Tool execution did not complete before the next user message."
@@ -270,7 +380,136 @@ const buildInterruptedToolResultMessage = (
     toolCallId,
     toolName,
     type: "tool-result"
-  })),
+  }))
+
+const appendProviderToolMessage = ({
+  messages,
+  parts
+}: {
+  messages: ModelMessage[]
+  parts: readonly Record<string, unknown>[]
+}): void => {
+  if (parts.length === 0) {
+    return
+  }
+
+  messages.push({
+    content: [...parts] as ToolModelMessageContent,
+    role: "tool"
+  })
+}
+
+export const buildProviderReadyModelMessages = ({
+  messages,
+  toolResultMessages = []
+}: {
+  messages: readonly ModelMessage[]
+  toolResultMessages?: readonly ModelMessage[]
+}): ModelMessage[] => {
+  const injectedToolResultsById = collectInjectedToolResults(toolResultMessages)
+  const outputMessages: ModelMessage[] = []
+  const seenToolCallIds = new Set<string>()
+  let pendingToolCalls: ToolCallRecord[] = []
+
+  const flushPendingToolCalls = (): void => {
+    if (pendingToolCalls.length === 0) {
+      return
+    }
+
+    appendProviderToolMessage({
+      messages: outputMessages,
+      parts: buildInterruptedToolResultParts(pendingToolCalls)
+    })
+    pendingToolCalls = []
+  }
+
+  const appendInjectedToolResults = (toolCalls: ToolCallRecord[]): void => {
+    const injectedParts: Record<string, unknown>[] = []
+
+    for (const toolCall of toolCalls) {
+      const records = injectedToolResultsById.get(toolCall.toolCallId)
+
+      if (!records) {
+        continue
+      }
+
+      injectedParts.push(...records.map((record) => record.part))
+      injectedToolResultsById.delete(toolCall.toolCallId)
+    }
+
+    if (injectedParts.length === 0) {
+      return
+    }
+
+    appendProviderToolMessage({
+      messages: outputMessages,
+      parts: injectedParts
+    })
+    const injectedToolCallIds = new Set(
+      injectedParts.map(getPartToolCallId).filter(Boolean) as string[]
+    )
+
+    pendingToolCalls = pendingToolCalls.filter(
+      ({ toolCallId }) => !injectedToolCallIds.has(toolCallId)
+    )
+  }
+
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      flushPendingToolCalls()
+
+      const providerMessage = buildProviderAssistantMessage({
+        message,
+        seenToolCallIds
+      })
+
+      if (!providerMessage) {
+        continue
+      }
+
+      outputMessages.push(providerMessage)
+      pendingToolCalls = getAssistantToolCallRecords(providerMessage)
+      appendInjectedToolResults(pendingToolCalls)
+      continue
+    }
+
+    if (message.role === "tool") {
+      const pendingToolCallIds = new Set(
+        pendingToolCalls.map(({ toolCallId }) => toolCallId)
+      )
+      const providerToolResults = getProviderToolResultRecords(message)
+        .filter(({ toolCallId }) => pendingToolCallIds.has(toolCallId))
+        .filter(({ toolCallId }) => !injectedToolResultsById.has(toolCallId))
+
+      appendProviderToolMessage({
+        messages: outputMessages,
+        parts: providerToolResults.map(({ part }) => part)
+      })
+      const resolvedToolCallIds = new Set(
+        providerToolResults.map(({ toolCallId }) => toolCallId)
+      )
+
+      pendingToolCalls = pendingToolCalls.filter(
+        ({ toolCallId }) => !resolvedToolCallIds.has(toolCallId)
+      )
+      continue
+    }
+
+    flushPendingToolCalls()
+    outputMessages.push(message)
+  }
+
+  flushPendingToolCalls()
+
+  return outputMessages
+}
+
+const buildInterruptedToolResultMessage = (
+  toolCalls: readonly ToolCallRecord[]
+): ModelMessage => ({
+  content: buildInterruptedToolResultParts(
+    toolCalls
+  ) as ToolModelMessageContent,
   role: "tool"
 })
 

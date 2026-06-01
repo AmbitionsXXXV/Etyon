@@ -87,6 +87,18 @@ export const AgentProfileSchema = z.object({
   readonly: z.boolean().default(false)
 })
 
+export const AgentCommandApprovalRuleSchema = z.object({
+  command: z.string().trim().min(1),
+  createdAt: z.string(),
+  cwd: z.string().trim().min(1).optional(),
+  projectPath: z.string().trim().min(1),
+  toolName: z.string().trim().min(1)
+})
+
+export const AgentApprovalSettingsSchema = z.object({
+  commandAllowlist: z.array(AgentCommandApprovalRuleSchema).default([])
+})
+
 export const AiProviderNameSchema = BuiltInProviderIdSchema
 
 const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
@@ -206,6 +218,10 @@ const AGENT_RETRY_SETTINGS_DEFAULT = {
   retryTransientFailures: true
 } as const
 
+const AGENT_APPROVAL_SETTINGS_DEFAULT = {
+  commandAllowlist: [] as z.infer<typeof AgentCommandApprovalRuleSchema>[]
+} as const
+
 const AGENT_SANDBOX_SETTINGS_DEFAULT = {
   allowNetwork: false,
   autoAllowSandboxedShell: false,
@@ -215,6 +231,7 @@ const AGENT_SANDBOX_SETTINGS_DEFAULT = {
 
 const AGENT_SETTINGS_DEFAULT = {
   allowSubagentDelegation: false,
+  approvals: AGENT_APPROVAL_SETTINGS_DEFAULT,
   defaultProfileId: "general-purpose",
   enabled: false,
   lsp: AGENT_LSP_SETTINGS_DEFAULT,
@@ -338,6 +355,9 @@ export const AgentSandboxSettingsSchema = z.object({
 
 export const AgentSettingsSchema = z.object({
   allowSubagentDelegation: z.boolean().default(false),
+  approvals: AgentApprovalSettingsSchema.default(
+    AGENT_APPROVAL_SETTINGS_DEFAULT
+  ),
   defaultProfileId: z.string().default("general-purpose"),
   enabled: z.boolean().default(false),
   lsp: AgentLspSettingsSchema.default(AGENT_LSP_SETTINGS_DEFAULT),
@@ -410,6 +430,10 @@ export const UpdateSettingsSchema = z.object({
 export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>
 export type AiProviderName = z.infer<typeof AiProviderNameSchema>
 export type AiSettings = z.infer<typeof AiSettingsSchema>
+export type AgentApprovalSettings = z.infer<typeof AgentApprovalSettingsSchema>
+export type AgentCommandApprovalRule = z.infer<
+  typeof AgentCommandApprovalRuleSchema
+>
 export type AgentExecutionMode = z.infer<typeof AgentExecutionModeSchema>
 export type AgentLspSettings = z.infer<typeof AgentLspSettingsSchema>
 export type AgentProfile = z.infer<typeof AgentProfileSchema>

@@ -210,6 +210,16 @@ export const StopActiveAgentRunOutputSchema = z.object({
   stopped: z.boolean()
 })
 
+export const RememberAgentCommandApprovalInputSchema = z.object({
+  input: z.unknown(),
+  sessionId: z.string().trim().min(1),
+  toolName: z.string().trim().min(1)
+})
+
+export const RememberAgentCommandApprovalOutputSchema = z.object({
+  remembered: z.boolean()
+})
+
 export const AgentRunGraphTemplateIdSchema = z.enum([
   "harness-debug",
   "investigation",
@@ -633,6 +643,12 @@ export type StopActiveAgentRunInput = z.infer<
 >
 export type StopActiveAgentRunOutput = z.infer<
   typeof StopActiveAgentRunOutputSchema
+>
+export type RememberAgentCommandApprovalInput = z.infer<
+  typeof RememberAgentCommandApprovalInputSchema
+>
+export type RememberAgentCommandApprovalOutput = z.infer<
+  typeof RememberAgentCommandApprovalOutputSchema
 >
 export type QueuedAgentMessagesOutput = z.infer<
   typeof QueuedAgentMessagesOutputSchema

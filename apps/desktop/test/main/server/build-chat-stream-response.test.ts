@@ -2,7 +2,7 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import { AppSettingsSchema } from "@etyon/rpc"
 import type { ParsedSkill } from "@etyon/rpc"
-import type { LanguageModel } from "ai"
+import type { LanguageModel, UIMessage } from "ai"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import type { streamAgentChat } from "@/main/agents/agent-runtime"
@@ -98,6 +98,71 @@ describe("buildChatStreamResponse", () => {
     expect(streamOptions?.extensionRunner).toBe(extensionRunner)
     expect(streamOptions?.skillCapabilities).toEqual(["write-fs"])
     expect(responseText).toContain("agent-turn")
+  })
+
+  it("passes original messages into the agent UI stream for assistant continuation", async () => {
+    const toUIMessageStream = vi.fn(
+      () =>
+        new ReadableStream({
+          start(controller) {
+            controller.close()
+          }
+        })
+    )
+    const streamResult = {
+      toUIMessageStream
+    } as unknown as Awaited<ReturnType<typeof streamAgentChat>>
+    const streamAgentChatMock = vi.fn(
+      (_options: Parameters<typeof streamAgentChat>[0]) =>
+        Promise.resolve(streamResult)
+    )
+    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
+    const messages = [
+      {
+        id: "assistant-message-1",
+        parts: [
+          {
+            approval: {
+              approved: true,
+              id: "approval-1"
+            },
+            input: {
+              command: "git diff --staged"
+            },
+            state: "approval-responded",
+            toolCallId: "tool-call-1",
+            type: "tool-bash"
+          }
+        ],
+        role: "assistant"
+      }
+    ] satisfies UIMessage[]
+
+    const response = buildChatStreamResponse({
+      abortSignal: new AbortController().signal,
+      buildLongTermMemorySystem: () => Promise.resolve(""),
+      db,
+      messages,
+      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
+      modelId: "openai/gpt-4.1",
+      modelMessages: [],
+      moonshotReasoningForAssistantToolCalls: [],
+      onFinishPersist: () => Promise.resolve(),
+      projectPath: "/tmp/project-a",
+      requestStartedAt: Date.now(),
+      sessionId: "session-1",
+      settings: AppSettingsSchema.parse({}),
+      shouldRetrieveLongTermMemory: false,
+      streamAgentChat: streamAgentChatMock,
+      systemPrompts: []
+    })
+
+    await readResponseText(response)
+
+    expect(toUIMessageStream).toHaveBeenCalledWith({
+      originalMessages: messages,
+      sendReasoning: true
+    })
   })
 
   it("starts the model stream when long-term memory retrieval times out", async () => {

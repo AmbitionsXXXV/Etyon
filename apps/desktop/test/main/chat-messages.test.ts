@@ -459,4 +459,186 @@ describe("chat messages", () => {
       }
     ])
   })
+
+  it("repairs stale empty approval projection messages for the latest run", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const userMessage: UIMessage = {
+      id: "user-message-1",
+      parts: [
+        {
+          text: "Check staged changes",
+          type: "text"
+        }
+      ],
+      role: "user"
+    }
+
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages: [
+        userMessage,
+        {
+          id: `agent-${run.id}-2-assistant`,
+          metadata: {
+            agentProjection: {
+              runId: run.id,
+              source: "agent_events"
+            }
+          },
+          parts: [],
+          role: "assistant"
+        },
+        {
+          id: `agent-${run.id}-5-assistant`,
+          metadata: {
+            agentProjection: {
+              runId: run.id,
+              source: "agent_events"
+            }
+          },
+          parts: [
+            {
+              text: "当前暂存区为空。",
+              type: "text"
+            }
+          ],
+          role: "assistant"
+        }
+      ],
+      sessionId: session.id
+    })
+
+    for (const message of [
+      {
+        content: "Check staged changes",
+        role: "user",
+        type: "model"
+      },
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --staged"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-call"
+          },
+          {
+            approvalId: "approval-bash-1",
+            input: {
+              command: "git diff --staged"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant",
+        type: "model"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-bash-1",
+            toolCallId: "bash:18",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant",
+        type: "model"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-bash-1",
+            approved: true,
+            type: "tool-approval-response"
+          }
+        ],
+        role: "tool",
+        type: "model"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "text",
+              value: "(no output)"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool",
+        type: "model"
+      },
+      {
+        content: "当前暂存区为空。",
+        role: "assistant",
+        type: "model"
+      }
+    ]) {
+      await run.appendEvent({
+        payload: {
+          action: "appendMessage",
+          message
+        },
+        type: "agent_session_entry_appended"
+      })
+    }
+    await updateAgentRun({
+      db: getDb(),
+      id: run.id,
+      status: "succeeded"
+    })
+
+    const repairedMessages = await listChatMessagesWithAgentProjectionRepair({
+      db: getDb(),
+      sessionId: session.id
+    })
+
+    expect(repairedMessages).toEqual([
+      userMessage,
+      {
+        id: `agent-${run.id}-1-assistant`,
+        metadata: {
+          agentProjection: {
+            runId: run.id,
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            approval: {
+              id: "approval-bash-1"
+            },
+            input: {
+              command: "git diff --staged"
+            },
+            output: "(no output)",
+            state: "output-available",
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "dynamic-tool"
+          },
+          {
+            text: "当前暂存区为空。",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+  })
 })

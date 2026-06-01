@@ -62,6 +62,10 @@ export type AssistantTextSegment =
 
 type ChatToolPart = DynamicToolUIPart | ToolUIPart
 
+export interface AssistantToolApprovalResponseOptions {
+  rememberCommand?: boolean
+}
+
 interface RespondToAssistantToolApprovalInput {
   addToolApprovalResponse: ChatAddToolApproveResponseFunction
   approved: boolean

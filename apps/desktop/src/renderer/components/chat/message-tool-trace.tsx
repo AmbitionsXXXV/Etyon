@@ -31,7 +31,8 @@ import {
 } from "@/renderer/lib/chat/agent-run-trace"
 import type {
   AssistantCommandTextSegment,
-  AssistantFunctionCallTextSegment
+  AssistantFunctionCallTextSegment,
+  AssistantToolApprovalResponseOptions
 } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { orpc } from "@/renderer/lib/rpc"
@@ -70,7 +71,11 @@ interface MessageToolTraceProps {
   commandSegments: AssistantCommandTextSegment[]
   functionCallSegments: AssistantFunctionCallTextSegment[]
   isApprovalActionDisabled: boolean
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   parts: ChatToolPart[]
 }
 
@@ -812,6 +817,17 @@ const ToolCallShellLine = ({
 
 const EMPTY_TOOL_TRACE_META_ITEMS: string[] = []
 
+const REMEMBERABLE_COMMAND_APPROVAL_TOOLS = new Set([
+  "bash",
+  "rtkCommand",
+  "runCheck"
+])
+
+const canRememberCommandApproval = (part: ChatToolPart): boolean =>
+  part.state === "approval-requested" &&
+  REMEMBERABLE_COMMAND_APPROVAL_TOOLS.has(getToolName(part)) &&
+  getToolInputCommand(part.input).trim().length > 0
+
 const CommandToolCallCard = ({
   actions,
   command,
@@ -874,7 +890,11 @@ const ToolApprovalActions = ({
   part
 }: {
   isApprovalActionDisabled: boolean
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   part: ChatToolPart
 }) => {
   const { t } = useI18n()
@@ -895,6 +915,22 @@ const ToolApprovalActions = ({
         <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
         {t("chat.toolTrace.approve")}
       </Button>
+      {canRememberCommandApproval(part) ? (
+        <Button
+          isDisabled={isApprovalActionDisabled}
+          onPress={() =>
+            onApprovalResponse(part, true, {
+              rememberCommand: true
+            })
+          }
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
+          {t("chat.toolTrace.approveAndRemember")}
+        </Button>
+      ) : null}
       <Button
         isDisabled={isApprovalActionDisabled}
         onPress={() => onApprovalResponse(part, false)}
@@ -1014,7 +1050,11 @@ export const StructuredToolTraceCard = ({
 }: {
   chatSessionId?: string
   isApprovalActionDisabled: boolean
-  onApprovalResponse: (part: ChatToolPart, approved: boolean) => void
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
   part: ChatToolPart
 }) => {
   const { t } = useI18n()

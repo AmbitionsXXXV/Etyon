@@ -2,6 +2,7 @@ import type { ModelMessage } from "ai"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  buildProviderReadyModelMessages,
   completeUnresolvedToolCallsInModelMessages,
   convertAgentMessagesToLlm,
   formatAgentMessageForDebug
@@ -268,6 +269,255 @@ describe("agent messages", () => {
     expect(completeUnresolvedToolCallsInModelMessages(messages)).toEqual(
       messages
     )
+  })
+
+  it("moves approved tool results back next to their matching tool calls for provider context", () => {
+    const messages = [
+      {
+        content: "Inspect staged changes.",
+        role: "user"
+      },
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached --stat"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-call"
+          },
+          {
+            approvalId: "approval-18",
+            toolCallId: "bash:18",
+            type: "tool-approval-request"
+          },
+          {
+            input: {
+              command: "git diff --cached -- app.ts"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-call"
+          },
+          {
+            approvalId: "approval-19",
+            toolCallId: "bash:19",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value:
+                "Tool execution did not complete before the next user message."
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-19",
+            approved: true,
+            type: "tool-approval-response"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: "Continue.",
+        role: "user"
+      }
+    ] satisfies ModelMessage[]
+    const providerMessages = buildProviderReadyModelMessages({
+      messages,
+      toolResultMessages: [
+        {
+          content: [
+            {
+              output: {
+                type: "json",
+                value: {
+                  content: [{ text: "real diff" }]
+                }
+              },
+              toolCallId: "bash:19",
+              toolName: "bash",
+              type: "tool-result"
+            }
+          ],
+          role: "tool"
+        }
+      ]
+    })
+
+    expect(providerMessages).toEqual([
+      {
+        content: "Inspect staged changes.",
+        role: "user"
+      },
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached --stat"
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-call"
+          },
+          {
+            input: {
+              command: "git diff --cached -- app.ts"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "json",
+              value: {
+                content: [{ text: "real diff" }]
+              }
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "error-text",
+              value:
+                "Tool execution did not complete before the next user message."
+            },
+            toolCallId: "bash:18",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: "Continue.",
+        role: "user"
+      }
+    ])
+    expect(JSON.stringify(providerMessages)).not.toContain(
+      "tool-approval-response"
+    )
+    expect(JSON.stringify(providerMessages)).not.toContain(
+      "tool-approval-request"
+    )
+  })
+
+  it("drops duplicate stale tool calls when building provider context", () => {
+    const messages = [
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached -- a.ts"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "json",
+              value: "first"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      },
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached -- a.ts"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-call"
+          },
+          {
+            approvalId: "approval-19",
+            toolCallId: "bash:19",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            approvalId: "approval-19",
+            approved: true,
+            type: "tool-approval-response"
+          }
+        ],
+        role: "tool"
+      }
+    ] satisfies ModelMessage[]
+
+    expect(buildProviderReadyModelMessages({ messages })).toEqual([
+      {
+        content: [
+          {
+            input: {
+              command: "git diff --cached -- a.ts"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-call"
+          }
+        ],
+        role: "assistant"
+      },
+      {
+        content: [
+          {
+            output: {
+              type: "json",
+              value: "first"
+            },
+            toolCallId: "bash:19",
+            toolName: "bash",
+            type: "tool-result"
+          }
+        ],
+        role: "tool"
+      }
+    ])
   })
 
   it("formats custom agent messages for debug output", () => {

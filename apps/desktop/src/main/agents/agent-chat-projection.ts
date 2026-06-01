@@ -324,6 +324,23 @@ const createProjectionMessage = ({
   role
 })
 
+const getLatestAssistantProjectionMessage = (
+  messages: UIMessage[]
+): UIMessage | null =>
+  messages.findLast((message) => message.role === "assistant") ?? null
+
+const appendAssistantTextPartsToProjectionMessage = ({
+  message,
+  textParts
+}: {
+  message: UIMessage
+  textParts: readonly ChatTextPart[]
+}): void => {
+  for (const part of textParts) {
+    message.parts.push(part)
+  }
+}
+
 const findToolPart = ({
   messages,
   toolCallId,
@@ -538,9 +555,9 @@ const applyToolApprovalResponsePartToProjection = ({
   messages: UIMessage[]
   part: unknown
   toolLocations: Map<string, ProjectedToolLocation>
-}): void => {
+}): boolean => {
   if (!isRecord(part) || part.type !== "tool-approval-response") {
-    return
+    return false
   }
 
   let toolCallId: string | undefined
@@ -554,7 +571,7 @@ const applyToolApprovalResponsePartToProjection = ({
   }
 
   if (!toolCallId) {
-    return
+    return false
   }
 
   const toolPart = findToolPart({
@@ -566,6 +583,8 @@ const applyToolApprovalResponsePartToProjection = ({
   if (toolPart) {
     toolPart.state = "approval-responded"
   }
+
+  return true
 }
 
 const applyToolMessageToProjection = ({
@@ -578,20 +597,52 @@ const applyToolMessageToProjection = ({
   message: ModelMessage
   messages: UIMessage[]
   toolLocations: Map<string, ProjectedToolLocation>
-}): void => {
+}): boolean => {
+  let shouldMergeNextAssistantMessage = false
+
   for (const part of getContentParts(message)) {
-    applyToolApprovalResponsePartToProjection({
-      approvalToolCallIdsById,
-      messages,
-      part,
-      toolLocations
-    })
+    shouldMergeNextAssistantMessage =
+      applyToolApprovalResponsePartToProjection({
+        approvalToolCallIdsById,
+        messages,
+        part,
+        toolLocations
+      }) || shouldMergeNextAssistantMessage
     applyToolResultPartToProjection({
       messages,
       part,
       toolLocations
     })
   }
+
+  return shouldMergeNextAssistantMessage
+}
+
+const onlyRequestsExistingToolApprovals = ({
+  message,
+  textParts,
+  toolLocations
+}: {
+  message: ModelMessage
+  textParts: readonly ChatTextPart[]
+  toolLocations: Map<string, ProjectedToolLocation>
+}): boolean => {
+  if (textParts.length > 0) {
+    return false
+  }
+
+  const parts = getContentParts(message)
+
+  return (
+    parts.length > 0 &&
+    parts.every(
+      (part) =>
+        isRecord(part) &&
+        part.type === "tool-approval-request" &&
+        typeof part.toolCallId === "string" &&
+        toolLocations.has(part.toolCallId)
+    )
+  )
 }
 
 const mergeAssistantMetadata = ({
@@ -638,6 +689,7 @@ export const buildAgentChatProjectionMessages = ({
   )
   const approvalToolCallIdsById = new Map<string, string>()
   const messages: UIMessage[] = []
+  let shouldMergeNextAssistantMessage = false
   const toolLocations = new Map<string, ProjectedToolLocation>()
 
   for (const [index, message] of modelMessages.entries()) {
@@ -646,12 +698,13 @@ export const buildAgentChatProjectionMessages = ({
     }
 
     if (message.role === "tool") {
-      applyToolMessageToProjection({
-        approvalToolCallIdsById,
-        message,
-        messages,
-        toolLocations
-      })
+      shouldMergeNextAssistantMessage =
+        applyToolMessageToProjection({
+          approvalToolCallIdsById,
+          message,
+          messages,
+          toolLocations
+        }) || shouldMergeNextAssistantMessage
       continue
     }
 
@@ -659,14 +712,34 @@ export const buildAgentChatProjectionMessages = ({
       continue
     }
 
-    const projectedMessage = createProjectionMessage({
-      index,
-      parts: getTextPartsFromModelMessage(message),
-      role: message.role,
-      runId
-    })
+    const textParts = getTextPartsFromModelMessage(message)
+    const continuationMessage =
+      message.role === "assistant" &&
+      (shouldMergeNextAssistantMessage ||
+        onlyRequestsExistingToolApprovals({
+          message,
+          textParts,
+          toolLocations
+        }))
+        ? getLatestAssistantProjectionMessage(messages)
+        : null
+    const projectedMessage =
+      continuationMessage ??
+      createProjectionMessage({
+        index,
+        parts: textParts,
+        role: message.role,
+        runId
+      })
 
-    messages.push(projectedMessage)
+    if (continuationMessage) {
+      appendAssistantTextPartsToProjectionMessage({
+        message: continuationMessage,
+        textParts
+      })
+    } else {
+      messages.push(projectedMessage)
+    }
 
     if (message.role === "assistant") {
       for (const part of getContentParts(message)) {
@@ -677,7 +750,12 @@ export const buildAgentChatProjectionMessages = ({
           toolLocations
         })
       }
+
+      shouldMergeNextAssistantMessage = false
+      continue
     }
+
+    shouldMergeNextAssistantMessage = false
   }
 
   const snapshotParts = hasTerminalRunEvent(events)
@@ -698,6 +776,16 @@ export const buildAgentChatProjectionMessages = ({
   return attachAgentProjectionToAssistantMessages(messages, {
     runId
   })
+}
+
+const trimTrailingAssistantMessages = (messages: UIMessage[]): UIMessage[] => {
+  let endIndex = messages.length
+
+  while (endIndex > 0 && messages[endIndex - 1].role === "assistant") {
+    endIndex -= 1
+  }
+
+  return endIndex === messages.length ? messages : messages.slice(0, endIndex)
 }
 
 export const mergeAgentEventProjectionIntoChatMessages = ({
@@ -743,7 +831,7 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
   }
 
   return [
-    ...prefixMessages,
+    ...trimTrailingAssistantMessages(prefixMessages),
     ...mergeAssistantMetadata({
       messages: fallbackSuffixMessages,
       projectedMessages: projectedSuffixMessages

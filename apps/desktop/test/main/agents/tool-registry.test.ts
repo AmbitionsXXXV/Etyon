@@ -874,6 +874,12 @@ describe("agent tool registry", () => {
     ).toBe(false)
     expect(
       resolveNeedsApproval(tools.bash?.needsApproval, {
+        command:
+          "git diff --staged -- apps/desktop/src/main/agents/tool-registry.ts"
+      })
+    ).toBe(false)
+    expect(
+      resolveNeedsApproval(tools.bash?.needsApproval, {
         background: true,
         command: "rtk vp check"
       })
@@ -949,6 +955,51 @@ describe("agent tool registry", () => {
           })
         : tools.bash?.needsApproval
     ).toBe(true)
+  })
+
+  it("uses remembered command approvals in tool gates and execution guards", async () => {
+    fs.mkdirSync(testProjectPath, { recursive: true })
+    const command = "printf etyon-allowlist"
+    const settings = AppSettingsSchema.parse({
+      agents: {
+        approvals: {
+          commandAllowlist: [
+            {
+              command,
+              createdAt: "2026-06-01T00:00:00.000Z",
+              projectPath: testProjectPath,
+              toolName: "bash"
+            }
+          ]
+        },
+        defaultProfileId: "coder",
+        enabled: true
+      }
+    }).agents
+    const tools = buildAgentTools({
+      projectPath: testProjectPath,
+      settings
+    })
+
+    expect(
+      resolveNeedsApproval(tools.bash?.needsApproval, {
+        command
+      })
+    ).toBe(false)
+
+    const result = await tools.bash?.execute?.(
+      {
+        command
+      },
+      {
+        messages: [],
+        toolCallId: "bash:allowlist"
+      }
+    )
+
+    expect(result ? getCodeAgentTextContent(result) : "").toBe(
+      "etyon-allowlist"
+    )
   })
 
   it("requires write approval even when the legacy write setting is disabled", () => {

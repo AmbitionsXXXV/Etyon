@@ -1,3 +1,5 @@
+import path from "node:path"
+
 import {
   AdvanceAgentRunGraphInputSchema,
   AdvanceAgentRunGraphOutputSchema,
@@ -24,6 +26,8 @@ import {
   QueueAgentMessageOutputSchema,
   ReadAgentArtifactInputSchema,
   ReadAgentArtifactOutputSchema,
+  RememberAgentCommandApprovalInputSchema,
+  RememberAgentCommandApprovalOutputSchema,
   RecoverableAgentRunsOutputSchema,
   RemoveQueuedAgentMessageInputSchema,
   ReorderQueuedAgentMessagesInputSchema,
@@ -101,6 +105,7 @@ import {
   UpdateQueuedAgentMessageInputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
+import type { AgentCommandApprovalRule } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
 import { stopActiveAgentRun } from "@/main/agents/active-agent-runs"
@@ -205,6 +210,25 @@ const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send("sidebar-state-changed", state)
   }
+}
+
+const applySettingsUpdate = (
+  input: Parameters<typeof updateSettings>[0]
+): ReturnType<typeof updateSettings> => {
+  const previousSettings = getSettings()
+  const result = updateSettings(input)
+
+  if (!startupSettingsEqual(previousSettings, result)) {
+    syncStartupSettings(result)
+  }
+
+  refreshLocalizedAppShell()
+  syncTelegramBridge(result)
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send("settings-changed", result)
+  }
+
+  return result
 }
 
 const fontsList = rpc
@@ -435,6 +459,137 @@ const agentsStopActiveRun = rpc
   .handler(({ input }) => ({
     stopped: stopActiveAgentRun(input.sessionId)
   }))
+
+const REMEMBERABLE_AGENT_COMMAND_APPROVAL_TOOLS = new Set([
+  "bash",
+  "rtkCommand",
+  "runCheck"
+])
+
+const getRememberableAgentCommandApproval = ({
+  input,
+  toolName
+}: {
+  input: unknown
+  toolName: string
+}): { command: string; cwd?: string } | null => {
+  if (!REMEMBERABLE_AGENT_COMMAND_APPROVAL_TOOLS.has(toolName)) {
+    return null
+  }
+
+  if (!isRecord(input) || typeof input.command !== "string") {
+    return null
+  }
+
+  const command = input.command.trim()
+
+  if (!command) {
+    return null
+  }
+
+  const cwd = typeof input.cwd === "string" ? input.cwd.trim() : ""
+
+  return {
+    command,
+    ...(cwd ? { cwd } : {})
+  }
+}
+
+const resolveAgentCommandApprovalCwd = ({
+  cwd,
+  projectPath
+}: {
+  cwd?: string
+  projectPath: string
+}) => path.resolve(path.resolve(projectPath), cwd?.trim() ?? "")
+
+const isSameAgentCommandApprovalRule = ({
+  command,
+  cwd,
+  projectPath,
+  rule,
+  toolName
+}: {
+  command: string
+  cwd?: string
+  projectPath: string
+  rule: AgentCommandApprovalRule
+  toolName: string
+}) =>
+  rule.command.trim() === command &&
+  rule.toolName === toolName &&
+  path.resolve(rule.projectPath) === path.resolve(projectPath) &&
+  resolveAgentCommandApprovalCwd({
+    cwd: rule.cwd,
+    projectPath: rule.projectPath
+  }) ===
+    resolveAgentCommandApprovalCwd({
+      cwd,
+      projectPath
+    })
+
+const agentsRememberCommandApproval = rpc
+  .input(RememberAgentCommandApprovalInputSchema)
+  .output(RememberAgentCommandApprovalOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    const commandApproval = getRememberableAgentCommandApproval({
+      input: input.input,
+      toolName: input.toolName
+    })
+
+    if (!commandApproval) {
+      return {
+        remembered: false
+      }
+    }
+
+    const settings = getSettings()
+    const { commandAllowlist } = settings.agents.approvals
+    const exists = commandAllowlist.some((rule) =>
+      isSameAgentCommandApprovalRule({
+        command: commandApproval.command,
+        cwd: commandApproval.cwd,
+        projectPath: session.projectPath,
+        rule,
+        toolName: input.toolName
+      })
+    )
+
+    if (exists) {
+      return {
+        remembered: true
+      }
+    }
+
+    applySettingsUpdate({
+      agents: {
+        ...settings.agents,
+        approvals: {
+          ...settings.agents.approvals,
+          commandAllowlist: [
+            ...commandAllowlist,
+            {
+              command: commandApproval.command,
+              createdAt: new Date().toISOString(),
+              ...(commandApproval.cwd ? { cwd: commandApproval.cwd } : {}),
+              projectPath: session.projectPath,
+              toolName: input.toolName
+            }
+          ]
+        }
+      }
+    })
+
+    return {
+      remembered: true
+    }
+  })
 
 const getAgentQueueRunForSession = async ({
   db,
@@ -1367,21 +1522,7 @@ const settingsGet = rpc.output(AppSettingsSchema).handler(() => getSettings())
 const settingsUpdate = rpc
   .input(UpdateSettingsSchema)
   .output(AppSettingsSchema)
-  .handler(({ input }) => {
-    const previousSettings = getSettings()
-    const result = updateSettings(input)
-
-    if (!startupSettingsEqual(previousSettings, result)) {
-      syncStartupSettings(result)
-    }
-
-    refreshLocalizedAppShell()
-    syncTelegramBridge(result)
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send("settings-changed", result)
-    }
-    return result
-  })
+  .handler(({ input }) => applySettingsUpdate(input))
 
 const telegramTestConnection = rpc
   .input(TelegramTestConnectionInputSchema)
@@ -1499,6 +1640,7 @@ export const router = {
     previewRunGraphTemplate: agentsPreviewRunGraphTemplate,
     queueMessage: agentsQueueMessage,
     readArtifact: agentsReadArtifact,
+    rememberCommandApproval: agentsRememberCommandApproval,
     removeQueuedMessage: agentsRemoveQueuedMessage,
     reorderQueuedMessages: agentsReorderQueuedMessages,
     respondToRunGraphApproval: agentsRespondToRunGraphApproval,

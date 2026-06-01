@@ -176,6 +176,7 @@ describe("MessageToolTrace", () => {
     expect(html).toContain("Done")
     expect(html).toContain("Failed")
     expect(html).toContain("Approve")
+    expect(html).toContain("Approve and remember")
     expect(html).toContain("Deny")
     expect(html).toContain("Run vp check")
     expect(html).toContain("src/value.ts")
@@ -230,6 +231,49 @@ describe("MessageToolTrace", () => {
         approvalPart,
         false
       )
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("routes approve and remember for command approvals", () => {
+    const handleApprovalResponse = vi.fn()
+    const approvalPart = {
+      approval: {
+        id: "approval-1"
+      },
+      input: {
+        command: "git diff --staged",
+        cwd: "/project"
+      },
+      state: "approval-requested",
+      toolCallId: "tool-approval",
+      toolName: "bash",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const { cleanup, container } = renderElementInDom(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(MessageToolTrace, {
+          chatSessionId: "session-1",
+          commandSegments: [],
+          functionCallSegments: [],
+          isApprovalActionDisabled: false,
+          onApprovalResponse: handleApprovalResponse,
+          parts: [approvalPart]
+        })
+      )
+    )
+
+    try {
+      act(() => {
+        findButtonByText(container, "Approve and remember").click()
+      })
+
+      expect(handleApprovalResponse).toHaveBeenCalledWith(approvalPart, true, {
+        rememberCommand: true
+      })
     } finally {
       cleanup()
     }
