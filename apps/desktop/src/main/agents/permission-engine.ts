@@ -36,8 +36,8 @@ const COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN =
   /(?:^|[;&|]\s*)(?:rtk\s+)?(?:bun|deno|npm|pnpm|yarn)\b/u
 const DESTRUCTIVE_COMMAND_PATTERNS = [
   /\brm\s+-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)\b/u,
-  /\bgit\s+checkout\s+--\b/u,
-  /\bgit\s+reset\s+--hard\b/u,
+  /\b(?:rtk\s+)?git\s+checkout\s+--\b/u,
+  /\b(?:rtk\s+)?git\s+reset\s+--hard\b/u,
   /\bsudo\b/u
 ] as const
 const SAFE_CHECK_COMMAND_PATTERNS = [
@@ -46,7 +46,7 @@ const SAFE_CHECK_COMMAND_PATTERNS = [
   /^(?:rtk\s+)?vp\s+run\s+[\w@/:#.-]+(?:\s+run(?:\s+[\w@/:#.,=-]+)*)?$/u
 ] as const
 const SAFE_READONLY_GIT_COMMAND_PATTERN =
-  /^git\s+(?:diff|log|show|status)(?:\s+[A-Za-z0-9_@%/:#.,=+\-~^*[\]{}]+)*$/u
+  /^(?:rtk\s+)?git\s+(?:diff|log|show|status)(?:\s+[A-Za-z0-9_@%/:#.,=+\-~^*[\]{}]+)*$/u
 const SECRET_BASENAMES = new Set([
   ".env",
   ".env.local",
@@ -153,6 +153,45 @@ const isSafeReadonlyGitCommand = (command: string): boolean =>
 const isUnsupportedPackageManagerCommand = (command: string): boolean =>
   COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN.test(command)
 
+const COMMAND_APPROVAL_INTENT_TOOL_NAMES = new Set([
+  "bash",
+  "rtkCommand",
+  "runCheck"
+])
+
+const COMMAND_APPROVAL_INTENT_MATCHERS = [
+  isSafeReadonlyGitCommand,
+  isSafeCheckCommand
+] as const
+
+const isCommandApprovalIntentToolName = (toolName: string): boolean =>
+  COMMAND_APPROVAL_INTENT_TOOL_NAMES.has(toolName)
+
+export const isAgentCommandApprovalRuleCovered = ({
+  command,
+  ruleCommand,
+  toolName
+}: {
+  command: string
+  ruleCommand: string
+  toolName: string
+}): boolean => {
+  const normalizedCommand = command.trim()
+  const normalizedRuleCommand = ruleCommand.trim()
+
+  if (normalizedCommand === normalizedRuleCommand) {
+    return true
+  }
+
+  if (!isCommandApprovalIntentToolName(toolName)) {
+    return false
+  }
+
+  return COMMAND_APPROVAL_INTENT_MATCHERS.some(
+    (matches) => matches(normalizedCommand) && matches(normalizedRuleCommand)
+  )
+}
+
 const resolveCommandCwd = (cwd: string | undefined, workspaceRoot: string) =>
   path.resolve(path.resolve(workspaceRoot), cwd?.trim() ?? "")
 
@@ -181,7 +220,11 @@ const commandMatchesApprovalAllowlist = ({
     const ruleWorkspaceRoot = path.resolve(rule.projectPath)
 
     return (
-      rule.command.trim() === normalizedCommand &&
+      isAgentCommandApprovalRuleCovered({
+        command: normalizedCommand,
+        ruleCommand: rule.command,
+        toolName: name
+      }) &&
       rule.toolName === name &&
       ruleWorkspaceRoot === normalizedWorkspaceRoot &&
       resolveCommandCwd(rule.cwd, ruleWorkspaceRoot) === normalizedCwd
@@ -307,7 +350,10 @@ const evaluateCommandPermission = (
     })
   }
 
-  if ((name === "bash" || name === "runCheck") && isSafeCheckCommand(command)) {
+  if (
+    (name === "bash" || name === "rtkCommand" || name === "runCheck") &&
+    isSafeCheckCommand(command)
+  ) {
     return buildDecision({
       action: "allow",
       reason: "The command is a bounded project check.",
@@ -317,7 +363,7 @@ const evaluateCommandPermission = (
   }
 
   if (
-    (name === "bash" || name === "rtkCommand") &&
+    (name === "bash" || name === "rtkCommand" || name === "runCheck") &&
     isSafeReadonlyGitCommand(command)
   ) {
     return buildDecision({

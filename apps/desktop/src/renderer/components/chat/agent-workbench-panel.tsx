@@ -213,6 +213,31 @@ const shellCommandStatusChipColor: Record<
   unknown: "default"
 }
 
+const isLiveAgentRun = (run: AgentRunTraceRun): boolean =>
+  run.status === "running" || run.status === "suspended"
+
+const getAgentWorkbenchRunsRefetchInterval = ({
+  isRequestPending,
+  runs
+}: {
+  isRequestPending: boolean
+  runs: readonly AgentRunTraceRun[]
+}): false | number =>
+  isRequestPending || runs.some(isLiveAgentRun)
+    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+    : false
+
+const getAgentWorkbenchApprovalsRefetchInterval = ({
+  approvalCount,
+  isRequestPending
+}: {
+  approvalCount: number
+  isRequestPending: boolean
+}): false | number =>
+  isRequestPending || approvalCount > 0
+    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+    : false
+
 const processDurationFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0
@@ -2336,15 +2361,19 @@ export const AgentWorkbenchPanel = ({
   })
   const runsQuery = useQuery({
     ...runsQueryOptions,
-    refetchInterval: isRequestPending
-      ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
-      : false
+    refetchInterval: (query) =>
+      getAgentWorkbenchRunsRefetchInterval({
+        isRequestPending,
+        runs: query.state.data?.runs ?? EMPTY_AGENT_RUNS
+      })
   })
   const approvalsQuery = useQuery({
     ...approvalsQueryOptions,
-    refetchInterval: isRequestPending
-      ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
-      : false
+    refetchInterval: (query) =>
+      getAgentWorkbenchApprovalsRefetchInterval({
+        approvalCount: query.state.data?.approvals.length ?? 0,
+        isRequestPending
+      })
   })
   const runs = runsQuery.data?.runs ?? EMPTY_AGENT_RUNS
   const approvals = approvalsQuery.data?.approvals ?? []

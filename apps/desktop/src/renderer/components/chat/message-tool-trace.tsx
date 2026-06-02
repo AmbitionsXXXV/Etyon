@@ -79,6 +79,11 @@ interface MessageToolTraceProps {
   parts: ChatToolPart[]
 }
 
+interface CompactedStructuredToolTracePart {
+  part: ChatToolPart
+  repeatCount: number
+}
+
 const TOOL_TRACE_PREVIEW_MAX_LENGTH = 220
 const TOOL_TRACE_DETAIL_MAX_LENGTH = 2_400
 const TOOL_TRACE_HEADER_PREVIEW_MAX_LENGTH = 160
@@ -98,6 +103,65 @@ const TOOL_TRACE_STATE_LABEL_KEY_BY_STATE = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+const isTerminalStructuredToolState = (state: ChatToolState): boolean =>
+  state === "output-available" ||
+  state === "output-denied" ||
+  state === "output-error"
+
+const canonicalizeStructuredValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => canonicalizeStructuredValue(item))
+  }
+
+  if (!isRecord(value)) {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .toSorted(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+      .map(([key, childValue]) => [
+        key,
+        canonicalizeStructuredValue(childValue)
+      ])
+  )
+}
+
+const getStructuredToolPartCompactionKey = (part: ChatToolPart): string =>
+  JSON.stringify({
+    input: canonicalizeStructuredValue(part.input),
+    state: part.state,
+    toolName: getToolName(part)
+  })
+
+const compactStructuredToolTraceParts = (
+  parts: readonly ChatToolPart[]
+): CompactedStructuredToolTracePart[] => {
+  const compactedParts: CompactedStructuredToolTracePart[] = []
+
+  for (const part of parts) {
+    const lastPart = compactedParts.at(-1)
+
+    if (
+      lastPart &&
+      isTerminalStructuredToolState(part.state) &&
+      isTerminalStructuredToolState(lastPart.part.state) &&
+      getStructuredToolPartCompactionKey(part) ===
+        getStructuredToolPartCompactionKey(lastPart.part)
+    ) {
+      lastPart.repeatCount += 1
+      continue
+    }
+
+    compactedParts.push({
+      part,
+      repeatCount: 1
+    })
+  }
+
+  return compactedParts
+}
 
 const getString = (
   value: Record<string, unknown>,
@@ -1046,7 +1110,8 @@ export const StructuredToolTraceCard = ({
   chatSessionId,
   isApprovalActionDisabled,
   onApprovalResponse,
-  part
+  part,
+  repeatCount = 1
 }: {
   chatSessionId?: string
   isApprovalActionDisabled: boolean
@@ -1056,6 +1121,7 @@ export const StructuredToolTraceCard = ({
     options?: AssistantToolApprovalResponseOptions
   ) => void
   part: ChatToolPart
+  repeatCount?: number
 }) => {
   const { t } = useI18n()
   const toolName = getToolName(part)
@@ -1089,6 +1155,8 @@ export const StructuredToolTraceCard = ({
     statusLabel: t("chat.toolTrace.status"),
     truncatedLabel: t("chat.toolTrace.truncated")
   })
+  const repeatedMetaItem =
+    repeatCount > 1 ? t("chat.toolTrace.repeated", { count: repeatCount }) : ""
   const approvalActions =
     part.state === "approval-requested" ? (
       <ToolApprovalActions
@@ -1126,7 +1194,7 @@ export const StructuredToolTraceCard = ({
         defaultExpanded={part.state === "approval-requested"}
         detail={detailPanels}
         isStreaming={isCommandStreaming && !commandOutputText}
-        metaItems={metaItems}
+        metaItems={[...metaItems, repeatedMetaItem]}
         output={commandOutputText}
         state={heroToolState}
         statusClassName={statusClassName}
@@ -1152,7 +1220,7 @@ export const StructuredToolTraceCard = ({
           {preview}
         </p>
       ) : null}
-      <ToolTraceMeta items={metaItems} />
+      <ToolTraceMeta items={[...metaItems, repeatedMetaItem]} />
       <div className="space-y-1.5">{detailPanels}</div>
     </ToolTraceCard>
   )
@@ -1197,6 +1265,7 @@ export const MessageToolTrace = ({
   parts
 }: MessageToolTraceProps) => {
   const { t } = useI18n()
+  const compactedParts = compactStructuredToolTraceParts(parts)
 
   if (
     parts.length === 0 &&
@@ -1236,13 +1305,14 @@ export const MessageToolTrace = ({
               segment={segment}
             />
           ))}
-          {parts.map((part) => (
+          {compactedParts.map(({ part, repeatCount }) => (
             <StructuredToolTraceCard
               chatSessionId={chatSessionId}
               isApprovalActionDisabled={isApprovalActionDisabled}
               key={part.toolCallId}
               onApprovalResponse={onApprovalResponse}
               part={part}
+              repeatCount={repeatCount}
             />
           ))}
         </div>

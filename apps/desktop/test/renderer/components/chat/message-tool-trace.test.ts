@@ -183,6 +183,72 @@ describe("MessageToolTrace", () => {
     expect(html).toContain("type check failed")
   })
 
+  it("collapses repeated terminal structured tool parts", () => {
+    const handleApprovalResponse = vi.fn()
+    const parts = [
+      {
+        input: {
+          command: "git diff --cached --stat",
+          cwd: "/project"
+        },
+        output: {
+          exitCode: 0,
+          stdoutPreview: "1 file changed"
+        },
+        state: "output-available",
+        toolCallId: "tool-output-1",
+        toolName: "bash",
+        type: "dynamic-tool"
+      },
+      {
+        input: {
+          command: "git diff --cached --stat",
+          cwd: "/project"
+        },
+        output: {
+          exitCode: 0,
+          stdoutPreview: "1 file changed"
+        },
+        state: "output-available",
+        toolCallId: "tool-output-2",
+        toolName: "bash",
+        type: "dynamic-tool"
+      },
+      {
+        input: {
+          command: "git diff --cached --stat",
+          cwd: "/project"
+        },
+        output: {
+          exitCode: 0,
+          stdoutPreview: "1 file changed"
+        },
+        state: "output-available",
+        toolCallId: "tool-output-3",
+        toolName: "bash",
+        type: "dynamic-tool"
+      }
+    ] satisfies DynamicToolUIPart[]
+
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(MessageToolTrace, {
+          chatSessionId: "session-1",
+          commandSegments: [],
+          functionCallSegments: [],
+          isApprovalActionDisabled: false,
+          onApprovalResponse: handleApprovalResponse,
+          parts
+        })
+      )
+    )
+
+    expect(html.match(/Run git diff/gu)).toHaveLength(1)
+    expect(html).toContain("Repeated 3x")
+  })
+
   it("routes approval button presses through the DOM", () => {
     const handleApprovalResponse = vi.fn()
     const approvalPart = {

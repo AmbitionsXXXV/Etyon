@@ -28,8 +28,7 @@ import type {
   AgentLoopResources,
   AgentLoopStopReason,
   AgentLoopTool,
-  AgentLoopToolCall,
-  AgentLoopToolRetryPolicy
+  AgentLoopToolCall
 } from "@/main/agents/agent-loop"
 import {
   convertAgentLoopMessagesToModelMessages,
@@ -43,6 +42,10 @@ import {
 } from "@/main/agents/agent-model-router"
 import type { AgentModelRoute } from "@/main/agents/agent-model-router"
 import { isRetryableAgentFailure } from "@/main/agents/agent-plan-progress"
+import {
+  createAgentLoopToolRetryPolicy,
+  isAgentToolAutoRetrySafe
+} from "@/main/agents/agent-retry-policy"
 import type {
   AgentRunGraphTemplate,
   AgentRunGraphTemplateId,
@@ -1363,27 +1366,6 @@ const getLastAssistantContent = (
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-const getToolRetryErrorMessage = (output: unknown): string => {
-  if (isRecord(output) && typeof output.error === "string") {
-    return output.error
-  }
-
-  if (typeof output === "string") {
-    return output
-  }
-
-  return getErrorMessage(output)
-}
-
-const createAgentLoopToolRetryPolicy = (
-  retry: AgentSettings["retry"]
-): AgentLoopToolRetryPolicy => ({
-  maxRetries: retry.maxAutomaticRetries,
-  shouldRetry: ({ result }) =>
-    retry.retryTransientFailures &&
-    isRetryableAgentFailure(getToolRetryErrorMessage(result.output))
-})
-
 const isAsyncIterable = (value: unknown): value is AsyncIterable<unknown> =>
   isRecord(value) && Symbol.asyncIterator in value
 
@@ -1956,6 +1938,8 @@ const getAutoRetryableFailedNode = ({
       (node) =>
         settledNodeIdSet.has(node.id) &&
         node.status === "failed" &&
+        node.toolScope === "read-only" &&
+        node.activeToolNames.every(isAgentToolAutoRetrySafe) &&
         retrySettings.retryTransientFailures &&
         node.attempt <= retrySettings.maxAutomaticRetries &&
         Boolean(node.errorMessage) &&

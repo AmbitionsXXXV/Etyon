@@ -9,6 +9,7 @@ export interface ChatMessageAgentProjectionMetadata {
 
 export interface ChatMessageMetadata {
   agentProjection?: ChatMessageAgentProjectionMetadata
+  continuation?: boolean
   mentions?: ChatMention[]
   workTimeMs?: number
 }
@@ -41,6 +42,7 @@ export const parseChatMessageMetadata = (
 
   return {
     agentProjection,
+    ...(metadata.continuation === true ? { continuation: true } : {}),
     mentions: Array.isArray(metadata.mentions)
       ? (metadata.mentions as ChatMessageMetadata["mentions"])
       : undefined,

@@ -3,7 +3,7 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 
 import {
   getLatestAgentChatProjectionBranch,
-  hasAgentUiStreamSnapshot,
+  getLatestUserMessageBoundary,
   mergeAgentEventProjectionIntoChatMessages,
   selectAgentChatProjectionPrefixMessages
 } from "@/main/agents/agent-chat-projection"
@@ -67,6 +67,35 @@ const getAgentProjectionRunId = (message: UIMessage): null | string => {
   return agentProjection.runId
 }
 
+const getStoredAgentProjectionRunId = (message: UIMessage): null | string =>
+  message.role === "assistant" ? getAgentProjectionRunId(message) : null
+
+const withStoredAgentProjectionMetadata = ({
+  agentProjectionRunId,
+  metadata
+}: {
+  agentProjectionRunId: null | string
+  metadata: unknown
+}): unknown | undefined => {
+  if (!agentProjectionRunId) {
+    return metadata ?? undefined
+  }
+
+  const baseMetadata = isRecord(metadata) ? metadata : {}
+  const baseAgentProjection = isRecord(baseMetadata.agentProjection)
+    ? baseMetadata.agentProjection
+    : {}
+
+  return {
+    ...baseMetadata,
+    agentProjection: {
+      ...baseAgentProjection,
+      runId: agentProjectionRunId,
+      source: "agent_events"
+    }
+  }
+}
+
 const hasAgentProjectionForRun = ({
   messages,
   runId
@@ -92,9 +121,6 @@ const hasEmptyAgentProjectionForRun = ({
       getAgentProjectionRunId(message) === runId &&
       message.parts.length === 0
   )
-
-const getLatestUserMessageBoundary = (messages: readonly UIMessage[]): number =>
-  messages.findLastIndex((message) => message.role === "user") + 1
 
 const areMessagesEqual = (
   leftMessages: readonly UIMessage[],
@@ -157,7 +183,10 @@ const normalizeMessageIds = (messages: UIMessage[]): UIMessage[] => {
 }
 
 const toUiMessage = (row: typeof chatMessages.$inferSelect): UIMessage => {
-  const metadata = parseOptionalJson(row.metadataJson)
+  const metadata = withStoredAgentProjectionMetadata({
+    agentProjectionRunId: row.agentProjectionRunId,
+    metadata: parseOptionalJson(row.metadataJson)
+  })
   const message = {
     id: row.messageId,
     parts: parseJson(row.partsJson),
@@ -226,6 +255,7 @@ export const replaceChatMessages = async ({
     if (normalizedMessages.length > 0) {
       await tx.insert(chatMessages).values(
         normalizedMessages.map((message, index) => ({
+          agentProjectionRunId: getStoredAgentProjectionRunId(message),
           createdAt: now,
           messageId: message.id,
           metadataJson: serializeOptionalJson(message.metadata),
@@ -284,33 +314,35 @@ export const listChatMessagesWithAgentProjectionRepair = async ({
 
   if (
     activeRun &&
-    !hasAgentProjectionForRun({
+    (!hasAgentProjectionForRun({
       messages,
       runId: activeRun.id
-    })
+    }) ||
+      hasEmptyAgentProjectionForRun({
+        messages,
+        runId: activeRun.id
+      }))
   ) {
     const activeRunEvents = await listAgentEvents({
       db,
       runId: activeRun.id
     })
+    const prefixMessages = selectAgentChatProjectionPrefixMessages({
+      events: activeRunEvents,
+      fallbackMessageCount: getLatestUserMessageBoundary(messages),
+      messages
+    })
+    const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
+      allowEmptyProjectionFallback: false,
+      events: activeRunEvents,
+      includeProjectedUserMessages: true,
+      messages: prefixMessages,
+      originalMessageCount: prefixMessages.length,
+      runId: activeRun.id
+    })
 
-    if (hasAgentUiStreamSnapshot(activeRunEvents)) {
-      const prefixMessages = selectAgentChatProjectionPrefixMessages({
-        events: activeRunEvents,
-        fallbackMessageCount: getLatestUserMessageBoundary(messages),
-        messages
-      })
-      const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
-        allowEmptyProjectionFallback: false,
-        events: activeRunEvents,
-        messages: prefixMessages,
-        originalMessageCount: prefixMessages.length,
-        runId: activeRun.id
-      })
-
-      if (!areMessagesEqual(messages, projectedMessages)) {
-        return projectedMessages
-      }
+    if (!areMessagesEqual(messages, projectedMessages)) {
+      return projectedMessages
     }
   }
 

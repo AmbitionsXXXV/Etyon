@@ -449,6 +449,71 @@ describe("agent kernel", () => {
     ).toBe(false)
   })
 
+  it("does not automatically retry transient failures on write-capable graph nodes", async () => {
+    await ensureDatabaseReady()
+
+    const db = getDb()
+    const kernel = createTestKernel({
+      retry: {
+        maxAutomaticRetries: 1,
+        retryTransientFailures: true
+      }
+    })
+    const session = await createChatSession({
+      db
+    })
+    const instance = await kernel.instantiateRunGraphTemplate({
+      chatSessionId: session.id,
+      db,
+      templateId: "solo-coder"
+    })
+    const firstStage = await kernel.startNextRunGraphStage({
+      chatSessionId: session.id,
+      db,
+      rootRunId: instance.rootRun.id
+    })
+    const coderChildRunId = firstStage.startedRuns[0]?.id
+
+    if (!coderChildRunId) {
+      throw new Error("Expected graph coder child run to start.")
+    }
+
+    await updateAgentRun({
+      db,
+      errorMessage: "provider timeout while writing files",
+      id: coderChildRunId,
+      status: "failed"
+    })
+
+    const advanced = await kernel.advanceRunGraph({
+      chatSessionId: session.id,
+      db,
+      rootRunId: instance.rootRun.id
+    })
+    const events = await listAgentEvents({
+      db,
+      runId: instance.rootRun.id
+    })
+
+    expect(advanced).toMatchObject({
+      settledNodeIds: ["coder"],
+      stage: null,
+      startedNodeIds: [],
+      startedRuns: []
+    })
+    expect(
+      advanced.plan.nodes.find((node) => node.id === "coder")
+    ).toMatchObject({
+      attempt: 1,
+      errorMessage: "provider timeout while writing files",
+      status: "failed",
+      toolScope: "approval-gated"
+    })
+    expect(
+      events.some((event) => event.type === "agent_run_graph_node_retrying")
+    ).toBe(false)
+  })
+
   it("uses run graph retry policy overrides for automatic retries", async () => {
     await ensureDatabaseReady()
 

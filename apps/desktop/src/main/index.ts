@@ -54,6 +54,7 @@ const handleAppReady = async (): Promise<void> => {
   await ensureDatabaseReady()
 
   const recoveredRuns = await recoverInterruptedAgentRuns({
+    approvalTtlMs: settings.agents.approvals.approvalTtlMs,
     db: getDb()
   })
 
@@ -62,6 +63,7 @@ const handleAppReady = async (): Promise<void> => {
     recoveredRuns.suspendedRunIds.length > 0
   ) {
     logger.info("agent_run_recovery_completed", {
+      expiredApprovalRunCount: recoveredRuns.expiredApprovalRunIds.length,
       failedRunCount: recoveredRuns.failedRunIds.length,
       suspendedRunCount: recoveredRuns.suspendedRunIds.length
     })

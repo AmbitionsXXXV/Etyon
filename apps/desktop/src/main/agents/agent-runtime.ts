@@ -47,8 +47,7 @@ import type {
   AgentLoopExecutedToolResult,
   AgentLoopMessage,
   AgentLoopStopReason,
-  AgentLoopToolCall,
-  AgentLoopToolRetryPolicy
+  AgentLoopToolCall
 } from "@/main/agents/agent-loop"
 import {
   convertAgentLoopMessagesToModelMessages,
@@ -61,11 +60,11 @@ import {
   completeUnresolvedToolCallsInModelMessages
 } from "@/main/agents/agent-messages"
 import {
-  isRetryableAgentFailure,
   parseStructuredPlanFromText,
   stripPlanProgressMarkers,
   summarizePlanProgress
 } from "@/main/agents/agent-plan-progress"
+import { createAgentLoopToolRetryPolicy } from "@/main/agents/agent-retry-policy"
 import {
   buildAgentSessionModelMessages,
   buildAgentSessionQueuedModelMessages,
@@ -261,6 +260,7 @@ interface AgentUiLiveSink {
     output: unknown
     toolCall: AgentLoopToolCall
   }) => void
+  writeUiChunk: (chunk: AgentUiStreamChunk) => void
 }
 
 interface AgentUiStreamSnapshotSink {
@@ -469,15 +469,6 @@ const normalizeParentDelegationToolResult = (
     isError: true
   }
 }
-
-const createAgentLoopToolRetryPolicy = (
-  retry: AppSettings["agents"]["retry"]
-): AgentLoopToolRetryPolicy => ({
-  maxRetries: retry.maxAutomaticRetries,
-  shouldRetry: ({ result }) =>
-    retry.retryTransientFailures &&
-    isRetryableAgentFailure(getToolRetryErrorMessage(result.output))
-})
 
 const cloneUiMessagePartsForSnapshot = (
   parts: UIMessage["parts"]
@@ -1063,6 +1054,18 @@ const createAgentUiStreamBridge = (): AgentUiStreamBridge => {
 
 const noopAgentRuntimeSnapshotUnsubscribe = (): void => void 0
 
+const parseToolInputSnapshot = (input: string): unknown => {
+  if (!input) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(input)
+  } catch {
+    return input
+  }
+}
+
 const subscribeAgentRuntimeSnapshotEvents = ({
   run,
   runtimeState
@@ -1094,10 +1097,55 @@ const createAgentUiLiveSink = ({
   let activeTextId: string | null = null
   let activeTextPartIndex: null | number = null
   const parts: UIMessage["parts"] = []
+  const reasoningPartIndexes = new Map<string, number>()
+  const textPartIndexes = new Map<string, number>()
+  const toolInputTextById = new Map<string, string>()
   const toolPartIndexes = new Map<string, number>()
 
   const emitSnapshot = (): void => {
     onSnapshot?.([...parts])
+  }
+
+  const upsertTextSnapshotPart = (id: string): Record<string, unknown> => {
+    const existingIndex = textPartIndexes.get(id)
+    const existingPart =
+      existingIndex === undefined ? undefined : parts[existingIndex]
+
+    if (isRecord(existingPart) && existingPart.type === "text") {
+      return existingPart
+    }
+
+    const part = {
+      text: "",
+      type: "text"
+    }
+    const partIndex = parts.length
+
+    parts.push(part as UIMessage["parts"][number])
+    textPartIndexes.set(id, partIndex)
+
+    return part
+  }
+
+  const upsertReasoningSnapshotPart = (id: string): Record<string, unknown> => {
+    const existingIndex = reasoningPartIndexes.get(id)
+    const existingPart =
+      existingIndex === undefined ? undefined : parts[existingIndex]
+
+    if (isRecord(existingPart) && existingPart.type === "reasoning") {
+      return existingPart
+    }
+
+    const part = {
+      text: "",
+      type: "reasoning"
+    }
+    const partIndex = parts.length
+
+    parts.push(part as UIMessage["parts"][number])
+    reasoningPartIndexes.set(id, partIndex)
+
+    return part
   }
 
   const ensureTextId = (): string => {
@@ -1106,11 +1154,8 @@ const createAgentUiLiveSink = ({
     }
 
     activeTextId = `agent-text-${randomUUID()}`
-    activeTextPartIndex = parts.length
-    parts.push({
-      text: "",
-      type: "text"
-    } as UIMessage["parts"][number])
+    upsertTextSnapshotPart(activeTextId)
+    activeTextPartIndex = textPartIndexes.get(activeTextId) ?? null
     stream.write({
       id: activeTextId,
       type: "text-start"
@@ -1159,6 +1204,237 @@ const createAgentUiLiveSink = ({
     toolPartIndexes.set(toolCall.toolCallId, partIndex)
 
     return part
+  }
+
+  const getToolSnapshotPart = (
+    toolCallId: string
+  ): Record<string, unknown> | null => {
+    const existingIndex = toolPartIndexes.get(toolCallId)
+    const existingPart =
+      existingIndex === undefined ? undefined : parts[existingIndex]
+
+    return isRecord(existingPart) && existingPart.type === "dynamic-tool"
+      ? existingPart
+      : null
+  }
+
+  const writeContentUiChunkSnapshot = (chunk: AgentUiStreamChunk): boolean => {
+    switch (chunk.type) {
+      case "file": {
+        parts.push({
+          mediaType: chunk.mediaType,
+          providerMetadata: chunk.providerMetadata,
+          type: "file",
+          url: chunk.url
+        } as UIMessage["parts"][number])
+        emitSnapshot()
+        return true
+      }
+      case "reasoning-delta": {
+        const reasoningPart = upsertReasoningSnapshotPart(chunk.id)
+
+        if (typeof reasoningPart.text === "string") {
+          reasoningPart.text += chunk.delta
+        }
+
+        emitSnapshot()
+        return true
+      }
+      case "reasoning-end": {
+        emitSnapshot()
+        return true
+      }
+      case "reasoning-start": {
+        upsertReasoningSnapshotPart(chunk.id)
+        return true
+      }
+      case "source-document": {
+        parts.push({
+          filename: chunk.filename,
+          mediaType: chunk.mediaType,
+          providerMetadata: chunk.providerMetadata,
+          sourceId: chunk.sourceId,
+          title: chunk.title,
+          type: "source-document"
+        } as UIMessage["parts"][number])
+        emitSnapshot()
+        return true
+      }
+      case "source-url": {
+        parts.push({
+          providerMetadata: chunk.providerMetadata,
+          sourceId: chunk.sourceId,
+          title: chunk.title,
+          type: "source-url",
+          url: chunk.url
+        } as UIMessage["parts"][number])
+        emitSnapshot()
+        return true
+      }
+      case "text-delta": {
+        const textPart = upsertTextSnapshotPart(chunk.id)
+
+        if (typeof textPart.text === "string") {
+          textPart.text += chunk.delta
+        }
+
+        emitSnapshot()
+        return true
+      }
+      case "text-end": {
+        if (activeTextId === chunk.id) {
+          activeTextId = null
+          activeTextPartIndex = null
+        }
+
+        emitSnapshot()
+        return true
+      }
+      case "text-start": {
+        activeTextId = chunk.id
+        upsertTextSnapshotPart(chunk.id)
+        activeTextPartIndex = textPartIndexes.get(chunk.id) ?? null
+        return true
+      }
+      default: {
+        return false
+      }
+    }
+  }
+
+  const writeToolUiChunkSnapshot = (chunk: AgentUiStreamChunk): void => {
+    switch (chunk.type) {
+      case "tool-approval-request": {
+        const toolPart = getToolSnapshotPart(chunk.toolCallId)
+
+        if (!toolPart) {
+          return
+        }
+
+        toolPart.approval = {
+          id: chunk.approvalId
+        }
+        toolPart.state = "approval-requested"
+        emitSnapshot()
+        break
+      }
+      case "tool-input-available": {
+        const toolPart = upsertToolSnapshotPart({
+          input: chunk.input,
+          toolCallId: chunk.toolCallId,
+          toolName: chunk.toolName
+        })
+
+        toolPart.input = chunk.input
+        toolPart.providerExecuted = chunk.providerExecuted
+        toolPart.state = "input-available"
+        toolInputTextById.delete(chunk.toolCallId)
+        emitSnapshot()
+        break
+      }
+      case "tool-input-delta": {
+        const existingText = toolInputTextById.get(chunk.toolCallId) ?? ""
+        const inputText = `${existingText}${chunk.inputTextDelta}`
+        const toolPart = getToolSnapshotPart(chunk.toolCallId)
+
+        toolInputTextById.set(chunk.toolCallId, inputText)
+
+        if (!toolPart) {
+          return
+        }
+
+        toolPart.input = parseToolInputSnapshot(inputText)
+        toolPart.state = "input-streaming"
+        emitSnapshot()
+        break
+      }
+      case "tool-input-error": {
+        const toolPart = upsertToolSnapshotPart({
+          input: chunk.input,
+          toolCallId: chunk.toolCallId,
+          toolName: chunk.toolName
+        })
+
+        toolPart.errorText = chunk.errorText
+        toolPart.input = chunk.input
+        toolPart.providerExecuted = chunk.providerExecuted
+        toolPart.state = "output-error"
+        toolInputTextById.delete(chunk.toolCallId)
+        emitSnapshot()
+        break
+      }
+      case "tool-input-start": {
+        const toolPart = upsertToolSnapshotPart({
+          input: undefined,
+          toolCallId: chunk.toolCallId,
+          toolName: chunk.toolName
+        })
+
+        toolPart.input = undefined
+        toolPart.providerExecuted = chunk.providerExecuted
+        toolPart.state = "input-streaming"
+        toolInputTextById.set(chunk.toolCallId, "")
+        emitSnapshot()
+        break
+      }
+      case "tool-output-available": {
+        const toolPart = getToolSnapshotPart(chunk.toolCallId)
+
+        if (!toolPart) {
+          return
+        }
+
+        toolPart.output = chunk.output
+        toolPart.preliminary = chunk.preliminary
+        toolPart.providerExecuted = chunk.providerExecuted
+        toolPart.state = "output-available"
+        toolInputTextById.delete(chunk.toolCallId)
+        emitSnapshot()
+        break
+      }
+      case "tool-output-denied": {
+        const toolPart = getToolSnapshotPart(chunk.toolCallId)
+
+        if (!toolPart) {
+          return
+        }
+
+        toolPart.approval = {
+          approved: false
+        }
+        toolPart.state = "output-denied"
+        toolInputTextById.delete(chunk.toolCallId)
+        emitSnapshot()
+        break
+      }
+      case "tool-output-error": {
+        const toolPart = getToolSnapshotPart(chunk.toolCallId)
+
+        if (!toolPart) {
+          return
+        }
+
+        toolPart.errorText = chunk.errorText
+        toolPart.providerExecuted = chunk.providerExecuted
+        toolPart.state = "output-error"
+        toolInputTextById.delete(chunk.toolCallId)
+        emitSnapshot()
+        break
+      }
+      default: {
+        break
+      }
+    }
+  }
+
+  const writeUiChunk = (chunk: AgentUiStreamChunk): void => {
+    stream.write(chunk)
+
+    if (writeContentUiChunkSnapshot(chunk)) {
+      return
+    }
+
+    writeToolUiChunkSnapshot(chunk)
   }
 
   return {
@@ -1236,7 +1512,8 @@ const createAgentUiLiveSink = ({
         type: "tool-output-available"
       } as AgentUiStreamChunk)
       emitSnapshot()
-    }
+    },
+    writeUiChunk
   }
 }
 
@@ -3297,8 +3574,6 @@ export const streamAgentChat = async ({
         model,
         streamCallbacks: {
           onFinish: liveSink.finishText,
-          onTextDelta: liveSink.writeTextDelta,
-          onToolCall: liveSink.writeToolCall,
           onToolResult: async (toolResult) => {
             const toolCall = {
               input: toolResult.input,
@@ -3306,11 +3581,6 @@ export const streamAgentChat = async ({
               toolName: toolResult.toolName
             }
 
-            liveSink.writeToolResult({
-              isError: toolResult.isError,
-              output: toolResult.output,
-              toolCall
-            })
             await lifecycleHandlers.onToolCallStart({
               toolCall
             })
@@ -3322,7 +3592,8 @@ export const streamAgentChat = async ({
               success: !toolResult.isError,
               toolCall
             })
-          }
+          },
+          onUiChunk: liveSink.writeUiChunk
         },
         system: preparedSystemPrompt,
         tools: agentTools

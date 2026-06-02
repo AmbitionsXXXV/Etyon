@@ -82,6 +82,7 @@
       "regenerate": "重新生成",
       "saveEdit": "发送"
     },
+    "messageContinuation": "续接上一条",
     "messageScroll": {
       "toBottom": "回到底部"
     },

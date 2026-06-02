@@ -38,6 +38,8 @@ export interface BuildAgentChatProjectionMessagesOptions {
 export interface MergeAgentEventProjectionIntoChatMessagesOptions {
   allowEmptyProjectionFallback?: boolean
   events: readonly AgentEvent[]
+  includeProjectedUserMessages?: boolean
+  markProjectedSuffixAsContinuation?: boolean
   messages: UIMessage[]
   originalMessageCount: number
   runId: string
@@ -174,6 +176,47 @@ const getMessageText = (message: UIMessage): string =>
     .join("\n")
     .trim()
 
+const hasSameProjectionBoundary = (
+  leftMessage: UIMessage,
+  rightMessage: UIMessage
+): boolean => {
+  const leftText = getMessageText(leftMessage)
+
+  return (
+    leftMessage.role === rightMessage.role &&
+    leftText.length > 0 &&
+    leftText === getMessageText(rightMessage)
+  )
+}
+
+const getProjectedPrefixBoundary = ({
+  prefixMessages,
+  projectedMessages
+}: {
+  prefixMessages: readonly UIMessage[]
+  projectedMessages: readonly UIMessage[]
+}): number | null => {
+  const maxLength = Math.min(prefixMessages.length, projectedMessages.length)
+  let boundary = 0
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const prefixMessage = prefixMessages[index]
+    const projectedMessage = projectedMessages[index]
+
+    if (
+      !prefixMessage ||
+      !projectedMessage ||
+      !hasSameProjectionBoundary(prefixMessage, projectedMessage)
+    ) {
+      break
+    }
+
+    boundary = index + 1
+  }
+
+  return boundary > 0 ? boundary : null
+}
+
 const STREAM_SNAPSHOT_TOOL_STATES = new Set([
   "approval-requested",
   "approval-responded",
@@ -307,6 +350,10 @@ export const selectAgentChatProjectionPrefixMessages = ({
     ? retainedMessages
     : messages.slice(0, fallbackMessageCount)
 }
+
+export const getLatestUserMessageBoundary = (
+  messages: readonly UIMessage[]
+): number => messages.findLastIndex((message) => message.role === "user") + 1
 
 const createProjectionMessage = ({
   index,
@@ -655,6 +702,13 @@ const mergeAssistantMetadata = ({
   const fallbackAssistantMessages = messages.filter(
     (message) => message.role === "assistant"
   )
+  const projectedAssistantMessageCount = projectedMessages.filter(
+    (message) => message.role === "assistant"
+  ).length
+  const fallbackAssistantStartIndex = Math.max(
+    0,
+    fallbackAssistantMessages.length - projectedAssistantMessageCount
+  )
   let fallbackAssistantIndex = 0
 
   return projectedMessages.map((message) => {
@@ -663,7 +717,9 @@ const mergeAssistantMetadata = ({
     }
 
     const fallbackMetadata =
-      fallbackAssistantMessages[fallbackAssistantIndex]?.metadata
+      fallbackAssistantMessages[
+        fallbackAssistantStartIndex + fallbackAssistantIndex
+      ]?.metadata
     fallbackAssistantIndex += 1
 
     if (!isRecord(fallbackMetadata)) {
@@ -679,6 +735,23 @@ const mergeAssistantMetadata = ({
     }
   })
 }
+
+const markAssistantMessagesAsContinuation = (
+  messages: UIMessage[]
+): UIMessage[] =>
+  messages.map((message) => {
+    if (message.role !== "assistant") {
+      return message
+    }
+
+    return {
+      ...message,
+      metadata: {
+        ...(isRecord(message.metadata) ? message.metadata : {}),
+        continuation: true
+      }
+    }
+  })
 
 export const buildAgentChatProjectionMessages = ({
   events,
@@ -791,6 +864,8 @@ const trimTrailingAssistantMessages = (messages: UIMessage[]): UIMessage[] => {
 export const mergeAgentEventProjectionIntoChatMessages = ({
   allowEmptyProjectionFallback = true,
   events,
+  includeProjectedUserMessages = false,
+  markProjectedSuffixAsContinuation = false,
   messages,
   originalMessageCount,
   runId
@@ -807,17 +882,40 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
     events,
     runId
   })
+
+  if (
+    includeProjectedUserMessages &&
+    originalMessageCount === 0 &&
+    projectedMessages.length > 0
+  ) {
+    return mergeAssistantMetadata({
+      messages: fallbackSuffixMessages,
+      projectedMessages
+    })
+  }
+
+  const projectedPrefixBoundary = includeProjectedUserMessages
+    ? getProjectedPrefixBoundary({
+        prefixMessages,
+        projectedMessages
+      })
+    : null
   const suffixStartIndex =
-    latestOriginalUserText.length > 0
+    projectedPrefixBoundary ??
+    (latestOriginalUserText.length > 0
       ? projectedMessages.findLastIndex(
           (message) =>
             message.role === "user" &&
             getMessageText(message) === latestOriginalUserText
         ) + 1
-      : originalMessageCount
+      : originalMessageCount)
   const projectedSuffixMessages = projectedMessages
     .slice(Math.max(0, suffixStartIndex))
-    .filter((message) => message.role === "assistant")
+    .filter(
+      (message) =>
+        message.role === "assistant" ||
+        (includeProjectedUserMessages && message.role === "user")
+    )
 
   if (projectedSuffixMessages.length === 0) {
     if (!allowEmptyProjectionFallback) {
@@ -830,11 +928,23 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
     })
   }
 
+  const shouldTrimTrailingAssistantMessages =
+    projectedSuffixMessages[0]?.role === "assistant"
+  const trimmedPrefixMessages = shouldTrimTrailingAssistantMessages
+    ? trimTrailingAssistantMessages(prefixMessages)
+    : prefixMessages
+  const shouldMarkContinuation =
+    markProjectedSuffixAsContinuation ||
+    trimmedPrefixMessages.length < prefixMessages.length
+  const mergedSuffixMessages = mergeAssistantMetadata({
+    messages: fallbackSuffixMessages,
+    projectedMessages: projectedSuffixMessages
+  })
+
   return [
-    ...trimTrailingAssistantMessages(prefixMessages),
-    ...mergeAssistantMetadata({
-      messages: fallbackSuffixMessages,
-      projectedMessages: projectedSuffixMessages
-    })
+    ...trimmedPrefixMessages,
+    ...(shouldMarkContinuation
+      ? markAssistantMessagesAsContinuation(mergedSuffixMessages)
+      : mergedSuffixMessages)
   ]
 }

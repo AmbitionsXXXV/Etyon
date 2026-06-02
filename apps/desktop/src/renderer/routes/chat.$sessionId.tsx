@@ -1,4 +1,5 @@
 import { useChat } from "@ai-sdk/react"
+import type { UIMessage } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type {
   AgentSessionQueuedMessageQueue,
@@ -31,12 +32,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import type {
-  DefaultChatTransport,
-  DynamicToolUIPart,
-  ToolUIPart,
-  UIMessage
-} from "ai"
+import type { DefaultChatTransport } from "ai"
 import { getToolName, isToolUIPart } from "ai"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
@@ -127,7 +123,10 @@ type ReasoningChatPart = Extract<
   { type: "reasoning" }
 >
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
-type ChatToolPart = DynamicToolUIPart | ToolUIPart
+type ChatToolPart = Extract<
+  ChatUiMessage["parts"][number],
+  { toolCallId: string }
+>
 
 const chatSessionsQueryOptions = orpc.chatSessions.list.queryOptions({})
 const settingsQueryOptions = orpc.settings.get.queryOptions({})
@@ -222,7 +221,9 @@ const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
 )
 
 const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
-  message.parts.filter(isToolUIPart)
+  message.parts.filter((part): part is ChatToolPart =>
+    isToolUIPart(part as never)
+  )
 
 const getMessageReasoningParts = (
   message: ChatUiMessage
@@ -1551,7 +1552,7 @@ const ChatRuntime = ({
             await rpcClient.agents.rememberCommandApproval({
               input: part.input,
               sessionId: selectedSession.id,
-              toolName: getToolName(part)
+              toolName: getToolName(part as never)
             })
           } catch {
             // Approval should still resume even if the preference write fails.
@@ -1563,7 +1564,7 @@ const ChatRuntime = ({
           approved,
           buildChatRequestOptions,
           latestUserMentions,
-          part
+          part: part as never
         })
       })()
     },

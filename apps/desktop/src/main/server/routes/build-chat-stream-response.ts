@@ -2,7 +2,10 @@ import type { AppSettings, ParsedSkill } from "@etyon/rpc"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 
-import { mergeAgentEventProjectionIntoChatMessages } from "@/main/agents/agent-chat-projection"
+import {
+  getLatestUserMessageBoundary,
+  mergeAgentEventProjectionIntoChatMessages
+} from "@/main/agents/agent-chat-projection"
 import { listAgentEvents } from "@/main/agents/agent-event-store"
 import type { streamAgentChat } from "@/main/agents/agent-runtime"
 import { createAgentRuntimeState } from "@/main/agents/agent-state"
@@ -787,14 +790,21 @@ export const buildChatStreamResponse = ({
           nextMessages,
           workTimeMs
         )
+        const userBoundaryMessageCount =
+          getLatestUserMessageBoundary(messagesWithWorkTime)
+        const requestUserBoundaryMessageCount =
+          getLatestUserMessageBoundary(messages)
         const projectedMessages = agentRunId
           ? mergeAgentEventProjectionIntoChatMessages({
               events: await listAgentEvents({
                 db,
                 runId: agentRunId
               }),
+              markProjectedSuffixAsContinuation:
+                !chatLifecycleBranch &&
+                messages.length > requestUserBoundaryMessageCount,
               messages: messagesWithWorkTime,
-              originalMessageCount: messages.length,
+              originalMessageCount: userBoundaryMessageCount,
               runId: agentRunId
             })
           : messagesWithWorkTime

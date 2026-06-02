@@ -95,10 +95,6 @@ export const AgentCommandApprovalRuleSchema = z.object({
   toolName: z.string().trim().min(1)
 })
 
-export const AgentApprovalSettingsSchema = z.object({
-  commandAllowlist: z.array(AgentCommandApprovalRuleSchema).default([])
-})
-
 export const AiProviderNameSchema = BuiltInProviderIdSchema
 
 const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
@@ -218,7 +214,10 @@ const AGENT_RETRY_SETTINGS_DEFAULT = {
   retryTransientFailures: true
 } as const
 
+const DEFAULT_AGENT_APPROVAL_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
 const AGENT_APPROVAL_SETTINGS_DEFAULT = {
+  approvalTtlMs: DEFAULT_AGENT_APPROVAL_TTL_MS,
   commandAllowlist: [] as z.infer<typeof AgentCommandApprovalRuleSchema>[]
 } as const
 
@@ -344,6 +343,16 @@ export const AgentLspSettingsSchema = z.object({
 export const AgentRetrySettingsSchema = z.object({
   maxAutomaticRetries: z.number().int().min(0).max(5).default(1),
   retryTransientFailures: z.boolean().default(true)
+})
+
+export const AgentApprovalSettingsSchema = z.object({
+  approvalTtlMs: z
+    .number()
+    .int()
+    .min(60_000)
+    .max(30 * 24 * 60 * 60 * 1000)
+    .default(DEFAULT_AGENT_APPROVAL_TTL_MS),
+  commandAllowlist: z.array(AgentCommandApprovalRuleSchema).default([])
 })
 
 export const AgentSandboxSettingsSchema = z.object({

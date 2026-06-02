@@ -15,7 +15,7 @@ import {
 } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import { createChatSession, getChatSessionById } from "@/main/chat-sessions"
-import { getDb } from "@/main/db"
+import { getDb, getDbClient } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
@@ -272,6 +272,87 @@ describe("chat messages", () => {
     expect(persistedMessages).toEqual(repairedMessages)
   })
 
+  it("persists agent projection identity outside message metadata", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const messages: UIMessage[] = [
+      {
+        id: "user-message-projection-column",
+        parts: [
+          {
+            text: "Persist projection identity",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "assistant-message-projection-column",
+        metadata: {
+          agentProjection: {
+            runId: run.id,
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            text: "Projection body",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ]
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages,
+      sessionId: session.id
+    })
+
+    const storedRows = await getDbClient().execute({
+      args: [session.id, "assistant-message-projection-column"],
+      sql: `
+        SELECT agent_projection_run_id
+        FROM chat_messages
+        WHERE session_id = ? AND message_id = ?
+      `
+    })
+
+    expect(storedRows.rows[0]?.agent_projection_run_id).toBe(run.id)
+
+    await getDbClient().execute({
+      args: [session.id, "assistant-message-projection-column"],
+      sql: `
+        UPDATE chat_messages
+        SET metadata_json = NULL
+        WHERE session_id = ? AND message_id = ?
+      `
+    })
+
+    const listedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const assistantMessage = listedMessages.find(
+      (message) => message.id === "assistant-message-projection-column"
+    )
+
+    expect(assistantMessage?.metadata).toEqual({
+      agentProjection: {
+        runId: run.id,
+        source: "agent_events"
+      }
+    })
+  })
+
   it("temporarily projects active agent stream snapshots without persisting them", async () => {
     await ensureDatabaseReady()
 
@@ -368,6 +449,78 @@ describe("chat messages", () => {
       }
     ])
     expect(persistedMessages).toEqual([userMessage])
+  })
+
+  it("temporarily projects active agent prompt and stream when persistence has not caught up", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await appendAgentSessionModelMessageEvents({
+      messages: [
+        {
+          content: "Keep the in-flight prompt visible",
+          role: "user"
+        }
+      ],
+      run
+    })
+    await run.appendEvent({
+      payload: {
+        parts: [
+          {
+            text: "Working from durable stream snapshot.",
+            type: "text"
+          }
+        ]
+      },
+      type: "agent_ui_stream_snapshot_created"
+    })
+
+    const repairedMessages = await listChatMessagesWithAgentProjectionRepair({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const persistedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+
+    expect(repairedMessages).toEqual([
+      {
+        id: `agent-${run.id}-0-user`,
+        parts: [
+          {
+            text: "Keep the in-flight prompt visible",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: `agent-${run.id}-1-assistant`,
+        metadata: {
+          agentProjection: {
+            runId: run.id,
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            text: "Working from durable stream snapshot.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+    expect(persistedMessages).toEqual([])
   })
 
   it("repairs regenerated branch projections without keeping the old suffix", async () => {

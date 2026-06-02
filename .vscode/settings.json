@@ -82,6 +82,7 @@
     "nowarn",
     "oklab",
     "onnx",
+    "opencode",
     "pathspec",
     "Pathspecs",
     "pids",

@@ -206,10 +206,13 @@ export interface ListRecoverableAgentRunsOptions {
 }
 
 export interface RecoverInterruptedAgentRunsOptions {
+  approvalTtlMs?: number
   db: AppDatabase
+  now?: Date
 }
 
 export interface RecoverInterruptedAgentRunsResult {
+  expiredApprovalRunIds: string[]
   failedRunIds: string[]
   suspendedRunIds: string[]
 }
@@ -255,6 +258,8 @@ export interface UpdateAgentRunOptions {
 const getNowIsoString = (): string => new Date().toISOString()
 const INTERRUPTED_RUN_ERROR_MESSAGE =
   "Agent run was interrupted before the app could finish it."
+const SUSPENDED_APPROVAL_EXPIRED_ERROR_MESSAGE =
+  "Suspended agent approval expired before it was resumed."
 const eventAppendQueues = new Map<string, Promise<unknown>>()
 const agentEventListeners = new Set<AgentEventListener>()
 
@@ -302,6 +307,47 @@ const getApprovalRequestPayload = (
 }
 
 const getApprovalEventPayload = getApprovalRequestPayload
+
+export const assertAgentEventShape = <TPayload>(
+  event: AgentEvent,
+  type: AgentEventType,
+  predicate: (payload: unknown) => payload is TPayload,
+  description: string = type
+): TPayload => {
+  if (event.type !== type) {
+    throw new Error(
+      `Expected agent event type ${type}, received ${event.type}.`
+    )
+  }
+
+  if (!predicate(event.payload)) {
+    throw new Error(`Invalid agent event payload for ${description}.`)
+  }
+
+  return event.payload
+}
+
+const isSuspendedApprovalExpired = ({
+  approvalTtlMs,
+  now,
+  startedAt
+}: {
+  approvalTtlMs: number | undefined
+  now: Date
+  startedAt: string
+}): boolean => {
+  if (typeof approvalTtlMs !== "number" || approvalTtlMs <= 0) {
+    return false
+  }
+
+  const startedAtMs = Date.parse(startedAt)
+
+  if (!Number.isFinite(startedAtMs)) {
+    return false
+  }
+
+  return now.getTime() - startedAtMs > approvalTtlMs
+}
 
 const toAgentEvent = (row: typeof agentEvents.$inferSelect): AgentEvent => ({
   createdAt: row.createdAt,
@@ -1055,7 +1101,9 @@ export const updateAgentRun = async ({
 }
 
 export const recoverInterruptedAgentRuns = async ({
-  db
+  approvalTtlMs,
+  db,
+  now = new Date()
 }: RecoverInterruptedAgentRunsOptions): Promise<RecoverInterruptedAgentRunsResult> => {
   const rows = await db
     .select()
@@ -1064,11 +1112,39 @@ export const recoverInterruptedAgentRuns = async ({
       or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
     )
   const failedRunIds: string[] = []
+  const expiredApprovalRunIds: string[] = []
   const suspendedRunIds: string[] = []
 
   for (const row of rows) {
     if (row.status === "suspended") {
-      suspendedRunIds.push(row.id)
+      if (
+        !isSuspendedApprovalExpired({
+          approvalTtlMs,
+          now,
+          startedAt: row.startedAt
+        })
+      ) {
+        suspendedRunIds.push(row.id)
+        continue
+      }
+
+      await updateAgentRun({
+        db,
+        errorMessage: SUSPENDED_APPROVAL_EXPIRED_ERROR_MESSAGE,
+        id: row.id,
+        status: "failed"
+      })
+      await appendAgentEvent({
+        db,
+        payload: {
+          error: SUSPENDED_APPROVAL_EXPIRED_ERROR_MESSAGE,
+          reason: "approval_timeout"
+        },
+        runId: row.id,
+        type: "agent_run_failed"
+      })
+      expiredApprovalRunIds.push(row.id)
+      failedRunIds.push(row.id)
       continue
     }
 
@@ -1091,6 +1167,7 @@ export const recoverInterruptedAgentRuns = async ({
   }
 
   return {
+    expiredApprovalRunIds,
     failedRunIds,
     suspendedRunIds
   }

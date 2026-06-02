@@ -136,6 +136,7 @@ import {
   createAgentSessionQueuedMessageWriter,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
+import { isAgentCommandApprovalRuleCovered } from "@/main/agents/permission-engine"
 import { listChatMessagesWithAgentProjectionRepair } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -516,7 +517,11 @@ const isSameAgentCommandApprovalRule = ({
   rule: AgentCommandApprovalRule
   toolName: string
 }) =>
-  rule.command.trim() === command &&
+  isAgentCommandApprovalRuleCovered({
+    command,
+    ruleCommand: rule.command,
+    toolName
+  }) &&
   rule.toolName === toolName &&
   path.resolve(rule.projectPath) === path.resolve(projectPath) &&
   resolveAgentCommandApprovalCwd({

@@ -10,6 +10,7 @@ import {
 const baseAgents: AgentSettings = {
   allowSubagentDelegation: false,
   approvals: {
+    approvalTtlMs: 7 * 24 * 60 * 60 * 1000,
     commandAllowlist: []
   },
   defaultProfileId: "coder",

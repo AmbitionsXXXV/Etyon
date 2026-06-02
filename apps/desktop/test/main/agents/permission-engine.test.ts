@@ -215,7 +215,11 @@ describe("agent permission engine", () => {
   })
 
   it("denies destructive commands before generic command approval", () => {
-    for (const command of ["rm -rf dist", "git reset --hard HEAD"]) {
+    for (const command of [
+      "rm -rf dist",
+      "git reset --hard HEAD",
+      "rtk git reset --hard HEAD"
+    ]) {
       expect(
         evaluateAgentToolPermission({
           input: {
@@ -367,6 +371,53 @@ describe("agent permission engine", () => {
         ruleId: "safe-readonly-git-command"
       })
     }
+  })
+
+  it("allows wrapped read-only git inspection commands", () => {
+    for (const [name, command] of [
+      ["rtkCommand", "rtk git diff --cached --stat"],
+      [
+        "runCheck",
+        "git diff --cached apps/desktop/src/main/agents/agent-runtime.ts"
+      ]
+    ] as const) {
+      expect(
+        evaluateAgentToolPermission({
+          input: {
+            command
+          },
+          name,
+          workspaceRoot
+        })
+      ).toMatchObject({
+        action: "allow",
+        ruleId: "safe-readonly-git-command"
+      })
+    }
+  })
+
+  it("lets a remembered read-only git intent cover different argv for the same tool", () => {
+    expect(
+      evaluateAgentToolPermission({
+        commandApprovalAllowlist: [
+          {
+            command: "git diff --cached --stat",
+            createdAt: "2026-06-01T00:00:00.000Z",
+            projectPath: workspaceRoot,
+            toolName: "runCheck"
+          }
+        ],
+        input: {
+          command:
+            "git diff --cached apps/desktop/src/main/agents/agent-runtime.ts"
+        },
+        name: "runCheck",
+        workspaceRoot
+      })
+    ).toMatchObject({
+      action: "allow",
+      ruleId: "command-approval-allowlist"
+    })
   })
 
   it("allows exact remembered shell commands after base command checks pass", () => {

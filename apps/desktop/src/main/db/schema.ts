@@ -33,6 +33,7 @@ export const chatSessions = sqliteTable(
 export const chatMessages = sqliteTable(
   "chat_messages",
   {
+    agentProjectionRunId: text("agent_projection_run_id"),
     createdAt: text("created_at").notNull(),
     messageId: text("message_id").notNull(),
     metadataJson: text("metadata_json"),
@@ -47,6 +48,9 @@ export const chatMessages = sqliteTable(
     updatedAt: text("updated_at").notNull()
   },
   (table) => ({
+    agentProjectionRunIdx: index("chat_messages_agent_projection_run_idx").on(
+      table.agentProjectionRunId
+    ),
     pk: primaryKey({
       columns: [table.sessionId, table.messageId]
     }),

@@ -82,6 +82,7 @@
       "regenerate": "Regenerate",
       "saveEdit": "Send"
     },
+    "messageContinuation": "Continued",
     "messageScroll": {
       "toBottom": "Back to bottom"
     },

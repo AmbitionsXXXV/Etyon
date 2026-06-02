@@ -82,6 +82,7 @@
       "regenerate": "再生成",
       "saveEdit": "送信"
     },
+    "messageContinuation": "前の応答から続行",
     "messageScroll": {
       "toBottom": "一番下へ戻る"
     },

@@ -1683,7 +1683,6 @@ describe("agent runtime harness", () => {
     })
 
     await result.consumeStream()
-
     expect(await harness.session.listToolCalls()).toEqual([
       expect.objectContaining({
         approvalState: "not_required",
@@ -1750,8 +1749,27 @@ describe("agent runtime harness", () => {
       ] satisfies ModelMessage[]
     })
 
-    await result.consumeStream()
+    const chunks = await collectUiStream(result.toUIMessageStream())
 
+    expect(chunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolCallId: "tool-call-delta-1",
+          toolName: "read",
+          type: "tool-input-start"
+        }),
+        expect.objectContaining({
+          inputTextDelta: '{"path":',
+          toolCallId: "tool-call-delta-1",
+          type: "tool-input-delta"
+        }),
+        expect.objectContaining({
+          inputTextDelta: '"src/delta.ts"}',
+          toolCallId: "tool-call-delta-1",
+          type: "tool-input-delta"
+        })
+      ])
+    )
     expect(await harness.session.listToolCalls()).toEqual([
       expect.objectContaining({
         approvalState: "not_required",

@@ -857,6 +857,9 @@ describe("agent chat projection", () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toBe(messages[0])
     expect(result[1].role).toBe("assistant")
+    expect(result[1].metadata).toMatchObject({
+      continuation: true
+    })
     expect(result[1].parts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -869,6 +872,169 @@ describe("agent chat projection", () => {
         })
       ])
     )
+  })
+
+  it("keeps projected user messages when active repair starts after persisted history", () => {
+    const previousUserMessage: UIMessage = {
+      id: "user-1",
+      parts: [
+        {
+          text: "Earlier question.",
+          type: "text"
+        }
+      ],
+      role: "user"
+    }
+    const previousAssistantMessage: UIMessage = {
+      id: "assistant-1",
+      parts: [
+        {
+          text: "Earlier answer.",
+          type: "text"
+        }
+      ],
+      role: "assistant"
+    }
+    const messages: UIMessage[] = [
+      previousUserMessage,
+      previousAssistantMessage
+    ]
+
+    expect(
+      mergeAgentEventProjectionIntoChatMessages({
+        events: [
+          createAgentEvent(1, {
+            action: "appendMessage",
+            message: {
+              content: "Earlier question.",
+              role: "user",
+              type: "model"
+            }
+          }),
+          createAgentEvent(2, {
+            action: "appendMessage",
+            message: {
+              content: "Earlier answer.",
+              role: "assistant",
+              type: "model"
+            }
+          }),
+          createAgentEvent(3, {
+            action: "appendMessage",
+            message: {
+              content: "Current prompt.",
+              role: "user",
+              type: "model"
+            }
+          }),
+          createAgentEvent(
+            4,
+            {
+              parts: [
+                {
+                  text: "Working on current prompt.",
+                  type: "text"
+                }
+              ]
+            },
+            "agent_ui_stream_snapshot_created"
+          )
+        ],
+        includeProjectedUserMessages: true,
+        messages,
+        originalMessageCount: messages.length,
+        runId: "run-1"
+      })
+    ).toEqual([
+      previousUserMessage,
+      previousAssistantMessage,
+      {
+        id: "agent-run-1-2-user",
+        parts: [
+          {
+            text: "Current prompt.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "agent-run-1-3-assistant",
+        metadata: {
+          agentProjection: {
+            runId: "run-1",
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            text: "Working on current prompt.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+  })
+
+  it("returns full projected messages when active repair has no persisted prefix", () => {
+    expect(
+      mergeAgentEventProjectionIntoChatMessages({
+        events: [
+          createAgentEvent(1, {
+            action: "appendMessage",
+            message: {
+              content: "Current prompt.",
+              role: "user",
+              type: "model"
+            }
+          }),
+          createAgentEvent(
+            2,
+            {
+              parts: [
+                {
+                  text: "Working on current prompt.",
+                  type: "text"
+                }
+              ]
+            },
+            "agent_ui_stream_snapshot_created"
+          )
+        ],
+        includeProjectedUserMessages: true,
+        messages: [],
+        originalMessageCount: 0,
+        runId: "run-1"
+      })
+    ).toEqual([
+      {
+        id: "agent-run-1-0-user",
+        parts: [
+          {
+            text: "Current prompt.",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: "agent-run-1-1-assistant",
+        metadata: {
+          agentProjection: {
+            runId: "run-1",
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            text: "Working on current prompt.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
   })
 
   it("falls back to stream messages when no event-derived suffix exists", () => {

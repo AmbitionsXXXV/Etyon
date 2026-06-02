@@ -6,9 +6,10 @@ export interface ChatRequestPhaseData {
   phase: ChatRequestPhase
 }
 
-export type ChatStreamDataTypes = {
-  [CHAT_REQUEST_PHASE_DATA_NAME]: ChatRequestPhaseData
-} & Record<string, unknown>
+export type ChatStreamDataTypes = Record<
+  typeof CHAT_REQUEST_PHASE_DATA_NAME,
+  ChatRequestPhaseData
+>
 
 export const CHAT_REQUEST_PHASE_DATA_TYPE =
   `data-${CHAT_REQUEST_PHASE_DATA_NAME}` as const

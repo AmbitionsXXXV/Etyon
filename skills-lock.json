@@ -34,6 +34,12 @@
       "skillPath": "skills/magicpath/SKILL.md",
       "computedHash": "f825e64ad1f78896c92729e09a49b7ec0561965d6255cfc3dbe0644725a0c4b0"
     },
+    "mastra": {
+      "source": "mastra-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mastra/SKILL.md",
+      "computedHash": "f0ca76d36d67a345064f471a9577e752beb2b20ab46acdf154ed223905e1d3a4"
+    },
     "migrate-oxlint": {
       "source": "oxc-project/oxc",
       "sourceType": "github",

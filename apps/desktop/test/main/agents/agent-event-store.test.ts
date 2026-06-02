@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { recordAgentToolOutputArtifacts } from "@/main/agents/agent-artifacts"
 import {
+  assertAgentEventShape,
   createAgentRun,
   getActiveAgentRunForSession,
   getAgentArtifact,
@@ -83,6 +84,14 @@ vi.mock("electron", () => ({
     on: vi.fn()
   }
 }))
+
+const isApprovalPayload = (
+  value: unknown
+): value is { approvalId: string; toolCallId: string } =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as Record<string, unknown>).approvalId === "string" &&
+  typeof (value as Record<string, unknown>).toolCallId === "string"
 
 const isAgentSessionCustomMessageEntry = (
   entry: AgentSessionTreeEntry
@@ -1355,6 +1364,152 @@ describe("agent event store", () => {
         runStatus: "suspended"
       })
     )
+  })
+
+  it("expires stale suspended approval runs during startup recovery", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const suspendedRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "pending",
+      db: getDb(),
+      id: "stale-approval-tool-call",
+      input: {
+        path: "src/main.ts"
+      },
+      runId: suspendedRun.id,
+      state: "approval_requested",
+      toolName: "writeFile"
+    })
+    await suspendedRun.appendEvent({
+      payload: {
+        approvalId: "approval-stale-1",
+        toolCallId: "stale-approval-tool-call"
+      },
+      type: "tool_call_approval_requested"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: suspendedRun.id,
+      status: "suspended"
+    })
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-01T00:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, suspendedRun.id))
+
+    const result = await recoverInterruptedAgentRuns({
+      approvalTtlMs: 60_000,
+      db: getDb(),
+      now: new Date("2026-06-01T00:00:00.000Z")
+    })
+    const [suspendedRow] = await getDb()
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, suspendedRun.id))
+    const failedEvents = await listAgentEvents({
+      db: getDb(),
+      runId: suspendedRun.id
+    })
+    const pendingApprovals = await listPendingAgentApprovals({
+      chatSessionId: session.id,
+      db: getDb()
+    })
+
+    expect(result.failedRunIds).toContain(suspendedRun.id)
+    expect(result.expiredApprovalRunIds).toContain(suspendedRun.id)
+    expect(result.suspendedRunIds).not.toContain(suspendedRun.id)
+    expect(suspendedRow).toMatchObject({
+      errorMessage: "Suspended agent approval expired before it was resumed.",
+      status: "failed"
+    })
+    expect(failedEvents).toContainEqual(
+      expect.objectContaining({
+        payload: {
+          error: "Suspended agent approval expired before it was resumed.",
+          reason: "approval_timeout"
+        },
+        type: "agent_run_failed"
+      })
+    )
+    expect(pendingApprovals).not.toContainEqual(
+      expect.objectContaining({
+        runId: suspendedRun.id
+      })
+    )
+  })
+
+  it("asserts agent event payload shapes at runtime boundaries", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await recordAgentToolCall({
+      approvalState: "pending",
+      db: getDb(),
+      id: "tool-call-shape-1",
+      input: {},
+      runId: run.id,
+      state: "approval_requested",
+      toolName: "writeFile"
+    })
+
+    const event = await run.appendEvent({
+      payload: {
+        approvalId: "approval-shape-1",
+        toolCallId: "tool-call-shape-1"
+      },
+      type: "tool_call_approval_requested"
+    })
+    const payload = assertAgentEventShape(
+      event,
+      "tool_call_approval_requested",
+      isApprovalPayload,
+      "approval payload"
+    )
+
+    expect(payload.toolCallId).toBe("tool-call-shape-1")
+    expect(() =>
+      assertAgentEventShape(
+        {
+          ...event,
+          type: "tool_call_finished"
+        },
+        "tool_call_approval_requested",
+        isApprovalPayload,
+        "approval payload"
+      )
+    ).toThrow(
+      "Expected agent event type tool_call_approval_requested, received tool_call_finished."
+    )
+    expect(() =>
+      assertAgentEventShape(
+        {
+          ...event,
+          payload: {
+            approvalId: 42
+          }
+        },
+        "tool_call_approval_requested",
+        isApprovalPayload,
+        "approval payload"
+      )
+    ).toThrow("Invalid agent event payload for approval payload.")
   })
 
   it("lists failed top-level runs as recoverable for the owning session", async () => {

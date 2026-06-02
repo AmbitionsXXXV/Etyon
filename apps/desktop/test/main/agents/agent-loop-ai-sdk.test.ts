@@ -163,6 +163,7 @@ describe("agent loop AI SDK adapter", () => {
       content: "should not run"
     }))
     const observedToolCalls: unknown[] = []
+    const observedUiChunks: unknown[] = []
     const tools = {
       read: tool({
         description: "Read one file.",
@@ -190,6 +191,9 @@ describe("agent loop AI SDK adapter", () => {
       streamCallbacks: {
         onToolCall: (toolCall) => {
           observedToolCalls.push(toolCall)
+        },
+        onUiChunk: (chunk) => {
+          observedUiChunks.push(chunk)
         }
       },
       tools
@@ -216,6 +220,96 @@ describe("agent loop AI SDK adapter", () => {
       }
     ])
     expect(observedToolCalls).toEqual(turn.toolCalls)
+    expect(observedUiChunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolCallId: "call-read-delta-1",
+          toolName: "read",
+          type: "tool-input-start"
+        }),
+        expect.objectContaining({
+          inputTextDelta: '{"path":',
+          toolCallId: "call-read-delta-1",
+          type: "tool-input-delta"
+        }),
+        expect.objectContaining({
+          inputTextDelta: '"src/provider.ts"}',
+          toolCallId: "call-read-delta-1",
+          type: "tool-input-delta"
+        })
+      ])
+    )
+  })
+
+  it("emits provider reasoning and text as AI SDK UI stream chunks", async () => {
+    const observedUiChunks: unknown[] = []
+    const stream = createTextStream([
+      {
+        id: "reasoning-1",
+        type: "reasoning-start"
+      } as TextStreamPart<ToolSet>,
+      {
+        id: "reasoning-1",
+        text: "Inspecting context.",
+        type: "reasoning-delta"
+      } as TextStreamPart<ToolSet>,
+      {
+        id: "reasoning-1",
+        type: "reasoning-end"
+      } as TextStreamPart<ToolSet>,
+      {
+        id: "text-1",
+        type: "text-start"
+      } as TextStreamPart<ToolSet>,
+      {
+        id: "text-1",
+        text: "Done.",
+        type: "text-delta"
+      } as TextStreamPart<ToolSet>,
+      {
+        id: "text-1",
+        type: "text-end"
+      } as TextStreamPart<ToolSet>
+    ])
+
+    const turn = await collectAiSdkStreamTurn({
+      stream,
+      streamCallbacks: {
+        onUiChunk: (chunk) => {
+          observedUiChunks.push(chunk)
+        }
+      }
+    })
+
+    expect(turn.content).toBe("Done.")
+    expect(observedUiChunks).toEqual([
+      {
+        id: "reasoning-1",
+        type: "reasoning-start"
+      },
+      {
+        delta: "Inspecting context.",
+        id: "reasoning-1",
+        type: "reasoning-delta"
+      },
+      {
+        id: "reasoning-1",
+        type: "reasoning-end"
+      },
+      {
+        id: "text-1",
+        type: "text-start"
+      },
+      {
+        delta: "Done.",
+        id: "text-1",
+        type: "text-delta"
+      },
+      {
+        id: "text-1",
+        type: "text-end"
+      }
+    ])
   })
 
   it("adapts provider-executed stream tool results without local execution", async () => {

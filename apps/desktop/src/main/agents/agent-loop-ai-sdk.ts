@@ -1,12 +1,14 @@
 import type { ToolResultOutput } from "@ai-sdk/provider-utils"
 import type {
   AssistantModelMessage,
+  InferUIMessageChunk,
   JSONValue,
   LanguageModel,
   ModelMessage,
   TextStreamPart,
   ToolExecutionOptions,
-  ToolSet
+  ToolSet,
+  UIMessage
 } from "ai"
 import { generateText, stepCountIs, streamText } from "ai"
 
@@ -29,6 +31,7 @@ export interface AiSdkAgentLoopModelStreamCallbacks {
   onTextDelta?: (text: string) => void
   onToolCall?: (toolCall: AgentLoopToolCall) => void
   onToolResult?: (toolResult: AgentLoopModelToolResult) => Promise<void> | void
+  onUiChunk?: (chunk: AiSdkUiMessageChunk) => void
 }
 
 export interface CreateAiSdkAgentLoopModelOptions {
@@ -64,6 +67,8 @@ interface CollectAiSdkStreamTurnOptions {
 }
 
 const DEFAULT_TOOL_RESULT_SUMMARY_PROCESSOR_INPUT_MAX_CHARS = 24_000
+
+type AiSdkUiMessageChunk = InferUIMessageChunk<UIMessage>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -105,6 +110,338 @@ const parseStreamedToolInput = (input: string): unknown => {
   } catch {
     return input
   }
+}
+
+const compactUiChunk = (chunk: AiSdkUiMessageChunk): AiSdkUiMessageChunk =>
+  Object.fromEntries(
+    Object.entries(chunk).filter(([, value]) => value !== undefined)
+  ) as AiSdkUiMessageChunk
+
+const getUiChunkErrorText = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === "string") {
+    return error
+  }
+
+  try {
+    return JSON.stringify(error) ?? String(error)
+  } catch {
+    return String(error)
+  }
+}
+
+const emitUiChunk = ({
+  chunk,
+  streamCallbacks
+}: {
+  chunk: AiSdkUiMessageChunk
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
+}): void => {
+  streamCallbacks?.onUiChunk?.(compactUiChunk(chunk))
+}
+
+const emitContentUiChunkForTextStreamPart = ({
+  part,
+  streamCallbacks
+}: {
+  part: TextStreamPart<ToolSet>
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
+}): boolean => {
+  switch (part.type) {
+    case "abort": {
+      emitUiChunk({
+        chunk: {
+          reason: part.reason,
+          type: "abort"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "file": {
+      emitUiChunk({
+        chunk: {
+          mediaType: part.file.mediaType,
+          providerMetadata: part.providerMetadata,
+          type: "file",
+          url: `data:${part.file.mediaType};base64,${part.file.base64}`
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "finish-step": {
+      emitUiChunk({
+        chunk: {
+          type: "finish-step"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "reasoning-delta": {
+      emitUiChunk({
+        chunk: {
+          delta: part.text,
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "reasoning-delta"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "reasoning-end": {
+      emitUiChunk({
+        chunk: {
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "reasoning-end"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "reasoning-start": {
+      emitUiChunk({
+        chunk: {
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "reasoning-start"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "source": {
+      if (part.sourceType === "document") {
+        emitUiChunk({
+          chunk: {
+            filename: part.filename,
+            mediaType: part.mediaType,
+            providerMetadata: part.providerMetadata,
+            sourceId: part.id,
+            title: part.title,
+            type: "source-document"
+          } as AiSdkUiMessageChunk,
+          streamCallbacks
+        })
+        return true
+      }
+
+      emitUiChunk({
+        chunk: {
+          providerMetadata: part.providerMetadata,
+          sourceId: part.id,
+          title: part.title,
+          type: "source-url",
+          url: part.url
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "start-step": {
+      emitUiChunk({
+        chunk: {
+          type: "start-step"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "text-delta": {
+      emitUiChunk({
+        chunk: {
+          delta: part.text,
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "text-delta"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "text-end": {
+      emitUiChunk({
+        chunk: {
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "text-end"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    case "text-start": {
+      emitUiChunk({
+        chunk: {
+          id: part.id,
+          providerMetadata: part.providerMetadata,
+          type: "text-start"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      return true
+    }
+    default: {
+      return false
+    }
+  }
+}
+
+const emitToolUiChunkForTextStreamPart = ({
+  part,
+  streamCallbacks
+}: {
+  part: TextStreamPart<ToolSet>
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
+}): void => {
+  switch (part.type) {
+    case "tool-approval-request": {
+      emitUiChunk({
+        chunk: {
+          approvalId: part.approvalId,
+          toolCallId: part.toolCall.toolCallId,
+          type: "tool-approval-request"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-call": {
+      if (part.invalid) {
+        emitUiChunk({
+          chunk: {
+            dynamic: part.dynamic,
+            errorText: getUiChunkErrorText(part.error),
+            input: part.input,
+            providerExecuted: part.providerExecuted,
+            providerMetadata: part.providerMetadata,
+            title: part.title,
+            toolCallId: part.toolCallId,
+            toolMetadata: part.toolMetadata,
+            toolName: part.toolName,
+            type: "tool-input-error"
+          } as AiSdkUiMessageChunk,
+          streamCallbacks
+        })
+        break
+      }
+
+      emitUiChunk({
+        chunk: {
+          dynamic: part.dynamic,
+          input: part.input,
+          providerExecuted: part.providerExecuted,
+          providerMetadata: part.providerMetadata,
+          title: part.title,
+          toolCallId: part.toolCallId,
+          toolMetadata: part.toolMetadata,
+          toolName: part.toolName,
+          type: "tool-input-available"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-error": {
+      emitUiChunk({
+        chunk: {
+          dynamic: part.dynamic,
+          errorText: getUiChunkErrorText(part.error),
+          providerExecuted: part.providerExecuted,
+          providerMetadata: part.providerMetadata,
+          toolCallId: part.toolCallId,
+          toolMetadata: part.toolMetadata,
+          type: "tool-output-error"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-input-delta": {
+      emitUiChunk({
+        chunk: {
+          inputTextDelta: part.delta,
+          toolCallId: part.id,
+          type: "tool-input-delta"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-input-start": {
+      emitUiChunk({
+        chunk: {
+          dynamic: part.dynamic,
+          providerExecuted: part.providerExecuted,
+          providerMetadata: part.providerMetadata,
+          title: part.title,
+          toolCallId: part.id,
+          toolMetadata: part.toolMetadata,
+          toolName: part.toolName,
+          type: "tool-input-start"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-output-denied": {
+      emitUiChunk({
+        chunk: {
+          toolCallId: part.toolCallId,
+          type: "tool-output-denied"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    case "tool-result": {
+      emitUiChunk({
+        chunk: {
+          dynamic: part.dynamic,
+          output: part.output,
+          preliminary: part.preliminary,
+          providerExecuted: part.providerExecuted,
+          providerMetadata: part.providerMetadata,
+          toolCallId: part.toolCallId,
+          toolMetadata: part.toolMetadata,
+          type: "tool-output-available"
+        } as AiSdkUiMessageChunk,
+        streamCallbacks
+      })
+      break
+    }
+    default: {
+      break
+    }
+  }
+}
+
+const emitUiChunkForTextStreamPart = ({
+  part,
+  streamCallbacks
+}: {
+  part: TextStreamPart<ToolSet>
+  streamCallbacks?: AiSdkAgentLoopModelStreamCallbacks
+}): void => {
+  if (
+    emitContentUiChunkForTextStreamPart({
+      part,
+      streamCallbacks
+    })
+  ) {
+    return
+  }
+
+  emitToolUiChunkForTextStreamPart({
+    part,
+    streamCallbacks
+  })
 }
 
 const isExistingToolResultOutput = (
@@ -467,6 +804,11 @@ export const collectAiSdkStreamTurn = async ({
   }
 
   for await (const part of stream) {
+    emitUiChunkForTextStreamPart({
+      part,
+      streamCallbacks
+    })
+
     switch (part.type) {
       case "text-delta": {
         content += part.text

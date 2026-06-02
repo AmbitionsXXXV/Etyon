@@ -1,6 +1,7 @@
+import type { UIMessage } from "@ai-sdk/react"
+import { useI18n } from "@etyon/i18n/react"
 import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
 import { isToolUIPart } from "ai"
 import { Streamdown } from "streamdown"
 
@@ -22,13 +23,25 @@ import type {
 } from "@/renderer/lib/chat/tool-ui"
 import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
 
-type ChatToolPart = DynamicToolUIPart | ToolUIPart
 type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
+type ChatToolPart = Extract<
+  ChatUiMessage["parts"][number],
+  { toolCallId: string }
+>
 type ReasoningChatPart = Extract<
   ChatUiMessage["parts"][number],
   { type: "reasoning" }
 >
+type SourceDocumentChatPart = Extract<
+  ChatUiMessage["parts"][number],
+  { type: "source-document" }
+>
+type SourceUrlChatPart = Extract<
+  ChatUiMessage["parts"][number],
+  { type: "source-url" }
+>
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
+type FileChatPart = Extract<ChatUiMessage["parts"][number], { type: "file" }>
 
 const STREAMDOWN_MARKDOWN_CLASS_NAME = cn(
   "min-w-0 text-sm leading-6 text-foreground",
@@ -93,8 +106,10 @@ const getTimelinePartKey = (
   part: ChatUiMessage["parts"][number],
   index: number
 ): string => {
-  if (isToolUIPart(part)) {
-    return `${messageId}-tool-${part.toolCallId}`
+  if (isToolUIPart(part as never)) {
+    const toolPart = part as ChatToolPart
+
+    return `${messageId}-tool-${toolPart.toolCallId}`
   }
 
   if (part.type === "reasoning") {
@@ -176,6 +191,61 @@ const AssistantTextSegmentTimelineItem = ({
   }
 }
 
+const openExternalUrl = (url: string): void => {
+  window.electron.ipcRenderer.invoke("open-external-url", url)
+}
+
+const getUrlHost = (url: string): string => {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+const AssistantFilePartTimeline = ({ part }: { part: FileChatPart }) => (
+  <div className="inline-flex max-w-full flex-col gap-1 rounded-md border border-border/70 bg-muted/50 px-3 py-2 text-xs">
+    <span className="font-medium text-foreground">File</span>
+    <span className="truncate text-muted-foreground">{part.mediaType}</span>
+  </div>
+)
+
+const AssistantSourceDocumentPartTimeline = ({
+  part
+}: {
+  part: SourceDocumentChatPart
+}) => (
+  <div className="inline-flex max-w-full flex-col gap-1 rounded-md border border-border/70 bg-muted/50 px-3 py-2 text-xs">
+    <span className="truncate font-medium text-foreground">{part.title}</span>
+    <span className="truncate text-muted-foreground">
+      {part.filename ?? part.mediaType}
+    </span>
+  </div>
+)
+
+const AssistantSourceUrlPartTimeline = ({
+  part
+}: {
+  part: SourceUrlChatPart
+}) => {
+  const host = getUrlHost(part.url)
+
+  return (
+    <button
+      className="inline-flex max-w-full flex-col gap-1 rounded-md border border-border/70 bg-muted/50 px-3 py-2 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted"
+      onClick={() => {
+        openExternalUrl(part.url)
+      }}
+      type="button"
+    >
+      <span className="truncate font-medium text-foreground">
+        {part.title ?? host}
+      </span>
+      <span className="truncate text-muted-foreground">{host}</span>
+    </button>
+  )
+}
+
 const AssistantTimelinePart = ({
   chatSessionId,
   isStreamdownAnimating,
@@ -201,6 +271,10 @@ const AssistantTimelinePart = ({
   showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => {
+  if (part.type === "file") {
+    return <AssistantFilePartTimeline part={part as FileChatPart} />
+  }
+
   if (part.type === "reasoning") {
     const reasoningPart = part as ReasoningChatPart
 
@@ -226,19 +300,33 @@ const AssistantTimelinePart = ({
     )
   }
 
+  if (part.type === "source-document") {
+    return (
+      <AssistantSourceDocumentPartTimeline
+        part={part as SourceDocumentChatPart}
+      />
+    )
+  }
+
+  if (part.type === "source-url") {
+    return <AssistantSourceUrlPartTimeline part={part as SourceUrlChatPart} />
+  }
+
   if (
-    isToolUIPart(part) &&
+    isToolUIPart(part as never) &&
     shouldRenderAssistantToolPart({
       showToolTraces,
-      state: part.state
+      state: (part as ChatToolPart).state
     })
   ) {
     return (
       <StructuredToolTraceCard
         chatSessionId={chatSessionId}
         isApprovalActionDisabled={isApprovalActionDisabled}
-        onApprovalResponse={onApprovalResponse}
-        part={part}
+        onApprovalResponse={(toolPart, approved, options) => {
+          onApprovalResponse(toolPart as ChatToolPart, approved, options)
+        }}
+        part={part as never}
       />
     )
   }
@@ -268,21 +356,30 @@ export const AssistantMessageTimeline = ({
   ) => void
   showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
-}) => (
-  <div className={cn("space-y-2", className)}>
-    {message.parts.map((part, index) => (
-      <AssistantTimelinePart
-        chatSessionId={chatSessionId}
-        isStreamdownAnimating={isStreamdownAnimating}
-        isApprovalActionDisabled={isApprovalActionDisabled}
-        key={getTimelinePartKey(message.id, part, index)}
-        messageId={message.id}
-        onApprovalResponse={onApprovalResponse}
-        part={part}
-        partIndex={index}
-        showToolTraces={showToolTraces}
-        streamdownAnimation={streamdownAnimation}
-      />
-    ))}
-  </div>
-)
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      {message.metadata?.continuation ? (
+        <div className="ml-1 inline-flex w-fit items-center rounded-full border border-dashed border-muted-foreground/40 px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
+          {t("chat.messageContinuation")}
+        </div>
+      ) : null}
+      {message.parts.map((part, index) => (
+        <AssistantTimelinePart
+          chatSessionId={chatSessionId}
+          isStreamdownAnimating={isStreamdownAnimating}
+          isApprovalActionDisabled={isApprovalActionDisabled}
+          key={getTimelinePartKey(message.id, part, index)}
+          messageId={message.id}
+          onApprovalResponse={onApprovalResponse}
+          part={part}
+          partIndex={index}
+          showToolTraces={showToolTraces}
+          streamdownAnimation={streamdownAnimation}
+        />
+      ))}
+    </div>
+  )
+}
