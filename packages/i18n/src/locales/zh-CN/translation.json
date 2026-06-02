@@ -22,6 +22,9 @@
       "stepCount": "{count} 步"
     },
     "composer": {
+      "agentModeAgent": "Agent",
+      "agentModeChat": "Chat",
+      "agentModeToggle": "切换 Agent mode",
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
       "queue": "加入队列",
       "queueEdit": "编辑队列消息",

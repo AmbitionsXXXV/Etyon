@@ -22,6 +22,9 @@
       "stepCount": "{count} steps"
     },
     "composer": {
+      "agentModeAgent": "Agent",
+      "agentModeChat": "Chat",
+      "agentModeToggle": "Switch agent mode",
       "placeholder": "Type a message or use @ to reference project files",
       "queue": "Queue message",
       "queueEdit": "Edit queued message",

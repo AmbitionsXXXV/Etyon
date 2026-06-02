@@ -8,6 +8,7 @@ The desktop chat surface uses HeroUI Pro AI primitives around the existing chat 
 - The TipTap editor remains inside `PromptInput.Content` so `@` project mentions, `$` skill mentions, `/prompt` templates, and `/plan` shortcuts keep their existing behavior.
 - The component passes the extracted plain prompt text to `PromptInput.value`. This keeps `PromptInput.Send` disabled, stop, and submit behavior aligned with the editor state.
 - `lockInputOnRun={false}` and `allowSubmitWhileRunning` keep the composer editable while `useChat` is `submitted` or `streaming`.
+- The toolbar start renders a left-aligned `Chat` / `Agent` mode control with HeroUI `ToggleButtonGroup`; `Shift+Tab` is registered through TanStack Hotkeys and the selected mode is sent as request body `agentMode`.
 
 ## Queue
 

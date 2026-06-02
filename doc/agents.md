@@ -46,8 +46,8 @@
 ### Agent Mode / Composer
 
 - [x] `/plan` 与 `Ctrl+Alt+P` 已能把当前请求临时切换为 read-only plan profile，并把 plan progress 写回 session events。
-- [ ] Chat panel 需要新增 `Shift+Tab` 快捷键切换 agent mode；切换结果必须体现在 prompt input 最左侧的 mode indicator / segmented control，提交请求时写入 request body 或 session custom entry。
-- [ ] Agent mode indicator 需要和 queued follow-up / steering 状态共存：请求中输入时显示本次消息将进入当前 active run，空闲时显示下一次 root run mode。
+- [x] Chat panel 已通过 `useHotkey("Shift+Tab")` 切换 composer agent mode；切换结果显示在 prompt input 最左侧的 `Chat` / `Agent` segmented control，并在提交时通过 request body `agentMode` 临时覆盖本次 managed agent runtime 开关。
+- [ ] Agent mode indicator 后续还需要更明确地区分 active run steering 与下一次 root run mode；当前实现会在输出中锁定当前 mode，并与 queued follow-up / steering 列表共存。
 
 ## P0–P5 状态快照
 

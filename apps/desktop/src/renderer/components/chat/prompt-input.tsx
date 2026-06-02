@@ -8,14 +8,18 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
+import type { Key } from "@heroui/react"
+import { ToggleButton, ToggleButtonGroup } from "@heroui/react"
 import {
+  Message01Icon,
   CubeIcon,
   Delete02Icon,
   DragDropVerticalIcon,
   PencilEdit02Icon,
   Queue02Icon,
   SentIcon,
-  StopIcon
+  StopIcon,
+  WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
@@ -68,11 +72,24 @@ import type {
   PromptSkillMentionItem,
   PromptMentionTrigger
 } from "@/renderer/lib/chat/prompt-input"
+import { isChatAgentMode } from "@/shared/chat/agent-mode"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 
 const COMPOSITION_SUBMIT_GUARD_MS = 100
 const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
 const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
 const PROMPT_COMMAND_PALETTE_ITEM_LIMIT = 6
+
+const CHAT_AGENT_MODE_OPTIONS = [
+  {
+    icon: Message01Icon,
+    id: "chat"
+  },
+  {
+    icon: WorkflowSquare02Icon,
+    id: "agent"
+  }
+] as const
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -780,6 +797,69 @@ const QueuedPromptMessageList = ({
   )
 }
 
+const PromptInputAgentModeControl = ({
+  agentLabel,
+  chatLabel,
+  disabled,
+  isToggleDisabled,
+  mode,
+  onModeChange,
+  toggleLabel
+}: {
+  agentLabel: string
+  chatLabel: string
+  disabled: boolean
+  isToggleDisabled?: boolean
+  mode: ChatAgentMode
+  onModeChange: (mode: ChatAgentMode) => void
+  toggleLabel: string
+}) => {
+  const selectedKeys = useMemo(() => new Set<Key>([mode]), [mode])
+  const labelByMode = useMemo(
+    () => ({
+      agent: agentLabel,
+      chat: chatLabel
+    }),
+    [agentLabel, chatLabel]
+  )
+  const handleSelectionChange = useCallback(
+    (keys: Set<Key>) => {
+      const nextMode = [...keys].find(isChatAgentMode)
+
+      if (nextMode) {
+        onModeChange(nextMode)
+      }
+    },
+    [onModeChange]
+  )
+
+  return (
+    <ToggleButtonGroup
+      aria-label={toggleLabel}
+      className="shrink-0"
+      disallowEmptySelection
+      isDisabled={disabled || isToggleDisabled === true}
+      onSelectionChange={handleSelectionChange}
+      selectedKeys={selectedKeys}
+      selectionMode="single"
+      size="sm"
+    >
+      {CHAT_AGENT_MODE_OPTIONS.map((option, index) => (
+        <ToggleButton
+          aria-label={labelByMode[option.id]}
+          className="h-8 min-w-0 px-2.5 text-xs"
+          id={option.id}
+          key={option.id}
+        >
+          {index > 0 ? <ToggleButtonGroup.Separator /> : null}
+          <HugeiconsIcon icon={option.icon} size={14} strokeWidth={2} />
+          <span>{labelByMode[option.id]}</span>
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  )
+}
+
 const PromptInputActions = ({
   disabled,
   hasPromptInputValue,
@@ -886,6 +966,10 @@ const usePromptCommandPaletteItems = ({
 }
 
 export const PromptInput = ({
+  agentMode,
+  agentModeAgentLabel,
+  agentModeChatLabel,
+  agentModeToggleLabel,
   commandPaletteEmptyLabel,
   commandPaletteGroupLabel,
   commandPalettePlanDescription,
@@ -896,6 +980,7 @@ export const PromptInput = ({
   commandPaletteSkillLabel,
   disabled = false,
   footer,
+  isAgentModeToggleDisabled,
   isLoadingFileItems = false,
   isLoadingPromptTemplateItems = false,
   isLoadingSkillItems = false,
@@ -909,6 +994,7 @@ export const PromptInput = ({
   mentionSkillEmptyLabel,
   mentionSkillGroupLabel,
   mentionSkillItems,
+  onAgentModeChange,
   onMentionQueryChange,
   onPromptTemplateQueryChange,
   onQueuedMessageRemove,
@@ -932,6 +1018,10 @@ export const PromptInput = ({
   stopLabel,
   submitLabel
 }: {
+  agentMode: ChatAgentMode
+  agentModeAgentLabel: string
+  agentModeChatLabel: string
+  agentModeToggleLabel: string
   commandPaletteEmptyLabel: string
   commandPaletteGroupLabel: string
   commandPalettePlanDescription: string
@@ -942,6 +1032,7 @@ export const PromptInput = ({
   commandPaletteSkillLabel: string
   disabled?: boolean
   footer?: ReactNode
+  isAgentModeToggleDisabled?: boolean
   isLoadingFileItems?: boolean
   isLoadingPromptTemplateItems?: boolean
   isLoadingSkillItems?: boolean
@@ -956,6 +1047,7 @@ export const PromptInput = ({
   mentionSkillGroupLabel: string
   mentionSkillItems: PromptSkillMentionItem[]
   mentionSkillSearchPlaceholder: string
+  onAgentModeChange: (mode: ChatAgentMode) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
@@ -1660,7 +1752,18 @@ export const PromptInput = ({
 
         <HeroPromptInput.Toolbar className="flex items-center justify-between gap-3 px-4 py-3">
           <HeroPromptInput.ToolbarStart className="min-w-0 flex-1">
-            {footer}
+            <div className="flex min-w-0 items-center gap-3">
+              <PromptInputAgentModeControl
+                agentLabel={agentModeAgentLabel}
+                chatLabel={agentModeChatLabel}
+                disabled={disabled}
+                isToggleDisabled={isAgentModeToggleDisabled}
+                mode={agentMode}
+                onModeChange={onAgentModeChange}
+                toggleLabel={agentModeToggleLabel}
+              />
+              {footer}
+            </div>
           </HeroPromptInput.ToolbarStart>
           <HeroPromptInput.ToolbarEnd>
             <PromptInputActions

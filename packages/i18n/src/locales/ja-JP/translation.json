@@ -22,6 +22,9 @@
       "stepCount": "{count} ステップ"
     },
     "composer": {
+      "agentModeAgent": "Agent",
+      "agentModeChat": "Chat",
+      "agentModeToggle": "agent mode を切り替え",
       "placeholder": "メッセージを入力するか、@ でプロジェクトファイルを参照します",
       "queue": "キューに追加",
       "queueEdit": "キュー済みメッセージを編集",

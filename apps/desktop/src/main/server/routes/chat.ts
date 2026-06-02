@@ -1,4 +1,4 @@
-import type { ChatMention } from "@etyon/rpc"
+import type { AppSettings, ChatMention } from "@etyon/rpc"
 import type { UIMessage } from "ai"
 import { Hono } from "hono"
 
@@ -10,6 +10,8 @@ import { getDb } from "@/main/db"
 import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
+import { isChatAgentMode } from "@/shared/chat/agent-mode"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 import { buildMoonshotReasoningForAssistantToolCalls } from "@/shared/providers/moonshot-reasoning"
 
 const chatRoute = new Hono()
@@ -21,6 +23,26 @@ const isChatRequestTrigger = (
   trigger: unknown
 ): trigger is "regenerate-message" | "submit-message" =>
   trigger === "regenerate-message" || trigger === "submit-message"
+
+const applyChatAgentModeToSettings = ({
+  agentMode,
+  settings
+}: {
+  agentMode?: ChatAgentMode
+  settings: AppSettings
+}): AppSettings => {
+  if (!agentMode) {
+    return settings
+  }
+
+  return {
+    ...settings,
+    agents: {
+      ...settings.agents,
+      enabled: agentMode === "agent"
+    }
+  }
+}
 
 const buildChatLifecycleBranch = ({
   messageId,
@@ -65,6 +87,7 @@ const buildChatLifecycleBranch = ({
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
+    agentMode: rawAgentMode,
     mentions = [],
     messageId,
     messages,
@@ -72,6 +95,7 @@ chatRoute.post("/chat", async (c) => {
     sessionId,
     trigger
   } = body as {
+    agentMode?: unknown
     mentions?: ChatMention[]
     messageId?: string
     messages: UIMessage[]
@@ -86,7 +110,11 @@ chatRoute.post("/chat", async (c) => {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
-  const settings = getSettings()
+  const agentMode = isChatAgentMode(rawAgentMode) ? rawAgentMode : undefined
+  const settings = applyChatAgentModeToSettings({
+    agentMode,
+    settings: getSettings()
+  })
   const agentContext = await prepareAgentChatContext({
     db,
     mentions,

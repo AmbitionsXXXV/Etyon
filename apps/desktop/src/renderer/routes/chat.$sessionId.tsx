@@ -29,6 +29,7 @@ import {
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useHotkey } from "@tanstack/react-hotkeys"
 import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
@@ -102,6 +103,12 @@ import {
   getChatSessionTitle,
   sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
+import {
+  getChatAgentModeFromAgentsEnabled,
+  getChatAgentModeToggleDisabled,
+  getNextChatAgentMode
+} from "@/shared/chat/agent-mode"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRequestPhase,
@@ -148,6 +155,9 @@ const MENTION_ITEM_LIMIT = 50
 const MENTION_SEARCH_DEBOUNCE_WAIT_MS = 180
 const MENTION_SKILL_ITEM_LIMIT = 20
 const PROMPT_TEMPLATE_ITEM_LIMIT = 20
+const NOOP_AGENT_MODE_CHANGE = (mode: ChatAgentMode): void => {
+  void mode
+}
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
@@ -1278,6 +1288,9 @@ const ChatRuntime = ({
     null
   )
   const [requestStartedAt, setRequestStartedAt] = useState<number | undefined>()
+  const [agentMode, setAgentMode] = useState<ChatAgentMode>(() =>
+    getChatAgentModeFromAgentsEnabled(agentsEnabled)
+  )
   const [dismissedRecoverableRunIds, setDismissedRecoverableRunIds] = useState<
     Set<string>
   >(() => new Set())
@@ -1307,7 +1320,7 @@ const ChatRuntime = ({
     onFinish: () => {
       setRequestPhase(null)
 
-      if (agentsEnabled) {
+      if (agentMode === "agent") {
         void (async () => {
           try {
             setMessages(await onSyncPersistedMessagesAfterFinish())
@@ -1326,15 +1339,20 @@ const ChatRuntime = ({
     transport
   })
 
+  useEffect(() => {
+    setAgentMode(getChatAgentModeFromAgentsEnabled(agentsEnabled))
+  }, [agentsEnabled, selectedSession.id])
+
   const buildChatRequestOptions = useCallback(
-    (mentions: ChatMention[]) => ({
+    (mentions: ChatMention[], mode: ChatAgentMode = agentMode) => ({
       body: {
+        agentMode: mode,
         mentions,
         model: selectedModelValue || undefined,
         sessionId: selectedSession.id
       }
     }),
-    [selectedModelValue, selectedSession.id]
+    [agentMode, selectedModelValue, selectedSession.id]
   )
 
   const updateScrollToBottomVisibility = useCallback(
@@ -1412,19 +1430,47 @@ const ChatRuntime = ({
   }, [editingMessageId, messages])
 
   const isRequestPending = status === "streaming" || status === "submitted"
+  const isAgentModeActive = agentMode === "agent"
+  const isAgentModeToggleDisabled = getChatAgentModeToggleDisabled({
+    isModelUpdating,
+    isRequestPending
+  })
+  const handleAgentModeChange = useCallback(
+    (nextMode: ChatAgentMode) => {
+      if (isAgentModeToggleDisabled) {
+        return
+      }
+
+      setAgentMode(nextMode)
+    },
+    [isAgentModeToggleDisabled]
+  )
+  const handleAgentModeToggle = useCallback(() => {
+    if (isAgentModeToggleDisabled) {
+      return
+    }
+
+    setAgentMode(getNextChatAgentMode)
+  }, [isAgentModeToggleDisabled])
+
+  useHotkey("Shift+Tab", handleAgentModeToggle, {
+    enabled: !isAgentModeToggleDisabled,
+    ignoreInputs: false
+  })
+
   const { canQueueMessage, isComposerDisabled } =
     resolveAgentComposerQueueState({
-      agentsEnabled,
+      agentsEnabled: isAgentModeActive,
       isModelUpdating,
       isRequestPending
     })
   const queuedMessagesQuery = useQuery({
     ...queuedMessagesQueryOptions,
-    enabled: agentsEnabled,
+    enabled: isAgentModeActive,
     refetchInterval: getQueuedMessagesRefetchInterval(isRequestPending)
   })
   const { resetUiStreamSnapshotRecovery } = useAgentUiStreamSnapshotRecovery({
-    agentsEnabled,
+    agentsEnabled: isAgentModeActive,
     error,
     isRequestPending,
     messages,
@@ -1734,7 +1780,7 @@ const ChatRuntime = ({
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
-          agentsEnabled={agentsEnabled}
+          agentsEnabled={isAgentModeActive}
           gitDiff={gitDiff}
           isProjectContextOpen={isProjectContextOpen}
           onOpenWorkbench={onOpenWorkbench}
@@ -1743,7 +1789,7 @@ const ChatRuntime = ({
           sessionTitle={sessionTitle}
         />
 
-        {agentsEnabled ? (
+        {isAgentModeActive ? (
           <AgentWorkbenchPanel
             gitDiff={gitDiff}
             isRequestPending={isRequestPending}
@@ -1869,6 +1915,10 @@ const ChatRuntime = ({
           </div>
 
           <PromptInput
+            agentMode={agentMode}
+            agentModeAgentLabel={t("chat.composer.agentModeAgent")}
+            agentModeChatLabel={t("chat.composer.agentModeChat")}
+            agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
             commandPalettePlanDescription={t(
@@ -1897,6 +1947,7 @@ const ChatRuntime = ({
                 />
               </div>
             }
+            isAgentModeToggleDisabled={isAgentModeToggleDisabled}
             isLoadingFileItems={isLoadingFileItems}
             isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
             isLoadingSkillItems={isLoadingSkillItems}
@@ -1913,6 +1964,7 @@ const ChatRuntime = ({
             )}
             isOutputActive={isRequestPending}
             isQueueSubmitEnabled={canQueueMessage}
+            onAgentModeChange={handleAgentModeChange}
             onMentionQueryChange={onMentionQueryChange}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onQueuedMessageRemove={handleQueuedMessageRemove}
@@ -2028,6 +2080,10 @@ const ChatPendingState = ({
           </ScrollShadow>
 
           <PromptInput
+            agentMode="chat"
+            agentModeAgentLabel={t("chat.composer.agentModeAgent")}
+            agentModeChatLabel={t("chat.composer.agentModeChat")}
+            agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
             commandPalettePlanDescription={t(
@@ -2070,6 +2126,7 @@ const ChatPendingState = ({
             mentionSkillSearchPlaceholder={t(
               "chat.mentions.skillsSearchPlaceholder"
             )}
+            onAgentModeChange={NOOP_AGENT_MODE_CHANGE}
             onMentionQueryChange={onMentionQueryChange}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onSubmit={NOOP_PROMPT_SUBMIT}
