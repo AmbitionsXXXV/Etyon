@@ -2,27 +2,20 @@ import type { UIMessage } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
+import { ChainOfThought } from "@heroui-pro/react"
 import { isToolUIPart } from "ai"
+import { useEffect, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 import { Streamdown } from "streamdown"
 import type { Components, ExtraProps } from "streamdown"
 
 import {
-  AssistantThinkingTrace,
-  CommandTextTraceCard,
-  FunctionCallTextTraceCard,
+  compactStructuredToolTraceParts,
   StructuredToolTraceCard
 } from "@/renderer/components/chat/message-tool-trace"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
-import {
-  shouldRenderAssistantToolPart,
-  splitAssistantRenderableTextSegments
-} from "@/renderer/lib/chat/tool-ui"
-import type {
-  AssistantTextSegment,
-  AssistantToolApprovalResponseOptions
-} from "@/renderer/lib/chat/tool-ui"
+import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
 
 type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
@@ -122,96 +115,163 @@ const AssistantMarkdownContent = ({
     </Streamdown>
   )
 }
+// CHAIN_OF_THOUGHT_ANCHOR
 
-const getTimelinePartKey = (
-  messageId: string,
-  part: ChatUiMessage["parts"][number],
-  index: number
-): string => {
-  if (isToolUIPart(part as never)) {
-    const toolPart = part as ChatToolPart
+type ChainEntry =
+  | {
+      key: string
+      kind: "reasoning"
+      text: string
+    }
+  | {
+      key: string
+      kind: "tool"
+      part: ChatToolPart
+      repeatCount: number
+    }
 
-    return `${messageId}-tool-${toolPart.toolCallId}`
+const buildAssistantChainEntries = (message: ChatUiMessage): ChainEntry[] => {
+  const entries: ChainEntry[] = []
+  let toolRun: ChatToolPart[] = []
+  let reasoningIndex = 0
+
+  const flushToolRun = () => {
+    if (toolRun.length === 0) {
+      return
+    }
+
+    for (const { part, repeatCount } of compactStructuredToolTraceParts(
+      toolRun
+    )) {
+      entries.push({
+        key: `tool-${(part as ChatToolPart).toolCallId}`,
+        kind: "tool",
+        part: part as ChatToolPart,
+        repeatCount
+      })
+    }
+
+    toolRun = []
   }
 
-  if (part.type === "reasoning") {
-    return `${messageId}-reasoning-${index}`
+  for (const part of message.parts) {
+    if (isToolUIPart(part as never)) {
+      toolRun.push(part as ChatToolPart)
+      continue
+    }
+
+    if (part.type === "reasoning") {
+      const reasoningText = (part as ReasoningChatPart).text.trim()
+
+      if (reasoningText.length === 0) {
+        continue
+      }
+
+      flushToolRun()
+      entries.push({
+        key: `reasoning-${reasoningIndex}`,
+        kind: "reasoning",
+        text: reasoningText
+      })
+      reasoningIndex += 1
+    }
   }
 
-  if (part.type === "text") {
-    return `${messageId}-text-${index}`
-  }
+  flushToolRun()
 
-  return `${messageId}-part-${index}`
+  return entries
 }
 
-const AssistantTextPartTimeline = ({
-  isStreamdownAnimating,
-  messageId,
-  partIndex,
-  showToolTraces,
-  streamdownAnimation,
-  text
+const hasPendingApproval = (entries: readonly ChainEntry[]): boolean =>
+  entries.some(
+    (entry) =>
+      entry.kind === "tool" && entry.part.state === "approval-requested"
+  )
+
+const AssistantChainOfThought = ({
+  chatSessionId,
+  entries,
+  isApprovalActionDisabled,
+  isStreaming,
+  onApprovalResponse
 }: {
-  isStreamdownAnimating: boolean
-  messageId: string
-  partIndex: number
-  showToolTraces: boolean
-  streamdownAnimation: StreamdownAnimation
-  text: string
+  chatSessionId: string
+  entries: ChainEntry[]
+  isApprovalActionDisabled: boolean
+  isStreaming: boolean
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
 }) => {
-  const segments = splitAssistantRenderableTextSegments({
-    showToolTraces,
-    text
-  })
+  const { t } = useI18n()
+  const shouldAutoExpand = isStreaming || hasPendingApproval(entries)
+  const [isExpanded, setIsExpanded] = useState(shouldAutoExpand)
+
+  useEffect(() => {
+    if (shouldAutoExpand) {
+      setIsExpanded(true)
+    }
+  }, [shouldAutoExpand])
+
+  if (entries.length === 0) {
+    return null
+  }
 
   return (
-    <>
-      {segments.map((segment, segmentIndex) => (
-        <AssistantTextSegmentTimelineItem
-          key={`${messageId}-${partIndex}-segment-${segmentIndex}`}
-          isStreamdownAnimating={isStreamdownAnimating}
-          segment={segment}
-          streamdownAnimation={streamdownAnimation}
-        />
-      ))}
-    </>
+    <ChainOfThought
+      className="rounded-xl border border-border/70 bg-background/60"
+      isExpanded={isExpanded}
+      isStreaming={isStreaming}
+      onExpandedChange={setIsExpanded}
+    >
+      <ChainOfThought.Trigger className="px-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">{t("chat.chainOfThought.label")}</span>
+          <span className="shrink-0 text-[0.625rem] text-muted-foreground">
+            {t("chat.chainOfThought.stepCount", { count: entries.length })}
+          </span>
+        </span>
+      </ChainOfThought.Trigger>
+      <ChainOfThought.Content className="px-3">
+        <ChainOfThought.Steps>
+          {entries.map((entry) =>
+            entry.kind === "reasoning" ? (
+              <ChainOfThought.Step key={entry.key}>
+                <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
+                  {entry.text}
+                </p>
+              </ChainOfThought.Step>
+            ) : (
+              <ChainOfThought.Step key={entry.key}>
+                <StructuredToolTraceCard
+                  chatSessionId={chatSessionId}
+                  isApprovalActionDisabled={isApprovalActionDisabled}
+                  onApprovalResponse={(toolPart, approved, options) => {
+                    onApprovalResponse(
+                      toolPart as ChatToolPart,
+                      approved,
+                      options
+                    )
+                  }}
+                  part={entry.part as never}
+                  repeatCount={entry.repeatCount}
+                />
+              </ChainOfThought.Step>
+            )
+          )}
+        </ChainOfThought.Steps>
+      </ChainOfThought.Content>
+    </ChainOfThought>
   )
 }
 
-const AssistantTextSegmentTimelineItem = ({
-  isStreamdownAnimating,
-  segment,
-  streamdownAnimation
-}: {
-  isStreamdownAnimating: boolean
-  segment: AssistantTextSegment
-  streamdownAnimation: StreamdownAnimation
-}) => {
-  switch (segment.type) {
-    case "executed-command": {
-      return <CommandTextTraceCard segment={segment} />
-    }
-    case "function-call": {
-      return <FunctionCallTextTraceCard segment={segment} />
-    }
-    case "thinking": {
-      return <AssistantThinkingTrace text={segment.text} />
-    }
-    case "text": {
-      return (
-        <AssistantMarkdownContent
-          isAnimating={isStreamdownAnimating}
-          streamdownAnimation={streamdownAnimation}
-          text={segment.text}
-        />
-      )
-    }
-    default: {
-      return null
-    }
-  }
-}
+const getAssistantBodyText = (message: ChatUiMessage): string =>
+  message.parts
+    .filter((part): part is TextChatPart => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n")
 
 const openExternalUrl = (url: string): void => {
   window.electron.ipcRenderer.invoke("open-external-url", url)
@@ -268,87 +328,13 @@ const AssistantSourceUrlPartTimeline = ({
   )
 }
 
-const hasVisibleAssistantBodyPart = ({
-  part,
-  showToolTraces
+const AssistantReferencePart = ({
+  part
 }: {
   part: ChatUiMessage["parts"][number]
-  showToolTraces: boolean
-}): boolean => {
-  if (
-    part.type === "file" ||
-    part.type === "source-document" ||
-    part.type === "source-url"
-  ) {
-    return true
-  }
-
-  if (part.type === "reasoning") {
-    return (part as ReasoningChatPart).text.trim().length > 0
-  }
-
-  if (part.type === "text") {
-    return splitAssistantRenderableTextSegments({
-      showToolTraces,
-      text: (part as TextChatPart).text
-    }).some((segment) => "text" in segment && segment.text.trim().length > 0)
-  }
-
-  return false
-}
-
-const AssistantTimelinePart = ({
-  chatSessionId,
-  isStreamdownAnimating,
-  isApprovalActionDisabled,
-  messageId,
-  onApprovalResponse,
-  part,
-  partIndex,
-  showToolTraces,
-  streamdownAnimation
-}: {
-  chatSessionId: string
-  isStreamdownAnimating: boolean
-  isApprovalActionDisabled: boolean
-  messageId: string
-  onApprovalResponse: (
-    part: ChatToolPart,
-    approved: boolean,
-    options?: AssistantToolApprovalResponseOptions
-  ) => void
-  part: ChatUiMessage["parts"][number]
-  partIndex: number
-  showToolTraces: boolean
-  streamdownAnimation: StreamdownAnimation
 }) => {
   if (part.type === "file") {
     return <AssistantFilePartTimeline part={part as FileChatPart} />
-  }
-
-  if (part.type === "reasoning") {
-    const reasoningPart = part as ReasoningChatPart
-
-    if (!reasoningPart.text.trim()) {
-      return null
-    }
-
-    return <AssistantThinkingTrace text={reasoningPart.text} />
-  }
-
-  if (part.type === "text") {
-    const textPart = part as TextChatPart
-
-    return (
-      <AssistantTextPartTimeline
-        isStreamdownAnimating={isStreamdownAnimating}
-        messageId={messageId}
-        partIndex={partIndex}
-        showToolTraces={showToolTraces}
-        streamdownAnimation={streamdownAnimation}
-        text={textPart.text}
-      />
-    )
   }
 
   if (part.type === "source-document") {
@@ -363,27 +349,13 @@ const AssistantTimelinePart = ({
     return <AssistantSourceUrlPartTimeline part={part as SourceUrlChatPart} />
   }
 
-  if (
-    isToolUIPart(part as never) &&
-    shouldRenderAssistantToolPart({
-      showToolTraces,
-      state: (part as ChatToolPart).state
-    })
-  ) {
-    return (
-      <StructuredToolTraceCard
-        chatSessionId={chatSessionId}
-        isApprovalActionDisabled={isApprovalActionDisabled}
-        onApprovalResponse={(toolPart, approved, options) => {
-          onApprovalResponse(toolPart as ChatToolPart, approved, options)
-        }}
-        part={part as never}
-      />
-    )
-  }
-
   return null
 }
+
+const isReferencePart = (part: ChatUiMessage["parts"][number]): boolean =>
+  part.type === "file" ||
+  part.type === "source-document" ||
+  part.type === "source-url"
 
 export const AssistantMessageTimeline = ({
   chatSessionId,
@@ -392,7 +364,6 @@ export const AssistantMessageTimeline = ({
   isApprovalActionDisabled,
   message,
   onApprovalResponse,
-  showToolTraces,
   streamdownAnimation
 }: {
   chatSessionId: string
@@ -405,36 +376,32 @@ export const AssistantMessageTimeline = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
-  showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => {
-  const { t } = useI18n()
-  const shouldRenderToolsAsBody = !message.parts.some((part) =>
-    hasVisibleAssistantBodyPart({
-      part,
-      showToolTraces
-    })
-  )
+  const chainEntries = buildAssistantChainEntries(message)
+  const bodyText = getAssistantBodyText(message)
+  const referenceParts = message.parts
+    .map((part, index) => ({ index, part }))
+    .filter(({ part }) => isReferencePart(part))
 
   return (
     <div className={cn("space-y-2", className)}>
-      {message.metadata?.continuation ? (
-        <div className="ml-1 inline-flex w-fit items-center rounded-full border border-dashed border-muted-foreground/40 px-2 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
-          {t("chat.messageContinuation")}
-        </div>
-      ) : null}
-      {message.parts.map((part, index) => (
-        <AssistantTimelinePart
-          chatSessionId={chatSessionId}
-          isStreamdownAnimating={isStreamdownAnimating}
-          isApprovalActionDisabled={isApprovalActionDisabled}
-          key={getTimelinePartKey(message.id, part, index)}
-          messageId={message.id}
-          onApprovalResponse={onApprovalResponse}
+      <AssistantChainOfThought
+        chatSessionId={chatSessionId}
+        entries={chainEntries}
+        isApprovalActionDisabled={isApprovalActionDisabled}
+        isStreaming={isStreamdownAnimating}
+        onApprovalResponse={onApprovalResponse}
+      />
+      <AssistantMarkdownContent
+        isAnimating={isStreamdownAnimating}
+        streamdownAnimation={streamdownAnimation}
+        text={bodyText}
+      />
+      {referenceParts.map(({ index, part }) => (
+        <AssistantReferencePart
+          key={`${message.id}-reference-${index}`}
           part={part}
-          partIndex={index}
-          showToolTraces={showToolTraces || shouldRenderToolsAsBody}
-          streamdownAnimation={streamdownAnimation}
         />
       ))}
     </div>

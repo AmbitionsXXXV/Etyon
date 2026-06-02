@@ -792,17 +792,12 @@ export const buildChatStreamResponse = ({
         )
         const userBoundaryMessageCount =
           getLatestUserMessageBoundary(messagesWithWorkTime)
-        const requestUserBoundaryMessageCount =
-          getLatestUserMessageBoundary(messages)
         const projectedMessages = agentRunId
           ? mergeAgentEventProjectionIntoChatMessages({
               events: await listAgentEvents({
                 db,
                 runId: agentRunId
               }),
-              markProjectedSuffixAsContinuation:
-                !chatLifecycleBranch &&
-                messages.length > requestUserBoundaryMessageCount,
               messages: messagesWithWorkTime,
               originalMessageCount: userBoundaryMessageCount,
               runId: agentRunId

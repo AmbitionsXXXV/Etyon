@@ -243,11 +243,6 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
     [agents, onChange, selectedProfile.id]
   )
 
-  const handleShowToolTracesChange = useCallback(
-    (checked: boolean) => updateAgents({ showToolTraces: checked }),
-    [updateAgents]
-  )
-
   const handleRefreshApprovalInbox = useCallback(() => {
     void approvalInboxQuery.refetch()
   }, [approvalInboxQuery])
@@ -325,15 +320,6 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             isDisabled={!agents.enabled}
             label={t("settings.agents.control.allowSubagentDelegation.label")}
             onChange={handleAllowSubagentDelegationChange}
-          />
-          <AgentsSwitchRow
-            checked={agents.showToolTraces}
-            description={t(
-              "settings.agents.control.showToolTraces.description"
-            )}
-            isDisabled={!agents.enabled}
-            label={t("settings.agents.control.showToolTraces.label")}
-            onChange={handleShowToolTracesChange}
           />
         </div>
 

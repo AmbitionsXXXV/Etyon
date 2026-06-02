@@ -15,40 +15,7 @@ const TestI18nProvider = I18nProvider as unknown as (props: {
 }) => ReactElement
 
 describe("AssistantMessageTimeline", () => {
-  it("renders a continuation marker for resumed assistant messages", () => {
-    const html = renderToStaticMarkup(
-      createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
-          isApprovalActionDisabled: false,
-          isStreamdownAnimating: false,
-          message: {
-            id: "assistant-1",
-            metadata: {
-              continuation: true
-            },
-            parts: [
-              {
-                text: "Done.",
-                type: "text"
-              }
-            ],
-            role: "assistant"
-          },
-          onApprovalResponse: vi.fn(),
-          showToolTraces: true,
-          streamdownAnimation: "none"
-        })
-      )
-    )
-
-    expect(html).toContain("Continued")
-    expect(html).toContain("Done.")
-  })
-
-  it("renders tool-only output as the assistant body when regular tool traces are hidden", () => {
+  it("renders tool parts inside a single chain-of-thought block above the body", () => {
     const parts = [
       {
         input: {
@@ -67,6 +34,37 @@ describe("AssistantMessageTimeline", () => {
         toolName: "bash",
         type: "dynamic-tool"
       },
+      {
+        text: "Here is the staged summary.",
+        type: "text"
+      }
+    ] satisfies [DynamicToolUIPart, { text: string; type: "text" }]
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AssistantMessageTimeline, {
+          chatSessionId: "session-1",
+          isApprovalActionDisabled: false,
+          isStreamdownAnimating: false,
+          message: {
+            id: "assistant-1",
+            parts,
+            role: "assistant"
+          },
+          onApprovalResponse: vi.fn(),
+          streamdownAnimation: "none"
+        })
+      )
+    )
+
+    expect(html).toContain("Thinking")
+    expect(html).toContain("23 files changed")
+    expect(html).toContain("Here is the staged summary.")
+  })
+
+  it("keeps approval actions available inside the chain of thought", () => {
+    const parts = [
       {
         approval: {
           id: "approval-1"
@@ -96,45 +94,29 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
-          showToolTraces: false,
           streamdownAnimation: "none"
         })
       )
     )
 
-    expect(html).toContain("23 files changed")
-    expect(html).toContain("git diff --cached --stat")
+    expect(html).toContain("Thinking")
     expect(html).toContain("Approve")
+    expect(html).toContain("Deny")
   })
 
-  it("keeps terminal tool output hidden when a text body is visible", () => {
+  it("renders reasoning parts as chain-of-thought steps", () => {
     const parts = [
       {
-        text: "Here is the staged summary.",
-        type: "text"
+        text: "I need to inspect the staged files first.",
+        type: "reasoning"
       },
       {
-        input: {
-          command: "git diff --cached --stat",
-          cwd: "/project"
-        },
-        output: {
-          durationMs: 12,
-          exitCode: 0,
-          stdoutPreview: "hidden tool output",
-          truncated: false
-        },
-        state: "output-available",
-        toolCallId: "tool-output",
-        toolName: "bash",
-        type: "dynamic-tool"
+        text: "Done.",
+        type: "text"
       }
     ] satisfies [
-      {
-        text: string
-        type: "text"
-      },
-      DynamicToolUIPart
+      { text: string; type: "reasoning" },
+      { text: string; type: "text" }
     ]
     const html = renderToStaticMarkup(
       createElement(
@@ -150,14 +132,43 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
-          showToolTraces: false,
           streamdownAnimation: "none"
         })
       )
     )
 
-    expect(html).toContain("Here is the staged summary.")
-    expect(html).not.toContain("hidden tool output")
+    expect(html).toContain("Thinking")
+    expect(html).toContain("I need to inspect the staged files first.")
+    expect(html).toContain("Done.")
+  })
+
+  it("renders the assistant body without a chain of thought when there are no tools or reasoning", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AssistantMessageTimeline, {
+          chatSessionId: "session-1",
+          isApprovalActionDisabled: false,
+          isStreamdownAnimating: false,
+          message: {
+            id: "assistant-1",
+            parts: [
+              {
+                text: "Done.",
+                type: "text"
+              }
+            ],
+            role: "assistant"
+          },
+          onApprovalResponse: vi.fn(),
+          streamdownAnimation: "none"
+        })
+      )
+    )
+
+    expect(html).not.toContain("Thinking")
+    expect(html).toContain("Done.")
   })
 
   it("renders markdown tables without the Streamdown table wrapper", () => {
@@ -180,7 +191,6 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
-          showToolTraces: true,
           streamdownAnimation: "none"
         })
       )
@@ -211,7 +221,6 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
-          showToolTraces: true,
           streamdownAnimation: "typewriter"
         })
       )

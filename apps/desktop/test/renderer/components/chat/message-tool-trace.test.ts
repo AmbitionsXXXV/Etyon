@@ -4,7 +4,7 @@ import { I18nProvider } from "@etyon/i18n/react"
 import type { InspectAgentRunOutput } from "@etyon/rpc"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { DynamicToolUIPart } from "ai"
-import { act, createElement } from "react"
+import { act, createElement, Fragment } from "react"
 import type { ReactElement, ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Root } from "react-dom/client"
@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
   AgentChildTracePanel,
-  MessageToolTrace
+  compactStructuredToolTraceParts,
+  StructuredToolTraceCard
 } from "@/renderer/components/chat/message-tool-trace"
 
 interface QueryOptions {
@@ -92,6 +93,30 @@ const findButtonByText = (
   return button
 }
 
+const renderStructuredToolTraceCards = (
+  parts: readonly DynamicToolUIPart[],
+  onApprovalResponse: (...args: unknown[]) => void
+): ReactElement =>
+  createElement(
+    TestI18nProvider,
+    { locale: "en-US" },
+    createElement(
+      Fragment,
+      null,
+      ...compactStructuredToolTraceParts(parts as never).map(
+        ({ part, repeatCount }) =>
+          createElement(StructuredToolTraceCard, {
+            chatSessionId: "session-1",
+            isApprovalActionDisabled: false,
+            key: (part as DynamicToolUIPart).toolCallId,
+            onApprovalResponse,
+            part: part as never,
+            repeatCount
+          })
+      )
+    )
+  )
+
 vi.mock("@/renderer/lib/rpc", () => ({
   orpc: {
     agents: {
@@ -102,8 +127,9 @@ vi.mock("@/renderer/lib/rpc", () => ({
     }
   }
 }))
+// TESTS_ANCHOR
 
-describe("MessageToolTrace", () => {
+describe("StructuredToolTraceCard", () => {
   it("renders tool part states for streaming, approval, output, and errors", () => {
     const handleApprovalResponse = vi.fn()
     const parts = [
@@ -156,21 +182,9 @@ describe("MessageToolTrace", () => {
     ] satisfies DynamicToolUIPart[]
 
     const html = renderToStaticMarkup(
-      createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(MessageToolTrace, {
-          chatSessionId: "session-1",
-          commandSegments: [],
-          functionCallSegments: [],
-          isApprovalActionDisabled: false,
-          onApprovalResponse: handleApprovalResponse,
-          parts
-        })
-      )
+      renderStructuredToolTraceCards(parts, handleApprovalResponse)
     )
 
-    expect(html).toContain("Tool activity")
     expect(html).toContain("Preparing")
     expect(html).toContain("Approval needed")
     expect(html).toContain("Done")
@@ -185,64 +199,27 @@ describe("MessageToolTrace", () => {
 
   it("collapses repeated terminal structured tool parts", () => {
     const handleApprovalResponse = vi.fn()
+    const repeatedPart = {
+      input: {
+        command: "git diff --cached --stat",
+        cwd: "/project"
+      },
+      output: {
+        exitCode: 0,
+        stdoutPreview: "1 file changed"
+      },
+      state: "output-available",
+      toolName: "bash",
+      type: "dynamic-tool"
+    } as const
     const parts = [
-      {
-        input: {
-          command: "git diff --cached --stat",
-          cwd: "/project"
-        },
-        output: {
-          exitCode: 0,
-          stdoutPreview: "1 file changed"
-        },
-        state: "output-available",
-        toolCallId: "tool-output-1",
-        toolName: "bash",
-        type: "dynamic-tool"
-      },
-      {
-        input: {
-          command: "git diff --cached --stat",
-          cwd: "/project"
-        },
-        output: {
-          exitCode: 0,
-          stdoutPreview: "1 file changed"
-        },
-        state: "output-available",
-        toolCallId: "tool-output-2",
-        toolName: "bash",
-        type: "dynamic-tool"
-      },
-      {
-        input: {
-          command: "git diff --cached --stat",
-          cwd: "/project"
-        },
-        output: {
-          exitCode: 0,
-          stdoutPreview: "1 file changed"
-        },
-        state: "output-available",
-        toolCallId: "tool-output-3",
-        toolName: "bash",
-        type: "dynamic-tool"
-      }
+      { ...repeatedPart, toolCallId: "tool-output-1" },
+      { ...repeatedPart, toolCallId: "tool-output-2" },
+      { ...repeatedPart, toolCallId: "tool-output-3" }
     ] satisfies DynamicToolUIPart[]
 
     const html = renderToStaticMarkup(
-      createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(MessageToolTrace, {
-          chatSessionId: "session-1",
-          commandSegments: [],
-          functionCallSegments: [],
-          isApprovalActionDisabled: false,
-          onApprovalResponse: handleApprovalResponse,
-          parts
-        })
-      )
+      renderStructuredToolTraceCards(parts, handleApprovalResponse)
     )
 
     expect(html.match(/Run git diff/gu)).toHaveLength(1)
@@ -265,18 +242,7 @@ describe("MessageToolTrace", () => {
       type: "dynamic-tool"
     } satisfies DynamicToolUIPart
     const { cleanup, container } = renderElementInDom(
-      createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(MessageToolTrace, {
-          chatSessionId: "session-1",
-          commandSegments: [],
-          functionCallSegments: [],
-          isApprovalActionDisabled: false,
-          onApprovalResponse: handleApprovalResponse,
-          parts: [approvalPart]
-        })
-      )
+      renderStructuredToolTraceCards([approvalPart], handleApprovalResponse)
     )
 
     try {
@@ -318,18 +284,7 @@ describe("MessageToolTrace", () => {
       type: "dynamic-tool"
     } satisfies DynamicToolUIPart
     const { cleanup, container } = renderElementInDom(
-      createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(MessageToolTrace, {
-          chatSessionId: "session-1",
-          commandSegments: [],
-          functionCallSegments: [],
-          isApprovalActionDisabled: false,
-          onApprovalResponse: handleApprovalResponse,
-          parts: [approvalPart]
-        })
-      )
+      renderStructuredToolTraceCards([approvalPart], handleApprovalResponse)
     )
 
     try {
@@ -367,20 +322,9 @@ describe("MessageToolTrace", () => {
 
     const html = renderToStaticMarkup(
       createElement(
-        TestI18nProvider,
-        { locale: "en-US" },
-        createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          createElement(MessageToolTrace, {
-            chatSessionId: "session-1",
-            commandSegments: [],
-            functionCallSegments: [],
-            isApprovalActionDisabled: false,
-            onApprovalResponse: handleApprovalResponse,
-            parts
-          })
-        )
+        QueryClientProvider,
+        { client: queryClient },
+        renderStructuredToolTraceCards(parts, handleApprovalResponse)
       )
     )
 
@@ -389,7 +333,10 @@ describe("MessageToolTrace", () => {
     expect(html).toContain("Child trace")
     expect(html).toContain("run-child-1")
   })
+})
+// CHILD_TRACE_ANCHOR
 
+describe("AgentChildTracePanel", () => {
   it("renders expanded child trace data from the inspectRun query cache", () => {
     const queryClient = createQueryClient()
     const trace = {

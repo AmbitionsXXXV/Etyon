@@ -971,7 +971,10 @@ describe("agent chat projection", () => {
     expect(result[0]).toBe(messages[0])
     expect(result[1].role).toBe("assistant")
     expect(result[1].metadata).toMatchObject({
-      continuation: true
+      agentProjection: {
+        runId: "run-1",
+        source: "agent_events"
+      }
     })
     expect(result[1].parts).toEqual(
       expect.arrayContaining([

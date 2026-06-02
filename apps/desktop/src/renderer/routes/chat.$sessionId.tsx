@@ -43,7 +43,6 @@ import {
   MessageActions,
   USER_MESSAGE_ACTIONS
 } from "@/renderer/components/chat/message-actions"
-import { AssistantThinkingTrace } from "@/renderer/components/chat/message-tool-trace"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
@@ -95,10 +94,7 @@ import type {
   PromptSkillMentionItem
 } from "@/renderer/lib/chat/prompt-input"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
-import type {
-  AssistantTextSegment,
-  AssistantToolApprovalResponseOptions
-} from "@/renderer/lib/chat/tool-ui"
+import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { respondToAssistantToolApproval } from "@/renderer/lib/chat/tool-ui"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
@@ -760,54 +756,14 @@ const MessageMentionChips = ({
 const MessageSegmentContent = ({
   mentions,
   messageId,
-  segments,
-  text,
-  usesStructuredSegments
+  text
 }: {
   mentions: ChatMention[]
   messageId: string
-  segments: AssistantTextSegment[]
   text: string
-  usesStructuredSegments: boolean
-}) => {
-  if (!usesStructuredSegments) {
-    return (
-      <MessageTextContent
-        mentions={mentions}
-        messageId={messageId}
-        text={text}
-      />
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      {segments.map((segment, index) => {
-        if (segment.type === "thinking") {
-          return (
-            <AssistantThinkingTrace
-              key={`${messageId}-thinking-${index}`}
-              text={segment.text}
-            />
-          )
-        }
-
-        if (segment.type === "text") {
-          return (
-            <MessageTextContent
-              key={`${messageId}-text-segment-${index}`}
-              mentions={mentions}
-              messageId={`${messageId}-${index}`}
-              text={segment.text}
-            />
-          )
-        }
-
-        return null
-      })}
-    </div>
-  )
-}
+}) => (
+  <MessageTextContent mentions={mentions} messageId={messageId} text={text} />
+)
 
 const hasRenderableAssistantContent = (message: ChatUiMessage | undefined) =>
   message?.role === "assistant" &&
@@ -961,7 +917,6 @@ const ChatMessageBubble = ({
   liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
-  showToolTraces,
   streamdownAnimation
 }: {
   chatSessionId: string
@@ -975,21 +930,11 @@ const ChatMessageBubble = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
-  showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => {
   const metadata = parseChatMessageMetadata(message.metadata)
   const mentions = metadata?.mentions ?? []
   const messageText = getMessageText(message)
-  const segments = isAssistant
-    ? ([
-        {
-          text: messageText,
-          type: "text"
-        }
-      ] satisfies AssistantTextSegment[])
-    : []
-  const usesStructuredSegments = false
   const hasInlineMentions =
     !isAssistant &&
     splitPromptTextByMentions({
@@ -1027,7 +972,6 @@ const ChatMessageBubble = ({
               isApprovalActionDisabled={isRequestPending}
               message={message}
               onApprovalResponse={onApprovalResponse}
-              showToolTraces={showToolTraces}
               streamdownAnimation={streamdownAnimation}
             />
           </ChatMessage.Content>
@@ -1051,9 +995,7 @@ const ChatMessageBubble = ({
           <MessageSegmentContent
             mentions={mentions}
             messageId={message.id}
-            segments={segments}
             text={messageText}
-            usesStructuredSegments={usesStructuredSegments}
           />
         </ChatMessage.Content>
       </ChatMessage.Body>
@@ -1075,7 +1017,6 @@ const ChatMessageItem = ({
   onRegenerate,
   onStartEditMessage,
   onSubmitEditedMessage,
-  showToolTraces,
   streamdownAnimation
 }: {
   chatSessionId: string
@@ -1095,7 +1036,6 @@ const ChatMessageItem = ({
   onRegenerate: (messageId?: string) => void
   onStartEditMessage: (message: ChatUiMessage) => void
   onSubmitEditedMessage: (message: ChatUiMessage) => void
-  showToolTraces: boolean
   streamdownAnimation: StreamdownAnimation
 }) => {
   const isAssistant = message.role === "assistant"
@@ -1135,7 +1075,6 @@ const ChatMessageItem = ({
             liveWorkTimeStartedAt={liveWorkTimeStartedAt}
             message={message}
             onApprovalResponse={onApprovalResponse}
-            showToolTraces={showToolTraces}
             streamdownAnimation={streamdownAnimation}
           />
         )}
@@ -1288,7 +1227,6 @@ const ChatRuntime = ({
   promptTemplateItems,
   selectedModelValue,
   selectedSession,
-  showToolTraces,
   sessionTitle,
   streamdownAnimation,
   transport
@@ -1326,7 +1264,6 @@ const ChatRuntime = ({
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
-  showToolTraces: boolean
   sessionTitle: string
   streamdownAnimation: StreamdownAnimation
   transport: DefaultChatTransport<ChatUiMessage>
@@ -1866,7 +1803,6 @@ const ChatRuntime = ({
                         onRegenerate={handleRegenerate}
                         onStartEditMessage={handleStartEditMessage}
                         onSubmitEditedMessage={handleSubmitEditedMessage}
-                        showToolTraces={showToolTraces}
                         streamdownAnimation={streamdownAnimation}
                       />
                     )
@@ -2492,7 +2428,6 @@ const ChatSessionPage = () => {
           promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
-          showToolTraces={settingsQuery.data?.agents.showToolTraces ?? true}
           sessionTitle={sessionTitle}
           streamdownAnimation={getChatStreamdownAnimation(
             settingsQuery.data?.chat

@@ -17,6 +17,10 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "chainOfThought": {
+      "label": "思考",
+      "stepCount": "{count} ステップ"
+    },
     "composer": {
       "placeholder": "メッセージを入力するか、@ でプロジェクトファイルを参照します",
       "queue": "キューに追加",
@@ -82,7 +86,6 @@
       "regenerate": "再生成",
       "saveEdit": "送信"
     },
-    "messageContinuation": "前の応答から続行",
     "messageScroll": {
       "toBottom": "一番下へ戻る"
     },
@@ -401,10 +404,6 @@
         "retryTransientFailures": {
           "description": "手動判断に渡す前に、provider、network、timeout、tool の一時的な失敗を自動 retry します。",
           "label": "一時的な失敗を retry"
-        },
-        "showToolTraces": {
-          "description": "tool calls と runtime events を保存し、harness で実行内容を確認できるようにします。",
-          "label": "tool traces を表示"
         }
       },
       "defaults": {

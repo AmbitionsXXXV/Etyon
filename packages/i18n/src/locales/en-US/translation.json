@@ -17,6 +17,10 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "chainOfThought": {
+      "label": "Thinking",
+      "stepCount": "{count} steps"
+    },
     "composer": {
       "placeholder": "Type a message or use @ to reference project files",
       "queue": "Queue message",
@@ -82,7 +86,6 @@
       "regenerate": "Regenerate",
       "saveEdit": "Send"
     },
-    "messageContinuation": "Continued",
     "messageScroll": {
       "toBottom": "Back to bottom"
     },
@@ -401,10 +404,6 @@
         "retryTransientFailures": {
           "description": "Automatically retry transient provider, network, timeout, and tool failures before surfacing a manual decision.",
           "label": "Retry transient failures"
-        },
-        "showToolTraces": {
-          "description": "Persist tool calls and runtime events so the harness can inspect what happened.",
-          "label": "Show tool traces"
         }
       },
       "defaults": {

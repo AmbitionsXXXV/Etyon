@@ -39,7 +39,6 @@ export interface MergeAgentEventProjectionIntoChatMessagesOptions {
   allowEmptyProjectionFallback?: boolean
   events: readonly AgentEvent[]
   includeProjectedUserMessages?: boolean
-  markProjectedSuffixAsContinuation?: boolean
   messages: UIMessage[]
   originalMessageCount: number
   runId: string
@@ -770,23 +769,6 @@ const mergeAssistantMetadata = ({
   })
 }
 
-const markAssistantMessagesAsContinuation = (
-  messages: UIMessage[]
-): UIMessage[] =>
-  messages.map((message) => {
-    if (message.role !== "assistant") {
-      return message
-    }
-
-    return {
-      ...message,
-      metadata: {
-        ...(isRecord(message.metadata) ? message.metadata : {}),
-        continuation: true
-      }
-    }
-  })
-
 export const buildAgentChatProjectionMessages = ({
   events,
   runId
@@ -952,7 +934,6 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
   allowEmptyProjectionFallback = true,
   events,
   includeProjectedUserMessages = false,
-  markProjectedSuffixAsContinuation = false,
   messages,
   originalMessageCount,
   runId
@@ -1011,18 +992,10 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
   const trimmedPrefixMessages = shouldTrimTrailingAssistantMessages
     ? trimTrailingAssistantMessages(prefixMessages)
     : prefixMessages
-  const shouldMarkContinuation =
-    markProjectedSuffixAsContinuation ||
-    trimmedPrefixMessages.length < prefixMessages.length
   const mergedSuffixMessages = mergeAssistantMetadata({
     messages: fallbackSuffixMessages,
     projectedMessages: projectedSuffixMessages
   })
 
-  return [
-    ...trimmedPrefixMessages,
-    ...(shouldMarkContinuation
-      ? markAssistantMessagesAsContinuation(mergedSuffixMessages)
-      : mergedSuffixMessages)
-  ]
+  return [...trimmedPrefixMessages, ...mergedSuffixMessages]
 }

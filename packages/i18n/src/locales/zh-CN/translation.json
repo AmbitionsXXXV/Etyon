@@ -17,6 +17,10 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "chainOfThought": {
+      "label": "思考过程",
+      "stepCount": "{count} 步"
+    },
     "composer": {
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
       "queue": "加入队列",
@@ -82,7 +86,6 @@
       "regenerate": "重新生成",
       "saveEdit": "发送"
     },
-    "messageContinuation": "续接上一条",
     "messageScroll": {
       "toBottom": "回到底部"
     },
@@ -401,10 +404,6 @@
         "retryTransientFailures": {
           "description": "在交给人工决策前，自动重试瞬态 provider、network、timeout 和 tool 失败。",
           "label": "重试瞬态失败"
-        },
-        "showToolTraces": {
-          "description": "持久化 tool calls 和 runtime events，方便 harness 追踪发生过什么。",
-          "label": "显示 tool traces"
         }
       },
       "defaults": {

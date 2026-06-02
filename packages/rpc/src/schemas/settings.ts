@@ -239,8 +239,7 @@ const AGENT_SETTINGS_DEFAULT = {
   profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
   retry: AGENT_RETRY_SETTINGS_DEFAULT,
-  sandbox: AGENT_SANDBOX_SETTINGS_DEFAULT,
-  showToolTraces: true
+  sandbox: AGENT_SANDBOX_SETTINGS_DEFAULT
 } as const
 
 const AUTO_COMPACT_SETTINGS_DEFAULT = {
@@ -375,8 +374,7 @@ export const AgentSettingsSchema = z.object({
   profiles: z.array(AgentProfileSchema).default([]),
   requireApprovalForWrites: z.boolean().default(true),
   retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),
-  sandbox: AgentSandboxSettingsSchema.default(AGENT_SANDBOX_SETTINGS_DEFAULT),
-  showToolTraces: z.boolean().default(true)
+  sandbox: AgentSandboxSettingsSchema.default(AGENT_SANDBOX_SETTINGS_DEFAULT)
 })
 
 export const AppSettingsSchema = z.object({

@@ -75,7 +75,6 @@ const {
         maxSteps: 8,
         profiles: [],
         requireApprovalForWrites: true,
-        showToolTraces: true,
         ...agents
       },
       memory: {

@@ -34,8 +34,7 @@ const baseAgents: AgentSettings = {
     autoAllowSandboxedShell: false,
     enabled: false,
     failIfUnavailable: true
-  },
-  showToolTraces: true
+  }
 }
 
 const coderDefaults: AgentProfile = {

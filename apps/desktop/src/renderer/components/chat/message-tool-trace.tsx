@@ -1,11 +1,10 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { InspectAgentRunOutput } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { ChatTool, ChatToolGroup } from "@heroui-pro/react"
+import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
 import { Button, Disclosure } from "@heroui/react"
 import {
-  BrainIcon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
   ComputerTerminal02Icon,
@@ -29,11 +28,7 @@ import {
   buildAgentRunTracePreview,
   getAgentRunIdFromToolOutput
 } from "@/renderer/lib/chat/agent-run-trace"
-import type {
-  AssistantCommandTextSegment,
-  AssistantFunctionCallTextSegment,
-  AssistantToolApprovalResponseOptions
-} from "@/renderer/lib/chat/tool-ui"
+import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { orpc } from "@/renderer/lib/rpc"
 
@@ -66,20 +61,7 @@ interface ToolTraceCardProps {
   title: string
 }
 
-interface MessageToolTraceProps {
-  chatSessionId?: string
-  commandSegments: AssistantCommandTextSegment[]
-  functionCallSegments: AssistantFunctionCallTextSegment[]
-  isApprovalActionDisabled: boolean
-  onApprovalResponse: (
-    part: ChatToolPart,
-    approved: boolean,
-    options?: AssistantToolApprovalResponseOptions
-  ) => void
-  parts: ChatToolPart[]
-}
-
-interface CompactedStructuredToolTracePart {
+export interface CompactedStructuredToolTracePart {
   part: ChatToolPart
   repeatCount: number
 }
@@ -135,7 +117,7 @@ const getStructuredToolPartCompactionKey = (part: ChatToolPart): string =>
     toolName: getToolName(part)
   })
 
-const compactStructuredToolTraceParts = (
+export const compactStructuredToolTraceParts = (
   parts: readonly ChatToolPart[]
 ): CompactedStructuredToolTracePart[] => {
   const compactedParts: CompactedStructuredToolTracePart[] = []
@@ -462,33 +444,6 @@ const getToolInputMeta = (input: unknown): string => {
 
   return [cwd ? `cwd: ${cwd}` : "", reason].filter(Boolean).join(" · ")
 }
-
-const getFunctionCallParameterValue = (
-  segment: AssistantFunctionCallTextSegment,
-  name: string
-): string =>
-  segment.parameters.find((parameter) => parameter.name === name)?.value ?? ""
-
-const getFunctionCallDescription = (
-  segment: AssistantFunctionCallTextSegment
-): string => {
-  const command =
-    getFunctionCallParameterValue(segment, "command") ||
-    getFunctionCallParameterValue(segment, "path")
-
-  return command || segment.name
-}
-
-const formatFunctionCallParameters = (
-  segment: AssistantFunctionCallTextSegment
-): string =>
-  segment.parameters
-    .map((parameter) =>
-      parameter.value.includes("\n")
-        ? `${parameter.name}:\n${parameter.value}`
-        : `${parameter.name}: ${parameter.value}`
-    )
-    .join("\n")
 
 const getToolOutputSummary = (output: unknown): string => {
   if (!isRecord(output)) {
@@ -1032,80 +987,6 @@ const ToolTraceDetailPanels = ({
   )
 }
 
-export const FunctionCallTextTraceCard = ({
-  segment
-}: {
-  segment: AssistantFunctionCallTextSegment
-}) => {
-  const { t } = useI18n()
-  const inputCommand = getFunctionCallDescription(segment)
-  const cwd = getFunctionCallParameterValue(segment, "cwd")
-
-  return (
-    <ToolTraceCard
-      description={inputCommand}
-      icon={getToolIcon(segment.name)}
-      state="input-available"
-      statusClassName={getToolTraceStateClassName("input-available")}
-      statusLabel={t("chat.toolTrace.state.inputAvailable")}
-      title={t("chat.toolTrace.functionCall")}
-    >
-      <ToolTraceMeta
-        items={[
-          `${t("chat.toolTrace.input")}: ${segment.name}`,
-          cwd ? `${t("chat.toolTrace.cwd")}: ${cwd}` : ""
-        ]}
-      />
-      {inputCommand ? (
-        <p className="rounded-md border border-border/60 bg-muted/45 p-2 font-mono text-[0.6875rem] leading-5 wrap-break-word whitespace-pre-wrap text-foreground">
-          {inputCommand}
-        </p>
-      ) : null}
-      <ToolTracePanel
-        body={formatFunctionCallParameters(segment)}
-        label={t("chat.toolTrace.input")}
-      />
-    </ToolTraceCard>
-  )
-}
-
-export const CommandTextTraceCard = ({
-  segment
-}: {
-  segment: AssistantCommandTextSegment
-}) => {
-  const { t } = useI18n()
-  const title = t("chat.toolTrace.runCommand", {
-    command: getCommandTitleSubject(segment.command)
-  })
-
-  return (
-    <CommandToolCallCard
-      command={segment.command}
-      cwd={segment.cwd}
-      metaItems={[
-        `${t("chat.toolTrace.cwd")}: ${segment.cwd}`,
-        `${t("chat.toolTrace.shell")}: ${segment.shell}`,
-        `${t("chat.toolTrace.exitCode")}: ${segment.exitCode}`,
-        segment.repeatCount > 1
-          ? t("chat.toolTrace.repeated", { count: segment.repeatCount })
-          : ""
-      ]}
-      output={segment.output}
-      state={segment.exitCode === 0 ? "output-available" : "output-error"}
-      statusClassName={getToolTraceStateClassName(
-        segment.exitCode === 0 ? "output-available" : "output-error"
-      )}
-      statusLabel={t(
-        segment.exitCode === 0
-          ? "chat.toolTrace.state.outputAvailable"
-          : "chat.toolTrace.state.outputError"
-      )}
-      title={title}
-    />
-  )
-}
-
 export const StructuredToolTraceCard = ({
   chatSessionId,
   isApprovalActionDisabled,
@@ -1223,100 +1104,5 @@ export const StructuredToolTraceCard = ({
       <ToolTraceMeta items={[...metaItems, repeatedMetaItem]} />
       <div className="space-y-1.5">{detailPanels}</div>
     </ToolTraceCard>
-  )
-}
-
-export const AssistantThinkingTrace = ({ text }: { text: string }) => {
-  const { t } = useI18n()
-
-  return (
-    <Disclosure className="mt-2 rounded-xl border border-border/70 bg-background/70">
-      <Disclosure.Heading>
-        <Button
-          className="h-9 w-full justify-between rounded-xl px-3 text-xs hover:bg-transparent"
-          slot="trigger"
-          type="button"
-          variant="ghost"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <HugeiconsIcon icon={BrainIcon} size={14} />
-            <span className="truncate">{t("chat.toolTrace.thinking")}</span>
-          </span>
-          <Disclosure.Indicator />
-        </Button>
-      </Disclosure.Heading>
-      <Disclosure.Content>
-        <Disclosure.Body className="border-t border-border/60 p-3">
-          <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
-            {text}
-          </p>
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
-  )
-}
-
-export const MessageToolTrace = ({
-  chatSessionId,
-  commandSegments,
-  functionCallSegments,
-  isApprovalActionDisabled,
-  onApprovalResponse,
-  parts
-}: MessageToolTraceProps) => {
-  const { t } = useI18n()
-  const compactedParts = compactStructuredToolTraceParts(parts)
-
-  if (
-    parts.length === 0 &&
-    commandSegments.length === 0 &&
-    functionCallSegments.length === 0
-  ) {
-    return null
-  }
-
-  return (
-    <ChatToolGroup
-      active={parts.some(
-        (part) =>
-          part.state === "input-streaming" ||
-          part.state === "input-available" ||
-          part.state === "approval-requested"
-      )}
-      aria-label={t("chat.toolTrace.title")}
-      className="mt-2"
-      defaultExpanded
-    >
-      <ChatToolGroup.Trigger>{t("chat.toolTrace.title")}</ChatToolGroup.Trigger>
-      <ChatToolGroup.Content>
-        <div className="space-y-1.5">
-          {commandSegments.map((segment) => (
-            <CommandTextTraceCard
-              key={`${segment.cwd}-${segment.shell}-${segment.command}-${segment.exitCode}`}
-              segment={segment}
-            />
-          ))}
-          {functionCallSegments.map((segment, index) => (
-            <FunctionCallTextTraceCard
-              key={`${segment.name}-${index}-${getFunctionCallParameterValue(
-                segment,
-                "command"
-              )}`}
-              segment={segment}
-            />
-          ))}
-          {compactedParts.map(({ part, repeatCount }) => (
-            <StructuredToolTraceCard
-              chatSessionId={chatSessionId}
-              isApprovalActionDisabled={isApprovalActionDisabled}
-              key={part.toolCallId}
-              onApprovalResponse={onApprovalResponse}
-              part={part}
-              repeatCount={repeatCount}
-            />
-          ))}
-        </div>
-      </ChatToolGroup.Content>
-    </ChatToolGroup>
   )
 }
