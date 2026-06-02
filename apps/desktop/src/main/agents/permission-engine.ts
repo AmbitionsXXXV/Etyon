@@ -32,6 +32,7 @@ export interface EvaluateAgentToolPermissionOptions {
 const COMMAND_INSTALL_PATTERN =
   /\b(?:bun|deno|npm|pnpm|vp|yarn)\s+(?:add|install|i)\b/u
 const COMMAND_NETWORK_PATTERN = /\b(?:curl|wget|fetch|http|https)\b/u
+const COMMAND_SEPARATOR_PATTERN = /(?:&&|\|\||[;|\n])/u
 const COMMAND_UNSUPPORTED_PACKAGE_MANAGER_PATTERN =
   /(?:^|[;&|]\s*)(?:rtk\s+)?(?:bun|deno|npm|pnpm|yarn)\b/u
 const DESTRUCTIVE_COMMAND_PATTERNS = [
@@ -71,6 +72,128 @@ const buildDecision = ({
   risk,
   ruleId
 })
+
+const parseShellCommandArgs = (command: string): string[] | null => {
+  const args: string[] = []
+  let current = ""
+  let escaping = false
+  let quote: '"' | "'" | null = null
+
+  for (const char of command) {
+    if (escaping) {
+      current += char
+      escaping = false
+      continue
+    }
+
+    if (char === "\\") {
+      escaping = true
+      continue
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null
+        continue
+      }
+
+      current += char
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+
+    if (/\s/u.test(char)) {
+      if (current.length > 0) {
+        args.push(current)
+        current = ""
+      }
+
+      continue
+    }
+
+    current += char
+  }
+
+  if (quote) {
+    return null
+  }
+
+  if (escaping) {
+    current += "\\"
+  }
+
+  if (current.length > 0) {
+    args.push(current)
+  }
+
+  return args
+}
+
+const trimRtkCommandWrapper = (args: readonly string[]): readonly string[] =>
+  args[0] === "rtk" ? args.slice(1) : args
+
+const getCommandApprovalIntentSignature = (command: string): string | null => {
+  if (COMMAND_SEPARATOR_PATTERN.test(command)) {
+    return null
+  }
+
+  const args = parseShellCommandArgs(command.trim())
+
+  if (!args || args.length === 0) {
+    return null
+  }
+
+  const normalizedArgs = trimRtkCommandWrapper(args)
+  const [commandName] = normalizedArgs
+
+  if (!commandName) {
+    return null
+  }
+
+  const signatureArgs = [commandName]
+  let index = 1
+
+  while (
+    index < normalizedArgs.length &&
+    normalizedArgs[index]?.startsWith("-") &&
+    normalizedArgs[index] !== "--"
+  ) {
+    signatureArgs.push(normalizedArgs[index] ?? "")
+    index += 1
+  }
+
+  if (normalizedArgs[index] === "--") {
+    signatureArgs.push("--")
+    index += 1
+  }
+
+  if (normalizedArgs[index]) {
+    signatureArgs.push(normalizedArgs[index])
+  }
+
+  return signatureArgs.join("\u0000")
+}
+
+const hasSameCommandApprovalIntent = ({
+  command,
+  ruleCommand
+}: {
+  command: string
+  ruleCommand: string
+}): boolean => {
+  const commandSignature = getCommandApprovalIntentSignature(command)
+  const ruleCommandSignature = getCommandApprovalIntentSignature(ruleCommand)
+
+  return (
+    commandSignature !== null &&
+    ruleCommandSignature !== null &&
+    commandSignature === ruleCommandSignature
+  )
+}
 
 const getInputBoolean = (input: unknown, key: string): boolean =>
   typeof input === "object" &&
@@ -167,6 +290,17 @@ const COMMAND_APPROVAL_INTENT_MATCHERS = [
 const isCommandApprovalIntentToolName = (toolName: string): boolean =>
   COMMAND_APPROVAL_INTENT_TOOL_NAMES.has(toolName)
 
+export const isAgentCommandApprovalToolCovered = ({
+  ruleToolName,
+  toolName
+}: {
+  ruleToolName: string
+  toolName: string
+}): boolean =>
+  ruleToolName === toolName ||
+  (isCommandApprovalIntentToolName(ruleToolName) &&
+    isCommandApprovalIntentToolName(toolName))
+
 export const isAgentCommandApprovalRuleCovered = ({
   command,
   ruleCommand,
@@ -187,8 +321,14 @@ export const isAgentCommandApprovalRuleCovered = ({
     return false
   }
 
-  return COMMAND_APPROVAL_INTENT_MATCHERS.some(
-    (matches) => matches(normalizedCommand) && matches(normalizedRuleCommand)
+  return (
+    COMMAND_APPROVAL_INTENT_MATCHERS.some(
+      (matches) => matches(normalizedCommand) && matches(normalizedRuleCommand)
+    ) ||
+    hasSameCommandApprovalIntent({
+      command: normalizedCommand,
+      ruleCommand: normalizedRuleCommand
+    })
   )
 }
 
@@ -225,7 +365,10 @@ const commandMatchesApprovalAllowlist = ({
         ruleCommand: rule.command,
         toolName: name
       }) &&
-      rule.toolName === name &&
+      isAgentCommandApprovalToolCovered({
+        ruleToolName: rule.toolName,
+        toolName: name
+      }) &&
       ruleWorkspaceRoot === normalizedWorkspaceRoot &&
       resolveCommandCwd(rule.cwd, ruleWorkspaceRoot) === normalizedCwd
     )

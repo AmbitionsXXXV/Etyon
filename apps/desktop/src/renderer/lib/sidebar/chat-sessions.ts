@@ -23,12 +23,18 @@ export interface ChatSessionGroup {
 const isChatSessionPinned = (session: ChatSessionSummary): boolean =>
   Boolean(session.pinnedAt)
 
-export const sortChatSessionsByLastOpenedAt = (
+export const sortChatSessionsByUpdatedAt = (
   sessions: ChatSessionSummary[]
 ): ChatSessionSummary[] =>
-  [...sessions].toSorted((left, right) =>
-    right.lastOpenedAt.localeCompare(left.lastOpenedAt)
-  )
+  [...sessions].toSorted((left, right) => {
+    const updatedAtComparison = right.updatedAt.localeCompare(left.updatedAt)
+
+    if (updatedAtComparison !== 0) {
+      return updatedAtComparison
+    }
+
+    return right.createdAt.localeCompare(left.createdAt)
+  })
 
 export const sortPinnedChatSessions = (
   sessions: ChatSessionSummary[]
@@ -42,7 +48,13 @@ export const sortPinnedChatSessions = (
       return pinnedAtComparison
     }
 
-    return right.lastOpenedAt.localeCompare(left.lastOpenedAt)
+    const updatedAtComparison = right.updatedAt.localeCompare(left.updatedAt)
+
+    if (updatedAtComparison !== 0) {
+      return updatedAtComparison
+    }
+
+    return right.createdAt.localeCompare(left.createdAt)
   })
 
 export const formatChatSessionRelativeTime = (
@@ -108,7 +120,7 @@ export const groupChatSessionsByProject = (
 ): ChatSessionGroup[] => {
   const groupedSessions = new Map<string, ChatSessionSummary[]>()
 
-  for (const session of sortChatSessionsByLastOpenedAt(sessions)) {
+  for (const session of sortChatSessionsByUpdatedAt(sessions)) {
     if (isChatSessionPinned(session)) {
       continue
     }
@@ -198,7 +210,7 @@ export const getChatSessionMetaItems = ({
       : []),
     {
       kind: "time",
-      label: formatChatSessionRelativeTime(session.lastOpenedAt, now)
+      label: formatChatSessionRelativeTime(session.updatedAt, now)
     }
   ]
 }

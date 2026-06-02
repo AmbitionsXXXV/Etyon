@@ -19,7 +19,7 @@ describe("agent queue composer state", () => {
     })
   })
 
-  it("preserves the existing disabled state when agents are disabled", () => {
+  it("keeps the composer editable while a non-agent response is pending", () => {
     expect(
       resolveAgentComposerQueueState({
         agentsEnabled: false,
@@ -28,7 +28,7 @@ describe("agent queue composer state", () => {
       })
     ).toEqual({
       canQueueMessage: false,
-      isComposerDisabled: true
+      isComposerDisabled: false
     })
   })
 

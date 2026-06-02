@@ -14,8 +14,7 @@ export const resolveAgentComposerQueueState = ({
 
   return {
     canQueueMessage,
-    isComposerDisabled:
-      isModelUpdating || (isRequestPending && !canQueueMessage)
+    isComposerDisabled: isModelUpdating
   }
 }
 

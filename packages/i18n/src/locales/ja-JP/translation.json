@@ -294,6 +294,7 @@
     "sidebar": {
       "addProject": "プロジェクトを追加",
       "archiveSession": "セッションをアーカイブ",
+      "copySessionId": "セッション ID をコピー",
       "empty": "chat session はまだありません。右上の New Chat から開始できます。",
       "emptyProjects": "まだ project entry がありません。追加ボタンから最初の project chat を作成できます。",
       "pinSession": "セッションを固定",

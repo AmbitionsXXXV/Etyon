@@ -294,6 +294,7 @@
     "sidebar": {
       "addProject": "添加项目",
       "archiveSession": "归档会话",
+      "copySessionId": "复制会话 ID",
       "empty": "还没有聊天会话。点击右上角的 New Chat 开始。",
       "emptyProjects": "还没有项目入口。使用新增项目按钮创建第一个项目会话。",
       "pinSession": "置顶会话",

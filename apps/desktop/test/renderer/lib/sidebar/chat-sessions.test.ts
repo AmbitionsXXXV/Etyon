@@ -14,7 +14,8 @@ import {
   PROJECT_GROUP_PAGE_SIZE,
   reorderProjectPaths,
   shouldShowProjectGroupLessAction,
-  sortPinnedChatSessions
+  sortPinnedChatSessions,
+  sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
 
 const buildSessionFixture = ({
@@ -23,7 +24,8 @@ const buildSessionFixture = ({
   lastOpenedAt,
   pinnedAt,
   projectPath,
-  title
+  title,
+  updatedAt = "2026-03-26T12:00:00.000Z"
 }: {
   createdAt?: string
   id: string
@@ -31,6 +33,7 @@ const buildSessionFixture = ({
   pinnedAt: string | null
   projectPath: string
   title: string
+  updatedAt?: string
 }) => ({
   archivedAt: null,
   createdAt,
@@ -40,10 +43,36 @@ const buildSessionFixture = ({
   pinnedAt,
   projectPath,
   title,
-  updatedAt: "2026-03-26T12:00:00.000Z"
+  updatedAt
 })
 
 describe("sidebar chat session helpers", () => {
+  it("sorts sessions by updated time without letting open time reorder them", () => {
+    const sessions = sortChatSessionsByUpdatedAt([
+      buildSessionFixture({
+        id: "opened-later",
+        lastOpenedAt: "2026-03-26T12:30:00.000Z",
+        pinnedAt: null,
+        projectPath: "/tmp/project-a",
+        title: "",
+        updatedAt: "2026-03-26T12:00:00.000Z"
+      }),
+      buildSessionFixture({
+        id: "updated-later",
+        lastOpenedAt: "2026-03-26T12:01:00.000Z",
+        pinnedAt: null,
+        projectPath: "/tmp/project-a",
+        title: "",
+        updatedAt: "2026-03-26T12:10:00.000Z"
+      })
+    ])
+
+    expect(sessions.map((session) => session.id)).toEqual([
+      "updated-later",
+      "opened-later"
+    ])
+  })
+
   it("groups unpinned chat sessions by exact project path without letting last opened time reorder projects", () => {
     const groups = groupChatSessionsByProject([
       buildSessionFixture({
@@ -52,7 +81,8 @@ describe("sidebar chat session helpers", () => {
         lastOpenedAt: "2026-03-26T12:01:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-a",
-        title: ""
+        title: "",
+        updatedAt: "2026-03-26T12:01:00.000Z"
       }),
       buildSessionFixture({
         createdAt: "2026-03-26T11:00:00.000Z",
@@ -60,7 +90,8 @@ describe("sidebar chat session helpers", () => {
         lastOpenedAt: "2026-03-26T12:03:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-b",
-        title: ""
+        title: "",
+        updatedAt: "2026-03-26T12:03:00.000Z"
       }),
       buildSessionFixture({
         createdAt: "2026-03-26T12:30:00.000Z",
@@ -68,7 +99,8 @@ describe("sidebar chat session helpers", () => {
         lastOpenedAt: "2026-03-26T12:02:00.000Z",
         pinnedAt: null,
         projectPath: "/tmp/project-a",
-        title: ""
+        title: "",
+        updatedAt: "2026-03-26T12:02:00.000Z"
       }),
       buildSessionFixture({
         id: "pinned-project-a",
@@ -172,21 +204,23 @@ describe("sidebar chat session helpers", () => {
     ).toBe("New Chat")
   })
 
-  it("sorts pinned sessions by pinned time and then by last opened at", () => {
+  it("sorts pinned sessions by pinned time and then by updated time", () => {
     const sessions = sortPinnedChatSessions([
       buildSessionFixture({
         id: "older-pin",
-        lastOpenedAt: "2026-03-26T12:01:00.000Z",
+        lastOpenedAt: "2026-03-26T12:04:00.000Z",
         pinnedAt: "2026-03-26T12:05:00.000Z",
         projectPath: "/tmp/project-a",
-        title: ""
+        title: "",
+        updatedAt: "2026-03-26T12:01:00.000Z"
       }),
       buildSessionFixture({
         id: "newer-pin",
-        lastOpenedAt: "2026-03-26T12:04:00.000Z",
+        lastOpenedAt: "2026-03-26T12:01:00.000Z",
         pinnedAt: "2026-03-26T12:06:00.000Z",
         projectPath: "/tmp/project-b",
-        title: ""
+        title: "",
+        updatedAt: "2026-03-26T12:04:00.000Z"
       }),
       buildSessionFixture({
         id: "not-pinned",
@@ -232,6 +266,8 @@ describe("sidebar chat session helpers", () => {
         now: new Date("2026-03-26T13:00:00.000Z"),
         session: {
           ...firstSession,
+          lastOpenedAt: "2026-03-26T12:55:00.000Z",
+          updatedAt: "2026-03-26T12:00:00.000Z",
           gitStatus: {
             added: 1,
             changedFileCount: 4,

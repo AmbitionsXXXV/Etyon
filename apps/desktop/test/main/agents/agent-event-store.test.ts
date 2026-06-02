@@ -12,6 +12,7 @@ import {
   getAgentRun,
   getAgentRunForToolApproval,
   getAgentRunForToolCall,
+  getLatestCompletedAgentRunForSession,
   listAgentArtifacts,
   listAgentEvents,
   listRecoverableAgentRuns,
@@ -926,6 +927,108 @@ describe("agent event store", () => {
     )
   })
 
+  it("does not resolve superseded suspended top-level runs as active", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const suspendedRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const completedRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, suspendedRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, completedRun.id))
+    await updateAgentRun({
+      db: getDb(),
+      id: suspendedRun.id,
+      status: "suspended"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: completedRun.id,
+      status: "succeeded"
+    })
+
+    await expect(
+      getActiveAgentRunForSession({
+        chatSessionId: session.id,
+        db: getDb()
+      })
+    ).resolves.toBeNull()
+  })
+
+  it("resolves the latest completed top-level run by chat start order", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const olderRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+    const newerRun = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await updateAgentRun({
+      db: getDb(),
+      id: olderRun.id,
+      status: "succeeded"
+    })
+    await updateAgentRun({
+      db: getDb(),
+      id: newerRun.id,
+      status: "succeeded"
+    })
+    await getDb()
+      .update(agentRuns)
+      .set({
+        finishedAt: "2026-05-30T10:10:00.000Z",
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, olderRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        finishedAt: "2026-05-30T10:02:00.000Z",
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, newerRun.id))
+
+    await expect(
+      getLatestCompletedAgentRunForSession({
+        chatSessionId: session.id,
+        db: getDb()
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: newerRun.id
+      })
+    )
+  })
+
   it("does not resume approval tool calls from a different chat session", async () => {
     await ensureDatabaseReady()
 
@@ -1212,7 +1315,7 @@ describe("agent event store", () => {
     )
   })
 
-  it("keeps approval ids scoped by run when provider tool call ids are reused", async () => {
+  it("keeps approval ids scoped by current branch when provider tool call ids are reused", async () => {
     await ensureDatabaseReady()
 
     const session = await createChatSession({ db: getDb() })
@@ -1258,6 +1361,19 @@ describe("agent event store", () => {
       })
     }
 
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, firstRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, secondRun.id))
+
     const approvals = await listPendingAgentApprovals({
       chatSessionId: session.id,
       db: getDb()
@@ -1268,8 +1384,17 @@ describe("agent event store", () => {
         .map((approval) => [approval.runId, approval.approvalId])
     )
 
-    expect(approvalIdsByRunId.get(firstRun.id)).toBe("approval-first")
+    expect(approvalIdsByRunId.get(firstRun.id)).toBeUndefined()
     expect(approvalIdsByRunId.get(secondRun.id)).toBe("approval-second")
+    await expect(
+      getAgentRunForToolApproval({
+        approvalId: "approval-first",
+        chatSessionId: session.id,
+        db: getDb(),
+        pendingApprovalOnly: true,
+        toolCallId: "reused-approval-tool-call"
+      })
+    ).resolves.toBeNull()
     await expect(
       getAgentRunForToolApproval({
         approvalId: "approval-second",
@@ -1325,6 +1450,18 @@ describe("agent event store", () => {
       id: suspendedRun.id,
       status: "suspended"
     })
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:00:00.000Z"
+      })
+      .where(eq(agentRuns.id, runningRun.id))
+    await getDb()
+      .update(agentRuns)
+      .set({
+        startedAt: "2026-05-30T10:01:00.000Z"
+      })
+      .where(eq(agentRuns.id, suspendedRun.id))
 
     const result = await recoverInterruptedAgentRuns({
       db: getDb()

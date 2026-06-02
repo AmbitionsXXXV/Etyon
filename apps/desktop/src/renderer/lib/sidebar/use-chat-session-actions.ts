@@ -5,7 +5,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useCallback, useMemo } from "react"
 
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
-import { sortChatSessionsByLastOpenedAt } from "@/renderer/lib/sidebar/chat-sessions"
+import { sortChatSessionsByUpdatedAt } from "@/renderer/lib/sidebar/chat-sessions"
 
 const CHAT_ROUTE_PREFIX = "/chat/" as const
 const AGENT_WORKBENCH_ROUTE_PREFIX = "/agents/" as const
@@ -43,7 +43,7 @@ const upsertChatSession = ({
     (session) => session.id === nextSession.id
   )
 
-  return sortChatSessionsByLastOpenedAt([
+  return sortChatSessionsByUpdatedAt([
     {
       ...nextSession,
       gitStatus: nextSession.gitStatus ?? previousSession?.gitStatus

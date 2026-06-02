@@ -91,7 +91,8 @@ streamText().fullStream
 - `chat_messages` 是 `agent_events` 的 UI projection。当前 repair 路径可从最新 active / completed root run 重建 assistant suffix；assistant projection 会同时写入 `metadata.agentProjection` 和 `chat_messages.agent_projection_run_id`，后者用于 metadata 损坏或缺失时继续识别 projection run；跨设备只同步 `chat_messages` 而不带 `agent_events` 的场景仍不是首版保证。
 - `suspended` approval run 会在 app 重启后保留未超期的 pending 状态；`settings.agents.approvals.approvalTtlMs` 超期后会在 startup recovery 标记为 `failed(reason="approval_timeout")`，并通过 recoverable runs 暴露。
 - Run graph 自动 retry 只覆盖 read-only 且 active tools 均为 safe / idempotent 的 provider / timeout 这类 transient 失败；写入类工具、网络工具和泛用 shell 不会自动 retry，只能由用户手动 retry。
-- `chat-branch` custom entry 的不变量：fork / regenerate 只改变 projection leaf 与 retained message ids，不继承未完成 tool call row；pending approval 仍归属原 run，新的分支 run 必须创建自己的 approval state。
+- Breaking contract：active run 的 chat projection 读取时总是从 `agent_events` / 最新 stream snapshot 重建，`chat_messages` 只作为 completed projection cache；即使缓存里已有非空 assistant projection，也不能覆盖当前 active response。
+- `chat-branch` custom entry 的不变量：fork / regenerate 只改变 projection leaf 与 retained message ids，不继承未完成 tool call row；pending approval 仍归属原 run，但当前可操作 approval 只来自该 session 最新顶层 active root run，旧 suspended branch 的 approval 会留在审计历史中，不再出现在 Workbench / approval inbox，也不能通过 `pendingApprovalOnly` resume。
 - Tool output summary cache 只缓存同一 root run 内的 dependency summary；缓存命中不能替代后续显式 `read` / `grep` 对最新文件状态的刷新。
 
 ## 已落地实现明细

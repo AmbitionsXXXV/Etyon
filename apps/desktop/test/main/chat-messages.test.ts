@@ -523,6 +523,227 @@ describe("chat messages", () => {
     expect(persistedMessages).toEqual([])
   })
 
+  it("rebuilds non-empty active agent projections from stream events", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const userMessage: UIMessage = {
+      id: "user-message-1",
+      parts: [
+        {
+          text: "Inspect the staged diff",
+          type: "text"
+        }
+      ],
+      role: "user"
+    }
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages: [
+        userMessage,
+        {
+          id: `agent-${run.id}-1-assistant`,
+          metadata: {
+            agentProjection: {
+              runId: run.id,
+              source: "agent_events"
+            }
+          },
+          parts: [
+            {
+              text: "Stale active projection.",
+              type: "text"
+            }
+          ],
+          role: "assistant"
+        }
+      ],
+      sessionId: session.id
+    })
+    await run.appendEvent({
+      payload: {
+        parts: [
+          {
+            approval: {
+              id: "approval-bash-1"
+            },
+            input: {
+              command: "git diff --cached --stat"
+            },
+            state: "approval-requested",
+            toolCallId: "bash:1",
+            toolName: "bash",
+            type: "dynamic-tool"
+          }
+        ]
+      },
+      type: "agent_ui_stream_snapshot_created"
+    })
+
+    await expect(
+      listChatMessagesWithAgentProjectionRepair({
+        db: getDb(),
+        sessionId: session.id
+      })
+    ).resolves.toEqual([
+      userMessage,
+      {
+        id: `agent-${run.id}-0-assistant`,
+        metadata: {
+          agentProjection: {
+            runId: run.id,
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            approval: {
+              id: "approval-bash-1"
+            },
+            input: {
+              command: "git diff --cached --stat"
+            },
+            state: "approval-requested",
+            toolCallId: "bash:1",
+            toolName: "bash",
+            type: "dynamic-tool"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+  })
+
+  it("rebuilds active agent prompts from events while persistence has an old suffix", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const userMessage: UIMessage = {
+      id: "user-message-1",
+      parts: [
+        {
+          text: "Existing question",
+          type: "text"
+        }
+      ],
+      role: "user"
+    }
+    const completedAssistantMessage: UIMessage = {
+      id: "assistant-message-1",
+      parts: [
+        {
+          text: "Completed answer stays visible.",
+          type: "text"
+        }
+      ],
+      role: "assistant"
+    }
+
+    await replaceChatMessages({
+      db: getDb(),
+      messages: [userMessage, completedAssistantMessage],
+      sessionId: session.id
+    })
+
+    const run = await createAgentRun({
+      chatSessionId: session.id,
+      db: getDb(),
+      modelId: "openai/gpt-4.1",
+      profileId: "coder"
+    })
+
+    await appendAgentSessionModelMessageEvents({
+      messages: [
+        {
+          content: "Existing question",
+          role: "user"
+        },
+        {
+          content: "Completed answer stays visible.",
+          role: "assistant"
+        },
+        {
+          content: "New in-flight prompt",
+          role: "user"
+        },
+        {
+          content: [
+            {
+              input: {
+                command: "git status"
+              },
+              toolCallId: "bash:1",
+              toolName: "bash",
+              type: "tool-call"
+            },
+            {
+              approvalId: "approval-bash-1",
+              toolCallId: "bash:1",
+              type: "tool-approval-request"
+            }
+          ],
+          role: "assistant"
+        }
+      ],
+      run
+    })
+
+    const repairedMessages = await listChatMessagesWithAgentProjectionRepair({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const persistedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+
+    expect(repairedMessages).toEqual([
+      userMessage,
+      {
+        id: `agent-${run.id}-2-user`,
+        parts: [
+          {
+            text: "New in-flight prompt",
+            type: "text"
+          }
+        ],
+        role: "user"
+      },
+      {
+        id: `agent-${run.id}-3-assistant`,
+        metadata: {
+          agentProjection: {
+            runId: run.id,
+            source: "agent_events"
+          }
+        },
+        parts: [
+          {
+            approval: {
+              id: "approval-bash-1"
+            },
+            input: {
+              command: "git status"
+            },
+            state: "approval-requested",
+            toolCallId: "bash:1",
+            toolName: "bash",
+            type: "dynamic-tool"
+          }
+        ],
+        role: "assistant"
+      }
+    ])
+    expect(persistedMessages).toEqual([userMessage, completedAssistantMessage])
+  })
+
   it("repairs regenerated branch projections without keeping the old suffix", async () => {
     await ensureDatabaseReady()
 
@@ -760,6 +981,15 @@ describe("chat messages", () => {
       db: getDb(),
       sessionId: session.id
     })
+    const persistedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const repairedAgainMessages =
+      await listChatMessagesWithAgentProjectionRepair({
+        db: getDb(),
+        sessionId: session.id
+      })
 
     expect(repairedMessages).toEqual([
       userMessage,
@@ -793,5 +1023,7 @@ describe("chat messages", () => {
         role: "assistant"
       }
     ])
+    expect(persistedMessages).toEqual(repairedMessages)
+    expect(repairedAgainMessages).toEqual(repairedMessages)
   })
 })

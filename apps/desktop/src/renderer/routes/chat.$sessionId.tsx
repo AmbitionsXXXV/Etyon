@@ -104,7 +104,7 @@ import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
   getChatSessionTitle,
-  sortChatSessionsByLastOpenedAt
+  sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
 import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
 import type {
@@ -601,7 +601,7 @@ const upsertChatSession = ({
     (session) => session.id === nextSession.id
   )
 
-  return sortChatSessionsByLastOpenedAt([
+  return sortChatSessionsByUpdatedAt([
     {
       ...nextSession,
       gitStatus: nextSession.gitStatus ?? previousSession?.gitStatus

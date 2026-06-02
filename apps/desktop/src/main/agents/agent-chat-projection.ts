@@ -355,6 +355,9 @@ export const getLatestUserMessageBoundary = (
   messages: readonly UIMessage[]
 ): number => messages.findLastIndex((message) => message.role === "user") + 1
 
+const getLatestUserMessageIndex = (messages: readonly UIMessage[]): number =>
+  messages.findLastIndex((message) => message.role === "user")
+
 const createProjectionMessage = ({
   index,
   parts,
@@ -375,6 +378,34 @@ const getLatestAssistantProjectionMessage = (
   messages: UIMessage[]
 ): UIMessage | null =>
   messages.findLast((message) => message.role === "assistant") ?? null
+
+const mergeActiveStreamSnapshotParts = ({
+  messages,
+  modelMessageCount,
+  runId,
+  snapshotParts
+}: {
+  messages: UIMessage[]
+  modelMessageCount: number
+  runId: string
+  snapshotParts: UIMessage["parts"]
+}): void => {
+  const latestMessage = messages.at(-1)
+
+  if (latestMessage?.role === "assistant") {
+    latestMessage.parts = snapshotParts
+    return
+  }
+
+  messages.push(
+    createProjectionMessage({
+      index: modelMessageCount,
+      parts: snapshotParts,
+      role: "assistant",
+      runId
+    })
+  )
+}
 
 const appendAssistantTextPartsToProjectionMessage = ({
   message,
@@ -559,13 +590,13 @@ const applyToolResultPartToProjection = ({
   messages: UIMessage[]
   part: unknown
   toolLocations: Map<string, ProjectedToolLocation>
-}): void => {
+}): boolean => {
   if (
     !isRecord(part) ||
     part.type !== "tool-result" ||
     typeof part.toolCallId !== "string"
   ) {
-    return
+    return false
   }
 
   const toolPart = findToolPart({
@@ -575,7 +606,7 @@ const applyToolResultPartToProjection = ({
   })
 
   if (!toolPart) {
-    return
+    return false
   }
 
   if (typeof part.toolName === "string") {
@@ -585,11 +616,13 @@ const applyToolResultPartToProjection = ({
   if (isErrorOutput(part.output)) {
     toolPart.errorText = getOutputErrorText(part.output)
     toolPart.state = "output-error"
-    return
+    return true
   }
 
   toolPart.output = getOutputValue(part.output)
   toolPart.state = "output-available"
+
+  return true
 }
 
 const applyToolApprovalResponsePartToProjection = ({
@@ -655,11 +688,12 @@ const applyToolMessageToProjection = ({
         part,
         toolLocations
       }) || shouldMergeNextAssistantMessage
-    applyToolResultPartToProjection({
-      messages,
-      part,
-      toolLocations
-    })
+    shouldMergeNextAssistantMessage =
+      applyToolResultPartToProjection({
+        messages,
+        part,
+        toolLocations
+      }) || shouldMergeNextAssistantMessage
   }
 
   return shouldMergeNextAssistantMessage
@@ -836,14 +870,12 @@ export const buildAgentChatProjectionMessages = ({
     : getLatestAgentUiStreamSnapshotParts(events)
 
   if (snapshotParts.length > 0) {
-    messages.push(
-      createProjectionMessage({
-        index: modelMessages.length,
-        parts: snapshotParts,
-        role: "assistant",
-        runId
-      })
-    )
+    mergeActiveStreamSnapshotParts({
+      messages,
+      modelMessageCount: modelMessages.length,
+      runId,
+      snapshotParts
+    })
   }
 
   return attachAgentProjectionToAssistantMessages(messages, {
@@ -859,6 +891,61 @@ const trimTrailingAssistantMessages = (messages: UIMessage[]): UIMessage[] => {
   }
 
   return endIndex === messages.length ? messages : messages.slice(0, endIndex)
+}
+
+const getProjectionSuffixStartIndex = ({
+  includeProjectedUserMessages,
+  latestOriginalUserText,
+  prefixMessages,
+  projectedMessages
+}: {
+  includeProjectedUserMessages: boolean
+  latestOriginalUserText: string
+  prefixMessages: readonly UIMessage[]
+  projectedMessages: readonly UIMessage[]
+}): number => {
+  const projectedPrefixBoundary = includeProjectedUserMessages
+    ? getProjectedPrefixBoundary({
+        prefixMessages,
+        projectedMessages
+      })
+    : null
+  const latestProjectedUserMessageIndex = includeProjectedUserMessages
+    ? getLatestUserMessageIndex(projectedMessages)
+    : -1
+  const latestProjectedUserMessage =
+    latestProjectedUserMessageIndex >= 0
+      ? projectedMessages[latestProjectedUserMessageIndex]
+      : null
+  const latestProjectedUserText = latestProjectedUserMessage
+    ? getMessageText(latestProjectedUserMessage)
+    : ""
+  const shouldAppendProjectedUserSuffix =
+    includeProjectedUserMessages &&
+    latestProjectedUserMessageIndex >= 0 &&
+    latestOriginalUserText.length > 0 &&
+    latestProjectedUserText.length > 0 &&
+    latestProjectedUserText !== latestOriginalUserText
+
+  if (shouldAppendProjectedUserSuffix) {
+    return latestProjectedUserMessageIndex
+  }
+
+  if (projectedPrefixBoundary !== null) {
+    return projectedPrefixBoundary
+  }
+
+  if (latestOriginalUserText.length === 0) {
+    return prefixMessages.length
+  }
+
+  return (
+    projectedMessages.findLastIndex(
+      (message) =>
+        message.role === "user" &&
+        getMessageText(message) === latestOriginalUserText
+    ) + 1
+  )
 }
 
 export const mergeAgentEventProjectionIntoChatMessages = ({
@@ -894,21 +981,12 @@ export const mergeAgentEventProjectionIntoChatMessages = ({
     })
   }
 
-  const projectedPrefixBoundary = includeProjectedUserMessages
-    ? getProjectedPrefixBoundary({
-        prefixMessages,
-        projectedMessages
-      })
-    : null
-  const suffixStartIndex =
-    projectedPrefixBoundary ??
-    (latestOriginalUserText.length > 0
-      ? projectedMessages.findLastIndex(
-          (message) =>
-            message.role === "user" &&
-            getMessageText(message) === latestOriginalUserText
-        ) + 1
-      : originalMessageCount)
+  const suffixStartIndex = getProjectionSuffixStartIndex({
+    includeProjectedUserMessages,
+    latestOriginalUserText,
+    prefixMessages,
+    projectedMessages
+  })
   const projectedSuffixMessages = projectedMessages
     .slice(Math.max(0, suffixStartIndex))
     .filter(

@@ -96,32 +96,6 @@ const withStoredAgentProjectionMetadata = ({
   }
 }
 
-const hasAgentProjectionForRun = ({
-  messages,
-  runId
-}: {
-  messages: readonly UIMessage[]
-  runId: string
-}): boolean =>
-  messages.some(
-    (message) =>
-      message.role === "assistant" && getAgentProjectionRunId(message) === runId
-  )
-
-const hasEmptyAgentProjectionForRun = ({
-  messages,
-  runId
-}: {
-  messages: readonly UIMessage[]
-  runId: string
-}): boolean =>
-  messages.some(
-    (message) =>
-      message.role === "assistant" &&
-      getAgentProjectionRunId(message) === runId &&
-      message.parts.length === 0
-  )
-
 const areMessagesEqual = (
   leftMessages: readonly UIMessage[],
   rightMessages: readonly UIMessage[]
@@ -303,35 +277,65 @@ export const listChatMessagesWithAgentProjectionRepair = async ({
   db: AppDatabase
   sessionId: string
 }): Promise<UIMessage[]> => {
-  const messages = await listChatMessages({
+  let messages = await listChatMessages({
     db,
     sessionId
   })
+
+  const latestRun = await getLatestCompletedAgentRunForSession({
+    chatSessionId: sessionId,
+    db
+  })
+
+  if (latestRun) {
+    const events = await listAgentEvents({
+      db,
+      runId: latestRun.id
+    })
+    const branch = getLatestAgentChatProjectionBranch(events)
+    const prefixMessages = selectAgentChatProjectionPrefixMessages({
+      events,
+      fallbackMessageCount: getLatestUserMessageBoundary(messages),
+      messages
+    })
+    const originalMessageCount = prefixMessages.length
+
+    if (originalMessageCount > 0 || branch) {
+      const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
+        events,
+        messages: prefixMessages,
+        originalMessageCount,
+        runId: latestRun.id
+      })
+
+      if (!areMessagesEqual(messages, projectedMessages)) {
+        messages = await replaceChatMessages({
+          db,
+          messages: projectedMessages,
+          sessionId
+        })
+      }
+    }
+  }
+
   const activeRun = await getActiveAgentRunForSession({
     chatSessionId: sessionId,
     db
   })
 
-  if (
-    activeRun &&
-    (!hasAgentProjectionForRun({
-      messages,
-      runId: activeRun.id
-    }) ||
-      hasEmptyAgentProjectionForRun({
-        messages,
-        runId: activeRun.id
-      }))
-  ) {
+  if (activeRun) {
     const activeRunEvents = await listAgentEvents({
       db,
       runId: activeRun.id
     })
-    const prefixMessages = selectAgentChatProjectionPrefixMessages({
-      events: activeRunEvents,
-      fallbackMessageCount: getLatestUserMessageBoundary(messages),
-      messages
-    })
+    const activeRunBranch = getLatestAgentChatProjectionBranch(activeRunEvents)
+    const prefixMessages = activeRunBranch
+      ? selectAgentChatProjectionPrefixMessages({
+          events: activeRunEvents,
+          fallbackMessageCount: getLatestUserMessageBoundary(messages),
+          messages
+        })
+      : messages.slice(0, getLatestUserMessageBoundary(messages))
     const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
       allowEmptyProjectionFallback: false,
       events: activeRunEvents,
@@ -346,58 +350,5 @@ export const listChatMessagesWithAgentProjectionRepair = async ({
     }
   }
 
-  const latestRun = await getLatestCompletedAgentRunForSession({
-    chatSessionId: sessionId,
-    db
-  })
-
-  if (!latestRun) {
-    return messages
-  }
-
-  const hasLatestRunProjection = hasAgentProjectionForRun({
-    messages,
-    runId: latestRun.id
-  })
-  const hasStaleEmptyProjection = hasEmptyAgentProjectionForRun({
-    messages,
-    runId: latestRun.id
-  })
-
-  if (hasLatestRunProjection && !hasStaleEmptyProjection) {
-    return messages
-  }
-
-  const events = await listAgentEvents({
-    db,
-    runId: latestRun.id
-  })
-  const branch = getLatestAgentChatProjectionBranch(events)
-  const prefixMessages = selectAgentChatProjectionPrefixMessages({
-    events,
-    fallbackMessageCount: getLatestUserMessageBoundary(messages),
-    messages
-  })
-  const originalMessageCount = prefixMessages.length
-
-  if (originalMessageCount === 0 && !branch) {
-    return messages
-  }
-
-  const projectedMessages = mergeAgentEventProjectionIntoChatMessages({
-    events,
-    messages: prefixMessages,
-    originalMessageCount,
-    runId: latestRun.id
-  })
-
-  if (areMessagesEqual(messages, projectedMessages)) {
-    return messages
-  }
-
-  return replaceChatMessages({
-    db,
-    messages: projectedMessages,
-    sessionId
-  })
+  return messages
 }

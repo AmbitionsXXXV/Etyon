@@ -94,10 +94,11 @@ describe("chat sessions", () => {
     expect(fs.existsSync(session.projectPath)).toBe(true)
   })
 
-  it("sorts by last opened at and updates the order when a session is reopened", async () => {
+  it("keeps session list order when a session is opened without new messages", async () => {
     await ensureDatabaseReady()
 
     const firstSession = await createChatSession({ db: getDb() })
+    await delay(10)
     const secondSession = await createChatSession({ db: getDb() })
 
     await delay(10)
@@ -110,7 +111,7 @@ describe("chat sessions", () => {
 
     expect(reopenedSession.lastOpenedAt > firstSession.lastOpenedAt).toBe(true)
     expect(secondSession.id).not.toBe(firstSession.id)
-    expect(sessions[0]?.id).toBe(firstSession.id)
+    expect(sessions[0]?.id).toBe(secondSession.id)
   })
 
   it("persists pinned state for a chat session", async () => {

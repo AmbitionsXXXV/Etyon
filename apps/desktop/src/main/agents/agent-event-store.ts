@@ -349,6 +349,9 @@ const isSuspendedApprovalExpired = ({
   return now.getTime() - startedAtMs > approvalTtlMs
 }
 
+const isActiveAgentRunStatus = (status: AgentRun["status"]): boolean =>
+  status === "running" || status === "suspended"
+
 const toAgentEvent = (row: typeof agentEvents.$inferSelect): AgentEvent => ({
   createdAt: row.createdAt,
   id: row.id,
@@ -446,6 +449,148 @@ const toPendingAgentApproval = (row: {
   state: row.state,
   toolName: row.toolName
 })
+
+const getRootRunIdFromRows = ({
+  runId,
+  runsById
+}: {
+  runId: string
+  runsById: Map<string, typeof agentRuns.$inferSelect>
+}): string | null => {
+  let currentRun = runsById.get(runId)
+  const visitedRunIds = new Set<string>()
+
+  while (currentRun) {
+    if (visitedRunIds.has(currentRun.id)) {
+      return null
+    }
+
+    visitedRunIds.add(currentRun.id)
+
+    if (!currentRun.parentRunId) {
+      return currentRun.id
+    }
+
+    currentRun = runsById.get(currentRun.parentRunId)
+  }
+
+  return null
+}
+
+const getLatestTopLevelRunBySessionId = (
+  runs: readonly (typeof agentRuns.$inferSelect)[]
+): Map<string, typeof agentRuns.$inferSelect> => {
+  const latestRunBySessionId = new Map<string, typeof agentRuns.$inferSelect>()
+
+  for (const run of runs) {
+    if (run.parentRunId) {
+      continue
+    }
+
+    const currentRun = latestRunBySessionId.get(run.chatSessionId)
+
+    if (
+      !currentRun ||
+      run.startedAt > currentRun.startedAt ||
+      (run.startedAt === currentRun.startedAt && run.id > currentRun.id)
+    ) {
+      latestRunBySessionId.set(run.chatSessionId, run)
+    }
+  }
+
+  return latestRunBySessionId
+}
+
+const listAgentRunsForSessionIds = async ({
+  db,
+  sessionIds
+}: {
+  db: AppDatabase
+  sessionIds: readonly string[]
+}): Promise<(typeof agentRuns.$inferSelect)[]> => {
+  if (sessionIds.length === 0) {
+    return []
+  }
+
+  const sessionConditions = sessionIds.map((sessionId) =>
+    eq(agentRuns.chatSessionId, sessionId)
+  )
+  const whereCondition =
+    sessionConditions.length === 1
+      ? sessionConditions[0]
+      : or(...sessionConditions)
+
+  return await db.select().from(agentRuns).where(whereCondition)
+}
+
+const isRunInCurrentActiveRootBranchFromRows = ({
+  chatSessionId,
+  runId,
+  runs
+}: {
+  chatSessionId: string
+  runId: string
+  runs: readonly (typeof agentRuns.$inferSelect)[]
+}): boolean => {
+  const latestTopLevelRun =
+    getLatestTopLevelRunBySessionId(runs).get(chatSessionId)
+
+  if (!latestTopLevelRun || !isActiveAgentRunStatus(latestTopLevelRun.status)) {
+    return false
+  }
+
+  const rootRunId = getRootRunIdFromRows({
+    runId,
+    runsById: new Map(runs.map((run) => [run.id, run]))
+  })
+
+  return rootRunId === latestTopLevelRun.id
+}
+
+const isRunInCurrentActiveRootBranch = async ({
+  chatSessionId,
+  db,
+  runId
+}: {
+  chatSessionId: string
+  db: AppDatabase
+  runId: string
+}): Promise<boolean> =>
+  isRunInCurrentActiveRootBranchFromRows({
+    chatSessionId,
+    runId,
+    runs: await listAgentRunsForSessionIds({
+      db,
+      sessionIds: [chatSessionId]
+    })
+  })
+
+const filterRowsToCurrentActiveRootBranches = async <
+  TRow extends {
+    chatSessionId: string
+    runId: string
+  }
+>({
+  db,
+  rows
+}: {
+  db: AppDatabase
+  rows: TRow[]
+}): Promise<TRow[]> => {
+  const sessionIds = [...new Set(rows.map((row) => row.chatSessionId))]
+  const runs = await listAgentRunsForSessionIds({
+    db,
+    sessionIds
+  })
+
+  return rows.filter((row) =>
+    isRunInCurrentActiveRootBranchFromRows({
+      chatSessionId: row.chatSessionId,
+      runId: row.runId,
+      runs
+    })
+  )
+}
 
 const upsertAgentApprovalRequest = async ({
   db,
@@ -882,14 +1027,13 @@ export const getActiveAgentRunForSession = async ({
     .where(
       and(
         eq(agentRuns.chatSessionId, chatSessionId),
-        isNull(agentRuns.parentRunId),
-        or(eq(agentRuns.status, "running"), eq(agentRuns.status, "suspended"))
+        isNull(agentRuns.parentRunId)
       )
     )
-    .orderBy(desc(agentRuns.startedAt))
+    .orderBy(desc(agentRuns.startedAt), desc(agentRuns.id))
     .limit(1)
 
-  return row ? toAgentRun(db, row) : null
+  return row && isActiveAgentRunStatus(row.status) ? toAgentRun(db, row) : null
 }
 
 export const getLatestCompletedAgentRunForSession = async ({
@@ -906,7 +1050,7 @@ export const getLatestCompletedAgentRunForSession = async ({
         or(eq(agentRuns.status, "failed"), eq(agentRuns.status, "succeeded"))
       )
     )
-    .orderBy(desc(agentRuns.finishedAt), desc(agentRuns.startedAt))
+    .orderBy(desc(agentRuns.startedAt), desc(agentRuns.finishedAt))
     .limit(1)
 
   return row ? toAgentRun(db, row) : null
@@ -945,7 +1089,17 @@ export const getAgentRunForToolCall = async ({
     .innerJoin(agentRuns, eq(agentToolCalls.runId, agentRuns.id))
   const rows =
     conditions.length > 0 ? await query.where(and(...conditions)) : await query
-  const row = rows.find(
+  const currentBranchRows =
+    pendingApprovalOnly && chatSessionId
+      ? await filterRowsToCurrentActiveRootBranches({
+          db,
+          rows: rows.map((row) => ({
+            ...row,
+            runId: row.id
+          }))
+        })
+      : rows
+  const row = currentBranchRows.find(
     (candidate) =>
       getModelToolCallId({
         runId: candidate.id,
@@ -999,7 +1153,23 @@ export const getAgentRunForToolApproval = async ({
     .limit(1)
   const [row] = await query
 
-  return row ? toAgentRun(db, row) : null
+  if (!row) {
+    return null
+  }
+
+  if (
+    pendingApprovalOnly &&
+    chatSessionId &&
+    !(await isRunInCurrentActiveRootBranch({
+      chatSessionId,
+      db,
+      runId: row.id
+    }))
+  ) {
+    return null
+  }
+
+  return toAgentRun(db, row)
 }
 
 export const listPendingAgentApprovals = async ({
@@ -1040,7 +1210,12 @@ export const listPendingAgentApprovals = async ({
     )
     .orderBy(asc(agentToolCalls.startedAt))
 
-  return rows.map(toPendingAgentApproval)
+  const currentBranchRows = await filterRowsToCurrentActiveRootBranches({
+    db,
+    rows
+  })
+
+  return currentBranchRows.map(toPendingAgentApproval)
 }
 
 export const listRecoverableAgentRuns = async ({

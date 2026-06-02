@@ -420,13 +420,12 @@ describe("agent permission engine", () => {
     })
   })
 
-  it("allows exact remembered shell commands after base command checks pass", () => {
+  it("lets a remembered local command intent cover different argv and command tools", () => {
     expect(
       evaluateAgentToolPermission({
         commandApprovalAllowlist: [
           {
-            command:
-              "git diff --staged -- apps/desktop/src/main/agents/agent-runtime.ts",
+            command: "python scripts/check.py --file src/old.ts",
             createdAt: "2026-06-01T00:00:00.000Z",
             cwd: ".",
             projectPath: workspaceRoot,
@@ -434,11 +433,10 @@ describe("agent permission engine", () => {
           }
         ],
         input: {
-          command:
-            "git diff --staged -- apps/desktop/src/main/agents/agent-runtime.ts",
+          command: "python scripts/check.py --file src/new.ts",
           cwd: "."
         },
-        name: "bash",
+        name: "runCheck",
         workspaceRoot
       })
     ).toMatchObject({
@@ -450,14 +448,14 @@ describe("agent permission engine", () => {
       evaluateAgentToolPermission({
         commandApprovalAllowlist: [
           {
-            command: "printf remembered-command",
+            command: "python scripts/check.py --file src/old.ts",
             createdAt: "2026-06-01T00:00:00.000Z",
             projectPath: workspaceRoot,
             toolName: "bash"
           }
         ],
         input: {
-          command: "printf remembered-command extra"
+          command: "python scripts/other.py --file src/new.ts"
         },
         name: "bash",
         workspaceRoot

@@ -136,7 +136,10 @@ import {
   createAgentSessionQueuedMessageWriter,
   listPendingAgentSessionQueuedMessages
 } from "@/main/agents/agent-session-events"
-import { isAgentCommandApprovalRuleCovered } from "@/main/agents/permission-engine"
+import {
+  isAgentCommandApprovalRuleCovered,
+  isAgentCommandApprovalToolCovered
+} from "@/main/agents/permission-engine"
 import { listChatMessagesWithAgentProjectionRepair } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -522,7 +525,10 @@ const isSameAgentCommandApprovalRule = ({
     ruleCommand: rule.command,
     toolName
   }) &&
-  rule.toolName === toolName &&
+  isAgentCommandApprovalToolCovered({
+    ruleToolName: rule.toolName,
+    toolName
+  }) &&
   path.resolve(rule.projectPath) === path.resolve(projectPath) &&
   resolveAgentCommandApprovalCwd({
     cwd: rule.cwd,
@@ -1157,6 +1163,11 @@ const agentsRespondToRunGraphApproval = rpc
             rootRunId: rootRun.id
           })
         : null
+
+    await listChatMessagesWithAgentProjectionRepair({
+      db: context.db,
+      sessionId: input.sessionId
+    })
 
     return {
       childRun: toAgentRunTraceRunOutput(result.childRun),

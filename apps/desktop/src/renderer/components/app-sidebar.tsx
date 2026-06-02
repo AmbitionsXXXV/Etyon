@@ -31,6 +31,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import { Button, Input } from "@heroui/react"
 import {
   Archive02Icon,
+  Copy02Icon,
   Delete02Icon,
   FileAddIcon,
   Folder01Icon,
@@ -50,11 +51,12 @@ import type {
   ChangeEvent,
   DragEvent,
   Key,
-  MouseEvent,
+  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
   SyntheticEvent
 } from "react"
+import { createPortal } from "react-dom"
 
 import { orpc } from "@/renderer/lib/rpc"
 import {
@@ -92,7 +94,7 @@ const PROJECTS_SECTION_HEADER_CLASS_NAME =
 const SESSION_ROW_CLASS_NAME =
   "min-h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-sm font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
 const SESSION_ROW_META_CLASS_NAME =
-  "shrink-0 text-sm leading-none font-medium tabular-nums text-sidebar-foreground/58"
+  "shrink-0 text-sm leading-5 font-medium tabular-nums text-sidebar-foreground/58"
 
 interface AppSidebarShellProps {
   children?: ReactNode
@@ -244,9 +246,7 @@ const getSessionRowPaddingClassName = (showPinAction: boolean): string =>
 const getSessionTitleContainerLayoutClassName = (
   showProjectDiffLine: boolean
 ): string =>
-  showProjectDiffLine
-    ? "flex-col justify-center gap-1 py-1.5"
-    : "items-center leading-none"
+  showProjectDiffLine ? "flex-col justify-center gap-1 py-1.5" : "items-center"
 
 const SidebarGitStatusSummary = ({
   gitStatus
@@ -448,6 +448,79 @@ export const AppSidebarShell = ({
   )
 }
 
+interface SessionContextMenuState {
+  sessionId: string
+  x: number
+  y: number
+}
+
+const SessionContextMenu = ({
+  onClose,
+  state
+}: {
+  onClose: () => void
+  state: SessionContextMenuState
+}) => {
+  const { t } = useI18n({ keyPrefix: "home.sidebar" })
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const isOutsideMenu = (target: EventTarget | null) =>
+      menuRef.current !== null && !menuRef.current.contains(target as Node)
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isOutsideMenu(event.target)) {
+        onClose()
+      }
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose()
+      }
+    }
+    const handleContextMenuOutside = (event: MouseEvent) => {
+      if (isOutsideMenu(event.target)) {
+        onClose()
+      }
+    }
+
+    requestAnimationFrame(() => {
+      document.addEventListener("pointerdown", handlePointerDown)
+      document.addEventListener("keydown", handleEscape)
+      document.addEventListener("contextmenu", handleContextMenuOutside)
+    })
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleEscape)
+      document.removeEventListener("contextmenu", handleContextMenuOutside)
+    }
+  }, [onClose])
+
+  const handleCopySessionId = useCallback(() => {
+    void navigator.clipboard.writeText(state.sessionId)
+    onClose()
+  }, [onClose, state.sessionId])
+
+  return createPortal(
+    <div
+      className="fixed z-50 min-w-48 rounded-xl border border-sidebar-border/70 bg-popover/95 p-1 text-[13px] text-popover-foreground shadow-[0_18px_44px_oklch(0_0_0/0.32)] backdrop-blur-xl"
+      ref={menuRef}
+      style={{ left: state.x, top: state.y }}
+    >
+      <button
+        className="flex w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-1.5 text-left text-inherit transition-colors outline-none hover:bg-white/8 focus-visible:bg-white/8 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        onClick={handleCopySessionId}
+        type="button"
+      >
+        <HugeiconsIcon className="size-3.5 shrink-0" icon={Copy02Icon} />
+        <span>{t("copySessionId")}</span>
+      </button>
+    </div>,
+    document.body
+  )
+}
+
 const ChatSessionItem = ({
   archivingSessionId,
   currentSessionId,
@@ -460,9 +533,25 @@ const ChatSessionItem = ({
   togglingPinnedSessionId
 }: ChatSessionItemProps) => {
   const { t } = useI18n({ keyPrefix: "home.sidebar" })
+  const [contextMenu, setContextMenu] =
+    useState<SessionContextMenuState | null>(null)
   const handleClick = useCallback(() => {
     onOpen(session.id)
   }, [onOpen, session.id])
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      setContextMenu({
+        sessionId: session.id,
+        x: event.clientX,
+        y: event.clientY
+      })
+    },
+    [session.id]
+  )
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
   const metaItems = getChatSessionMetaItems({ session })
   const diffMetaItem = metaItems.find((item) => item.kind === "git-diff")
   const timeMetaItem = metaItems.find((item) => item.kind === "time")
@@ -471,7 +560,7 @@ const ChatSessionItem = ({
   const isTogglingPinned = togglingPinnedSessionId === session.id
   const pinActionLabel = t(isPinned ? "unpinSession" : "pinSession")
   const handleTogglePinned = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
 
@@ -480,7 +569,7 @@ const ChatSessionItem = ({
     [isPinned, onTogglePinned, session.id]
   )
   const handleArchiveClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
       event.preventDefault()
       event.stopPropagation()
 
@@ -501,6 +590,7 @@ const ChatSessionItem = ({
           getSessionRowPaddingClassName(showPinAction)
         )}
         data-active={isRowActive ? true : undefined}
+        onContextMenu={handleContextMenu}
       >
         {showPinAction ? (
           <button
@@ -542,7 +632,7 @@ const ChatSessionItem = ({
                 getSessionTitleContainerLayoutClassName(showProjectDiffLine)
               )}
             >
-              <span className="block max-w-full truncate leading-none">
+              <span className="block max-w-full truncate leading-5">
                 {getChatSessionTitle({
                   fallbackTitle: fallbackSessionTitle,
                   session
@@ -554,7 +644,7 @@ const ChatSessionItem = ({
                 </span>
               ) : null}
             </div>
-            <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-none">
+            <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-5">
               {diffMetaItem?.label ? (
                 <SidebarGitStatusSummary gitStatus={session.gitStatus} />
               ) : null}
@@ -586,6 +676,12 @@ const ChatSessionItem = ({
           </button>
         </div>
       </div>
+      {contextMenu ? (
+        <SessionContextMenu
+          onClose={handleCloseContextMenu}
+          state={contextMenu}
+        />
+      ) : null}
     </SidebarMenuItem>
   )
 }

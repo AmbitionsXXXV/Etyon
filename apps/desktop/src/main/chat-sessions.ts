@@ -125,7 +125,7 @@ export const listChatSessions = async (
     .select()
     .from(chatSessions)
     .where(isNull(chatSessions.archivedAt))
-    .orderBy(desc(chatSessions.lastOpenedAt), desc(chatSessions.createdAt))
+    .orderBy(desc(chatSessions.updatedAt), desc(chatSessions.createdAt))
   const gitStatuses = await getGitProjectStatuses(
     sessions.map((session) => session.projectPath)
   )

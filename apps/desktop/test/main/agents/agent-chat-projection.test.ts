@@ -118,19 +118,7 @@ describe("agent chat projection", () => {
             toolCallId: "tool-1",
             toolName: "read",
             type: "dynamic-tool"
-          }
-        ],
-        role: "assistant"
-      },
-      {
-        id: "agent-run-1-3-assistant",
-        metadata: {
-          agentProjection: {
-            runId: "run-1",
-            source: "agent_events"
-          }
-        },
-        parts: [
+          },
           {
             text: "Done.",
             type: "text"
@@ -654,6 +642,131 @@ describe("agent chat projection", () => {
           }
         ],
         role: "user"
+      }
+    ])
+  })
+
+  it("keeps active stream snapshot tool parts in the current assistant response", () => {
+    const messages = buildAgentChatProjectionMessages({
+      events: [
+        createAgentEvent(1, {
+          action: "appendMessage",
+          message: {
+            content: "Inspect and then write a report.",
+            role: "user",
+            type: "model"
+          }
+        }),
+        createAgentEvent(2, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                text: "I will inspect the project first.",
+                type: "text"
+              },
+              {
+                input: {
+                  path: "package.json"
+                },
+                toolCallId: "read-call-1",
+                toolName: "read",
+                type: "tool-call"
+              }
+            ],
+            role: "assistant",
+            type: "model"
+          }
+        }),
+        createAgentEvent(3, {
+          action: "appendMessage",
+          message: {
+            content: [
+              {
+                output: {
+                  type: "text",
+                  value: '{"name":"etyon"}'
+                },
+                toolCallId: "read-call-1",
+                toolName: "read",
+                type: "tool-result"
+              }
+            ],
+            role: "tool",
+            type: "model"
+          }
+        }),
+        createAgentEvent(
+          4,
+          {
+            parts: [
+              {
+                text: "I will inspect the project first.",
+                type: "text"
+              },
+              {
+                input: {
+                  path: "package.json"
+                },
+                output: '{"name":"etyon"}',
+                state: "output-available",
+                toolCallId: "read-call-1",
+                toolName: "read",
+                type: "dynamic-tool"
+              },
+              {
+                approval: {
+                  id: "approval-write-1"
+                },
+                input: {
+                  content: "report",
+                  path: "report.md"
+                },
+                state: "approval-requested",
+                toolCallId: "write-call-1",
+                toolName: "write",
+                type: "dynamic-tool"
+              }
+            ]
+          },
+          "agent_ui_stream_snapshot_created"
+        )
+      ],
+      runId: "run-1"
+    })
+
+    const assistantMessages = messages.filter(
+      (message) => message.role === "assistant"
+    )
+
+    expect(assistantMessages).toHaveLength(1)
+    expect(assistantMessages[0]?.parts).toEqual([
+      {
+        text: "I will inspect the project first.",
+        type: "text"
+      },
+      {
+        input: {
+          path: "package.json"
+        },
+        output: '{"name":"etyon"}',
+        state: "output-available",
+        toolCallId: "read-call-1",
+        toolName: "read",
+        type: "dynamic-tool"
+      },
+      {
+        approval: {
+          id: "approval-write-1"
+        },
+        input: {
+          content: "report",
+          path: "report.md"
+        },
+        state: "approval-requested",
+        toolCallId: "write-call-1",
+        toolName: "write",
+        type: "dynamic-tool"
       }
     ])
   })

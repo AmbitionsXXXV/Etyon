@@ -3,7 +3,9 @@ import { useI18n } from "@etyon/i18n/react"
 import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { isToolUIPart } from "ai"
+import type { ComponentPropsWithoutRef } from "react"
 import { Streamdown } from "streamdown"
+import type { Components, ExtraProps } from "streamdown"
 
 import {
   AssistantThinkingTrace,
@@ -42,6 +44,7 @@ type SourceUrlChatPart = Extract<
 >
 type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
 type FileChatPart = Extract<ChatUiMessage["parts"][number], { type: "file" }>
+type MarkdownTableProps = ComponentPropsWithoutRef<"table"> & ExtraProps
 
 const STREAMDOWN_MARKDOWN_CLASS_NAME = cn(
   "min-w-0 text-sm leading-6 text-foreground",
@@ -72,6 +75,24 @@ const STREAMDOWN_MARKDOWN_CLASS_NAME = cn(
   "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
 )
 
+const MarkdownTable = ({
+  children,
+  className,
+  node: _node,
+  ...props
+}: MarkdownTableProps) => (
+  <table
+    className={cn("my-3 w-full border-collapse text-sm", className)}
+    {...props}
+  >
+    {children}
+  </table>
+)
+
+const STREAMDOWN_MARKDOWN_COMPONENTS = {
+  table: MarkdownTable
+} satisfies Components
+
 const AssistantMarkdownContent = ({
   isAnimating,
   streamdownAnimation,
@@ -85,15 +106,16 @@ const AssistantMarkdownContent = ({
     return null
   }
 
-  const animated = getStreamdownAnimateOptions(streamdownAnimation)
-  const shouldAnimate = isAnimating && animated !== false
+  const animated = isAnimating
+    ? false
+    : getStreamdownAnimateOptions(streamdownAnimation)
 
   return (
     <Streamdown
       animated={animated}
-      caret={shouldAnimate ? "block" : undefined}
       className={STREAMDOWN_MARKDOWN_CLASS_NAME}
-      isAnimating={shouldAnimate}
+      components={STREAMDOWN_MARKDOWN_COMPONENTS}
+      isAnimating={false}
       skipHtml
     >
       {text}
@@ -246,6 +268,35 @@ const AssistantSourceUrlPartTimeline = ({
   )
 }
 
+const hasVisibleAssistantBodyPart = ({
+  part,
+  showToolTraces
+}: {
+  part: ChatUiMessage["parts"][number]
+  showToolTraces: boolean
+}): boolean => {
+  if (
+    part.type === "file" ||
+    part.type === "source-document" ||
+    part.type === "source-url"
+  ) {
+    return true
+  }
+
+  if (part.type === "reasoning") {
+    return (part as ReasoningChatPart).text.trim().length > 0
+  }
+
+  if (part.type === "text") {
+    return splitAssistantRenderableTextSegments({
+      showToolTraces,
+      text: (part as TextChatPart).text
+    }).some((segment) => "text" in segment && segment.text.trim().length > 0)
+  }
+
+  return false
+}
+
 const AssistantTimelinePart = ({
   chatSessionId,
   isStreamdownAnimating,
@@ -358,6 +409,12 @@ export const AssistantMessageTimeline = ({
   streamdownAnimation: StreamdownAnimation
 }) => {
   const { t } = useI18n()
+  const shouldRenderToolsAsBody = !message.parts.some((part) =>
+    hasVisibleAssistantBodyPart({
+      part,
+      showToolTraces
+    })
+  )
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -376,7 +433,7 @@ export const AssistantMessageTimeline = ({
           onApprovalResponse={onApprovalResponse}
           part={part}
           partIndex={index}
-          showToolTraces={showToolTraces}
+          showToolTraces={showToolTraces || shouldRenderToolsAsBody}
           streamdownAnimation={streamdownAnimation}
         />
       ))}

@@ -1329,7 +1329,11 @@ export const PromptInput = ({
       const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
       const normalizedText = text.trim()
 
-      if ((normalizedText === "" && mentions.length === 0) || disabled) {
+      if (
+        (normalizedText === "" && mentions.length === 0) ||
+        disabled ||
+        (isOutputActive && !isQueueSubmitEnabled)
+      ) {
         return
       }
 
@@ -1359,7 +1363,15 @@ export const PromptInput = ({
         setIsSubmitting(false)
       }
     },
-    [disabled, editingQueuedMessageId, editor, onQueuedMessageUpdate, onSubmit]
+    [
+      disabled,
+      editingQueuedMessageId,
+      editor,
+      isOutputActive,
+      isQueueSubmitEnabled,
+      onQueuedMessageUpdate,
+      onSubmit
+    ]
   )
 
   const handleSelectMentionItemClick = useCallback(
