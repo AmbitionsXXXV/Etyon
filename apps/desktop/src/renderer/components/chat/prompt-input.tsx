@@ -846,14 +846,14 @@ const PromptInputAgentModeControl = ({
     >
       {CHAT_AGENT_MODE_OPTIONS.map((option, index) => (
         <ToggleButton
-          aria-label={labelByMode[option.id]}
+          aria-label={labelByMode[option.id as keyof typeof labelByMode]}
           className="h-8 min-w-0 px-2.5 text-xs"
           id={option.id}
           key={option.id}
         >
           {index > 0 ? <ToggleButtonGroup.Separator /> : null}
           <HugeiconsIcon icon={option.icon} size={14} strokeWidth={2} />
-          <span>{labelByMode[option.id]}</span>
+          <span>{labelByMode[option.id as keyof typeof labelByMode]}</span>
         </ToggleButton>
       ))}
     </ToggleButtonGroup>

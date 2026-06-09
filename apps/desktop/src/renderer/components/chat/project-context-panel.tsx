@@ -358,10 +358,14 @@ const ProjectPanelStatusStrip = ({
 
       {gitStatusSummaryItems.map((item) => (
         <Chip
-          color={PROJECT_STATUS_CHIP_COLORS[item.status]}
+          color={
+            PROJECT_STATUS_CHIP_COLORS[
+              item.status as keyof typeof PROJECT_STATUS_CHIP_COLORS
+            ]
+          }
           key={item.status}
           size="sm"
-          title={`${t(PROJECT_STATUS_LABEL_KEYS[item.status])}: ${item.count}`}
+          title={`${t(PROJECT_STATUS_LABEL_KEYS[item.status as keyof typeof PROJECT_STATUS_LABEL_KEYS])}: ${item.count}`}
           variant="soft"
         >
           <Chip.Label className="tabular-nums">
@@ -800,7 +804,9 @@ const ProjectCommitPanel = ({
                   <span
                     className={cn(
                       "min-w-0 whitespace-normal leading-5 [overflow-wrap:anywhere]",
-                      PROJECT_STATUS_TEXT_CLASS_NAMES[file.status]
+                      PROJECT_STATUS_TEXT_CLASS_NAMES[
+                        file.status as keyof typeof PROJECT_STATUS_TEXT_CLASS_NAMES
+                      ]
                     )}
                     title={file.path}
                   >
@@ -808,12 +814,20 @@ const ProjectCommitPanel = ({
                   </span>
                   <Chip
                     className="shrink-0"
-                    color={PROJECT_STATUS_CHIP_COLORS[file.status]}
+                    color={
+                      PROJECT_STATUS_CHIP_COLORS[
+                        file.status as keyof typeof PROJECT_STATUS_CHIP_COLORS
+                      ]
+                    }
                     size="sm"
                     variant="soft"
                   >
                     <Chip.Label className="whitespace-nowrap">
-                      {t(PROJECT_STATUS_LABEL_KEYS[file.status])}
+                      {t(
+                        PROJECT_STATUS_LABEL_KEYS[
+                          file.status as keyof typeof PROJECT_STATUS_LABEL_KEYS
+                        ]
+                      )}
                     </Chip.Label>
                   </Chip>
                 </li>

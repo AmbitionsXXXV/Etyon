@@ -468,7 +468,11 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
                     {t(profile.nameKey)}
                   </div>
                   <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[0.625rem] font-medium text-muted-foreground">
-                    {t(AGENT_MODE_LABEL_KEYS[profile.executionMode])}
+                    {t(
+                      AGENT_MODE_LABEL_KEYS[
+                        profile.executionMode as keyof typeof AGENT_MODE_LABEL_KEYS
+                      ]
+                    )}
                   </span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">

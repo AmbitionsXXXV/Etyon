@@ -197,7 +197,9 @@ export const CreateCustomThemeDialog = ({
                       <PresetButton
                         active={activePreset === preset.key}
                         key={preset.key}
-                        label={presetLabels[preset.key]}
+                        label={
+                          presetLabels[preset.key as keyof typeof presetLabels]
+                        }
                         onSelect={handlePresetSelect}
                         preset={preset}
                       />

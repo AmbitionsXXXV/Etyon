@@ -1024,7 +1024,11 @@ export const StructuredToolTraceCard = ({
   const commandOutputContent = getCommandOutputContent(commandOutput)
   const isCommandStreaming =
     part.state === "input-streaming" || part.state === "input-available"
-  const statusLabel = t(TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[part.state])
+  const statusLabel = t(
+    TOOL_TRACE_STATE_LABEL_KEY_BY_STATE[
+      part.state as keyof typeof TOOL_TRACE_STATE_LABEL_KEY_BY_STATE
+    ]
+  )
   const statusClassName = getToolTraceStateClassName(part.state)
   const heroToolState = mapAssistantToolPartStateToChatToolState(part.state)
   const metaItems = getStructuredToolTraceMetaItems({

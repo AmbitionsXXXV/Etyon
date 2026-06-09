@@ -219,7 +219,11 @@ export const SettingsPage = ({
         handleSelect: () => handleNavSelect(entry.id),
         icon: entry.icon,
         id: entry.id,
-        label: t(SETTINGS_NAV_LABEL_KEY_BY_SECTION[entry.id])
+        label: t(
+          SETTINGS_NAV_LABEL_KEY_BY_SECTION[
+            entry.id as keyof typeof SETTINGS_NAV_LABEL_KEY_BY_SECTION
+          ]
+        )
       })),
     [handleNavSelect, t]
   )

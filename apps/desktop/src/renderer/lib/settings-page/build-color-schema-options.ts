@@ -25,11 +25,17 @@ export const buildHeroUiProColorSchemaPairOptions = (
 ): ColorSchemaPairOption[] =>
   HEROUI_PRO_COLOR_SCHEMA_PRESETS.map((preset) => ({
     darkColorSchema: preset.darkColorSchema,
-    darkSwatches: DARK_COLOR_SCHEMA_SWATCHES[preset.darkColorSchema],
+    darkSwatches:
+      DARK_COLOR_SCHEMA_SWATCHES[
+        preset.darkColorSchema as keyof typeof DARK_COLOR_SCHEMA_SWATCHES
+      ],
     id: preset.id,
     label: t(preset.labelKey),
     lightColorSchema: preset.lightColorSchema,
-    lightSwatches: LIGHT_COLOR_SCHEMA_SWATCHES[preset.lightColorSchema]
+    lightSwatches:
+      LIGHT_COLOR_SCHEMA_SWATCHES[
+        preset.lightColorSchema as keyof typeof LIGHT_COLOR_SCHEMA_SWATCHES
+      ]
   }))
 
 export const buildDarkColorSchemaOptions = (

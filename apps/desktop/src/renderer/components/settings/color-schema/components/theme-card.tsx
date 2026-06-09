@@ -28,7 +28,8 @@ export const CustomThemeCard = ({
           <div className="space-y-1">
             <div className="text-sm font-semibold">{theme.name}</div>
             <div className="text-xs text-muted-foreground">
-              {presetLabels[theme.preset]} · {typeLabels[theme.type]}
+              {presetLabels[theme.preset as keyof typeof presetLabels]} ·{" "}
+              {typeLabels[theme.type as keyof typeof typeLabels]}
             </div>
           </div>
           <Button onPress={handleDelete} type="button" variant="danger-soft">

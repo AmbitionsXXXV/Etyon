@@ -710,7 +710,8 @@ export const ProvidersTab = ({
     return () => window.clearInterval(intervalId)
   }, [cursorLoginRequestId, cursorLoginStartedAt, pollCursorLoginMutation, t])
 
-  const providerFetchState = fetchStates[activeProvider.id]
+  const providerFetchState =
+    fetchStates[activeProvider.id as keyof typeof fetchStates]
   const hasProviderCredential = isCursorProvider
     ? isCursorAuthPluginEnabled && isCursorAuthenticated
     : Boolean(activeProviderConfig.apiKey.trim())
@@ -839,7 +840,11 @@ export const ProvidersTab = ({
                   />
                 </div>
                 <p className="max-w-xl text-xs text-muted-foreground">
-                  {t(PROVIDER_DESCRIPTION_KEY_BY_ID[activeProvider.id])}
+                  {t(
+                    PROVIDER_DESCRIPTION_KEY_BY_ID[
+                      activeProvider.id as keyof typeof PROVIDER_DESCRIPTION_KEY_BY_ID
+                    ]
+                  )}
                 </p>
               </div>
 
