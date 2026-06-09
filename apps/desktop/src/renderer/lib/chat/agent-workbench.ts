@@ -2,6 +2,8 @@ import type {
   AgentRetrySettings,
   AgentRunGraphExecutionNode,
   AgentRunGraphExecutionPlan,
+  AgentRunGraphTemplate,
+  AgentRunGraphTemplateId,
   AgentRunTraceRun,
   AgentSessionSnapshotOutput,
   AgentSessionTreeEntry,
@@ -19,6 +21,8 @@ import {
   getProjectDiffSummary,
   parseProjectDiffFiles
 } from "@/renderer/lib/chat/project-context-panel"
+import { CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS } from "@/renderer/lib/sidebar/chat-sessions"
+import { isRecord } from "@/renderer/lib/utils"
 
 export type AgentRunTracePreview = ReturnType<typeof buildAgentRunTracePreview>
 
@@ -240,9 +244,6 @@ export const AGENT_WORKBENCH_RUN_GRAPH_MAX_DEPTH = 6
 const AGENT_WORKBENCH_GRAPH_OUTPUT_PREVIEW_MAX_LENGTH = 220
 const AGENT_WORKBENCH_SESSION_ENTRY_PREVIEW_MAX_LENGTH = 160
 const AGENT_WORKBENCH_SHELL_OUTPUT_PREVIEW_MAX_LENGTH = 1_200
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
 
 const truncateSessionEntryPreview = (value: string): string =>
   value.length > AGENT_WORKBENCH_SESSION_ENTRY_PREVIEW_MAX_LENGTH
@@ -1478,3 +1479,78 @@ export const getGraphApprovalOperationRunIds = ({
 export const hasRunningRunGraphNode = (
   plan: AgentRunGraphExecutionPlan | null
 ): boolean => plan?.nodes.some((node) => node.status === "running") ?? false
+
+export type AgentRunTracePreviewItem = AgentRunTracePreview["events"][number]
+export type AgentWorkbenchPanelMode = "embedded" | "standalone"
+
+export const RUN_LIST_LIMIT = 30
+export const ARTIFACT_PREVIEW_MAX_CHARS = 4_000
+export const DIFF_FILE_PREVIEW_LIMIT = 6
+export const DEFAULT_RUN_GRAPH_TEMPLATE_ID: AgentRunGraphTemplateId =
+  "solo-coder"
+export const SESSION_ROOT_ENTRY_VALUE = "__root__"
+export const EMPTY_AGENT_RUNS: AgentRunTraceRun[] = []
+export const EMPTY_GRAPH_RETRIES: AgentWorkbenchGraphRetryPreview[] = []
+export const EMPTY_RUN_GRAPH_TEMPLATES: AgentRunGraphTemplate[] = []
+
+const processDurationFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0
+})
+
+const runTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  month: "short"
+})
+
+export const isLiveAgentRun = (run: AgentRunTraceRun): boolean =>
+  run.status === "running" || run.status === "suspended"
+
+export const getAgentWorkbenchRunsRefetchInterval = ({
+  isRequestPending,
+  runs
+}: {
+  isRequestPending: boolean
+  runs: readonly AgentRunTraceRun[]
+}): false | number =>
+  isRequestPending || runs.some(isLiveAgentRun)
+    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+    : false
+
+export const getAgentWorkbenchApprovalsRefetchInterval = ({
+  approvalCount,
+  isRequestPending
+}: {
+  approvalCount: number
+  isRequestPending: boolean
+}): false | number =>
+  isRequestPending || approvalCount > 0
+    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
+    : false
+
+export const formatRunTime = (run: AgentRunTraceRun): string =>
+  runTimeFormatter.format(new Date(run.startedAt))
+
+export const formatProcessDuration = (durationMs?: number): string => {
+  if (durationMs === undefined) {
+    return "-"
+  }
+
+  const normalizedDurationMs = Math.max(0, durationMs)
+
+  if (normalizedDurationMs < 1_000) {
+    return `${Math.round(normalizedDurationMs)} ms`
+  }
+
+  return `${processDurationFormatter.format(normalizedDurationMs / 1_000)} s`
+}
+
+export const getAgentWorkbenchRetrySettings = ({
+  graphPlan,
+  retrySettings
+}: {
+  graphPlan: AgentRunGraphExecutionPlan | null
+  retrySettings?: AgentRetrySettings
+}): AgentRetrySettings | undefined => graphPlan?.retryPolicy ?? retrySettings

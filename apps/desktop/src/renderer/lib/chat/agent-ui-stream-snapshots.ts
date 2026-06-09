@@ -5,6 +5,7 @@ import type {
 import type { UIMessage } from "ai"
 
 import { parseChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+import { isRecord } from "@/renderer/lib/utils"
 
 export interface AgentUiStreamSnapshotCursor {
   nextSequence: number
@@ -29,9 +30,6 @@ export interface ResolveAgentUiStreamSnapshotInputOptions<
   messages: readonly MESSAGE[]
   sessionId: string
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
 
 const getMetadataRecord = (metadata: unknown): Record<string, unknown> =>
   isRecord(metadata) ? metadata : {}

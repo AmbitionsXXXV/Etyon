@@ -41,13 +41,25 @@ import type { ReactNode } from "react"
 
 import type {
   AgentRunTracePreview,
+  AgentRunTracePreviewItem,
   AgentWorkbenchBackgroundProcessPreview,
+  AgentWorkbenchGraphNodePreview,
   AgentWorkbenchGraphRetryPreview,
+  AgentWorkbenchPanelMode,
   AgentWorkbenchRetryPolicyPreview,
   AgentWorkbenchShellCommandPreview,
   AgentWorkbenchShellOutputPreview
 } from "@/renderer/lib/chat/agent-workbench"
 import {
+  ARTIFACT_PREVIEW_MAX_CHARS,
+  DEFAULT_RUN_GRAPH_TEMPLATE_ID,
+  DIFF_FILE_PREVIEW_LIMIT,
+  EMPTY_AGENT_RUNS,
+  EMPTY_GRAPH_RETRIES,
+  EMPTY_RUN_GRAPH_TEMPLATES,
+  formatProcessDuration,
+  formatRunTime,
+  getAgentWorkbenchApprovalsRefetchInterval,
   getAgentWorkbenchBackgroundProcessPreview,
   getAgentWorkbenchControlState,
   getAgentWorkbenchDiffPreview,
@@ -60,15 +72,19 @@ import {
   getAgentWorkbenchPendingApprovals,
   getAgentWorkbenchPreview,
   getAgentWorkbenchRetryPolicyPreview,
+  getAgentWorkbenchRetrySettings,
   getAgentWorkbenchRootRunOrNull,
   getAgentWorkbenchRootTrace,
   getAgentWorkbenchRunDepth,
+  getAgentWorkbenchRunsRefetchInterval,
   getAgentWorkbenchSelectedRun,
   getAgentWorkbenchSessionPreview,
   getAgentWorkbenchShellCommandPreview,
   getAgentWorkbenchShellOutputPreview,
   getGraphApprovalOperationRunIds,
-  getGraphOperationRunIds
+  getGraphOperationRunIds,
+  RUN_LIST_LIMIT,
+  SESSION_ROOT_ENTRY_VALUE
 } from "@/renderer/lib/chat/agent-workbench"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { buildAgentApprovalInboxItem } from "@/renderer/lib/settings-page/agent-approval-inbox"
@@ -77,7 +93,6 @@ import {
   AGENT_MAX_AUTOMATIC_RETRIES_MIN,
   clampAgentMaxAutomaticRetries
 } from "@/renderer/lib/settings-page/agents-settings"
-import { CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS } from "@/renderer/lib/sidebar/chat-sessions"
 
 interface AgentWorkbenchPanelProps {
   gitDiff?: GitProjectDiffOutput
@@ -93,26 +108,6 @@ interface AgentWorkbenchPanelChromeProps {
   children: ReactNode
   mode: AgentWorkbenchPanelMode
   runs: AgentRunTraceRun[]
-}
-
-interface InvalidateAgentWorkbenchQueriesOptions {
-  approvalsQueryKey: QueryKey
-  queryClient: QueryClient
-  runIds: string[]
-  runsQueryKey: QueryKey
-  sessionId: string
-}
-
-interface RefreshAgentWorkbenchQueriesOptions {
-  approvalsQueryKey: QueryKey
-  queryClient: QueryClient
-  rootRun: AgentRunTraceRun | null
-  runsQueryKey: QueryKey
-  sessionQueryKey: QueryKey
-  selectedArtifactId: string | null
-  selectedRun: AgentRunTraceRun | null
-  sessionId: string
-  templatesQueryKey: QueryKey
 }
 
 interface UseAgentWorkbenchOperationsOptions {
@@ -142,12 +137,6 @@ interface UseAgentWorkbenchSelectionSyncOptions {
   templates: AgentRunGraphTemplate[]
 }
 
-type AgentRunTracePreviewItem = AgentRunTracePreview["events"][number]
-type AgentWorkbenchGraphNodePreview = NonNullable<
-  ReturnType<typeof getAgentWorkbenchGraphPreview>
->["stages"][number]["nodes"][number]
-type AgentWorkbenchPanelMode = "embedded" | "standalone"
-
 interface RespondAgentWorkbenchApprovalInput {
   approval: PendingAgentApproval
   approved: boolean
@@ -158,97 +147,25 @@ interface MoveAgentWorkbenchSessionLeafInput {
   entryId: null | string
 }
 
-const RUN_LIST_LIMIT = 30
-const ARTIFACT_PREVIEW_MAX_CHARS = 4_000
-const DIFF_FILE_PREVIEW_LIMIT = 6
-const DEFAULT_RUN_GRAPH_TEMPLATE_ID: AgentRunGraphTemplateId = "solo-coder"
-const SESSION_ROOT_ENTRY_VALUE = "__root__"
-const EMPTY_AGENT_RUNS: AgentRunTraceRun[] = []
-const EMPTY_GRAPH_RETRIES: AgentWorkbenchGraphRetryPreview[] = []
-const EMPTY_RUN_GRAPH_TEMPLATES: AgentRunGraphTemplate[] = []
-const runGridHeightClassNameByMode: Record<AgentWorkbenchPanelMode, string> = {
-  embedded: "max-h-[min(24rem,40vh)]",
-  standalone: "flex-1"
+interface InvalidateAgentWorkbenchQueriesOptions {
+  approvalsQueryKey: QueryKey
+  queryClient: QueryClient
+  runIds: string[]
+  runsQueryKey: QueryKey
+  sessionId: string
 }
 
-type ChipColor = "danger" | "default" | "success" | "warning"
-
-const runStatusChipColor: Record<AgentRunTraceRun["status"], ChipColor> = {
-  failed: "danger",
-  running: "warning",
-  succeeded: "success",
-  suspended: "default"
+interface RefreshAgentWorkbenchQueriesOptions {
+  approvalsQueryKey: QueryKey
+  queryClient: QueryClient
+  rootRun: AgentRunTraceRun | null
+  runsQueryKey: QueryKey
+  sessionQueryKey: QueryKey
+  selectedArtifactId: string | null
+  selectedRun: AgentRunTraceRun | null
+  sessionId: string
+  templatesQueryKey: QueryKey
 }
-
-const graphNodeStatusChipColor: Record<
-  AgentRunGraphExecutionNode["status"],
-  ChipColor
-> = {
-  failed: "danger",
-  pending: "default",
-  running: "warning",
-  skipped: "default",
-  succeeded: "success",
-  suspended: "default"
-}
-
-const backgroundProcessStatusChipColor: Record<
-  AgentWorkbenchBackgroundProcessPreview["status"],
-  ChipColor
-> = {
-  exited: "success",
-  running: "warning",
-  spawn_error: "danger",
-  stopped: "default",
-  unknown: "default"
-}
-
-const shellCommandStatusChipColor: Record<
-  AgentWorkbenchShellCommandPreview["status"],
-  ChipColor
-> = {
-  failed: "danger",
-  running: "warning",
-  success: "success",
-  unknown: "default"
-}
-
-const isLiveAgentRun = (run: AgentRunTraceRun): boolean =>
-  run.status === "running" || run.status === "suspended"
-
-const getAgentWorkbenchRunsRefetchInterval = ({
-  isRequestPending,
-  runs
-}: {
-  isRequestPending: boolean
-  runs: readonly AgentRunTraceRun[]
-}): false | number =>
-  isRequestPending || runs.some(isLiveAgentRun)
-    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
-    : false
-
-const getAgentWorkbenchApprovalsRefetchInterval = ({
-  approvalCount,
-  isRequestPending
-}: {
-  approvalCount: number
-  isRequestPending: boolean
-}): false | number =>
-  isRequestPending || approvalCount > 0
-    ? CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
-    : false
-
-const processDurationFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 0
-})
-
-const runTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  month: "short"
-})
 
 const invalidateAgentWorkbenchQueries = ({
   approvalsQueryKey,
@@ -275,31 +192,6 @@ const invalidateAgentWorkbenchQueries = ({
     })
   }
 }
-
-const formatRunTime = (run: AgentRunTraceRun): string =>
-  runTimeFormatter.format(new Date(run.startedAt))
-
-const formatProcessDuration = (durationMs?: number): string => {
-  if (durationMs === undefined) {
-    return "-"
-  }
-
-  const normalizedDurationMs = Math.max(0, durationMs)
-
-  if (normalizedDurationMs < 1_000) {
-    return `${Math.round(normalizedDurationMs)} ms`
-  }
-
-  return `${processDurationFormatter.format(normalizedDurationMs / 1_000)} s`
-}
-
-const getAgentWorkbenchRetrySettings = ({
-  graphPlan,
-  retrySettings
-}: {
-  graphPlan: AgentRunGraphExecutionPlan | null
-  retrySettings?: AgentRetrySettings
-}): AgentRetrySettings | undefined => graphPlan?.retryPolicy ?? retrySettings
 
 const refreshAgentWorkbenchQueries = ({
   approvalsQueryKey,
@@ -359,6 +251,53 @@ const refreshAgentWorkbenchQueries = ({
       }
     }).queryKey
   })
+}
+
+const runGridHeightClassNameByMode: Record<AgentWorkbenchPanelMode, string> = {
+  embedded: "max-h-[min(24rem,40vh)]",
+  standalone: "flex-1"
+}
+
+type ChipColor = "danger" | "default" | "success" | "warning"
+
+const runStatusChipColor: Record<AgentRunTraceRun["status"], ChipColor> = {
+  failed: "danger",
+  running: "warning",
+  succeeded: "success",
+  suspended: "default"
+}
+
+const graphNodeStatusChipColor: Record<
+  AgentRunGraphExecutionNode["status"],
+  ChipColor
+> = {
+  failed: "danger",
+  pending: "default",
+  running: "warning",
+  skipped: "default",
+  succeeded: "success",
+  suspended: "default"
+}
+
+const backgroundProcessStatusChipColor: Record<
+  AgentWorkbenchBackgroundProcessPreview["status"],
+  ChipColor
+> = {
+  exited: "success",
+  running: "warning",
+  spawn_error: "danger",
+  stopped: "default",
+  unknown: "default"
+}
+
+const shellCommandStatusChipColor: Record<
+  AgentWorkbenchShellCommandPreview["status"],
+  ChipColor
+> = {
+  failed: "danger",
+  running: "warning",
+  success: "success",
+  unknown: "default"
 }
 
 const RunStatusBadge = ({ status }: { status: AgentRunTraceRun["status"] }) => (

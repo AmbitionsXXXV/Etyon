@@ -8,6 +8,26 @@ import type {
 import { parseDiffFromFile, parsePatchFiles } from "@pierre/diffs"
 import type { FileDiffMetadata } from "@pierre/diffs"
 import type { GitStatusEntry } from "@pierre/trees"
+import type { Key } from "react"
+
+export const PROJECT_CONTEXT_FILES_TAB_ID = "files"
+export const PROJECT_CONTEXT_CHANGES_TAB_ID = "changes"
+export const PROJECT_CONTEXT_COMMIT_TAB_ID = "commit"
+export type ProjectContextPanelView =
+  | typeof PROJECT_CONTEXT_FILES_TAB_ID
+  | typeof PROJECT_CONTEXT_CHANGES_TAB_ID
+  | typeof PROJECT_CONTEXT_COMMIT_TAB_ID
+export const COMMIT_MESSAGE_MAX_LENGTH = 500
+export const PROJECT_FILE_TREE_DEFAULT_SIZE = 30
+export const PROJECT_FILE_TREE_MAX_SIZE = 55
+export const PROJECT_FILE_TREE_MIN_SIZE = 18
+
+export const isProjectContextPanelView = (
+  view: Key
+): view is ProjectContextPanelView =>
+  view === PROJECT_CONTEXT_FILES_TAB_ID ||
+  view === PROJECT_CONTEXT_CHANGES_TAB_ID ||
+  view === PROJECT_CONTEXT_COMMIT_TAB_ID
 
 export interface ProjectDiffFileStats {
   additions: number

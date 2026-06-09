@@ -13,9 +13,9 @@ import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
   AgentChildTracePanel,
-  compactStructuredToolTraceParts,
   StructuredToolTraceCard
 } from "@/renderer/components/chat/message-tool-trace"
+import { compactStructuredToolTraceParts } from "@/renderer/lib/chat/message-tool-trace"
 
 interface QueryOptions {
   queryFn: () => Promise<unknown>

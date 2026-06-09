@@ -45,13 +45,7 @@ import {
   USER_MESSAGE_ACTIONS
 } from "@/renderer/components/chat/message-actions"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
-import {
-  PROJECT_CONTEXT_CHANGES_TAB_ID,
-  PROJECT_CONTEXT_COMMIT_TAB_ID,
-  PROJECT_CONTEXT_FILES_TAB_ID,
-  ProjectContextPanel
-} from "@/renderer/components/chat/project-context-panel"
-import type { ProjectContextPanelView } from "@/renderer/components/chat/project-context-panel"
+import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
 import { resolveAgentComposerQueueState } from "@/renderer/lib/chat/agent-queue"
@@ -80,8 +74,12 @@ import {
 import {
   formatProjectDiffCount,
   getProjectDiffSummary,
-  parseProjectDiffFiles
+  parseProjectDiffFiles,
+  PROJECT_CONTEXT_CHANGES_TAB_ID,
+  PROJECT_CONTEXT_COMMIT_TAB_ID,
+  PROJECT_CONTEXT_FILES_TAB_ID
 } from "@/renderer/lib/chat/project-context-panel"
+import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
 import {
   filterPromptSkillMentionItems,
   filterPromptTemplateItems,

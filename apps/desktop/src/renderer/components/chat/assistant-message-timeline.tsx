@@ -1,42 +1,32 @@
-import type { UIMessage } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChainOfThought } from "@heroui-pro/react"
-import { isToolUIPart } from "ai"
 import { useEffect, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 import { Streamdown } from "streamdown"
 import type { Components, ExtraProps } from "streamdown"
 
+import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool-trace"
 import {
-  compactStructuredToolTraceParts,
-  StructuredToolTraceCard
-} from "@/renderer/components/chat/message-tool-trace"
-import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+  buildAssistantChainEntries,
+  getAssistantBodyText,
+  getUrlHost,
+  hasPendingApproval,
+  isReferencePart,
+  openExternalUrl
+} from "@/renderer/lib/chat/assistant-message-timeline"
+import type {
+  ChainEntry,
+  ChatToolPart,
+  ChatUiMessage,
+  FileChatPart,
+  SourceDocumentChatPart,
+  SourceUrlChatPart
+} from "@/renderer/lib/chat/assistant-message-timeline"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
-import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
 
-type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
-type ChatToolPart = Extract<
-  ChatUiMessage["parts"][number],
-  { toolCallId: string }
->
-type ReasoningChatPart = Extract<
-  ChatUiMessage["parts"][number],
-  { type: "reasoning" }
->
-type SourceDocumentChatPart = Extract<
-  ChatUiMessage["parts"][number],
-  { type: "source-document" }
->
-type SourceUrlChatPart = Extract<
-  ChatUiMessage["parts"][number],
-  { type: "source-url" }
->
-type TextChatPart = Extract<ChatUiMessage["parts"][number], { type: "text" }>
-type FileChatPart = Extract<ChatUiMessage["parts"][number], { type: "file" }>
 type MarkdownTableProps = ComponentPropsWithoutRef<"table"> & ExtraProps
 
 const STREAMDOWN_MARKDOWN_CLASS_NAME = cn(
@@ -117,77 +107,6 @@ const AssistantMarkdownContent = ({
 }
 // CHAIN_OF_THOUGHT_ANCHOR
 
-type ChainEntry =
-  | {
-      key: string
-      kind: "reasoning"
-      text: string
-    }
-  | {
-      key: string
-      kind: "tool"
-      part: ChatToolPart
-      repeatCount: number
-    }
-
-const buildAssistantChainEntries = (message: ChatUiMessage): ChainEntry[] => {
-  const entries: ChainEntry[] = []
-  let toolRun: ChatToolPart[] = []
-  let reasoningIndex = 0
-
-  const flushToolRun = () => {
-    if (toolRun.length === 0) {
-      return
-    }
-
-    for (const { part, repeatCount } of compactStructuredToolTraceParts(
-      toolRun
-    )) {
-      entries.push({
-        key: `tool-${(part as ChatToolPart).toolCallId}`,
-        kind: "tool",
-        part: part as ChatToolPart,
-        repeatCount
-      })
-    }
-
-    toolRun = []
-  }
-
-  for (const part of message.parts) {
-    if (isToolUIPart(part as never)) {
-      toolRun.push(part as ChatToolPart)
-      continue
-    }
-
-    if (part.type === "reasoning") {
-      const reasoningText = (part as ReasoningChatPart).text.trim()
-
-      if (reasoningText.length === 0) {
-        continue
-      }
-
-      flushToolRun()
-      entries.push({
-        key: `reasoning-${reasoningIndex}`,
-        kind: "reasoning",
-        text: reasoningText
-      })
-      reasoningIndex += 1
-    }
-  }
-
-  flushToolRun()
-
-  return entries
-}
-
-const hasPendingApproval = (entries: readonly ChainEntry[]): boolean =>
-  entries.some(
-    (entry) =>
-      entry.kind === "tool" && entry.part.state === "approval-requested"
-  )
-
 const AssistantChainOfThought = ({
   chatSessionId,
   entries,
@@ -267,24 +186,6 @@ const AssistantChainOfThought = ({
   )
 }
 
-const getAssistantBodyText = (message: ChatUiMessage): string =>
-  message.parts
-    .filter((part): part is TextChatPart => part.type === "text")
-    .map((part) => part.text)
-    .join("\n\n")
-
-const openExternalUrl = (url: string): void => {
-  window.electron.ipcRenderer.invoke("open-external-url", url)
-}
-
-const getUrlHost = (url: string): string => {
-  try {
-    return new URL(url).host
-  } catch {
-    return url
-  }
-}
-
 const AssistantFilePartTimeline = ({ part }: { part: FileChatPart }) => (
   <div className="inline-flex max-w-full flex-col gap-1 rounded-md border border-border/70 bg-muted/50 px-3 py-2 text-xs">
     <span className="font-medium text-foreground">File</span>
@@ -351,11 +252,6 @@ const AssistantReferencePart = ({
 
   return null
 }
-
-const isReferencePart = (part: ChatUiMessage["parts"][number]): boolean =>
-  part.type === "file" ||
-  part.type === "source-document" ||
-  part.type === "source-url"
 
 export const AssistantMessageTimeline = ({
   chatSessionId,

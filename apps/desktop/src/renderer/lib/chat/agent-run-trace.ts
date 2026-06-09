@@ -4,6 +4,8 @@ import type {
   InspectAgentRunOutput
 } from "@etyon/rpc"
 
+import { isRecord } from "@/renderer/lib/utils"
+
 export interface AgentRunTracePreviewItem {
   detail: string
   id: string
@@ -65,9 +67,6 @@ export interface AgentRunGraphPreviewDisplay {
 const DEFAULT_TRACE_ITEM_LIMIT = 6
 const TRACE_DETAIL_MAX_LENGTH = 180
 const BYTES_PER_KIB = 1024
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
 
 const formatTraceDetail = (value: unknown): string => {
   if (value === undefined || value === null) {

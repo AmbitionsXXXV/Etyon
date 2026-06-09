@@ -1,5 +1,7 @@
 import type { ChatMention } from "@etyon/rpc"
 
+import { isRecord } from "@/renderer/lib/utils"
+
 export { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 
 export interface ChatMessageAgentProjectionMetadata {
@@ -12,9 +14,6 @@ export interface ChatMessageMetadata {
   mentions?: ChatMention[]
   workTimeMs?: number
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
 
 export const parseChatMessageMetadata = (
   metadata: unknown

@@ -11,34 +11,31 @@ import type { ChatStatus } from "@heroui-pro/react"
 import type { Key } from "@heroui/react"
 import { ToggleButton, ToggleButtonGroup } from "@heroui/react"
 import {
-  Message01Icon,
   CubeIcon,
   Delete02Icon,
   DragDropVerticalIcon,
   PencilEdit02Icon,
   Queue02Icon,
   SentIcon,
-  StopIcon,
-  WorkflowSquare02Icon
+  StopIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
-import type {
-  Dispatch,
-  KeyboardEvent,
-  MouseEvent,
-  ReactNode,
-  SetStateAction
-} from "react"
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { resolveAgentComposerPrimaryAction } from "@/renderer/lib/chat/agent-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
+  CHAT_AGENT_MODE_OPTIONS,
+  COMPOSITION_SUBMIT_GUARD_MS,
+  EMPTY_PROMPT_TEMPLATE_ITEMS,
+  EMPTY_QUEUED_MESSAGES,
   PROJECT_MENTION_NODE_TYPE,
+  PROMPT_COMMAND_PALETTE_ITEM_LIMIT,
   applyPlanCommandPrefixToPromptEditorJson,
   buildPromptMentionItemGroups,
   filterPromptCommandPaletteItems,
@@ -58,6 +55,7 @@ import {
   getPromptSkillDisplayName,
   getPromptSkillSourceLabel,
   getPromptTemplateArgumentHints,
+  handleIndexedSuggestionKeyDown,
   isPromptImeConfirmKeyDown,
   isPromptNativeCompositionKeyDown,
   isPlanModeKeyboardShortcut,
@@ -74,22 +72,6 @@ import type {
 } from "@/renderer/lib/chat/prompt-input"
 import { isChatAgentMode } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
-
-const COMPOSITION_SUBMIT_GUARD_MS = 100
-const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
-const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
-const PROMPT_COMMAND_PALETTE_ITEM_LIMIT = 6
-
-const CHAT_AGENT_MODE_OPTIONS = [
-  {
-    icon: Message01Icon,
-    id: "chat"
-  },
-  {
-    icon: WorkflowSquare02Icon,
-    id: "agent"
-  }
-] as const
 
 const MentionSkillRowContent = ({
   globalSkillSourceLabel,
@@ -476,52 +458,6 @@ const MentionSuggestions = ({
       </div>
     </div>
   )
-}
-
-const handleIndexedSuggestionKeyDown = <TItem,>({
-  activeItemIndex,
-  event,
-  items,
-  onSelect,
-  setActiveItemIndex
-}: {
-  activeItemIndex: number
-  event: KeyboardEvent<HTMLDivElement>
-  items: TItem[]
-  onSelect: (item: TItem) => void
-  setActiveItemIndex: Dispatch<SetStateAction<number>>
-}): boolean => {
-  if (items.length === 0) {
-    return false
-  }
-
-  if (event.key === "ArrowDown") {
-    event.preventDefault()
-    setActiveItemIndex((previousIndex) =>
-      Math.min(previousIndex + 1, items.length - 1)
-    )
-    return true
-  }
-
-  if (event.key === "ArrowUp") {
-    event.preventDefault()
-    setActiveItemIndex((previousIndex) => Math.max(previousIndex - 1, 0))
-    return true
-  }
-
-  if (!isPromptSubmitKeyDown(event)) {
-    return false
-  }
-
-  event.preventDefault()
-
-  const selectedItem = items[activeItemIndex]
-
-  if (selectedItem) {
-    onSelect(selectedItem)
-  }
-
-  return true
 }
 
 const PromptInputSuggestions = ({

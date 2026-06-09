@@ -1,10 +1,18 @@
 import type {
+  AgentSessionQueuedMessage,
   ChatMention,
   ParsedSkill,
   ProjectSnapshotItem,
   PromptTemplate
 } from "@etyon/rpc"
-import { CubeIcon, File01Icon, Folder01Icon } from "@hugeicons/core-free-icons"
+import {
+  CubeIcon,
+  File01Icon,
+  Folder01Icon,
+  Message01Icon,
+  WorkflowSquare02Icon
+} from "@hugeicons/core-free-icons"
+import type { Dispatch, KeyboardEvent, SetStateAction } from "react"
 
 export interface ActiveMentionMatch {
   query: string
@@ -913,4 +921,66 @@ export const splitPromptTextByMentions = ({
   }
 
   return parts
+}
+
+export const COMPOSITION_SUBMIT_GUARD_MS = 100
+export const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
+export const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
+export const PROMPT_COMMAND_PALETTE_ITEM_LIMIT = 6
+
+export const CHAT_AGENT_MODE_OPTIONS = [
+  {
+    icon: Message01Icon,
+    id: "chat"
+  },
+  {
+    icon: WorkflowSquare02Icon,
+    id: "agent"
+  }
+] as const
+
+export const handleIndexedSuggestionKeyDown = <TItem>({
+  activeItemIndex,
+  event,
+  items,
+  onSelect,
+  setActiveItemIndex
+}: {
+  activeItemIndex: number
+  event: KeyboardEvent<HTMLDivElement>
+  items: TItem[]
+  onSelect: (item: TItem) => void
+  setActiveItemIndex: Dispatch<SetStateAction<number>>
+}): boolean => {
+  if (items.length === 0) {
+    return false
+  }
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault()
+    setActiveItemIndex((previousIndex) =>
+      Math.min(previousIndex + 1, items.length - 1)
+    )
+    return true
+  }
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault()
+    setActiveItemIndex((previousIndex) => Math.max(previousIndex - 1, 0))
+    return true
+  }
+
+  if (!isPromptSubmitKeyDown(event)) {
+    return false
+  }
+
+  event.preventDefault()
+
+  const selectedItem = items[activeItemIndex]
+
+  if (selectedItem) {
+    onSelect(selectedItem)
+  }
+
+  return true
 }

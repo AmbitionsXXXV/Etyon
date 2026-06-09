@@ -31,11 +31,20 @@ import {
   buildProjectTreeGitStatusEntries,
   buildProjectTreePaths,
   buildVisibleGitStatusFiles,
+  COMMIT_MESSAGE_MAX_LENGTH,
   formatProjectDiffCount,
   getProjectDiffFileStats,
   getProjectDiffSummary,
-  parseProjectDiffFiles
+  isProjectContextPanelView,
+  parseProjectDiffFiles,
+  PROJECT_CONTEXT_CHANGES_TAB_ID,
+  PROJECT_CONTEXT_COMMIT_TAB_ID,
+  PROJECT_CONTEXT_FILES_TAB_ID,
+  PROJECT_FILE_TREE_DEFAULT_SIZE,
+  PROJECT_FILE_TREE_MAX_SIZE,
+  PROJECT_FILE_TREE_MIN_SIZE
 } from "@/renderer/lib/chat/project-context-panel"
+import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 const PROJECT_DIFF_UNSAFE_CSS = `
@@ -167,17 +176,6 @@ const PROJECT_TREE_STYLE = {
   colorScheme: "inherit",
   height: "100%"
 } as CSSProperties
-export const PROJECT_CONTEXT_FILES_TAB_ID = "files"
-export const PROJECT_CONTEXT_CHANGES_TAB_ID = "changes"
-export const PROJECT_CONTEXT_COMMIT_TAB_ID = "commit"
-export type ProjectContextPanelView =
-  | typeof PROJECT_CONTEXT_FILES_TAB_ID
-  | typeof PROJECT_CONTEXT_CHANGES_TAB_ID
-  | typeof PROJECT_CONTEXT_COMMIT_TAB_ID
-const COMMIT_MESSAGE_MAX_LENGTH = 500
-const PROJECT_FILE_TREE_DEFAULT_SIZE = 30
-const PROJECT_FILE_TREE_MAX_SIZE = 55
-const PROJECT_FILE_TREE_MIN_SIZE = 18
 const PROJECT_STATUS_CHIP_COLORS = {
   added: "success",
   deleted: "danger",
@@ -213,13 +211,6 @@ const DiffStatsSummary = ({
     <span className="text-danger">-{formatProjectDiffCount(deletions)}</span>
   </span>
 )
-
-const isProjectContextPanelView = (
-  view: Key
-): view is ProjectContextPanelView =>
-  view === PROJECT_CONTEXT_FILES_TAB_ID ||
-  view === PROJECT_CONTEXT_CHANGES_TAB_ID ||
-  view === PROJECT_CONTEXT_COMMIT_TAB_ID
 
 const isFileTreeDirectoryHandle = (
   item: FileTreeItemHandle | null
