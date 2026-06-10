@@ -24,6 +24,7 @@
     "composer": {
       "agentModeAgent": "Agent",
       "agentModeChat": "Chat",
+      "agentModePlan": "Plan",
       "agentModeToggle": "Switch agent mode",
       "placeholder": "Type a message or use @ to reference project files",
       "queue": "Queue message",

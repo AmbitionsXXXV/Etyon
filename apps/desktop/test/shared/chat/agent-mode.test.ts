@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vite-plus/test"
 
 import {
+  CHAT_PLAN_MODE_SYSTEM_PROMPT,
+  getChatAgentModeAgentsEnabled,
   getChatAgentModeFromAgentsEnabled,
+  getChatAgentModeSystemPrompt,
   getChatAgentModeToggleDisabled,
   getNextChatAgentMode,
-  isChatAgentMode
+  isChatAgentMode,
+  isChatPlanCommandText,
+  stripChatPlanCommand
 } from "@/shared/chat/agent-mode"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 
 describe("chat agent mode helpers", () => {
   it("maps the agent enabled flag to the composer mode", () => {
@@ -13,9 +19,16 @@ describe("chat agent mode helpers", () => {
     expect(getChatAgentModeFromAgentsEnabled(true)).toBe("agent")
   })
 
-  it("toggles between chat and agent modes", () => {
-    expect(getNextChatAgentMode("agent")).toBe("chat")
+  it("cycles through chat, agent, and plan modes", () => {
     expect(getNextChatAgentMode("chat")).toBe("agent")
+    expect(getNextChatAgentMode("agent")).toBe("plan")
+    expect(getNextChatAgentMode("plan")).toBe("chat")
+  })
+
+  it("enables agent tooling for agent and plan modes", () => {
+    expect(getChatAgentModeAgentsEnabled("chat")).toBe(false)
+    expect(getChatAgentModeAgentsEnabled("agent")).toBe(true)
+    expect(getChatAgentModeAgentsEnabled("plan")).toBe(true)
   })
 
   it("disables mode toggles while the composer cannot switch modes", () => {
@@ -42,7 +55,26 @@ describe("chat agent mode helpers", () => {
   it("validates request body mode values", () => {
     expect(isChatAgentMode("agent")).toBe(true)
     expect(isChatAgentMode("chat")).toBe(true)
-    expect(isChatAgentMode("plan")).toBe(false)
+    expect(isChatAgentMode("plan")).toBe(true)
     expect(isChatAgentMode(null)).toBe(false)
+  })
+
+  it("detects and strips the /plan command prefix", () => {
+    expect(isChatPlanCommandText("/plan refactor the auth flow")).toBe(true)
+    expect(isChatPlanCommandText("  /plan ")).toBe(true)
+    expect(isChatPlanCommandText("plan the work")).toBe(false)
+    expect(stripChatPlanCommand("/plan refactor the auth flow")).toBe(
+      "refactor the auth flow"
+    )
+  })
+
+  it("returns the plan system prompt only for plan mode", () => {
+    const noMode: ChatAgentMode | undefined = undefined
+
+    expect(getChatAgentModeSystemPrompt("plan")).toBe(
+      CHAT_PLAN_MODE_SYSTEM_PROMPT
+    )
+    expect(getChatAgentModeSystemPrompt("agent")).toBeNull()
+    expect(getChatAgentModeSystemPrompt(noMode)).toBeNull()
   })
 })

@@ -24,6 +24,7 @@
     "composer": {
       "agentModeAgent": "Agent",
       "agentModeChat": "Chat",
+      "agentModePlan": "Plan",
       "agentModeToggle": "切换 Agent mode",
       "placeholder": "输入消息，或使用 @ 引用当前项目文件",
       "queue": "加入队列",

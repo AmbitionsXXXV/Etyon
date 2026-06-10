@@ -10,6 +10,7 @@ import {
   File01Icon,
   Folder01Icon,
   Message01Icon,
+  Task01Icon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react"
@@ -936,6 +937,10 @@ export const CHAT_AGENT_MODE_OPTIONS = [
   {
     icon: WorkflowSquare02Icon,
     id: "agent"
+  },
+  {
+    icon: Task01Icon,
+    id: "plan"
   }
 ] as const
 

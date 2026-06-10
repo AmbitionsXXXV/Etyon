@@ -9,7 +9,12 @@ import { getDb } from "@/main/db"
 import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
-import { isChatAgentMode } from "@/shared/chat/agent-mode"
+import {
+  getChatAgentModeAgentsEnabled,
+  getChatAgentModeSystemPrompt,
+  isChatAgentMode,
+  isChatPlanCommandText
+} from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 import { buildMoonshotReasoningForAssistantToolCalls } from "@/shared/providers/moonshot-reasoning"
 
@@ -38,9 +43,27 @@ const applyChatAgentModeToSettings = ({
     ...settings,
     agents: {
       ...settings.agents,
-      enabled: agentMode === "agent"
+      enabled: getChatAgentModeAgentsEnabled(agentMode)
     }
   }
+}
+
+const getLatestUserMessageText = (messages: UIMessage[]): string => {
+  const latestUserMessage = messages.findLast(
+    (message) => message.role === "user"
+  )
+
+  if (!latestUserMessage) {
+    return ""
+  }
+
+  return latestUserMessage.parts
+    .filter(
+      (part): part is Extract<UIMessage["parts"][number], { type: "text" }> =>
+        part.type === "text"
+    )
+    .map((part) => part.text)
+    .join("\n")
 }
 
 chatRoute.post("/chat", async (c) => {
@@ -68,8 +91,15 @@ chatRoute.post("/chat", async (c) => {
   }
 
   const agentMode = isChatAgentMode(rawAgentMode) ? rawAgentMode : undefined
+  // A typed `/plan` command forces plan mode for this turn regardless of the
+  // composer's selected mode.
+  const effectiveAgentMode: ChatAgentMode | undefined = isChatPlanCommandText(
+    getLatestUserMessageText(messages)
+  )
+    ? "plan"
+    : agentMode
   const settings = applyChatAgentModeToSettings({
-    agentMode,
+    agentMode: effectiveAgentMode,
     settings: getSettings()
   })
   const agentContext = await prepareAgentChatContext({
@@ -88,6 +118,10 @@ chatRoute.post("/chat", async (c) => {
     ? buildMoonshotReasoningForAssistantToolCalls(agentContext.modelMessages)
     : []
   const requestStartedAt = Date.now()
+  const planSystemPrompt = getChatAgentModeSystemPrompt(effectiveAgentMode)
+  const systemPrompts = planSystemPrompt
+    ? [...agentContext.systemPrompts, planSystemPrompt]
+    : agentContext.systemPrompts
 
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
@@ -110,7 +144,7 @@ chatRoute.post("/chat", async (c) => {
     sessionId,
     settings,
     shouldRetrieveLongTermMemory: agentContext.shouldRetrieveLongTermMemory,
-    systemPrompts: agentContext.systemPrompts,
+    systemPrompts,
     ...(isChatRequestTrigger(trigger) ? { trigger } : {})
   })
 })

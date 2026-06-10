@@ -17,6 +17,10 @@ import {
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
+import {
+  isChatPlanCommandText,
+  stripChatPlanCommand
+} from "@/shared/chat/agent-mode"
 import { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
@@ -184,6 +188,18 @@ const resolveSkillCommandText = ({
   })
 }
 
+const resolvePlanCommandText = (text: string): null | string => {
+  if (!isChatPlanCommandText(text)) {
+    return null
+  }
+
+  const planBody = stripChatPlanCommand(text)
+
+  // Strip the `/plan ` prefix so the model receives only the user's request;
+  // plan-mode behavior is applied via the system prompt in the chat route.
+  return planBody.length > 0 ? planBody : null
+}
+
 const applyCommandTextToModelMessage = (
   message: ModelMessage,
   commandText: string
@@ -275,7 +291,8 @@ const applyComposerCommandsToLatestModelMessage = ({
       projectPath,
       skillCommandSkills,
       text
-    })
+    }) ??
+    resolvePlanCommandText(text)
 
   if (commandText === null) {
     return modelMessages

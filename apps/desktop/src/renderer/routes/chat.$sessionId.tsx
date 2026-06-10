@@ -1556,9 +1556,14 @@ const ChatRuntime = ({
             agentMode={agentMode}
             agentModeAgentLabel={t("chat.composer.agentModeAgent")}
             agentModeChatLabel={t("chat.composer.agentModeChat")}
+            agentModePlanLabel={t("chat.composer.agentModePlan")}
             agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+            commandPalettePlanDescription={t(
+              "chat.mentions.commandPlanDescription"
+            )}
+            commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
             commandPalettePromptDescription={t(
               "chat.mentions.commandPromptDescription"
             )}
@@ -1704,9 +1709,14 @@ const ChatPendingState = ({
             agentMode="chat"
             agentModeAgentLabel={t("chat.composer.agentModeAgent")}
             agentModeChatLabel={t("chat.composer.agentModeChat")}
+            agentModePlanLabel={t("chat.composer.agentModePlan")}
             agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+            commandPalettePlanDescription={t(
+              "chat.mentions.commandPlanDescription"
+            )}
+            commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
             commandPalettePromptDescription={t(
               "chat.mentions.commandPromptDescription"
             )}

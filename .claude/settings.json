@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ". ~/.vite-plus/env; vp_out=$(vp check --fix 2>&1); check_exit=$?; tsc_out=$(tsc -p tsconfig.root.json --noEmit 2>&1); tsc_exit=$?; printf 'VP check:\\n%s\\n\\nTSC:\\n%s' \"$vp_out\" \"$tsc_out\" | jq -Rs '{systemMessage: .}'; [ $((check_exit + tsc_exit)) -ne 0 ] && exit 2; exit 0",
+            "command": ". ~/.vite-plus/env; vp_out=$(vp check --fix 2>&1); check_exit=$?; tsc_out=$(tsc -p \"$CLAUDE_PROJECT_DIR/tsconfig.root.json\" --noEmit 2>&1); tsc_exit=$?; printf 'VP check:\\n%s\\n\\nTSC:\\n%s' \"$vp_out\" \"$tsc_out\" | jq -Rs '{systemMessage: .}'; [ $((check_exit + tsc_exit)) -ne 0 ] && exit 2; exit 0",
             "timeout": 120,
             "statusMessage": "Running vp check + tsc...",
             "asyncRewake": true

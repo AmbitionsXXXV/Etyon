@@ -6,8 +6,7 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
-import type { Key } from "@heroui/react"
-import { ToggleButton, ToggleButtonGroup } from "@heroui/react"
+import { ToggleButton } from "@heroui/react"
 import { CubeIcon, SentIcon, StopIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
@@ -24,6 +23,7 @@ import {
   EMPTY_PROMPT_TEMPLATE_ITEMS,
   PROJECT_MENTION_NODE_TYPE,
   PROMPT_COMMAND_PALETTE_ITEM_LIMIT,
+  applyPlanCommandPrefixToPromptEditorJson,
   buildPromptMentionItemGroups,
   filterPromptCommandPaletteItems,
   createPromptTemplateCommandText,
@@ -43,6 +43,7 @@ import {
   getPromptSkillSourceLabel,
   getPromptTemplateArgumentHints,
   handleIndexedSuggestionKeyDown,
+  isPlanModeKeyboardShortcut,
   isPromptImeConfirmKeyDown,
   isPromptNativeCompositionKeyDown,
   isPromptSubmitKeyDown,
@@ -56,7 +57,7 @@ import type {
   PromptSkillMentionItem,
   PromptMentionTrigger
 } from "@/renderer/lib/chat/prompt-input"
-import { isChatAgentMode } from "@/shared/chat/agent-mode"
+import { getNextChatAgentMode } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 
 const MentionSkillRowContent = ({
@@ -554,6 +555,15 @@ const PromptInputSuggestions = ({
   )
 }
 
+// Each mode tints the selected pill with its hue: saturated text/icon over a
+// low-opacity background of the same base token. An opacity modifier is used
+// because the base tokens exist in every theme but the `-soft` variants do not.
+const SELECTED_CLASS_BY_AGENT_MODE: Record<ChatAgentMode, string> = {
+  agent: "bg-success/15! text-success!",
+  chat: "bg-accent/15! text-accent!",
+  plan: "bg-warning/15! text-warning!"
+}
+
 const PromptInputAgentModeControl = ({
   agentLabel,
   chatLabel,
@@ -561,6 +571,7 @@ const PromptInputAgentModeControl = ({
   isToggleDisabled,
   mode,
   onModeChange,
+  planLabel,
   toggleLabel
 }: {
   agentLabel: string
@@ -569,51 +580,44 @@ const PromptInputAgentModeControl = ({
   isToggleDisabled?: boolean
   mode: ChatAgentMode
   onModeChange: (mode: ChatAgentMode) => void
+  planLabel: string
   toggleLabel: string
 }) => {
-  const selectedKeys = useMemo(() => new Set<Key>([mode]), [mode])
   const labelByMode = useMemo(
     () => ({
       agent: agentLabel,
-      chat: chatLabel
+      chat: chatLabel,
+      plan: planLabel
     }),
-    [agentLabel, chatLabel]
+    [agentLabel, chatLabel, planLabel]
   )
-  const handleSelectionChange = useCallback(
-    (keys: Set<Key>) => {
-      const nextMode = [...keys].find(isChatAgentMode)
+  const activeOption = useMemo(
+    () => CHAT_AGENT_MODE_OPTIONS.find((option) => option.id === mode),
+    [mode]
+  )
+  const handlePress = useCallback(() => {
+    onModeChange(getNextChatAgentMode(mode))
+  }, [mode, onModeChange])
 
-      if (nextMode) {
-        onModeChange(nextMode)
-      }
-    },
-    [onModeChange]
-  )
+  if (!activeOption) {
+    return null
+  }
 
   return (
-    <ToggleButtonGroup
+    <ToggleButton
       aria-label={toggleLabel}
-      className="shrink-0"
-      disallowEmptySelection
+      className={cn(
+        "h-8 min-w-0 shrink-0 px-2.5 text-xs",
+        SELECTED_CLASS_BY_AGENT_MODE[mode]
+      )}
       isDisabled={disabled || isToggleDisabled === true}
-      onSelectionChange={handleSelectionChange}
-      selectedKeys={selectedKeys}
-      selectionMode="single"
+      isSelected
+      onPress={handlePress}
       size="sm"
     >
-      {CHAT_AGENT_MODE_OPTIONS.map((option, index) => (
-        <ToggleButton
-          aria-label={labelByMode[option.id as keyof typeof labelByMode]}
-          className="h-8 min-w-0 px-2.5 text-xs"
-          id={option.id}
-          key={option.id}
-        >
-          {index > 0 ? <ToggleButtonGroup.Separator /> : null}
-          <HugeiconsIcon icon={option.icon} size={14} strokeWidth={2} />
-          <span>{labelByMode[option.id as keyof typeof labelByMode]}</span>
-        </ToggleButton>
-      ))}
-    </ToggleButtonGroup>
+      <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
+      <span>{labelByMode[mode]}</span>
+    </ToggleButton>
   )
 }
 
@@ -653,12 +657,16 @@ const PromptInputActions = ({
 
 const usePromptCommandPaletteItems = ({
   activeRange,
+  planDescription,
+  planLabel,
   promptDescription,
   promptLabel,
   skillDescription,
   skillLabel
 }: {
   activeRange: { query: string } | null
+  planDescription: string
+  planLabel: string
   promptDescription: string
   promptLabel: string
   skillDescription: string
@@ -666,6 +674,13 @@ const usePromptCommandPaletteItems = ({
 }): PromptCommandPaletteItem[] => {
   const allItems = useMemo<PromptCommandPaletteItem[]>(
     () => [
+      {
+        command: "/plan",
+        description: planDescription,
+        id: "plan",
+        insertText: "/plan ",
+        label: planLabel
+      },
       {
         command: "/prompt",
         description: promptDescription,
@@ -681,7 +696,14 @@ const usePromptCommandPaletteItems = ({
         label: skillLabel
       }
     ],
-    [promptDescription, promptLabel, skillDescription, skillLabel]
+    [
+      planDescription,
+      planLabel,
+      promptDescription,
+      promptLabel,
+      skillDescription,
+      skillLabel
+    ]
   )
 
   return useMemo(
@@ -699,9 +721,12 @@ export const PromptInput = ({
   agentMode,
   agentModeAgentLabel,
   agentModeChatLabel,
+  agentModePlanLabel,
   agentModeToggleLabel,
   commandPaletteEmptyLabel,
   commandPaletteGroupLabel,
+  commandPalettePlanDescription,
+  commandPalettePlanLabel,
   commandPalettePromptDescription,
   commandPalettePromptLabel,
   commandPaletteSkillDescription,
@@ -737,9 +762,12 @@ export const PromptInput = ({
   agentMode: ChatAgentMode
   agentModeAgentLabel: string
   agentModeChatLabel: string
+  agentModePlanLabel: string
   agentModeToggleLabel: string
   commandPaletteEmptyLabel: string
   commandPaletteGroupLabel: string
+  commandPalettePlanDescription: string
+  commandPalettePlanLabel: string
   commandPalettePromptDescription: string
   commandPalettePromptLabel: string
   commandPaletteSkillDescription: string
@@ -811,6 +839,8 @@ export const PromptInput = ({
   > | null>(null)
   const commandPaletteItems = usePromptCommandPaletteItems({
     activeRange: activeCommandPaletteRange,
+    planDescription: commandPalettePlanDescription,
+    planLabel: commandPalettePlanLabel,
     promptDescription: commandPalettePromptDescription,
     promptLabel: commandPalettePromptLabel,
     skillDescription: commandPaletteSkillDescription,
@@ -1236,6 +1266,22 @@ export const PromptInput = ({
         return
       }
 
+      if (isPlanModeKeyboardShortcut(event)) {
+        event.preventDefault()
+
+        if (editor) {
+          editor
+            .chain()
+            .setContent(
+              applyPlanCommandPrefixToPromptEditorJson(editor.getJSON())
+            )
+            .focus("end")
+            .run()
+        }
+
+        return
+      }
+
       if (
         activePromptTemplateRange &&
         handleIndexedSuggestionKeyDown({
@@ -1287,6 +1333,7 @@ export const PromptInput = ({
       activePromptTemplateRange,
       clearCompositionSubmitGuard,
       commandPaletteItems,
+      editor,
       handleSelectCommandPaletteItem,
       handleSelectMentionItem,
       handleSelectPromptTemplateItem,
@@ -1370,6 +1417,7 @@ export const PromptInput = ({
                 isToggleDisabled={isAgentModeToggleDisabled}
                 mode={agentMode}
                 onModeChange={onAgentModeChange}
+                planLabel={agentModePlanLabel}
                 toggleLabel={agentModeToggleLabel}
               />
               {footer}
