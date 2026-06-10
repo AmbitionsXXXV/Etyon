@@ -3,7 +3,12 @@ import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
 import started from "electron-squirrel-startup"
 
+import {
+  expireStaleApprovals,
+  recoverInterruptedAgentRuns
+} from "@/main/agents/agent-event-store"
 import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
 import { setupMenu } from "@/main/menu"
@@ -48,6 +53,19 @@ const handleAppReady = async (): Promise<void> => {
   }
 
   await ensureDatabaseReady()
+
+  // Close runs orphaned by a previous crash and expire stale approvals.
+  try {
+    const db = getDb()
+    const recoveredRuns = await recoverInterruptedAgentRuns({ db })
+    const expiredApprovals = await expireStaleApprovals({ db })
+
+    if (recoveredRuns > 0 || expiredApprovals > 0) {
+      logger.info("agent_runs_recovered", { expiredApprovals, recoveredRuns })
+    }
+  } catch (error) {
+    logger.error("agent_run_recovery_failed", { error })
+  }
 
   registerRpcHandler()
   await startServer()

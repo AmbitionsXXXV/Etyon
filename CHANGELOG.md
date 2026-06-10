@@ -5,19 +5,23 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Features
+
 - Introduce plan mode functionality for chat agent (264febc)
 
 ### Refactor
+
 - Update dependencies and remove deprecated agent features (1b2377d)
 - Reorganize chat components and enhance utility functions (86e3408)
 
 ### Chores
+
 - Add RTK (Rust Token Killer) command guidelines and project-local filters (611d201)
 - Update agents audit and project config (fb8a25b)
 
 ## [0.1.5] - 2026-06-09
 
 ### Features
+
 - Implement chat agent mode functionality and UI controls (1c64e16)
 - Enhance agent chat message handling and session management (4682ce8)
 - Add comprehensive Mastra framework guide and common errors reference (a8c942d)
@@ -101,33 +105,38 @@ All notable changes to this project are documented in this file.
 - ✨ add shadcn monorepo support (a15ebd8)
 
 ### Bug Fixes
+
 - Update continual learning state and improve chat message rendering (e535992)
 - Update continual learning state and TypeScript configuration (e832fa6)
 - 🐛 update settings and improve error handling in desktop application (01b5899)
 
 ### Other
+
 - 🌱 init commit (a984617)
 
 ### Refactor
+
 - Streamline agent chat message handling and remove deprecated features (1a3194e)
 - 📦 simplify SQLite database URL validation in tests (b072f01)
 
 ### Documentation
+
 - Refine behavioral guidelines and enhance agent architecture documentation (af1f46b)
 - Update memory enhancement docs (6766691)
 - Design memory enhancement (25094dd)
 - Add rust cli integration design (edbfc15)
 
 ### Styling
+
 - 🎨 improve settings page functionality and code organization (7460b0c)
 
 ### CI
+
 - Add macOS ARM64 release workflow via GitHub Actions (120edc8)
 
 ### Chores
+
 - Allow hono@4.12.25 past minimum-release-age policy (793a7f0)
 - Bump version to 0.1.5 (dd8c9b1)
 - Update package dependencies and versions (8a6b9c5)
 - 🔨 remove .nvmrc and update package dependencies (2e80520)
-
-

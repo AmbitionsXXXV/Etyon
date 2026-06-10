@@ -7,6 +7,7 @@ import type { AppDatabase } from "@/main/db"
 import { chatMessages, chatSessions } from "@/main/db/schema"
 import { upsertChatSessionMemoryEntry } from "@/main/memory"
 import { getSettings } from "@/main/settings"
+import { isRecord } from "@/renderer/lib/utils"
 
 const CHAT_TITLE_MAX_LENGTH = 64
 const GENERATED_MESSAGE_ID_PREFIX = "etyon-generated-message"
@@ -19,6 +20,22 @@ const parseOptionalJson = (value: string | null): unknown | undefined =>
 
 const serializeOptionalJson = (value: unknown): string | null =>
   value === undefined ? null : JSON.stringify(value)
+
+/** Reads the agent run id stamped on an assistant message's metadata, so the
+ * chat row can be linked back to (and rebuilt from) its event-sourced run. */
+const getAgentProjectionRunId = (metadata: unknown): string | null => {
+  if (!isRecord(metadata)) {
+    return null
+  }
+
+  const projection = metadata.agentProjection
+
+  if (!isRecord(projection)) {
+    return null
+  }
+
+  return typeof projection.runId === "string" ? projection.runId : null
+}
 
 const getTextParts = (
   message: UIMessage
@@ -160,7 +177,7 @@ export const replaceChatMessages = async ({
     if (normalizedMessages.length > 0) {
       await tx.insert(chatMessages).values(
         normalizedMessages.map((message, index) => ({
-          agentProjectionRunId: null,
+          agentProjectionRunId: getAgentProjectionRunId(message.metadata),
           createdAt: now,
           messageId: message.id,
           metadataJson: serializeOptionalJson(message.metadata),

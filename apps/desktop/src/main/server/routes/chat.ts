@@ -3,9 +3,16 @@ import type { UIMessage } from "ai"
 import { Hono } from "hono"
 
 import { prepareAgentChatContext } from "@/main/agents/agent-chat-context"
+import {
+  getRunAssistantStartIndex,
+  recordAgentRunOutcome,
+  startAgentRun
+} from "@/main/agents/agent-event-store"
+import { FILE_AGENT_ID } from "@/main/agents/minimal/file-agent"
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
+import { logger } from "@/main/logger"
 import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
@@ -16,6 +23,7 @@ import {
   isChatPlanCommandText
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
+import { attachAgentProjectionToAssistantMessages } from "@/shared/chat/message-metadata"
 import { buildMoonshotReasoningForAssistantToolCalls } from "@/shared/providers/moonshot-reasoning"
 
 const chatRoute = new Hono()
@@ -123,6 +131,23 @@ chatRoute.post("/chat", async (c) => {
     ? [...agentContext.systemPrompts, planSystemPrompt]
     : agentContext.systemPrompts
 
+  // Open an event-sourced run before streaming, so a crash mid-turn leaves a
+  // recoverable `running` row that startup recovery closes.
+  let agentRunId: string | null = null
+
+  if (settings.agents.enabled) {
+    try {
+      agentRunId = await startAgentRun({
+        chatSessionId: sessionId,
+        db,
+        modelId: effectiveModelId,
+        profileId: FILE_AGENT_ID
+      })
+    } catch (error) {
+      logger.error("agent_run_start_failed", { error })
+    }
+  }
+
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
     buildLongTermMemorySystem: agentContext.buildLongTermMemorySystem,
@@ -132,9 +157,32 @@ chatRoute.post("/chat", async (c) => {
     modelMessages: agentContext.modelMessages,
     moonshotReasoningForAssistantToolCalls,
     onFinishPersist: async (nextMessages) => {
+      let messagesToPersist = nextMessages
+
+      if (agentRunId) {
+        const assistantStartIndex = getRunAssistantStartIndex(nextMessages)
+
+        // Best-effort: the durable run log must never break chat persistence.
+        try {
+          await recordAgentRunOutcome({
+            assistantStartIndex,
+            db,
+            messages: nextMessages,
+            runId: agentRunId
+          })
+        } catch (error) {
+          logger.error("agent_run_record_failed", { error })
+        }
+
+        messagesToPersist = attachAgentProjectionToAssistantMessages(
+          nextMessages,
+          { runId: agentRunId, startIndex: assistantStartIndex }
+        )
+      }
+
       await replaceChatMessages({
         db,
-        messages: nextMessages,
+        messages: messagesToPersist,
         sessionId
       })
     },
