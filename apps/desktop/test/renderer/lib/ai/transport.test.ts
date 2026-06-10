@@ -4,10 +4,16 @@ const { defaultChatTransportMock, getUrlMock, transportOptions } = vi.hoisted(
   () => {
     const capturedTransportOptions: unknown[] = []
 
-    return {
-      defaultChatTransportMock: vi.fn((options: unknown) => {
+    // Must be constructible: the transport is created with `new`.
+    // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- arrow mocks are not constructible and the autofixer rewrites function expressions
+    class MockDefaultChatTransport {
+      constructor(options: unknown) {
         capturedTransportOptions.push(options)
-      }),
+      }
+    }
+
+    return {
+      defaultChatTransportMock: MockDefaultChatTransport,
       getUrlMock: vi.fn(() =>
         Promise.resolve({
           token: "local-token",

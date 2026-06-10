@@ -2,9 +2,7 @@ import type { AppSettings, ChatMention } from "@etyon/rpc"
 import type { ModelMessage, UIMessage } from "ai"
 import { convertToModelMessages } from "ai"
 
-import { loadAgentExtensions } from "@/main/agents/agent-extensions"
-import type { AgentExtensionRunner } from "@/main/agents/agent-extensions"
-import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/agent-messages"
+import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/minimal/model-message-continuity"
 import {
   buildSessionMemorySystemPrompt,
   getChatSessionMemory
@@ -14,9 +12,7 @@ import { buildMemorySystemPrompt } from "@/main/memory"
 import { buildMentionContext } from "@/main/project-snapshot"
 import {
   buildSkillsSystemPrompt,
-  listSkillPromptTemplates,
-  resolveSelectedSkillCapabilities,
-  resolveSelectedSkillExtensionPaths
+  listSkillPromptTemplates
 } from "@/main/skills"
 
 export interface PrepareAgentChatContextOptions {
@@ -32,10 +28,8 @@ export interface PreparedAgentChatContext {
   buildLongTermMemorySystem: (options: {
     abortSignal?: AbortSignal
   }) => Promise<string>
-  extensionRunner?: AgentExtensionRunner
   modelMessages: ModelMessage[]
   promptTemplates: ReturnType<typeof listSkillPromptTemplates>
-  selectedSkillCapabilities: string[]
   shouldRetrieveLongTermMemory: boolean
   systemPrompts: string[]
 }
@@ -73,25 +67,10 @@ export const prepareAgentChatContext = async ({
   settings
 }: PrepareAgentChatContextOptions): Promise<PreparedAgentChatContext> => {
   const selectedSkills = mentions.filter((mention) => mention.kind === "skill")
-  const selectedSkillCapabilities = resolveSelectedSkillCapabilities({
-    projectPath,
-    selectedSkills
-  })
-  const selectedSkillExtensionPaths = settings.agents.enabled
-    ? resolveSelectedSkillExtensionPaths({
-        projectPath,
-        selectedSkills
-      })
-    : []
   const memoryQuery = buildAgentChatMemoryQuery(messages)
   const shouldRetrieveLongTermMemory =
     settings.memory.enabled && settings.memory.autoRetrieve
-  const [extensionRunner, memory, modelMessages] = await Promise.all([
-    selectedSkillExtensionPaths.length > 0
-      ? loadAgentExtensions({
-          paths: selectedSkillExtensionPaths
-        })
-      : undefined,
+  const [memory, modelMessages] = await Promise.all([
     getChatSessionMemory(db, sessionId),
     convertToModelMessages(messages)
   ])
@@ -119,12 +98,10 @@ export const prepareAgentChatContext = async ({
         query: memoryQuery,
         settings: settings.memory
       }),
-    ...(extensionRunner ? { extensionRunner } : {}),
     modelMessages: completeUnresolvedToolCallsInModelMessages(modelMessages),
     promptTemplates: listSkillPromptTemplates({
       projectPaths: [projectPath]
     }),
-    selectedSkillCapabilities,
     shouldRetrieveLongTermMemory,
     systemPrompts
   }

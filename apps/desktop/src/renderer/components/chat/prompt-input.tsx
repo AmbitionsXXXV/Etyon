@@ -1,6 +1,4 @@
 import type {
-  AgentSessionQueuedMessage,
-  AgentSessionQueuedMessageQueue,
   ChatMention,
   ProjectSnapshotItem,
   PromptTemplate
@@ -10,15 +8,7 @@ import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
 import type { Key } from "@heroui/react"
 import { ToggleButton, ToggleButtonGroup } from "@heroui/react"
-import {
-  CubeIcon,
-  Delete02Icon,
-  DragDropVerticalIcon,
-  PencilEdit02Icon,
-  Queue02Icon,
-  SentIcon,
-  StopIcon
-} from "@hugeicons/core-free-icons"
+import { CubeIcon, SentIcon, StopIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
@@ -27,16 +17,13 @@ import { StarterKit } from "@tiptap/starter-kit"
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import { resolveAgentComposerPrimaryAction } from "@/renderer/lib/chat/agent-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   CHAT_AGENT_MODE_OPTIONS,
   COMPOSITION_SUBMIT_GUARD_MS,
   EMPTY_PROMPT_TEMPLATE_ITEMS,
-  EMPTY_QUEUED_MESSAGES,
   PROJECT_MENTION_NODE_TYPE,
   PROMPT_COMMAND_PALETTE_ITEM_LIMIT,
-  applyPlanCommandPrefixToPromptEditorJson,
   buildPromptMentionItemGroups,
   filterPromptCommandPaletteItems,
   createPromptTemplateCommandText,
@@ -58,7 +45,6 @@ import {
   handleIndexedSuggestionKeyDown,
   isPromptImeConfirmKeyDown,
   isPromptNativeCompositionKeyDown,
-  isPlanModeKeyboardShortcut,
   isPromptSubmitKeyDown,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
@@ -273,7 +259,7 @@ const PromptCommandPaletteSuggestions = ({
           </div>
           {items.map((item, itemIndex) => {
             const isActive = itemIndex === activeItemIndex
-            const itemIcon = item.id === "plan" ? PencilEdit02Icon : CubeIcon
+            const itemIcon = CubeIcon
 
             return (
               <button
@@ -568,171 +554,6 @@ const PromptInputSuggestions = ({
   )
 }
 
-const getQueueLabel = ({
-  followUpLabel,
-  nextTurnLabel,
-  queue,
-  steerLabel
-}: {
-  followUpLabel: string
-  nextTurnLabel: string
-  queue: AgentSessionQueuedMessageQueue
-  steerLabel: string
-}): string => {
-  if (queue === "follow-up") {
-    return followUpLabel
-  }
-
-  if (queue === "next-turn") {
-    return nextTurnLabel
-  }
-
-  return steerLabel
-}
-
-const getNextQueue = (
-  queue: AgentSessionQueuedMessageQueue
-): AgentSessionQueuedMessageQueue =>
-  queue === "follow-up" ? "steer" : "follow-up"
-
-const QueuedPromptMessageList = ({
-  editLabel,
-  followUpLabel,
-  messages,
-  nextTurnLabel,
-  onEdit,
-  onRemove,
-  onReorder,
-  onUpdate,
-  removeLabel,
-  reorderLabel,
-  steerLabel,
-  titleLabel
-}: {
-  editLabel: string
-  followUpLabel: string
-  messages: AgentSessionQueuedMessage[]
-  nextTurnLabel: string
-  onEdit: (message: AgentSessionQueuedMessage) => void
-  onRemove?: (id: string) => Promise<void> | void
-  onReorder?: (ids: string[]) => Promise<void> | void
-  onUpdate?: (input: {
-    id: string
-    queue?: AgentSessionQueuedMessageQueue
-  }) => Promise<void> | void
-  removeLabel: string
-  reorderLabel: string
-  steerLabel: string
-  titleLabel: string
-}) => {
-  if (messages.length === 0) {
-    return null
-  }
-
-  return (
-    <HeroPromptInput.Queue
-      actionsVisibility="always"
-      aria-label={titleLabel}
-      className="border-b border-border/70"
-    >
-      <HeroPromptInput.Queue.List
-        onReorder={(nextMessages) => {
-          void onReorder?.(nextMessages.map((message) => message.id))
-        }}
-        values={messages}
-      >
-        {messages.map((message) => {
-          const nextQueue = getNextQueue(message.queue)
-          const queueLabel = getQueueLabel({
-            followUpLabel,
-            nextTurnLabel,
-            queue: message.queue,
-            steerLabel
-          })
-          const nextQueueLabel = getQueueLabel({
-            followUpLabel,
-            nextTurnLabel,
-            queue: nextQueue,
-            steerLabel
-          })
-
-          return (
-            <HeroPromptInput.Queue.Item key={message.id} value={message}>
-              <HeroPromptInput.Queue.Item.Handle
-                aria-label={reorderLabel}
-                type="button"
-              >
-                <HugeiconsIcon
-                  icon={DragDropVerticalIcon}
-                  size={14}
-                  strokeWidth={2}
-                />
-              </HeroPromptInput.Queue.Item.Handle>
-              <HeroPromptInput.Queue.Item.Icon>
-                <HugeiconsIcon
-                  icon={message.queue === "follow-up" ? Queue02Icon : SentIcon}
-                  size={14}
-                  strokeWidth={2}
-                />
-              </HeroPromptInput.Queue.Item.Icon>
-              <HeroPromptInput.Queue.Item.Body>
-                <HeroPromptInput.Queue.Item.Content>
-                  {message.content}
-                </HeroPromptInput.Queue.Item.Content>
-                <HeroPromptInput.Queue.Item.Description>
-                  {queueLabel}
-                </HeroPromptInput.Queue.Item.Description>
-              </HeroPromptInput.Queue.Item.Body>
-              <HeroPromptInput.Queue.Item.Actions>
-                <HeroPromptInput.Queue.Item.Steer
-                  aria-label={nextQueueLabel}
-                  onPress={() => {
-                    void onUpdate?.({
-                      id: message.id,
-                      queue: nextQueue
-                    })
-                  }}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    icon={nextQueue === "follow-up" ? Queue02Icon : SentIcon}
-                    size={14}
-                    strokeWidth={2}
-                  />
-                </HeroPromptInput.Queue.Item.Steer>
-                <HeroPromptInput.Queue.Item.Action
-                  aria-label={editLabel}
-                  onPress={() => onEdit(message)}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    icon={PencilEdit02Icon}
-                    size={14}
-                    strokeWidth={2}
-                  />
-                </HeroPromptInput.Queue.Item.Action>
-                <HeroPromptInput.Queue.Item.Remove
-                  aria-label={removeLabel}
-                  onPress={() => {
-                    void onRemove?.(message.id)
-                  }}
-                  type="button"
-                >
-                  <HugeiconsIcon
-                    icon={Delete02Icon}
-                    size={14}
-                    strokeWidth={2}
-                  />
-                </HeroPromptInput.Queue.Item.Remove>
-              </HeroPromptInput.Queue.Item.Actions>
-            </HeroPromptInput.Queue.Item>
-          )
-        })}
-      </HeroPromptInput.Queue.List>
-    </HeroPromptInput.Queue>
-  )
-}
-
 const PromptInputAgentModeControl = ({
   agentLabel,
   chatLabel,
@@ -798,29 +619,20 @@ const PromptInputAgentModeControl = ({
 
 const PromptInputActions = ({
   disabled,
-  hasPromptInputValue,
   isOutputActive,
-  isQueueSubmitEnabled,
   isSubmitting,
   onStop,
   stopLabel,
   submitLabel
 }: {
   disabled: boolean
-  hasPromptInputValue: boolean
   isOutputActive: boolean
-  isQueueSubmitEnabled: boolean
   isSubmitting: boolean
   onStop?: () => void
   stopLabel: string
   submitLabel: string
 }) => {
-  const primaryAction = resolveAgentComposerPrimaryAction({
-    hasPromptInputValue,
-    isOutputActive,
-    isQueueSubmitEnabled
-  })
-  const isStopAction = primaryAction === "stop"
+  const isStopAction = isOutputActive
   const actionLabel = isStopAction ? stopLabel : submitLabel
   const actionIcon = isStopAction ? StopIcon : SentIcon
   const isActionDisabled = isStopAction ? !onStop : disabled || isSubmitting
@@ -841,16 +653,12 @@ const PromptInputActions = ({
 
 const usePromptCommandPaletteItems = ({
   activeRange,
-  planDescription,
-  planLabel,
   promptDescription,
   promptLabel,
   skillDescription,
   skillLabel
 }: {
   activeRange: { query: string } | null
-  planDescription: string
-  planLabel: string
   promptDescription: string
   promptLabel: string
   skillDescription: string
@@ -858,13 +666,6 @@ const usePromptCommandPaletteItems = ({
 }): PromptCommandPaletteItem[] => {
   const allItems = useMemo<PromptCommandPaletteItem[]>(
     () => [
-      {
-        command: "/plan",
-        description: planDescription,
-        id: "plan",
-        insertText: "/plan ",
-        label: planLabel
-      },
       {
         command: "/prompt",
         description: promptDescription,
@@ -880,14 +681,7 @@ const usePromptCommandPaletteItems = ({
         label: skillLabel
       }
     ],
-    [
-      planDescription,
-      planLabel,
-      promptDescription,
-      promptLabel,
-      skillDescription,
-      skillLabel
-    ]
+    [promptDescription, promptLabel, skillDescription, skillLabel]
   )
 
   return useMemo(
@@ -908,8 +702,6 @@ export const PromptInput = ({
   agentModeToggleLabel,
   commandPaletteEmptyLabel,
   commandPaletteGroupLabel,
-  commandPalettePlanDescription,
-  commandPalettePlanLabel,
   commandPalettePromptDescription,
   commandPalettePromptLabel,
   commandPaletteSkillDescription,
@@ -921,7 +713,6 @@ export const PromptInput = ({
   isLoadingPromptTemplateItems = false,
   isLoadingSkillItems = false,
   isOutputActive = false,
-  isQueueSubmitEnabled = false,
   mentionGlobalSkillSourceLabel,
   mentionFileGroupLabel,
   mentionFolderGroupLabel,
@@ -933,23 +724,12 @@ export const PromptInput = ({
   onAgentModeChange,
   onMentionQueryChange,
   onPromptTemplateQueryChange,
-  onQueuedMessageRemove,
-  onQueuedMessageReorder,
-  onQueuedMessageUpdate,
   onStop,
   onSubmit,
   placeholder,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
   promptTemplateItems = EMPTY_PROMPT_TEMPLATE_ITEMS,
-  queueEditLabel,
-  queueFollowUpLabel,
-  queueNextTurnLabel,
-  queueRemoveLabel,
-  queueReorderLabel,
-  queueSteerLabel,
-  queuedMessages = EMPTY_QUEUED_MESSAGES,
-  queuedMessagesLabel,
   status = "ready",
   stopLabel,
   submitLabel
@@ -960,8 +740,6 @@ export const PromptInput = ({
   agentModeToggleLabel: string
   commandPaletteEmptyLabel: string
   commandPaletteGroupLabel: string
-  commandPalettePlanDescription: string
-  commandPalettePlanLabel: string
   commandPalettePromptDescription: string
   commandPalettePromptLabel: string
   commandPaletteSkillDescription: string
@@ -973,7 +751,6 @@ export const PromptInput = ({
   isLoadingPromptTemplateItems?: boolean
   isLoadingSkillItems?: boolean
   isOutputActive?: boolean
-  isQueueSubmitEnabled?: boolean
   mentionGlobalSkillSourceLabel: string
   mentionFileGroupLabel: string
   mentionFolderGroupLabel: string
@@ -989,31 +766,15 @@ export const PromptInput = ({
     trigger: PromptMentionTrigger | null
   ) => void
   onPromptTemplateQueryChange?: (query: string | null) => void
-  onQueuedMessageRemove?: (id: string) => Promise<void> | void
-  onQueuedMessageReorder?: (ids: string[]) => Promise<void> | void
-  onQueuedMessageUpdate?: (input: {
-    content?: string
-    id: string
-    queue?: AgentSessionQueuedMessageQueue
-  }) => Promise<void> | void
   onStop?: () => void
   onSubmit: (payload: {
     mentions: ChatMention[]
-    queue?: AgentSessionQueuedMessageQueue
     text: string
   }) => Promise<void>
   placeholder: string
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
   promptTemplateItems?: PromptTemplate[]
-  queueEditLabel: string
-  queueFollowUpLabel: string
-  queueNextTurnLabel: string
-  queueRemoveLabel: string
-  queueReorderLabel: string
-  queueSteerLabel: string
-  queuedMessages?: AgentSessionQueuedMessage[]
-  queuedMessagesLabel: string
   status?: ChatStatus
   stopLabel: string
   submitLabel: string
@@ -1032,9 +793,6 @@ export const PromptInput = ({
     query: string
     to: number
   } | null>(null)
-  const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
-    string | null
-  >(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [promptInputValue, setPromptInputValue] = useState("")
   const mentionItemElementByKeyRef = useRef(
@@ -1053,8 +811,6 @@ export const PromptInput = ({
   > | null>(null)
   const commandPaletteItems = usePromptCommandPaletteItems({
     activeRange: activeCommandPaletteRange,
-    planDescription: commandPalettePlanDescription,
-    planLabel: commandPalettePlanLabel,
     promptDescription: commandPalettePromptDescription,
     promptLabel: commandPalettePromptLabel,
     skillDescription: commandPaletteSkillDescription,
@@ -1218,15 +974,6 @@ export const PromptInput = ({
   )
 
   useEffect(() => {
-    if (
-      editingQueuedMessageId &&
-      !queuedMessages.some((message) => message.id === editingQueuedMessageId)
-    ) {
-      setEditingQueuedMessageId(null)
-    }
-  }, [editingQueuedMessageId, queuedMessages])
-
-  useEffect(() => {
     setActiveItemIndex(0)
   }, [commandPaletteItems, mentionSelectionItems, promptTemplateItems])
 
@@ -1331,76 +1078,39 @@ export const PromptInput = ({
     [activePromptTemplateRange, editor]
   )
 
-  const handleStartEditQueuedMessage = useCallback(
-    (message: AgentSessionQueuedMessage) => {
-      if (!editor) {
-        return
-      }
+  const handleSubmit = useCallback(async () => {
+    if (!editor) {
+      return
+    }
 
-      setEditingQueuedMessageId(message.id)
-      editor.commands.setContent(message.content)
-      editor.commands.focus("end")
-      setPromptInputValue(message.content)
+    const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
+    const normalizedText = text.trim()
+
+    if (
+      (normalizedText === "" && mentions.length === 0) ||
+      disabled ||
+      isOutputActive
+    ) {
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      await onSubmit({
+        mentions,
+        text: normalizedText
+      })
+      editor.commands.clearContent()
+      setPromptInputValue("")
+      editor.commands.focus()
       setActiveMentionRange(null)
       setActiveCommandPaletteRange(null)
       setActivePromptTemplateRange(null)
-    },
-    [editor]
-  )
-
-  const handleSubmit = useCallback(
-    async (queue?: AgentSessionQueuedMessageQueue) => {
-      if (!editor) {
-        return
-      }
-
-      const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
-      const normalizedText = text.trim()
-
-      if (
-        (normalizedText === "" && mentions.length === 0) ||
-        disabled ||
-        (isOutputActive && !isQueueSubmitEnabled)
-      ) {
-        return
-      }
-
-      setIsSubmitting(true)
-
-      try {
-        if (editingQueuedMessageId) {
-          await onQueuedMessageUpdate?.({
-            content: normalizedText,
-            id: editingQueuedMessageId
-          })
-          setEditingQueuedMessageId(null)
-        } else {
-          await onSubmit({
-            mentions,
-            ...(queue ? { queue } : {}),
-            text: normalizedText
-          })
-        }
-        editor.commands.clearContent()
-        setPromptInputValue("")
-        editor.commands.focus()
-        setActiveMentionRange(null)
-        setActiveCommandPaletteRange(null)
-        setActivePromptTemplateRange(null)
-      } finally {
-        setIsSubmitting(false)
-      }
-    },
-    [
-      disabled,
-      editingQueuedMessageId,
-      editor,
-      isOutputActive,
-      isQueueSubmitEnabled,
-      onQueuedMessageUpdate,
-      onSubmit
-    ]
-  )
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [disabled, editor, isOutputActive, onSubmit])
 
   const handleSelectMentionItemClick = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -1505,23 +1215,6 @@ export const PromptInput = ({
 
   const handleEditorKeyDown = useCallback(
     async (event: KeyboardEvent<HTMLDivElement>) => {
-      if (isPlanModeKeyboardShortcut(event)) {
-        event.preventDefault()
-
-        if (!editor || disabled || isSubmitting) {
-          return
-        }
-
-        editor.commands.setContent(
-          applyPlanCommandPrefixToPromptEditorJson(editor.getJSON())
-        )
-        editor.commands.focus("end")
-        setActiveMentionRange(null)
-        setActiveCommandPaletteRange(null)
-        setActivePromptTemplateRange(null)
-        return
-      }
-
       if (
         isPromptImeConfirmKeyDown({
           event,
@@ -1594,13 +1287,10 @@ export const PromptInput = ({
       activePromptTemplateRange,
       clearCompositionSubmitGuard,
       commandPaletteItems,
-      disabled,
-      editor,
       handleSelectCommandPaletteItem,
       handleSelectMentionItem,
       handleSelectPromptTemplateItem,
       handleSubmit,
-      isSubmitting,
       mentionSelectionItems,
       promptTemplateItems
     ]
@@ -1608,7 +1298,6 @@ export const PromptInput = ({
 
   return (
     <HeroPromptInput
-      allowSubmitWhileRunning={isQueueSubmitEnabled}
       className="relative shadow-none"
       isDisabled={disabled}
       lockInputOnRun={false}
@@ -1646,21 +1335,6 @@ export const PromptInput = ({
         promptTemplateEmptyLabel={promptTemplateEmptyLabel}
         promptTemplateGroupLabel={promptTemplateGroupLabel}
         promptTemplateItems={promptTemplateItems}
-      />
-
-      <QueuedPromptMessageList
-        editLabel={queueEditLabel}
-        followUpLabel={queueFollowUpLabel}
-        messages={queuedMessages}
-        nextTurnLabel={queueNextTurnLabel}
-        onEdit={handleStartEditQueuedMessage}
-        onRemove={onQueuedMessageRemove}
-        onReorder={onQueuedMessageReorder}
-        onUpdate={onQueuedMessageUpdate}
-        removeLabel={queueRemoveLabel}
-        reorderLabel={queueReorderLabel}
-        steerLabel={queueSteerLabel}
-        titleLabel={queuedMessagesLabel}
       />
 
       <HeroPromptInput.Shell className="block rounded-[1.75rem]! hover:bg-default!">
@@ -1704,9 +1378,7 @@ export const PromptInput = ({
           <HeroPromptInput.ToolbarEnd>
             <PromptInputActions
               disabled={disabled}
-              hasPromptInputValue={promptInputValue.trim().length > 0}
               isOutputActive={isOutputActive}
-              isQueueSubmitEnabled={isQueueSubmitEnabled}
               isSubmitting={isSubmitting}
               onStop={onStop}
               stopLabel={stopLabel}

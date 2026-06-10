@@ -3,7 +3,6 @@ import type { UIMessage } from "ai"
 import { Hono } from "hono"
 
 import { prepareAgentChatContext } from "@/main/agents/agent-chat-context"
-import { streamAgentChat } from "@/main/agents/agent-runtime"
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
@@ -44,52 +43,11 @@ const applyChatAgentModeToSettings = ({
   }
 }
 
-const buildChatLifecycleBranch = ({
-  messageId,
-  messages,
-  trigger
-}: {
-  messageId?: string
-  messages: UIMessage[]
-  trigger?: string
-}) => {
-  if (!isChatRequestTrigger(trigger)) {
-    return
-  }
-
-  if (trigger === "regenerate-message") {
-    return {
-      branchKind: "regenerate" as const,
-      ...(messageId ? { messageId } : {}),
-      retainedMessageIds: messages.map((message) => message.id),
-      trigger
-    }
-  }
-
-  if (!messageId) {
-    return
-  }
-
-  const editedMessage = messages.find((message) => message.id === messageId)
-
-  if (editedMessage?.role !== "user") {
-    return
-  }
-
-  return {
-    branchKind: "edit" as const,
-    messageId,
-    retainedMessageIds: messages.map((message) => message.id),
-    trigger
-  }
-}
-
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
     agentMode: rawAgentMode,
     mentions = [],
-    messageId,
     messages,
     model: requestedModelId,
     sessionId,
@@ -97,7 +55,6 @@ chatRoute.post("/chat", async (c) => {
   } = body as {
     agentMode?: unknown
     mentions?: ChatMention[]
-    messageId?: string
     messages: UIMessage[]
     model?: string
     sessionId: string
@@ -135,20 +92,11 @@ chatRoute.post("/chat", async (c) => {
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
     buildLongTermMemorySystem: agentContext.buildLongTermMemorySystem,
-    chatLifecycleBranch: buildChatLifecycleBranch({
-      messageId,
-      messages,
-      trigger
-    }),
-    db,
     messages,
     model,
     modelId: effectiveModelId,
     modelMessages: agentContext.modelMessages,
     moonshotReasoningForAssistantToolCalls,
-    ...(agentContext.extensionRunner
-      ? { extensionRunner: agentContext.extensionRunner }
-      : {}),
     onFinishPersist: async (nextMessages) => {
       await replaceChatMessages({
         db,
@@ -162,11 +110,8 @@ chatRoute.post("/chat", async (c) => {
     sessionId,
     settings,
     shouldRetrieveLongTermMemory: agentContext.shouldRetrieveLongTermMemory,
-    ...(agentContext.selectedSkillCapabilities.length > 0
-      ? { skillCapabilities: agentContext.selectedSkillCapabilities }
-      : {}),
-    streamAgentChat,
-    systemPrompts: agentContext.systemPrompts
+    systemPrompts: agentContext.systemPrompts,
+    ...(isChatRequestTrigger(trigger) ? { trigger } : {})
   })
 })
 

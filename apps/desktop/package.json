@@ -38,6 +38,8 @@
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@libsql/client": "^0.17.3",
+    "@mastra/ai-sdk": "1.4.4",
+    "@mastra/core": "^1.41.0",
     "@orpc/client": "^1.14.5",
     "@orpc/server": "^1.14.5",
     "@orpc/tanstack-query": "^1.14.5",

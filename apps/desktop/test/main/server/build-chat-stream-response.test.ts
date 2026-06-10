@@ -1,12 +1,43 @@
-import { setTimeout as delay } from "node:timers/promises"
-
 import { AppSettingsSchema } from "@etyon/rpc"
-import type { ParsedSkill } from "@etyon/rpc"
-import type { LanguageModel, UIMessage } from "ai"
+import type * as Ai from "ai"
+import type { LanguageModel, ModelMessage, UIMessage } from "ai"
 import { describe, expect, it, vi } from "vite-plus/test"
 
-import type { streamAgentChat } from "@/main/agents/agent-runtime"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
+
+const { handleChatStreamMock, streamTextMock } = vi.hoisted(() => ({
+  handleChatStreamMock: vi.fn(),
+  streamTextMock: vi.fn()
+}))
+
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof Ai>()
+
+  return {
+    ...actual,
+    streamText: streamTextMock
+  }
+})
+
+vi.mock("@mastra/ai-sdk", () => ({
+  handleChatStream: handleChatStreamMock
+}))
+
+vi.mock("@/main/agents/minimal/file-agent", () => ({
+  FILE_AGENT_ID: "file-agent",
+  fileAgentMastra: {}
+}))
+
+const createEmptyUiStream = () =>
+  new ReadableStream({
+    start(controller) {
+      controller.close()
+    }
+  })
+
+const createStreamTextResult = () => ({
+  toUIMessageStream: vi.fn(() => createEmptyUiStream())
+})
 
 const readResponseText = async (response: Response): Promise<string> => {
   if (!response.body) {
@@ -34,453 +65,145 @@ const readResponseText = async (response: Response): Promise<string> => {
   return text
 }
 
-describe("buildChatStreamResponse", () => {
-  it("passes a runtime state into the agent stream", async () => {
-    const streamResult = {
-      toUIMessageStream: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close()
-          }
-        })
-    } as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) => {
-        _options.runtimeState?.beginPhase("turn").end()
-
-        return Promise.resolve(streamResult)
-      }
-    )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
-    const extensionRunner = {
-      emit: vi.fn(() => Promise.resolve()),
-      getStreamHooks: () => {},
-      getToolHooks: () => {},
-      listTools: vi.fn(() => [])
-    } satisfies NonNullable<
-      Parameters<typeof streamAgentChat>[0]["extensionRunner"]
-    >
-
-    const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: () => Promise.resolve(""),
-      db,
-      extensionRunner,
-      messages: [
+const buildBaseOptions = () => ({
+  abortSignal: new AbortController().signal,
+  buildLongTermMemorySystem: () => Promise.resolve(""),
+  messages: [
+    {
+      id: "message-1",
+      parts: [
         {
-          id: "message-1",
-          parts: [],
-          role: "user"
+          text: "hello",
+          type: "text" as const
         }
       ],
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
-      settings: AppSettingsSchema.parse({}),
-      shouldRetrieveLongTermMemory: false,
-      skillCapabilities: ["write-fs"],
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: []
-    })
+      role: "user" as const
+    }
+  ] satisfies UIMessage[],
+  model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
+  modelId: "openai/gpt-4.1",
+  modelMessages: [
+    {
+      content: "hello",
+      role: "user"
+    }
+  ] satisfies ModelMessage[],
+  moonshotReasoningForAssistantToolCalls: [],
+  onFinishPersist: vi.fn(() => Promise.resolve()),
+  projectPath: "/tmp/project-a",
+  requestStartedAt: Date.now(),
+  sessionId: "session-1",
+  shouldRetrieveLongTermMemory: false,
+  systemPrompts: ["base system"]
+})
 
-    const responseText = await readResponseText(response)
+describe("buildChatStreamResponse", () => {
+  it("streams plain chat through streamText when agents are disabled", async () => {
+    streamTextMock.mockReturnValue(createStreamTextResult())
 
-    const streamOptions = streamAgentChatMock.mock.calls[0]?.[0]
-
-    expect(streamOptions?.runtimeState?.getSnapshot()).toEqual({
-      phase: "idle"
-    })
-    expect(streamOptions?.extensionRunner).toBe(extensionRunner)
-    expect(streamOptions?.skillCapabilities).toEqual(["write-fs"])
-    expect(responseText).toContain("agent-turn")
-  })
-
-  it("passes original messages into the agent UI stream for assistant continuation", async () => {
-    const toUIMessageStream = vi.fn(
-      () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close()
-          }
-        })
-    )
-    const streamResult = {
-      toUIMessageStream
-    } as unknown as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) =>
-        Promise.resolve(streamResult)
-    )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
-    const messages = [
-      {
-        id: "assistant-message-1",
-        parts: [
-          {
-            approval: {
-              approved: true,
-              id: "approval-1"
-            },
-            input: {
-              command: "git diff --staged"
-            },
-            state: "approval-responded",
-            toolCallId: "tool-call-1",
-            type: "tool-bash"
-          }
-        ],
-        role: "assistant"
-      }
-    ] satisfies UIMessage[]
-
+    const options = buildBaseOptions()
     const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: () => Promise.resolve(""),
-      db,
-      messages,
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
-      settings: AppSettingsSchema.parse({}),
-      shouldRetrieveLongTermMemory: false,
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: []
+      ...options,
+      settings: AppSettingsSchema.parse({})
     })
 
     await readResponseText(response)
 
-    expect(toUIMessageStream).toHaveBeenCalledWith({
-      originalMessages: messages,
-      sendReasoning: true
-    })
+    expect(handleChatStreamMock).not.toHaveBeenCalled()
+    expect(streamTextMock).toHaveBeenCalledTimes(1)
+
+    const streamOptions = streamTextMock.mock.calls[0]?.[0]
+
+    expect(streamOptions?.system).toBe("base system")
+    expect(streamOptions?.messages).toEqual(options.modelMessages)
+    expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
   })
 
-  it("starts the model stream when long-term memory retrieval times out", async () => {
-    const streamResult = {
-      toUIMessageStream: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close()
-          }
-        })
-    } as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) =>
-        Promise.resolve(streamResult)
-    )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
+  it("routes agent-enabled requests through the Mastra file agent bridge", async () => {
+    handleChatStreamMock.mockResolvedValue(createEmptyUiStream())
+    streamTextMock.mockClear()
 
+    const options = buildBaseOptions()
     const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: async ({ abortSignal }) => {
-        await delay(50, undefined, { signal: abortSignal })
-
-        return "late memory"
-      },
-      db,
-      memoryRetrievalTimeoutMs: 1,
-      messages: [
-        {
-          id: "message-1",
-          parts: [],
-          role: "user"
-        }
-      ],
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
-      settings: AppSettingsSchema.parse({}),
-      shouldRetrieveLongTermMemory: true,
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: []
-    })
-
-    const responseText = await readResponseText(response)
-    const streamOptions = streamAgentChatMock.mock.calls[0]?.[0]
-
-    expect(responseText).toContain("memory-loading")
-    expect(responseText).toContain("model-start")
-    expect(streamAgentChatMock).toHaveBeenCalledTimes(1)
-    expect(streamOptions?.systemPrompts).toEqual([])
-  })
-
-  it("routes /plan requests through the plan profile without sending the command token to the model", async () => {
-    const streamResult = {
-      toUIMessageStream: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close()
-          }
-        })
-    } as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) =>
-        Promise.resolve(streamResult)
-    )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
-
-    const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: () => Promise.resolve(""),
-      db,
-      messages: [
-        {
-          id: "message-1",
-          parts: [
-            {
-              text: "/plan Refactor the agent runtime",
-              type: "text"
-            }
-          ],
-          role: "user"
-        }
-      ],
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [
-        {
-          content: "/plan Refactor the agent runtime",
-          role: "user"
-        }
-      ],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
+      ...options,
       settings: AppSettingsSchema.parse({
         agents: {
-          allowSubagentDelegation: true
+          enabled: true,
+          maxSteps: 5
         }
       }),
-      shouldRetrieveLongTermMemory: false,
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: ["base system"]
+      trigger: "submit-message"
     })
 
     await readResponseText(response)
 
-    const streamOptions = streamAgentChatMock.mock.calls[0]?.[0]
+    expect(streamTextMock).not.toHaveBeenCalled()
+    expect(handleChatStreamMock).toHaveBeenCalledTimes(1)
 
-    expect(streamOptions?.activeToolNames).toEqual([
-      "read",
-      "grep",
-      "find",
-      "ls",
-      "stat",
-      "requestAccess"
-    ])
-    expect(streamOptions?.settings.agents).toMatchObject({
-      allowSubagentDelegation: false,
-      defaultProfileId: "plan",
-      enabled: true
+    const bridgeOptions = handleChatStreamMock.mock.calls[0]?.[0]
+
+    expect(bridgeOptions?.agentId).toBe("file-agent")
+    expect(bridgeOptions?.version).toBe("v6")
+    expect(bridgeOptions?.params.maxSteps).toBe(5)
+    expect(bridgeOptions?.params.trigger).toBe("submit-message")
+    expect(bridgeOptions?.params.messages).toEqual(options.messages)
+    expect(bridgeOptions?.params.requestContext).toEqual({
+      modelId: "openai/gpt-4.1",
+      projectPath: "/tmp/project-a"
     })
-    expect(streamOptions?.messages).toEqual([
-      {
-        content: "Refactor the agent runtime",
-        role: "user"
-      }
-    ])
-    expect(streamOptions?.systemPrompts).toEqual([
-      "base system",
-      expect.stringContaining("[PLAN MODE ACTIVE]")
-    ])
+    expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
   })
 
-  it("formats /prompt requests from loaded prompt templates before streaming", async () => {
-    const streamResult = {
+  it("attaches work time metadata to the persisted assistant message", async () => {
+    streamTextMock.mockReturnValue({
       toUIMessageStream: () =>
         new ReadableStream({
           start(controller) {
+            controller.enqueue({
+              type: "start"
+            })
+            controller.enqueue({
+              type: "text-start",
+              id: "text-1"
+            })
+            controller.enqueue({
+              delta: "hi",
+              id: "text-1",
+              type: "text-delta"
+            })
+            controller.enqueue({
+              type: "text-end",
+              id: "text-1"
+            })
+            controller.enqueue({
+              type: "finish"
+            })
             controller.close()
           }
         })
-    } as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) =>
-        Promise.resolve(streamResult)
-    )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
+    })
 
+    const options = buildBaseOptions()
     const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: () => Promise.resolve(""),
-      db,
-      messages: [
-        {
-          id: "message-1",
-          parts: [
-            {
-              text: '/prompt review "current diff" doc/agents.md',
-              type: "text"
-            }
-          ],
-          role: "user"
-        }
-      ],
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [
-        {
-          content: '/prompt review "current diff" doc/agents.md',
-          role: "user"
-        }
-      ],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      promptTemplates: [
-        {
-          body: "Review $1 against $2.",
-          description: "Review task",
-          name: "review",
-          path: "/tmp/project-a/.agents/skills/reviewer/prompts/review.md"
-        }
-      ],
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
-      settings: AppSettingsSchema.parse({}),
-      shouldRetrieveLongTermMemory: false,
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: []
+      ...options,
+      settings: AppSettingsSchema.parse({})
     })
 
     await readResponseText(response)
 
-    expect(streamAgentChatMock.mock.calls[0]?.[0].messages).toEqual([
-      {
-        content: [
-          "<prompt_template>",
-          "<name>review</name>",
-          "<description>Review task</description>",
-          "<path>/tmp/project-a/.agents/skills/reviewer/prompts/review.md</path>",
-          "<content>",
-          "Review current diff against doc/agents.md.",
-          "</content>",
-          "</prompt_template>"
-        ].join("\n"),
-        role: "user"
-      }
-    ])
-  })
+    expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
 
-  it("formats /skill command invocations from loaded skill command metadata before streaming", async () => {
-    const streamResult = {
-      toUIMessageStream: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close()
-          }
-        })
-    } as Awaited<ReturnType<typeof streamAgentChat>>
-    const streamAgentChatMock = vi.fn(
-      (_options: Parameters<typeof streamAgentChat>[0]) =>
-        Promise.resolve(streamResult)
+    const persistedMessages = (
+      options.onFinishPersist.mock.calls as unknown as [UIMessage[]][]
+    )[0]?.[0]
+    const assistantMessage = persistedMessages?.findLast(
+      (message) => message.role === "assistant"
     )
-    const db = {} as Parameters<typeof streamAgentChat>[0]["db"]
-    const skill: ParsedSkill = {
-      body: "Review changes with project conventions.",
-      capabilities: ["read-fs"],
-      commands: [
-        {
-          description: "Review the current diff.",
-          flags: ["--strict"],
-          name: "review"
-        }
-      ],
-      description: "Reviewer skill.",
-      extensions: [],
-      modelVisible: true,
-      name: "reviewer",
-      path: "/tmp/project-a/.agents/skills/reviewer/SKILL.md",
-      projectPath: "/tmp/project-a",
-      scope: "project",
-      shortDescription: "Reviewer",
-      visible: true
-    }
 
-    const response = buildChatStreamResponse({
-      abortSignal: new AbortController().signal,
-      buildLongTermMemorySystem: () => Promise.resolve(""),
-      db,
-      messages: [
-        {
-          id: "message-1",
-          parts: [
-            {
-              text: "/skill reviewer review --strict -- current diff",
-              type: "text"
-            }
-          ],
-          role: "user"
-        }
-      ],
-      model: { modelId: "openai/gpt-4.1" } as unknown as LanguageModel,
-      modelId: "openai/gpt-4.1",
-      modelMessages: [
-        {
-          content: "/skill reviewer review --strict -- current diff",
-          role: "user"
-        }
-      ],
-      moonshotReasoningForAssistantToolCalls: [],
-      onFinishPersist: () => Promise.resolve(),
-      projectPath: "/tmp/project-a",
-      requestStartedAt: Date.now(),
-      sessionId: "session-1",
-      settings: AppSettingsSchema.parse({}),
-      shouldRetrieveLongTermMemory: false,
-      skillCommandSkills: [skill],
-      streamAgentChat: streamAgentChatMock,
-      systemPrompts: []
-    })
-
-    await readResponseText(response)
-
-    expect(streamAgentChatMock.mock.calls[0]?.[0].messages).toEqual([
-      {
-        content: [
-          "<skill_command_invocation>",
-          "<skill>",
-          "<name>reviewer</name>",
-          "<description>Reviewer skill.</description>",
-          "<short_description>Reviewer</short_description>",
-          "<path>/tmp/project-a/.agents/skills/reviewer/SKILL.md</path>",
-          "<scope>project</scope>",
-          "</skill>",
-          "<command>",
-          "<name>review</name>",
-          "<description>Review the current diff.</description>",
-          "<flags>",
-          "<flag>--strict</flag>",
-          "</flags>",
-          "<selected_flags>",
-          "<flag>--strict</flag>",
-          "</selected_flags>",
-          "</command>",
-          "<arguments>current diff</arguments>",
-          "<instructions>",
-          "Review changes with project conventions.",
-          "</instructions>",
-          "</skill_command_invocation>"
-        ].join("\n"),
-        role: "user"
-      }
-    ])
+    expect(assistantMessage).toBeDefined()
+    expect(
+      (assistantMessage?.metadata as { workTimeMs?: number } | undefined)
+        ?.workTimeMs
+    ).toBeTypeOf("number")
   })
 })

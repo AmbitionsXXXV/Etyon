@@ -1,16 +1,16 @@
 import type { AppSettings, ParsedSkill } from "@etyon/rpc"
+import { handleChatStream } from "@mastra/ai-sdk"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
-import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  streamText
+} from "ai"
 
 import {
-  getLatestUserMessageBoundary,
-  mergeAgentEventProjectionIntoChatMessages
-} from "@/main/agents/agent-chat-projection"
-import { listAgentEvents } from "@/main/agents/agent-event-store"
-import type { streamAgentChat } from "@/main/agents/agent-runtime"
-import { createAgentRuntimeState } from "@/main/agents/agent-state"
-import type { AgentRuntimeState } from "@/main/agents/agent-state"
-import { CODE_AGENT_READONLY_TOOL_ALIASES } from "@/main/agents/code-agent-tool-aliases"
+  FILE_AGENT_ID,
+  fileAgentMastra
+} from "@/main/agents/minimal/file-agent"
 import {
   formatPromptTemplateInvocation,
   parseCommandArgs
@@ -21,21 +21,7 @@ import { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-me
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
 
-type StreamAgentChatResult = Awaited<ReturnType<typeof streamAgentChat>>
-type StreamAgentChatOptions = Parameters<typeof streamAgentChat>[0]
-
 const LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS = 2500
-const PLAN_COMMAND_PATTERN = /^\/plan(?:\s+|$)/iu
-const PLAN_MODE_FALLBACK_PROMPT = "Create a structured implementation plan."
-const PLAN_MODE_ACTIVE_TOOL_NAMES = [
-  ...CODE_AGENT_READONLY_TOOL_ALIASES,
-  "requestAccess"
-] as const
-const PLAN_MODE_SYSTEM_PROMPT = [
-  "[PLAN MODE ACTIVE]",
-  "Use read-only project evidence first.",
-  "Return a numbered plan with action, files, and risk level for each item."
-].join("\n")
 const PROMPT_TEMPLATE_COMMAND_PATTERN = /^\/prompt(?:\s+|$)/iu
 const PROMPT_TEMPLATE_FALLBACK_PROMPT =
   "Prompt template command was incomplete. Ask the user which template to use."
@@ -46,98 +32,11 @@ const SKILL_COMMAND_FALLBACK_PROMPT =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
 
-const stripPlanCommand = (text: string): string =>
-  text.replace(PLAN_COMMAND_PATTERN, "").trim()
-
 const stripPromptTemplateCommand = (text: string): string =>
   text.replace(PROMPT_TEMPLATE_COMMAND_PATTERN, "").trim()
 
 const stripSkillCommand = (text: string): string =>
   text.replace(SKILL_COMMAND_PATTERN, "").trim()
-
-const getUiMessageText = (message: UIMessage): string =>
-  message.parts
-    .filter(
-      (part): part is Extract<UIMessage["parts"][number], { type: "text" }> =>
-        part.type === "text"
-    )
-    .map((part) => part.text)
-    .join("\n")
-    .trim()
-
-const isPlanModeRequest = (messages: UIMessage[]): boolean => {
-  const latestUserMessage = messages.findLast(
-    (message) => message.role === "user"
-  )
-
-  return latestUserMessage
-    ? PLAN_COMMAND_PATTERN.test(getUiMessageText(latestUserMessage))
-    : false
-}
-
-const stripPlanCommandFromModelMessage = (
-  message: ModelMessage
-): ModelMessage => {
-  if (message.role !== "user") {
-    return message
-  }
-
-  if (typeof message.content === "string") {
-    return {
-      ...message,
-      content: stripPlanCommand(message.content) || PLAN_MODE_FALLBACK_PROMPT
-    }
-  }
-
-  if (!Array.isArray(message.content)) {
-    return message
-  }
-
-  let stripped = false
-  const content = message.content.map((part) => {
-    if (
-      stripped ||
-      !isRecord(part) ||
-      part.type !== "text" ||
-      typeof part.text !== "string" ||
-      !PLAN_COMMAND_PATTERN.test(part.text)
-    ) {
-      return part
-    }
-
-    stripped = true
-
-    return {
-      ...part,
-      text: stripPlanCommand(part.text) || PLAN_MODE_FALLBACK_PROMPT
-    }
-  })
-
-  return stripped
-    ? {
-        ...message,
-        content
-      }
-    : message
-}
-
-const stripPlanCommandFromLatestModelMessage = (
-  modelMessages: ModelMessage[]
-): ModelMessage[] => {
-  const latestUserMessageIndex = modelMessages.findLastIndex(
-    (message) => message.role === "user"
-  )
-
-  if (latestUserMessageIndex === -1) {
-    return modelMessages
-  }
-
-  return modelMessages.map((message, index) =>
-    index === latestUserMessageIndex
-      ? stripPlanCommandFromModelMessage(message)
-      : message
-  )
-}
 
 const findPromptTemplate = ({
   name,
@@ -145,15 +44,8 @@ const findPromptTemplate = ({
 }: {
   name: string
   promptTemplates: readonly PromptTemplate[]
-}): PromptTemplate | null => {
-  const normalizedName = name.toLowerCase()
-
-  return (
-    promptTemplates.find(
-      (template) => template.name.toLowerCase() === normalizedName
-    ) ?? null
-  )
-}
+}): PromptTemplate | undefined =>
+  promptTemplates.find((template) => template.name === name)
 
 const resolvePromptTemplateCommandText = ({
   promptTemplates,
@@ -161,120 +53,28 @@ const resolvePromptTemplateCommandText = ({
 }: {
   promptTemplates: readonly PromptTemplate[]
   text: string
-}): string => {
-  const commandText = stripPromptTemplateCommand(text)
+}): null | string => {
+  if (!PROMPT_TEMPLATE_COMMAND_PATTERN.test(text)) {
+    return null
+  }
 
-  if (commandText.length === 0) {
+  const commandBody = stripPromptTemplateCommand(text)
+
+  if (commandBody.length === 0) {
     return PROMPT_TEMPLATE_FALLBACK_PROMPT
   }
 
-  try {
-    const [templateName, ...args] = parseCommandArgs(commandText)
-
-    if (!templateName) {
-      return PROMPT_TEMPLATE_FALLBACK_PROMPT
-    }
-
-    const template = findPromptTemplate({
-      name: templateName,
-      promptTemplates
-    })
-
-    if (!template) {
-      return `Prompt template not found: ${templateName}. Ask the user to choose an available template.`
-    }
-
-    return formatPromptTemplateInvocation(template, args)
-  } catch (error) {
-    return `Prompt template command could not be parsed: ${
-      error instanceof Error ? error.message : String(error)
-    }`
-  }
-}
-
-const applyPromptTemplateCommandToModelMessage = ({
-  message,
-  promptTemplates
-}: {
-  message: ModelMessage
-  promptTemplates: readonly PromptTemplate[]
-}): ModelMessage => {
-  if (message.role !== "user") {
-    return message
-  }
-
-  if (typeof message.content === "string") {
-    if (!PROMPT_TEMPLATE_COMMAND_PATTERN.test(message.content)) {
-      return message
-    }
-
-    return {
-      ...message,
-      content: resolvePromptTemplateCommandText({
-        promptTemplates,
-        text: message.content
-      })
-    }
-  }
-
-  if (!Array.isArray(message.content)) {
-    return message
-  }
-
-  let replaced = false
-  const content = message.content.map((part) => {
-    if (
-      replaced ||
-      !isRecord(part) ||
-      part.type !== "text" ||
-      typeof part.text !== "string" ||
-      !PROMPT_TEMPLATE_COMMAND_PATTERN.test(part.text)
-    ) {
-      return part
-    }
-
-    replaced = true
-
-    return {
-      ...part,
-      text: resolvePromptTemplateCommandText({
-        promptTemplates,
-        text: part.text
-      })
-    }
+  const [templateName = "", ...templateArgs] = parseCommandArgs(commandBody)
+  const template = findPromptTemplate({
+    name: templateName,
+    promptTemplates
   })
 
-  return replaced
-    ? {
-        ...message,
-        content
-      }
-    : message
-}
-
-const applyPromptTemplateCommandToLatestModelMessage = ({
-  modelMessages,
-  promptTemplates
-}: {
-  modelMessages: ModelMessage[]
-  promptTemplates: readonly PromptTemplate[]
-}): ModelMessage[] => {
-  const latestUserMessageIndex = modelMessages.findLastIndex(
-    (message) => message.role === "user"
-  )
-
-  if (latestUserMessageIndex === -1) {
-    return modelMessages
+  if (!template) {
+    return PROMPT_TEMPLATE_FALLBACK_PROMPT
   }
 
-  return modelMessages.map((message, index) =>
-    index === latestUserMessageIndex
-      ? applyPromptTemplateCommandToModelMessage({
-          message,
-          promptTemplates
-        })
-      : message
-  )
+  return formatPromptTemplateInvocation(template, templateArgs)
 }
 
 const findSkillByName = ({
@@ -283,31 +83,7 @@ const findSkillByName = ({
 }: {
   name: string
   skills: readonly ParsedSkill[]
-}): ParsedSkill | null => {
-  const normalizedName = name.toLowerCase()
-
-  return (
-    skills.find(
-      (skill) => skill.visible && skill.name.toLowerCase() === normalizedName
-    ) ?? null
-  )
-}
-
-const findSkillCommandByName = ({
-  commandName,
-  skill
-}: {
-  commandName: string
-  skill: ParsedSkill
-}): ParsedSkill["commands"][number] | null => {
-  const normalizedCommandName = commandName.toLowerCase()
-
-  return (
-    skill.commands.find(
-      (command) => command.name.toLowerCase() === normalizedCommandName
-    ) ?? null
-  )
-}
+}): ParsedSkill | undefined => skills.find((skill) => skill.name === name)
 
 const splitSkillCommandArgs = (
   args: readonly string[]
@@ -342,7 +118,7 @@ const validateSkillCommandFlags = ({
 }: {
   command: ParsedSkill["commands"][number]
   selectedFlags: readonly string[]
-}): string | null => {
+}): null | string => {
   for (const selectedFlag of selectedFlags) {
     if (command.flags.includes(selectedFlag)) {
       continue
@@ -358,88 +134,68 @@ const validateSkillCommandFlags = ({
 }
 
 const resolveSkillCommandText = ({
-  skills,
+  projectPath,
+  skillCommandSkills,
   text
 }: {
-  skills: readonly ParsedSkill[]
+  projectPath: string
+  skillCommandSkills: readonly ParsedSkill[] | undefined
   text: string
-}): string => {
-  const commandText = stripSkillCommand(text)
+}): null | string => {
+  if (!SKILL_COMMAND_PATTERN.test(text)) {
+    return null
+  }
 
-  if (commandText.length === 0) {
+  const commandBody = stripSkillCommand(text)
+
+  if (commandBody.length === 0) {
     return SKILL_COMMAND_FALLBACK_PROMPT
   }
 
-  try {
-    const [skillName, commandName, ...rawArgs] = parseCommandArgs(commandText)
+  const [skillName = "", commandName = "", ...rawArgs] =
+    parseCommandArgs(commandBody)
+  const skills =
+    skillCommandSkills ?? listSkills({ projectPaths: [projectPath] })
+  const skill = findSkillByName({
+    name: skillName,
+    skills
+  })
+  const command = skill?.commands.find((entry) => entry.name === commandName)
 
-    if (!skillName || !commandName) {
-      return SKILL_COMMAND_FALLBACK_PROMPT
-    }
-
-    const skill = findSkillByName({
-      name: skillName,
-      skills
-    })
-
-    if (!skill) {
-      return `Skill not found: ${skillName}. Ask the user to choose an available skill.`
-    }
-
-    const command = findSkillCommandByName({
-      commandName,
-      skill
-    })
-
-    if (!command) {
-      return `Skill command not found: ${skillName} ${commandName}. Ask the user to choose an available command.`
-    }
-
-    const { args, selectedFlags } = splitSkillCommandArgs(rawArgs)
-    const flagError = validateSkillCommandFlags({
-      command,
-      selectedFlags
-    })
-
-    if (flagError) {
-      return flagError
-    }
-
-    return formatSkillCommandInvocation({
-      args,
-      command,
-      selectedFlags,
-      skill
-    })
-  } catch (error) {
-    return `Skill command could not be parsed: ${
-      error instanceof Error ? error.message : String(error)
-    }`
+  if (!(skill && command)) {
+    return SKILL_COMMAND_FALLBACK_PROMPT
   }
+
+  const { args, selectedFlags } = splitSkillCommandArgs(rawArgs)
+  const flagError = validateSkillCommandFlags({
+    command,
+    selectedFlags
+  })
+
+  if (flagError) {
+    return flagError
+  }
+
+  return formatSkillCommandInvocation({
+    args,
+    command,
+    selectedFlags,
+    skill
+  })
 }
 
-const applySkillCommandToModelMessage = ({
-  message,
-  skills
-}: {
-  message: ModelMessage
-  skills: readonly ParsedSkill[]
-}): ModelMessage => {
+const applyCommandTextToModelMessage = (
+  message: ModelMessage,
+  commandText: string
+): ModelMessage => {
   if (message.role !== "user") {
     return message
   }
 
   if (typeof message.content === "string") {
-    if (!SKILL_COMMAND_PATTERN.test(message.content)) {
-      return message
-    }
-
     return {
       ...message,
-      content: resolveSkillCommandText({
-        skills,
-        text: message.content
-      })
+      content: commandText
     }
   }
 
@@ -447,135 +203,89 @@ const applySkillCommandToModelMessage = ({
     return message
   }
 
-  let replaced = false
+  let replacedFirstText = false
   const content = message.content.map((part) => {
-    if (
-      replaced ||
-      !isRecord(part) ||
-      part.type !== "text" ||
-      typeof part.text !== "string" ||
-      !SKILL_COMMAND_PATTERN.test(part.text)
-    ) {
-      return part
+    if (isRecord(part) && part.type === "text" && !replacedFirstText) {
+      replacedFirstText = true
+
+      return {
+        ...part,
+        text: commandText
+      }
     }
 
-    replaced = true
-
-    return {
-      ...part,
-      text: resolveSkillCommandText({
-        skills,
-        text: part.text
-      })
-    }
+    return part
   })
 
-  return replaced
-    ? {
-        ...message,
-        content
-      }
-    : message
+  return {
+    ...message,
+    content
+  } as ModelMessage
 }
 
-const modelMessageHasSkillCommand = (message: ModelMessage): boolean => {
+const getModelMessageText = (message: ModelMessage): string => {
+  if (message.role !== "user") {
+    return ""
+  }
+
   if (typeof message.content === "string") {
-    return SKILL_COMMAND_PATTERN.test(message.content)
+    return message.content
   }
 
   if (!Array.isArray(message.content)) {
-    return false
+    return ""
   }
 
-  const contentParts: unknown[] = message.content
-
-  return contentParts.some(
-    (part) =>
-      isRecord(part) &&
-      part.type === "text" &&
-      typeof part.text === "string" &&
-      SKILL_COMMAND_PATTERN.test(part.text)
-  )
+  return message.content
+    .map((part) =>
+      isRecord(part) && part.type === "text" && typeof part.text === "string"
+        ? part.text
+        : ""
+    )
+    .join("\n")
 }
 
-const applySkillCommandToLatestModelMessage = ({
+const applyComposerCommandsToLatestModelMessage = ({
   modelMessages,
   projectPath,
+  promptTemplates,
   skillCommandSkills
 }: {
   modelMessages: ModelMessage[]
   projectPath: string
-  skillCommandSkills?: readonly ParsedSkill[]
+  promptTemplates: readonly PromptTemplate[]
+  skillCommandSkills: readonly ParsedSkill[] | undefined
 }): ModelMessage[] => {
-  const latestUserMessageIndex = modelMessages.findLastIndex(
+  const latestIndex = modelMessages.findLastIndex(
     (message) => message.role === "user"
   )
 
-  if (latestUserMessageIndex === -1) {
+  if (latestIndex === -1) {
     return modelMessages
   }
 
-  const latestUserMessage = modelMessages[latestUserMessageIndex]
-
-  if (!modelMessageHasSkillCommand(latestUserMessage)) {
-    return modelMessages
-  }
-
-  const skills =
-    skillCommandSkills ??
-    listSkills({
-      projectPaths: [projectPath]
+  const latestMessage = modelMessages[latestIndex] as ModelMessage
+  const text = getModelMessageText(latestMessage).trim()
+  const commandText =
+    resolvePromptTemplateCommandText({
+      promptTemplates,
+      text
+    }) ??
+    resolveSkillCommandText({
+      projectPath,
+      skillCommandSkills,
+      text
     })
 
+  if (commandText === null) {
+    return modelMessages
+  }
+
   return modelMessages.map((message, index) =>
-    index === latestUserMessageIndex
-      ? applySkillCommandToModelMessage({
-          message,
-          skills
-        })
+    index === latestIndex
+      ? applyCommandTextToModelMessage(message, commandText)
       : message
   )
-}
-
-const applyPlanModeRequest = ({
-  messages,
-  modelMessages,
-  settings,
-  systemPrompts
-}: {
-  messages: UIMessage[]
-  modelMessages: ModelMessage[]
-  settings: AppSettings
-  systemPrompts: string[]
-}): {
-  activeToolNames?: readonly string[]
-  modelMessages: ModelMessage[]
-  settings: AppSettings
-  systemPrompts: string[]
-} => {
-  if (!isPlanModeRequest(messages)) {
-    return {
-      activeToolNames: undefined,
-      modelMessages,
-      settings,
-      systemPrompts
-    }
-  }
-
-  return {
-    activeToolNames: PLAN_MODE_ACTIVE_TOOL_NAMES,
-    modelMessages: stripPlanCommandFromLatestModelMessage(modelMessages),
-    settings: {
-      ...settings,
-      agents: {
-        ...settings.agents,
-        allowSubagentDelegation: false,
-        defaultProfileId: "plan",
-        enabled: true
-      }
-    },
-    systemPrompts: [...systemPrompts, PLAN_MODE_SYSTEM_PROMPT]
-  }
 }
 
 const writeRequestPhase = (
@@ -596,16 +306,6 @@ const writeRequestPhase = (
     type: CHAT_REQUEST_PHASE_DATA_TYPE
   })
 }
-
-const writeAgentRuntimePhase = (
-  writer: Parameters<typeof writeRequestPhase>[0],
-  runtimeState: AgentRuntimeState
-): (() => void) =>
-  runtimeState.subscribe(({ phase }) => {
-    if (phase === "turn") {
-      writeRequestPhase(writer, "agent-turn")
-    }
-  })
 
 interface BuildLongTermMemorySystemOptions {
   abortSignal: AbortSignal
@@ -657,8 +357,6 @@ export interface BuildChatStreamResponseOptions {
   buildLongTermMemorySystem: (
     options: BuildLongTermMemorySystemOptions
   ) => Promise<string>
-  chatLifecycleBranch?: StreamAgentChatOptions["chatLifecycleBranch"]
-  extensionRunner?: StreamAgentChatOptions["extensionRunner"]
   messages: UIMessage[]
   memoryRetrievalTimeoutMs?: number
   model: LanguageModel
@@ -673,20 +371,13 @@ export interface BuildChatStreamResponseOptions {
   settings: AppSettings
   shouldRetrieveLongTermMemory: boolean
   skillCommandSkills?: readonly ParsedSkill[]
-  skillCapabilities?: readonly string[]
-  streamAgentChat: (
-    options: Parameters<typeof streamAgentChat>[0]
-  ) => Promise<StreamAgentChatResult>
   systemPrompts: string[]
-  db: Parameters<typeof streamAgentChat>[0]["db"]
+  trigger?: "regenerate-message" | "submit-message"
 }
 
 export const buildChatStreamResponse = ({
   abortSignal,
   buildLongTermMemorySystem,
-  chatLifecycleBranch,
-  db,
-  extensionRunner,
   messages,
   model,
   modelId,
@@ -696,29 +387,19 @@ export const buildChatStreamResponse = ({
   projectPath,
   promptTemplates = [],
   requestStartedAt,
-  sessionId,
   settings,
   shouldRetrieveLongTermMemory,
   skillCommandSkills,
-  skillCapabilities,
-  streamAgentChat: runStreamAgentChat,
   systemPrompts,
+  trigger,
   memoryRetrievalTimeoutMs = LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS
 }: BuildChatStreamResponseOptions): Response => {
-  const planModeRequest = applyPlanModeRequest({
-    messages,
-    modelMessages: applySkillCommandToLatestModelMessage({
-      modelMessages: applyPromptTemplateCommandToLatestModelMessage({
-        modelMessages,
-        promptTemplates
-      }),
-      projectPath,
-      skillCommandSkills
-    }),
-    settings,
-    systemPrompts
+  const preparedModelMessages = applyComposerCommandsToLatestModelMessage({
+    modelMessages,
+    projectPath,
+    promptTemplates,
+    skillCommandSkills
   })
-  let agentRunId: null | string = null
 
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
@@ -735,76 +416,74 @@ export const buildChatStreamResponse = ({
             })
           : ""
         const effectiveSystemPrompts = [
-          ...planModeRequest.systemPrompts,
+          ...systemPrompts,
           longTermMemorySystem
         ].filter((prompt) => prompt.length > 0)
 
         writeRequestPhase(writer, "model-start")
 
-        const runtimeState = createAgentRuntimeState()
-        const unsubscribeRuntimeState = writeAgentRuntimePhase(
-          writer,
-          runtimeState
-        )
-        const { runWithMoonshotReasoningContext } =
-          await import("@/shared/providers/moonshot-reasoning")
-        let result: StreamAgentChatResult
-
-        try {
-          result = await runWithMoonshotReasoningContext(
+        if (!settings.agents.enabled) {
+          const { runWithMoonshotReasoningContext } =
+            await import("@/shared/providers/moonshot-reasoning")
+          const result = await runWithMoonshotReasoningContext(
             moonshotReasoningForAssistantToolCalls,
             () =>
-              runStreamAgentChat({
-                abortSignal,
-                activeToolNames: planModeRequest.activeToolNames,
-                chatLifecycleBranch,
-                db,
-                extensionRunner,
-                messages: planModeRequest.modelMessages,
-                model,
-                modelId,
-                projectPath,
-                runtimeState,
-                sessionId,
-                settings: planModeRequest.settings,
-                skillCapabilities,
-                systemPrompts: effectiveSystemPrompts
-              })
+              Promise.resolve(
+                streamText({
+                  abortSignal,
+                  ...(effectiveSystemPrompts.length > 0
+                    ? { system: effectiveSystemPrompts.join("\n\n") }
+                    : {}),
+                  messages: preparedModelMessages,
+                  model
+                })
+              )
           )
-        } finally {
-          unsubscribeRuntimeState()
+
+          writer.merge(
+            result.toUIMessageStream({
+              originalMessages: messages,
+              sendReasoning: true
+            })
+          )
+
+          return
         }
 
-        ;({ agentRunId } = result)
+        writeRequestPhase(writer, "agent-turn")
 
-        writer.merge(
-          result.toUIMessageStream({
-            originalMessages: messages,
-            sendReasoning: true
-          })
-        )
+        const agentStream = await handleChatStream({
+          agentId: FILE_AGENT_ID,
+          mastra: fileAgentMastra,
+          params: {
+            abortSignal,
+            maxSteps: settings.agents.maxSteps,
+            // The Mastra bridge converts UIMessages itself and detects
+            // approval responses in the trailing assistant message.
+            messages: messages as never,
+            requestContext: {
+              ...(modelId ? { modelId } : {}),
+              projectPath
+            } as never,
+            ...(effectiveSystemPrompts.length > 0
+              ? { system: effectiveSystemPrompts.join("\n\n") }
+              : {}),
+            ...(trigger ? { trigger } : {})
+          },
+          sendReasoning: true,
+          version: "v6"
+        })
+
+        // The bridge stream and Etyon share the AI SDK v6 UIMessageChunk
+        // wire format; the cast bridges its vendored type declarations.
+        writer.merge(agentStream as never)
       },
       onFinish: async ({ messages: nextMessages }) => {
         const workTimeMs = Date.now() - requestStartedAt
-        const messagesWithWorkTime = attachWorkTimeToLatestAssistantMessage(
-          nextMessages,
-          workTimeMs
-        )
-        const userBoundaryMessageCount =
-          getLatestUserMessageBoundary(messagesWithWorkTime)
-        const projectedMessages = agentRunId
-          ? mergeAgentEventProjectionIntoChatMessages({
-              events: await listAgentEvents({
-                db,
-                runId: agentRunId
-              }),
-              messages: messagesWithWorkTime,
-              originalMessageCount: userBoundaryMessageCount,
-              runId: agentRunId
-            })
-          : messagesWithWorkTime
 
-        await onFinishPersist(projectedMessages)
+        await onFinishPersist(
+          attachWorkTimeToLatestAssistantMessage(nextMessages, workTimeMs)
+        )
       },
       originalMessages: messages
     })

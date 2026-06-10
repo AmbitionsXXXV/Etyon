@@ -1,5 +1,4 @@
 import { useI18n } from "@etyon/i18n/react"
-import type { InspectAgentRunOutput } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
@@ -11,20 +10,12 @@ import {
 } from "@hugeicons/core-free-icons"
 import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useQuery } from "@tanstack/react-query"
 import { getToolName } from "ai"
 import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 
 import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
 import {
-  buildAgentRunGraphPreview,
-  buildAgentRunGraphPreviewDisplay,
-  buildAgentRunTracePreview,
-  getAgentRunIdFromToolOutput
-} from "@/renderer/lib/chat/agent-run-trace"
-import {
-  canRememberCommandApproval,
   EMPTY_TOOL_TRACE_META_ITEMS,
   formatToolTraceDetail,
   getCollapsedOutputPreview,
@@ -47,7 +38,6 @@ import {
 import type { ChatToolPart } from "@/renderer/lib/chat/message-tool-trace"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
-import { orpc } from "@/renderer/lib/rpc"
 import { formatDuration } from "@/renderer/lib/utils"
 
 interface ToolTracePanelProps {
@@ -114,223 +104,6 @@ const ToolTraceMeta = ({ items }: { items: string[] }) => {
         </span>
       ))}
     </div>
-  )
-}
-
-const AgentTracePreviewList = ({
-  items,
-  label
-}: {
-  items: {
-    detail: string
-    id: string
-    label: string
-  }[]
-  label: string
-}) => {
-  if (items.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[0.6875rem] font-medium text-muted-foreground">
-        {label}
-      </p>
-      <div className="space-y-1">
-        {items.map((item) => (
-          <div
-            className="rounded-md border border-border/50 bg-muted/35 px-2 py-1.5"
-            key={item.id}
-          >
-            <div className="truncate text-[0.6875rem] font-medium text-foreground">
-              {item.label}
-            </div>
-            {item.detail ? (
-              <div className="mt-0.5 line-clamp-2 font-mono text-[0.625rem] wrap-break-word text-muted-foreground">
-                {item.detail}
-              </div>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-const AgentRunGraphPreviewPanel = ({
-  graph
-}: {
-  graph: ReturnType<typeof buildAgentRunGraphPreviewDisplay>
-}) => {
-  const { t } = useI18n()
-
-  if (graph.nodes.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-[0.6875rem] font-medium text-muted-foreground">
-        {t("chat.toolTrace.runGraph")}
-      </p>
-      <div className="space-y-1">
-        {graph.nodes.map((node) => (
-          <div
-            className="rounded-md border border-border/50 bg-muted/25 px-2 py-1.5"
-            key={node.id}
-            style={{ marginLeft: `${node.depth * 12}px` }}
-          >
-            <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="truncate text-[0.6875rem] font-medium text-foreground">
-                {node.label}
-              </span>
-              <span className="max-w-28 truncate font-mono text-[0.625rem] text-muted-foreground">
-                {node.id}
-              </span>
-            </div>
-            <ToolTraceMeta items={node.detailItems} />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-export const AgentChildTracePanel = ({
-  defaultExpanded = false,
-  runId,
-  sessionId
-}: {
-  defaultExpanded?: boolean
-  runId: string
-  sessionId: string
-}) => {
-  const { t } = useI18n()
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
-  const traceQuery = useQuery({
-    ...orpc.agents.inspectRun.queryOptions({
-      input: {
-        runId,
-        sessionId
-      }
-    }),
-    enabled: isExpanded
-  })
-  const trace = traceQuery.data as InspectAgentRunOutput | undefined
-  const preview = trace ? buildAgentRunTracePreview(trace) : null
-  const parentRunId = trace?.run.parentRunId ?? null
-  const parentTraceQuery = useQuery({
-    ...orpc.agents.inspectRun.queryOptions({
-      input: {
-        runId: parentRunId ?? "",
-        sessionId
-      }
-    }),
-    enabled: isExpanded && parentRunId !== null
-  })
-  const parentTrace = parentTraceQuery.data as InspectAgentRunOutput | undefined
-  const graphPreview = trace
-    ? buildAgentRunGraphPreviewDisplay(
-        buildAgentRunGraphPreview(parentTrace ? [parentTrace, trace] : [trace])
-      )
-    : null
-
-  return (
-    <Disclosure
-      className="overflow-hidden rounded-md border border-border/60 bg-background/50"
-      isExpanded={isExpanded}
-      onExpandedChange={setIsExpanded}
-    >
-      <Disclosure.Heading className="rounded-md">
-        <Button
-          className="h-8 w-full justify-between rounded-md px-2 text-[0.6875rem] hover:bg-muted/50 data-[hovered=true]:bg-muted/50"
-          slot="trigger"
-          type="button"
-          variant="ghost"
-        >
-          <span className="min-w-0 truncate">
-            {t("chat.toolTrace.childTrace")}
-          </span>
-          <span className="flex min-w-0 shrink-0 items-center gap-1.5">
-            <span className="max-w-32 truncate font-mono text-[0.625rem] text-muted-foreground">
-              {runId}
-            </span>
-            <Disclosure.Indicator />
-          </span>
-        </Button>
-      </Disclosure.Heading>
-      <Disclosure.Content>
-        <Disclosure.Body className="space-y-2 border-t border-border/60 p-2">
-          {traceQuery.isLoading ? (
-            <p className="text-xs text-muted-foreground">
-              {t("chat.toolTrace.childTraceLoading")}
-            </p>
-          ) : null}
-          {traceQuery.isError ? (
-            <p className="text-xs text-destructive">
-              {t("chat.toolTrace.childTraceError")}
-            </p>
-          ) : null}
-          {preview ? (
-            <>
-              {parentTraceQuery.isLoading ? (
-                <p className="text-xs text-muted-foreground">
-                  {t("chat.toolTrace.runGraphLoading")}
-                </p>
-              ) : null}
-              {graphPreview ? (
-                <AgentRunGraphPreviewPanel graph={graphPreview} />
-              ) : null}
-              <ToolTraceMeta
-                items={[
-                  `${t("chat.toolTrace.profile")}: ${preview.profileId}`,
-                  `${t("chat.toolTrace.status")}: ${preview.status}`,
-                  t("chat.toolTrace.childTraceArtifacts", {
-                    count: preview.artifactCount
-                  }),
-                  t("chat.toolTrace.childTraceEvents", {
-                    count: preview.eventCount
-                  }),
-                  t("chat.toolTrace.childTraceTools", {
-                    count: preview.toolCallCount
-                  })
-                ]}
-              />
-              {preview.artifacts.length === 0 &&
-              preview.events.length === 0 &&
-              preview.toolCalls.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {t("chat.toolTrace.childTraceEmpty")}
-                </p>
-              ) : null}
-              <AgentTracePreviewList
-                items={preview.artifacts}
-                label={t("chat.toolTrace.childTraceArtifacts", {
-                  count: preview.artifactCount
-                })}
-              />
-              <AgentTracePreviewList
-                items={preview.toolCalls}
-                label={t("chat.toolTrace.childTraceTools", {
-                  count: preview.toolCallCount
-                })}
-              />
-              <AgentTracePreviewList
-                items={preview.events}
-                label={t("chat.toolTrace.childTraceEvents", {
-                  count: preview.eventCount
-                })}
-              />
-              <ToolTracePanel
-                body={formatToolTraceDetail(traceQuery.data)}
-                label={t("chat.toolTrace.rawOutput")}
-              />
-            </>
-          ) : null}
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
   )
 }
 
@@ -506,22 +279,6 @@ const ToolApprovalActions = ({
         <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
         {t("chat.toolTrace.approve")}
       </Button>
-      {canRememberCommandApproval(part) ? (
-        <Button
-          isDisabled={isApprovalActionDisabled}
-          onPress={() =>
-            onApprovalResponse(part, true, {
-              rememberCommand: true
-            })
-          }
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
-          {t("chat.toolTrace.approveAndRemember")}
-        </Button>
-      ) : null}
       <Button
         isDisabled={isApprovalActionDisabled}
         onPress={() => onApprovalResponse(part, false)}
@@ -560,13 +317,11 @@ const ToolTraceDetailPanels = ({
 }
 
 export const StructuredToolTraceCard = ({
-  chatSessionId,
   isApprovalActionDisabled,
   onApprovalResponse,
   part,
   repeatCount = 1
 }: {
-  chatSessionId?: string
   isApprovalActionDisabled: boolean
   onApprovalResponse: (
     part: ChatToolPart,
@@ -624,17 +379,8 @@ export const StructuredToolTraceCard = ({
     ) : null
   const outputDetail =
     part.state === "output-available" ? part.output : undefined
-  const childRunId =
-    part.state === "output-available"
-      ? getAgentRunIdFromToolOutput(part.output)
-      : null
   const detailPanels = (
-    <>
-      {childRunId && chatSessionId ? (
-        <AgentChildTracePanel runId={childRunId} sessionId={chatSessionId} />
-      ) : null}
-      <ToolTraceDetailPanels input={part.input} output={outputDetail} />
-    </>
+    <ToolTraceDetailPanels input={part.input} output={outputDetail} />
   )
 
   if (inputCommand) {

@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
-import { Route as AgentsSessionIdRouteImport } from './routes/agents.$sessionId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -29,43 +28,34 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   path: '/chat/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AgentsSessionIdRoute = AgentsSessionIdRouteImport.update({
-  id: '/agents/$sessionId',
-  path: '/agents/$sessionId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
-  '/agents/$sessionId': typeof AgentsSessionIdRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
-  '/agents/$sessionId': typeof AgentsSessionIdRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
-  '/agents/$sessionId': typeof AgentsSessionIdRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/agents/$sessionId' | '/chat/$sessionId'
+  fullPaths: '/' | '/settings' | '/chat/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/agents/$sessionId' | '/chat/$sessionId'
-  id: '__root__' | '/' | '/settings' | '/agents/$sessionId' | '/chat/$sessionId'
+  to: '/' | '/settings' | '/chat/$sessionId'
+  id: '__root__' | '/' | '/settings' | '/chat/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SettingsRoute: typeof SettingsRoute
-  AgentsSessionIdRoute: typeof AgentsSessionIdRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
 }
 
@@ -92,20 +82,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agents/$sessionId': {
-      id: '/agents/$sessionId'
-      path: '/agents/$sessionId'
-      fullPath: '/agents/$sessionId'
-      preLoaderRoute: typeof AgentsSessionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SettingsRoute: SettingsRoute,
-  AgentsSessionIdRoute: AgentsSessionIdRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
 }
 export const routeTree = rootRouteImport

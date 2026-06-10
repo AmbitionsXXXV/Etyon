@@ -108,13 +108,11 @@ const AssistantMarkdownContent = ({
 // CHAIN_OF_THOUGHT_ANCHOR
 
 const AssistantChainOfThought = ({
-  chatSessionId,
   entries,
   isApprovalActionDisabled,
   isStreaming,
   onApprovalResponse
 }: {
-  chatSessionId: string
   entries: ChainEntry[]
   isApprovalActionDisabled: boolean
   isStreaming: boolean
@@ -165,7 +163,6 @@ const AssistantChainOfThought = ({
             ) : (
               <ChainOfThought.Step key={entry.key}>
                 <StructuredToolTraceCard
-                  chatSessionId={chatSessionId}
                   isApprovalActionDisabled={isApprovalActionDisabled}
                   onApprovalResponse={(toolPart, approved, options) => {
                     onApprovalResponse(
@@ -254,7 +251,6 @@ const AssistantReferencePart = ({
 }
 
 export const AssistantMessageTimeline = ({
-  chatSessionId,
   className,
   isStreamdownAnimating,
   isApprovalActionDisabled,
@@ -262,7 +258,6 @@ export const AssistantMessageTimeline = ({
   onApprovalResponse,
   streamdownAnimation
 }: {
-  chatSessionId: string
   className?: string
   isStreamdownAnimating: boolean
   isApprovalActionDisabled: boolean
@@ -283,7 +278,6 @@ export const AssistantMessageTimeline = ({
   return (
     <div className={cn("space-y-2", className)}>
       <AssistantChainOfThought
-        chatSessionId={chatSessionId}
         entries={chainEntries}
         isApprovalActionDisabled={isApprovalActionDisabled}
         isStreaming={isStreamdownAnimating}

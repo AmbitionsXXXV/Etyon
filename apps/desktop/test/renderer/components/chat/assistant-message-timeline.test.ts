@@ -44,7 +44,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: false,
           message: {
@@ -85,7 +84,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: false,
           message: {
@@ -123,7 +121,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: false,
           message: {
@@ -148,7 +145,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: false,
           message: {
@@ -177,7 +173,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: false,
           message: {
@@ -207,7 +202,6 @@ describe("AssistantMessageTimeline", () => {
         TestI18nProvider,
         { locale: "en-US" },
         createElement(AssistantMessageTimeline, {
-          chatSessionId: "session-1",
           isApprovalActionDisabled: false,
           isStreamdownAnimating: true,
           message: {

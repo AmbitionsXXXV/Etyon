@@ -16,10 +16,7 @@ const {
   buildSkillsSystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionMemoryMock,
-  listSkillPromptTemplatesMock,
-  loadAgentExtensionsMock,
-  resolveSelectedSkillCapabilitiesMock,
-  resolveSelectedSkillExtensionPathsMock
+  listSkillPromptTemplatesMock
 } = vi.hoisted(() => ({
   buildMemorySystemPromptMock: vi.fn(() => Promise.resolve("long memory")),
   buildMentionContextMock: vi.fn(() => ({
@@ -52,11 +49,6 @@ const {
       path: "/project/.agents/skills/reviewer/prompts/review.md",
       skillName: "reviewer"
     }
-  ]),
-  loadAgentExtensionsMock: vi.fn(),
-  resolveSelectedSkillCapabilitiesMock: vi.fn(() => ["write-fs"]),
-  resolveSelectedSkillExtensionPathsMock: vi.fn(() => [
-    "/project/.agents/skills/reviewer/agent-extension.mjs"
   ])
 }))
 
@@ -68,10 +60,6 @@ vi.mock("ai", async (importOriginal) => {
     convertToModelMessages: convertToModelMessagesMock
   }
 })
-
-vi.mock("@/main/agents/agent-extensions", () => ({
-  loadAgentExtensions: loadAgentExtensionsMock
-}))
 
 vi.mock("@/main/chat-session-memory", () => ({
   buildSessionMemorySystemPrompt: buildSessionMemorySystemPromptMock,
@@ -88,9 +76,7 @@ vi.mock("@/main/project-snapshot", () => ({
 
 vi.mock("@/main/skills", () => ({
   buildSkillsSystemPrompt: buildSkillsSystemPromptMock,
-  listSkillPromptTemplates: listSkillPromptTemplatesMock,
-  resolveSelectedSkillCapabilities: resolveSelectedSkillCapabilitiesMock,
-  resolveSelectedSkillExtensionPaths: resolveSelectedSkillExtensionPathsMock
+  listSkillPromptTemplates: listSkillPromptTemplatesMock
 }))
 
 const createTextMessage = ({
@@ -147,13 +133,7 @@ describe("agent chat context", () => {
     )
   })
 
-  it("prepares model context, selected skill capabilities, extensions, and prompt templates", async () => {
-    const extensionRunner = {
-      emit: vi.fn(() => Promise.resolve()),
-      getStreamHooks: vi.fn(() => {}),
-      getToolHooks: vi.fn(() => {}),
-      listTools: vi.fn(() => [])
-    }
+  it("prepares model context, system prompts, and prompt templates", async () => {
     const selectedSkill = {
       description: "Use when reviewing code.",
       kind: "skill",
@@ -175,8 +155,6 @@ describe("agent chat context", () => {
     })
     const abortController = new AbortController()
 
-    loadAgentExtensionsMock.mockResolvedValueOnce(extensionRunner)
-
     const context = await prepareAgentChatContext({
       db: {} as Parameters<typeof prepareAgentChatContext>[0]["db"],
       mentions: [selectedSkill],
@@ -196,26 +174,17 @@ describe("agent chat context", () => {
     })
 
     expect(context).toMatchObject({
-      extensionRunner,
       modelMessages: [
         {
           content: "model message",
           role: "user"
         }
       ],
-      selectedSkillCapabilities: ["write-fs"],
       shouldRetrieveLongTermMemory: true,
       systemPrompts: ["session memory", "skills context", "mention context"]
     })
     expect(context.promptTemplates).toHaveLength(1)
     expect(longTermMemory).toBe("long memory")
-    expect(resolveSelectedSkillExtensionPathsMock).toHaveBeenCalledWith({
-      projectPath: "/project",
-      selectedSkills: [selectedSkill]
-    })
-    expect(loadAgentExtensionsMock).toHaveBeenCalledWith({
-      paths: ["/project/.agents/skills/reviewer/agent-extension.mjs"]
-    })
     expect(buildMemorySystemPromptMock).toHaveBeenCalledWith({
       abortSignal: abortController.signal,
       db: {},
