@@ -31,7 +31,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport } from "ai"
 import { isToolUIPart } from "ai"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
@@ -78,7 +78,8 @@ import {
 } from "@/renderer/lib/chat/prompt-input"
 import type {
   PromptMentionTrigger,
-  PromptSkillMentionItem
+  PromptSkillMentionItem,
+  QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
@@ -200,6 +201,20 @@ const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
   message.parts.filter((part): part is ChatToolPart =>
     isToolUIPart(part as never)
   )
+
+// A run that ends awaiting tool approval reaches "ready" mid-turn; queued
+// follow-ups must not drain until the user has responded to the approval.
+const hasPendingToolApproval = (
+  message: ChatUiMessage | undefined
+): boolean => {
+  if (message?.role !== "assistant") {
+    return false
+  }
+
+  return getMessageToolParts(message).some(
+    (part) => part.state === "approval-requested"
+  )
+}
 
 const getMessageReasoningParts = (
   message: ChatUiMessage
@@ -957,93 +972,96 @@ const ChatMessageBubble = ({
   )
 }
 
-const ChatMessageItem = ({
-  editingMessageId,
-  editingMessageText,
-  isLatestAssistantMessage,
-  isRequestPending,
-  liveWorkTimeStartedAt,
-  message,
-  onApprovalResponse,
-  onCancelEditMessage,
-  onEditingMessageTextChange,
-  onRegenerate,
-  onStartEditMessage,
-  onSubmitEditedMessage,
-  streamdownAnimation
-}: {
-  editingMessageId: string | null
-  editingMessageText: string
-  isLatestAssistantMessage: boolean
-  isRequestPending: boolean
-  liveWorkTimeStartedAt?: number
-  message: ChatUiMessage
-  onApprovalResponse: (
-    part: ChatToolPart,
-    approved: boolean,
-    options?: AssistantToolApprovalResponseOptions
-  ) => void
-  onCancelEditMessage: () => void
-  onEditingMessageTextChange: (value: string) => void
-  onRegenerate: (messageId?: string) => void
-  onStartEditMessage: (message: ChatUiMessage) => void
-  onSubmitEditedMessage: (message: ChatUiMessage) => void
-  streamdownAnimation: StreamdownAnimation
-}) => {
-  const isAssistant = message.role === "assistant"
-  const isUser = message.role === "user"
-  const isEditingMessage = isUser && editingMessageId === message.id
-  const messageText = getMessageText(message)
-  const MessageRoot = isAssistant ? ChatMessage.Assistant : ChatMessage.User
+const ChatMessageItem = memo(
+  ({
+    editingMessageId,
+    editingMessageText,
+    isLatestAssistantMessage,
+    isRequestPending,
+    liveWorkTimeStartedAt,
+    message,
+    onApprovalResponse,
+    onCancelEditMessage,
+    onEditingMessageTextChange,
+    onRegenerate,
+    onStartEditMessage,
+    onSubmitEditedMessage,
+    streamdownAnimation
+  }: {
+    editingMessageId: string | null
+    editingMessageText: string
+    isLatestAssistantMessage: boolean
+    isRequestPending: boolean
+    liveWorkTimeStartedAt?: number
+    message: ChatUiMessage
+    onApprovalResponse: (
+      part: ChatToolPart,
+      approved: boolean,
+      options?: AssistantToolApprovalResponseOptions
+    ) => void
+    onCancelEditMessage: () => void
+    onEditingMessageTextChange: (value: string) => void
+    onRegenerate: (messageId?: string) => void
+    onStartEditMessage: (message: ChatUiMessage) => void
+    onSubmitEditedMessage: (message: ChatUiMessage) => void
+    streamdownAnimation: StreamdownAnimation
+  }) => {
+    const isAssistant = message.role === "assistant"
+    const isUser = message.role === "user"
+    const isEditingMessage = isUser && editingMessageId === message.id
+    const messageText = getMessageText(message)
+    const MessageRoot = isAssistant ? ChatMessage.Assistant : ChatMessage.User
 
-  return (
-    <MessageRoot
-      className={cn(
-        "group/message flex outline-none",
-        isAssistant ? "justify-start" : "justify-end"
-      )}
-    >
-      <div
+    return (
+      <MessageRoot
         className={cn(
-          "min-w-0",
-          isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
+          "group/message flex outline-none",
+          isAssistant ? "justify-start" : "justify-end"
         )}
       >
-        {isEditingMessage ? (
-          <EditingMessageBubble
-            editingMessageText={editingMessageText}
-            isRequestPending={isRequestPending}
-            message={message}
-            onCancelEditMessage={onCancelEditMessage}
-            onEditingMessageTextChange={onEditingMessageTextChange}
-            onSubmitEditedMessage={onSubmitEditedMessage}
-          />
-        ) : (
-          <ChatMessageBubble
-            isAssistant={isAssistant}
-            isLatestAssistantMessage={isLatestAssistantMessage}
-            isRequestPending={isRequestPending}
-            liveWorkTimeStartedAt={liveWorkTimeStartedAt}
-            message={message}
-            onApprovalResponse={onApprovalResponse}
-            streamdownAnimation={streamdownAnimation}
-          />
-        )}
+        <div
+          className={cn(
+            "min-w-0",
+            isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
+          )}
+        >
+          {isEditingMessage ? (
+            <EditingMessageBubble
+              editingMessageText={editingMessageText}
+              isRequestPending={isRequestPending}
+              message={message}
+              onCancelEditMessage={onCancelEditMessage}
+              onEditingMessageTextChange={onEditingMessageTextChange}
+              onSubmitEditedMessage={onSubmitEditedMessage}
+            />
+          ) : (
+            <ChatMessageBubble
+              isAssistant={isAssistant}
+              isLatestAssistantMessage={isLatestAssistantMessage}
+              isRequestPending={isRequestPending}
+              liveWorkTimeStartedAt={liveWorkTimeStartedAt}
+              message={message}
+              onApprovalResponse={onApprovalResponse}
+              streamdownAnimation={streamdownAnimation}
+            />
+          )}
 
-        {isAssistant || isUser ? (
-          <MessageActions
-            actions={isUser ? USER_MESSAGE_ACTIONS : undefined}
-            align={isUser ? "end" : "start"}
-            isRegenerating={isRequestPending}
-            messageText={messageText}
-            onEdit={isUser ? () => onStartEditMessage(message) : undefined}
-            onRegenerate={() => onRegenerate(message.id)}
-          />
-        ) : null}
-      </div>
-    </MessageRoot>
-  )
-}
+          {isAssistant || isUser ? (
+            <MessageActions
+              actions={isUser ? USER_MESSAGE_ACTIONS : undefined}
+              align={isUser ? "end" : "start"}
+              isRegenerating={isRequestPending}
+              messageText={messageText}
+              onEdit={isUser ? () => onStartEditMessage(message) : undefined}
+              onRegenerate={() => onRegenerate(message.id)}
+            />
+          ) : null}
+        </div>
+      </MessageRoot>
+    )
+  }
+)
+ChatMessageItem.displayName = "ChatMessageItem"
 
 const ChatRuntime = ({
   agentsEnabled,
@@ -1126,6 +1144,10 @@ const ChatRuntime = ({
     getChatAgentModeFromAgentsEnabled(agentsEnabled)
   )
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [queuedMessages, setQueuedMessages] = useState<QueuedPromptMessage[]>(
+    []
+  )
+  const queuedMessagesRef = useRef(queuedMessages)
   const {
     addToolApprovalResponse,
     clearError,
@@ -1281,7 +1303,6 @@ const ChatRuntime = ({
     ignoreInputs: false
   })
 
-  const isComposerDisabled = isModelUpdating || isRequestPending
   const latestMessage = messages.at(-1)
   const latestAssistantMessageId = useMemo(
     () => messages.findLast((message) => message.role === "assistant")?.id,
@@ -1289,6 +1310,18 @@ const ChatRuntime = ({
   )
   const shouldShowAssistantLiveStatus =
     isRequestPending && !hasRenderableAssistantContent(latestMessage)
+  const isAwaitingToolApproval = useMemo(
+    () => hasPendingToolApproval(latestMessage),
+    [latestMessage]
+  )
+  // The turn is fully settled only when nothing else is in flight: not pending,
+  // no error, not awaiting an approval, and the SDK is not about to auto-resend
+  // a tool result. Queued follow-ups drain on the edge into this state.
+  const isQueueDrainReady =
+    !isRequestPending &&
+    !error &&
+    !isAwaitingToolApproval &&
+    !shouldSendChatAutomatically({ messages })
 
   useEffect(() => {
     if (status === "submitted" || status === "streaming") {
@@ -1322,6 +1355,19 @@ const ChatRuntime = ({
     [addToolApprovalResponse, buildChatRequestOptions, latestUserMentions]
   )
 
+  const sendPromptMessage = useCallback(
+    ({ mentions, text }: { mentions: ChatMention[]; text: string }): void => {
+      void sendMessage(
+        {
+          metadata: mentions.length > 0 ? { mentions } : undefined,
+          text
+        },
+        buildChatRequestOptions(mentions)
+      )
+    },
+    [buildChatRequestOptions, sendMessage]
+  )
+
   const handleSubmit = useCallback(
     ({
       mentions,
@@ -1330,25 +1376,63 @@ const ChatRuntime = ({
       mentions: ChatMention[]
       text: string
     }): Promise<void> => {
-      const metadata =
-        mentions.length > 0
-          ? {
-              mentions
-            }
-          : undefined
+      // While a run is in flight, hold the message in the queue instead of
+      // sending; it drains automatically once the turn settles.
+      if (isRequestPending) {
+        setQueuedMessages((currentMessages) => [
+          ...currentMessages,
+          { id: crypto.randomUUID(), mentions, text }
+        ])
 
-      void sendMessage(
-        {
-          metadata,
-          text
-        },
-        buildChatRequestOptions(mentions)
-      )
+        return Promise.resolve()
+      }
+
+      sendPromptMessage({ mentions, text })
 
       return Promise.resolve()
     },
-    [buildChatRequestOptions, sendMessage]
+    [isRequestPending, sendPromptMessage]
   )
+
+  const handleQueuedMessagesReorder = useCallback(
+    (nextMessages: QueuedPromptMessage[]) => {
+      setQueuedMessages(nextMessages)
+    },
+    []
+  )
+
+  const handleRemoveQueuedMessage = useCallback((id: string) => {
+    setQueuedMessages((currentMessages) =>
+      currentMessages.filter((message) => message.id !== id)
+    )
+  }, [])
+
+  // Keep a ref of the queue so the drain effect can read the latest items
+  // without re-running on every queue mutation.
+  useEffect(() => {
+    queuedMessagesRef.current = queuedMessages
+  }, [queuedMessages])
+
+  const wasQueueDrainReadyRef = useRef(isQueueDrainReady)
+  useEffect(() => {
+    const wasReady = wasQueueDrainReadyRef.current
+    wasQueueDrainReadyRef.current = isQueueDrainReady
+
+    // Drain on the rising edge into the settled state, one message per turn, so
+    // each queued follow-up runs as its own request.
+    if (wasReady || !isQueueDrainReady) {
+      return
+    }
+
+    const [nextMessage, ...remainingMessages] = queuedMessagesRef.current
+
+    if (!nextMessage) {
+      return
+    }
+
+    setQueuedMessages(remainingMessages)
+    sendPromptMessage(nextMessage)
+  }, [isQueueDrainReady, sendPromptMessage])
 
   const getMessageRegenerateMentions = useCallback(
     (messageId?: string): ChatMention[] => {
@@ -1405,6 +1489,9 @@ const ChatRuntime = ({
   }, [])
 
   const handleStop = useCallback(() => {
+    // Stopping halts the turn and discards queued follow-ups so they don't
+    // auto-send after the interrupt.
+    setQueuedMessages([])
     void stop()
   }, [stop])
 
@@ -1572,7 +1659,7 @@ const ChatRuntime = ({
               "chat.mentions.commandSkillDescription"
             )}
             commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
-            disabled={isComposerDisabled}
+            disabled={isModelUpdating}
             footer={
               <div className="flex items-center gap-3">
                 <ModelSelector
@@ -1605,12 +1692,19 @@ const ChatRuntime = ({
             onAgentModeChange={handleAgentModeChange}
             onMentionQueryChange={onMentionQueryChange}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
+            onQueuedMessagesReorder={handleQueuedMessagesReorder}
+            onRemoveQueuedMessage={handleRemoveQueuedMessage}
             onStop={handleStop}
             onSubmit={handleSubmit}
             placeholder={t("chat.composer.placeholder")}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
+            queuedMessages={queuedMessages}
+            queuedMessagesLabel={t("chat.composer.queuedMessages")}
+            queueEditLabel={t("chat.composer.queueEdit")}
+            queueRemoveLabel={t("chat.composer.queueRemove")}
+            queueReorderLabel={t("chat.composer.queueReorder")}
             status={status}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}

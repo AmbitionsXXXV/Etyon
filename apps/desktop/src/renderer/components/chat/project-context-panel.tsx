@@ -47,6 +47,9 @@ import {
 import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
 import { rpcClient } from "@/renderer/lib/rpc"
 
+// HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
+const FOCUSABLE_TAB_INDEX = { tabIndex: 0 } as Record<string, unknown>
+
 const PROJECT_DIFF_UNSAFE_CSS = `
   :host {
     background: transparent;
@@ -288,6 +291,7 @@ const ProjectFileTree = ({
       size="sm"
       type="button"
       variant="ghost"
+      {...FOCUSABLE_TAB_INDEX}
     >
       <HugeiconsIcon icon={FolderMinusIcon} size={14} strokeWidth={2} />
     </Button>

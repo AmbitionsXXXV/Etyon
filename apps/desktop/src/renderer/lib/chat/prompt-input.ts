@@ -86,6 +86,12 @@ export type PromptTextDisplayPart =
       type: "mention"
     }
 
+export interface QueuedPromptMessage {
+  id: string
+  mentions: ChatMention[]
+  text: string
+}
+
 export interface PromptPlanShortcutLikeEvent {
   altKey: boolean
   ctrlKey: boolean
@@ -924,9 +930,47 @@ export const splitPromptTextByMentions = ({
   return parts
 }
 
+// Rebuilds editor document JSON from a queued message so it can be loaded back
+// into the composer for editing. Inverse of extractPromptEditorPayload: text
+// segments become text nodes and inline mentions become projectMention nodes.
+export const buildPromptEditorJsonFromMessage = ({
+  mentions,
+  text
+}: {
+  mentions: ChatMention[]
+  text: string
+}): PromptEditorJsonNode => {
+  const paragraphContent = splitPromptTextByMentions({
+    mentions,
+    text
+  }).flatMap((part): PromptEditorJsonNode[] => {
+    if (part.type === "mention") {
+      return [
+        {
+          attrs: { ...part.mention },
+          type: PROJECT_MENTION_NODE_TYPE
+        }
+      ]
+    }
+
+    return part.text ? [{ text: part.text, type: "text" }] : []
+  })
+
+  return {
+    content: [
+      {
+        content: paragraphContent,
+        type: "paragraph"
+      }
+    ],
+    type: "doc"
+  }
+}
+
 export const COMPOSITION_SUBMIT_GUARD_MS = 100
 export const EMPTY_PROMPT_TEMPLATE_ITEMS: PromptTemplate[] = []
 export const EMPTY_QUEUED_MESSAGES: AgentSessionQueuedMessage[] = []
+export const EMPTY_QUEUED_PROMPT_MESSAGES: QueuedPromptMessage[] = []
 export const PROMPT_COMMAND_PALETTE_ITEM_LIMIT = 6
 
 export const CHAT_AGENT_MODE_OPTIONS = [

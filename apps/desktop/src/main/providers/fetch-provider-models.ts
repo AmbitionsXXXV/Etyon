@@ -25,6 +25,21 @@ const normalizeBoolean = (value: unknown) =>
 const normalizeNumber = (value: unknown) =>
   typeof value === "number" ? value : undefined
 
+// Capability flags arrive either as a flat boolean (OpenAI-compatible
+// providers) or nested as `{ supported: boolean }` (Anthropic's Models API).
+// Read both shapes from one place.
+const readSupportedFlag = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") {
+    return value
+  }
+
+  if (isRecord(value)) {
+    return normalizeBoolean(value.supported)
+  }
+
+  return undefined
+}
+
 const compactCapabilities = (
   capabilities?: StoredProviderModelCapabilities
 ): Partial<StoredProviderModelCapabilities> => {
@@ -84,32 +99,48 @@ const mergeCapabilities = (
 }
 
 const normalizeCapabilities = (
-  capabilities: unknown
+  model: Record<string, unknown>
 ): StoredProviderModelCapabilities | undefined => {
-  if (!isRecord(capabilities)) {
-    return undefined
-  }
+  const capabilities = isRecord(model.capabilities) ? model.capabilities : {}
 
-  return {
+  const normalized: StoredProviderModelCapabilities = {
+    // Anthropic reports the context window at the model top level
+    // (`max_input_tokens`); OpenAI-compatible providers nest it under
+    // `capabilities`.
     contextWindow:
       normalizeNumber(capabilities.contextWindow) ??
-      normalizeNumber(capabilities.context_window),
+      normalizeNumber(capabilities.context_window) ??
+      normalizeNumber(model.max_input_tokens) ??
+      normalizeNumber(model.context_length),
     functionCalling:
-      normalizeBoolean(capabilities.functionCalling) ??
-      normalizeBoolean(capabilities.function_calling),
+      readSupportedFlag(capabilities.functionCalling) ??
+      readSupportedFlag(capabilities.function_calling) ??
+      readSupportedFlag(capabilities.tool_use),
     imageOutput:
-      normalizeBoolean(capabilities.imageOutput) ??
-      normalizeBoolean(capabilities.image_output),
+      readSupportedFlag(capabilities.imageOutput) ??
+      readSupportedFlag(capabilities.image_output),
+    // Anthropic calls JSON mode "structured outputs".
     jsonMode:
-      normalizeBoolean(capabilities.jsonMode) ??
-      normalizeBoolean(capabilities.json_mode),
+      readSupportedFlag(capabilities.jsonMode) ??
+      readSupportedFlag(capabilities.json_mode) ??
+      readSupportedFlag(capabilities.structured_outputs),
     maxOutputTokens:
       normalizeNumber(capabilities.maxOutputTokens) ??
-      normalizeNumber(capabilities.max_output_tokens),
-    reasoning: normalizeBoolean(capabilities.reasoning),
-    streaming: normalizeBoolean(capabilities.streaming),
-    vision: normalizeBoolean(capabilities.vision)
+      normalizeNumber(capabilities.max_output_tokens) ??
+      normalizeNumber(model.max_tokens),
+    reasoning:
+      readSupportedFlag(capabilities.reasoning) ??
+      readSupportedFlag(capabilities.thinking),
+    streaming: readSupportedFlag(capabilities.streaming),
+    // Anthropic's vision ("view image") flag is `image_input`.
+    vision:
+      readSupportedFlag(capabilities.vision) ??
+      readSupportedFlag(capabilities.image_input)
   }
+
+  return Object.values(normalized).some((value) => value !== undefined)
+    ? normalized
+    : undefined
 }
 
 const normalizeModel = (model: unknown): StoredProviderModel | null => {
@@ -126,11 +157,18 @@ const normalizeModel = (model: unknown): StoredProviderModel | null => {
     return null
   }
 
+  // Anthropic returns the human-readable label as `display_name`;
+  // OpenAI-compatible providers use `name`.
+  const name =
+    (typeof model.name === "string" && model.name) ||
+    (typeof model.display_name === "string" && model.display_name) ||
+    model.id
+
   return {
-    capabilities: normalizeCapabilities(model.capabilities),
+    capabilities: normalizeCapabilities(model),
     id: model.id,
     isManual: undefined,
-    name: typeof model.name === "string" ? model.name : model.id
+    name
   }
 }
 

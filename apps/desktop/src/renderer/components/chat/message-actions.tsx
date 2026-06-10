@@ -110,6 +110,7 @@ export const MessageActions = ({
               onPress={handleCopy}
               tooltip={copied ? t("copied") : t("copy")}
               type="button"
+              {...FOCUSABLE_TAB_INDEX}
             />
           )
         }
@@ -163,6 +164,7 @@ export const MessageActions = ({
               tooltip={!onEdit || isRegenerating ? undefined : t("edit")}
               type="button"
               variant="ghost"
+              {...FOCUSABLE_TAB_INDEX}
             >
               <HugeiconsIcon
                 icon={PencilEdit02Icon}
@@ -182,6 +184,7 @@ export const MessageActions = ({
             onPress={onRegenerate}
             tooltip={isRegenerating ? undefined : t("regenerate")}
             type="button"
+            {...FOCUSABLE_TAB_INDEX}
           />
         )
       })}

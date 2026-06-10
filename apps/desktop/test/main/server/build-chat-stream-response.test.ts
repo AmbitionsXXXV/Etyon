@@ -147,10 +147,12 @@ describe("buildChatStreamResponse", () => {
     expect(bridgeOptions?.params.maxSteps).toBe(5)
     expect(bridgeOptions?.params.trigger).toBe("submit-message")
     expect(bridgeOptions?.params.messages).toEqual(options.messages)
-    expect(bridgeOptions?.params.requestContext).toEqual({
-      modelId: "openai/gpt-4.1",
-      projectPath: "/tmp/project-a"
-    })
+    expect(bridgeOptions?.params.requestContext.get("modelId")).toBe(
+      "openai/gpt-4.1"
+    )
+    expect(bridgeOptions?.params.requestContext.get("projectPath")).toBe(
+      "/tmp/project-a"
+    )
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
   })
 

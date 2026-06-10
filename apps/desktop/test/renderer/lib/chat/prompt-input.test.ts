@@ -5,6 +5,7 @@ import type { PromptCommandPaletteItem } from "@/renderer/lib/chat/prompt-input"
 import {
   applyMentionSelection,
   applyPlanCommandPrefixToPromptEditorJson,
+  buildPromptEditorJsonFromMessage,
   createPromptTemplateCommandText,
   createMentionFromProjectSnapshotItem,
   extractPromptEditorPayload,
@@ -524,6 +525,73 @@ describe("prompt input helpers", () => {
         skills: [...skills]
       }).map((skill) => skill.name)
     ).toEqual(["coding-guidelines"])
+  })
+
+  it("rebuilds editor document json from a queued message and round-trips", () => {
+    const message = {
+      mentions: [
+        {
+          kind: "file" as const,
+          path: "/project/src/renderer/index.ts",
+          relativePath: "src/renderer/index.ts",
+          snapshotId: "snapshot-1"
+        }
+      ],
+      text: "请看 @src/renderer/index.ts 这块"
+    }
+
+    const documentNode = buildPromptEditorJsonFromMessage(message)
+
+    expect(documentNode).toEqual({
+      content: [
+        {
+          content: [
+            {
+              text: "请看 ",
+              type: "text"
+            },
+            {
+              attrs: {
+                kind: "file",
+                path: "/project/src/renderer/index.ts",
+                relativePath: "src/renderer/index.ts",
+                snapshotId: "snapshot-1"
+              },
+              type: "projectMention"
+            },
+            {
+              text: " 这块",
+              type: "text"
+            }
+          ],
+          type: "paragraph"
+        }
+      ],
+      type: "doc"
+    })
+    expect(extractPromptEditorPayload(documentNode)).toEqual(message)
+  })
+
+  it("rebuilds editor document json for plain text without mentions", () => {
+    expect(
+      buildPromptEditorJsonFromMessage({
+        mentions: [],
+        text: "重构 agent runtime"
+      })
+    ).toEqual({
+      content: [
+        {
+          content: [
+            {
+              text: "重构 agent runtime",
+              type: "text"
+            }
+          ],
+          type: "paragraph"
+        }
+      ],
+      type: "doc"
+    })
   })
 
   it("splits prompt text into ordered inline mention display parts", () => {

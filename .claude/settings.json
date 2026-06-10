@@ -13,5 +13,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "claude-api@anthropic-agent-skills": true
   }
 }

@@ -1,5 +1,6 @@
 import type { AppSettings, ParsedSkill } from "@etyon/rpc"
 import { handleChatStream } from "@mastra/ai-sdk"
+import { RequestContext } from "@mastra/core/request-context"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
 import {
   createUIMessageStream,
@@ -478,10 +479,12 @@ export const buildChatStreamResponse = ({
             // The Mastra bridge converts UIMessages itself and detects
             // approval responses in the trailing assistant message.
             messages: messages as never,
-            requestContext: {
-              ...(modelId ? { modelId } : {}),
-              projectPath
-            } as never,
+            requestContext: new RequestContext(
+              Object.entries({
+                ...(modelId ? { modelId } : {}),
+                projectPath
+              })
+            ),
             ...(effectiveSystemPrompts.length > 0
               ? { system: effectiveSystemPrompts.join("\n\n") }
               : {}),

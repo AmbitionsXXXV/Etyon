@@ -68,6 +68,54 @@ describe("fetchProviderModels", () => {
     ])
   })
 
+  it("records Anthropic capability flags from the models api shape", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            capabilities: {
+              image_input: { supported: true },
+              structured_outputs: { supported: true },
+              thinking: {
+                supported: true,
+                types: { adaptive: { supported: true } }
+              }
+            },
+            display_name: "Claude Opus 4.8",
+            id: "claude-opus-4-8",
+            max_input_tokens: 1_000_000,
+            max_tokens: 128_000
+          }
+        ]
+      })
+    )
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const output = await fetchProviderModels({
+      provider: {
+        apiKey: "sk-ant",
+        baseURL: "https://api.anthropic.com/v1",
+        providerId: "anthropic"
+      }
+    })
+
+    expect(output.models).toEqual([
+      {
+        capabilities: {
+          contextWindow: 1_000_000,
+          jsonMode: true,
+          maxOutputTokens: 128_000,
+          reasoning: true,
+          vision: true
+        },
+        id: "claude-opus-4-8",
+        isManual: undefined,
+        name: "Claude Opus 4.8"
+      }
+    ])
+  })
+
   it("switches the moonshot models endpoint according to region", async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: [] }))
 
