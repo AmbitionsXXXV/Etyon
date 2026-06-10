@@ -11,6 +11,8 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "changelog": "git-cliff -o CHANGELOG.md",
+    "changelog:latest": "git-cliff --latest --strip header",
     "check": "turbo run check",
     "clean:cache": "node script/clean-cache.mjs",
     "dev": "turbo run dev",
