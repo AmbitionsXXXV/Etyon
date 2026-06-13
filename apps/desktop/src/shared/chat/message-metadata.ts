@@ -42,6 +42,22 @@ export const attachAgentProjectionToAssistantMessages = <
     }
   })
 
+/** Reads the agent run id a message was projected from, if any. */
+export const getAgentProjectionRunId = (message: {
+  metadata?: unknown
+}): string | null => {
+  const metadata = parseExistingMetadata(message.metadata)
+  const agentProjection = metadata?.agentProjection
+
+  if (!isRecord(agentProjection)) {
+    return null
+  }
+
+  return typeof agentProjection.runId === "string"
+    ? agentProjection.runId
+    : null
+}
+
 export const attachWorkTimeToLatestAssistantMessage = <
   MESSAGE extends { metadata?: unknown; role: string }
 >(

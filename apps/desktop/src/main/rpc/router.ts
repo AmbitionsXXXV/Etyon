@@ -1,4 +1,10 @@
 import {
+  AgentRunsOutputSchema,
+  InspectAgentRunInputSchema,
+  InspectAgentRunOutputSchema,
+  ListAgentRunsInputSchema,
+  ListPendingAgentApprovalsInputSchema,
+  PendingAgentApprovalsOutputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -57,6 +63,11 @@ import {
 } from "@etyon/rpc"
 import { BrowserWindow } from "electron"
 
+import {
+  inspectAgentRun,
+  listAgentRuns,
+  listPendingAgentApprovals
+} from "@/main/agents/agent-run-inspection"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -497,7 +508,49 @@ const sidebarStateSetWidth = rpc
     return result
   })
 
+const agentsInspectRun = rpc
+  .input(InspectAgentRunInputSchema)
+  .output(InspectAgentRunOutputSchema)
+  .handler(async ({ context, input }) => {
+    const result = await inspectAgentRun({
+      db: context.db,
+      runId: input.runId
+    })
+
+    if (!result) {
+      throw new Error(`Agent run not found: ${input.runId}`)
+    }
+
+    return result
+  })
+
+const agentsListRuns = rpc
+  .input(ListAgentRunsInputSchema)
+  .output(AgentRunsOutputSchema)
+  .handler(({ context, input }) =>
+    listAgentRuns({
+      db: context.db,
+      ...(input.limit === undefined ? {} : { limit: input.limit }),
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId })
+    })
+  )
+
+const agentsListPendingApprovals = rpc
+  .input(ListPendingAgentApprovalsInputSchema)
+  .output(PendingAgentApprovalsOutputSchema)
+  .handler(({ context, input }) =>
+    listPendingAgentApprovals({
+      db: context.db,
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId })
+    })
+  )
+
 export const router = {
+  agents: {
+    inspectRun: agentsInspectRun,
+    listPendingApprovals: agentsListPendingApprovals,
+    listRuns: agentsListRuns
+  },
   chatSessions: {
     archive: chatSessionsArchive,
     create: chatSessionsCreate,

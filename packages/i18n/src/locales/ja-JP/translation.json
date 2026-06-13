@@ -152,6 +152,17 @@
       "noOutput": "出力なし",
       "title": "ターミナル出力"
     },
+    "runInspector": {
+      "childRun": "サブエージェント実行",
+      "description": "このエージェント実行で記録されたイベントとツール呼び出し。",
+      "empty": "この実行ではツール呼び出しは記録されませんでした。",
+      "error": "この実行を読み込めませんでした。",
+      "events": "イベント",
+      "loading": "実行を読み込み中…",
+      "title": "実行の詳細",
+      "toolCalls": "ツール呼び出し",
+      "trigger": "実行の詳細"
+    },
     "toolTrace": {
       "approve": "承認",
       "approveAndRemember": "承認して記憶",

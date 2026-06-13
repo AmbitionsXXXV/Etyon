@@ -272,11 +272,13 @@ export const startAgentRun = async ({
   chatSessionId,
   db,
   modelId,
+  parentRunId = null,
   profileId
 }: {
   chatSessionId: string
   db: AppDatabase
   modelId: string | null
+  parentRunId?: string | null
   profileId: string
 }): Promise<string> => {
   const runId = randomUUID()
@@ -287,6 +289,7 @@ export const startAgentRun = async ({
       chatSessionId,
       id: runId,
       modelId,
+      parentRunId,
       profileId,
       startedAt: now,
       status: "running"
@@ -294,7 +297,7 @@ export const startAgentRun = async ({
     await tx.insert(agentEvents).values({
       createdAt: now,
       id: randomUUID(),
-      payloadJson: serialize({ profileId }),
+      payloadJson: serialize({ parentRunId, profileId }),
       runId,
       sequence: RUN_STARTED_SEQUENCE,
       type: "run.started"
@@ -302,6 +305,91 @@ export const startAgentRun = async ({
   })
 
   return runId
+}
+
+export interface DelegatedToolCallRecord {
+  input: unknown
+  output: unknown
+  toolCallId: string
+  toolName: string
+}
+
+/**
+ * Closes a delegated child run started by the `delegate` tool. Child runs use a
+ * headless AI SDK loop (not UIMessages), so their tool calls are recorded
+ * directly here rather than derived from a chat projection.
+ */
+export const recordDelegatedRunOutcome = async ({
+  db,
+  errorMessage = null,
+  runId,
+  status,
+  toolCalls
+}: {
+  db: AppDatabase
+  errorMessage?: string | null
+  runId: string
+  status: "failed" | "succeeded"
+  toolCalls: readonly DelegatedToolCallRecord[]
+}): Promise<void> => {
+  const [run] = await db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1)
+
+  if (!run) {
+    return
+  }
+
+  const now = nowIso()
+  const startSequence = await countRunEvents(db, runId)
+
+  await db.transaction(async (tx) => {
+    let sequence = startSequence
+
+    for (const toolCall of toolCalls) {
+      await tx
+        .insert(agentToolCalls)
+        .values({
+          approvalState: "not_required",
+          finishedAt: now,
+          id: `${runId}:${toolCall.toolCallId}`,
+          inputJson: serialize(toolCall.input),
+          outputJson: serialize(toolCall.output),
+          runId,
+          startedAt: now,
+          state: "finished",
+          toolName: toolCall.toolName
+        })
+        .onConflictDoNothing()
+      await tx.insert(agentEvents).values({
+        createdAt: now,
+        id: randomUUID(),
+        payloadJson: serialize({
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName
+        }),
+        runId,
+        sequence,
+        type: "tool.result"
+      })
+      sequence += 1
+    }
+
+    await tx
+      .update(agentRuns)
+      .set({ errorMessage, finishedAt: now, status })
+      .where(eq(agentRuns.id, runId))
+    await tx.insert(agentEvents).values({
+      createdAt: now,
+      id: randomUUID(),
+      payloadJson: serialize({ status }),
+      runId,
+      sequence,
+      type: status === "succeeded" ? "run.succeeded" : "run.failed"
+    })
+  })
 }
 
 /**

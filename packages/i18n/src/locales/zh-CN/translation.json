@@ -152,6 +152,17 @@
       "noOutput": "无输出",
       "title": "终端输出"
     },
+    "runInspector": {
+      "childRun": "子智能体运行",
+      "description": "本次智能体运行记录的事件与工具调用。",
+      "empty": "本次运行没有记录工具调用。",
+      "error": "无法加载该运行。",
+      "events": "事件",
+      "loading": "正在加载运行…",
+      "title": "运行详情",
+      "toolCalls": "工具调用",
+      "trigger": "运行详情"
+    },
     "toolTrace": {
       "approve": "批准",
       "approveAndRemember": "批准并记住",

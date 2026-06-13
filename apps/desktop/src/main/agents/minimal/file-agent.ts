@@ -2,14 +2,22 @@ import { Agent } from "@mastra/core/agent"
 import type { MastraModelConfig } from "@mastra/core/llm"
 import { Mastra } from "@mastra/core/mastra"
 
-import { buildFileTools } from "@/main/agents/minimal/file-tools"
+import { buildDelegateTool } from "@/main/agents/minimal/delegation"
+import {
+  buildFileTools,
+  selectFileTools
+} from "@/main/agents/minimal/file-tools"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { resolveModel } from "@/main/server/lib/providers"
+import { getSettings } from "@/main/settings"
+import { resolveActiveProfile } from "@/shared/agents/profiles"
+import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
 
 export const FILE_AGENT_ID = "file-agent"
 
 export interface FileAgentRequestContext {
   modelId?: string
+  profileId?: string
   projectPath: string
   [key: string]: unknown
 }
@@ -47,32 +55,83 @@ const readRequestContextValue = (
   return undefined
 }
 
-const requireProjectPath = (requestContext: unknown): string => {
-  const projectPath = readRequestContextValue(requestContext, "projectPath")
+const readStringValue = (
+  requestContext: unknown,
+  key: string
+): string | undefined => {
+  const value = readRequestContextValue(requestContext, key)
 
-  if (typeof projectPath !== "string" || projectPath.length === 0) {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+const requireProjectPath = (requestContext: unknown): string => {
+  const projectPath = readStringValue(requestContext, "projectPath")
+
+  if (!projectPath) {
     throw new Error("file-agent requires a projectPath in the request context.")
   }
 
   return projectPath
 }
 
+const resolveRequestProfile = (requestContext: unknown): ResolvedAgentProfile =>
+  resolveActiveProfile(
+    getSettings().agents,
+    readStringValue(requestContext, "profileId") ?? null
+  )
+
 const fileAgent = new Agent({
   id: FILE_AGENT_ID,
-  instructions: FILE_AGENT_INSTRUCTIONS,
+  instructions: ({ requestContext }) => {
+    const profile = resolveRequestProfile(requestContext)
+
+    return profile.instructions.length > 0
+      ? `${FILE_AGENT_INSTRUCTIONS}\n\n${profile.instructions}`
+      : FILE_AGENT_INSTRUCTIONS
+  },
   model: ({ requestContext }) => {
-    const modelId = readRequestContextValue(requestContext, "modelId")
+    const profile = resolveRequestProfile(requestContext)
+    const requestModelId = readStringValue(requestContext, "modelId")
+    const modelId =
+      profile.preferredModel.length > 0
+        ? profile.preferredModel
+        : requestModelId
 
     // Etyon's resolveModel returns an AI SDK v6 LanguageModel; Mastra's
     // MastraModelConfig union types the same interface from its vendored
     // @ai-sdk/provider copy, so the cast bridges nominally distinct types.
-    return resolveModel(
-      typeof modelId === "string" ? modelId : undefined
-    ) as MastraModelConfig
+    return resolveModel(modelId) as MastraModelConfig
   },
   name: "Etyon File Agent",
-  tools: ({ requestContext }) =>
-    buildFileTools(getWorkspaceCore(requireProjectPath(requestContext)))
+  tools: ({ requestContext }) => {
+    const profile = resolveRequestProfile(requestContext)
+    const projectPath = requireProjectPath(requestContext)
+    const workspace = getWorkspaceCore(projectPath)
+    const fileTools = selectFileTools(
+      buildFileTools(workspace),
+      profile.allowedTools
+    )
+
+    const chatSessionId = readStringValue(requestContext, "chatSessionId")
+    const parentRunId = readStringValue(requestContext, "agentRunId")
+
+    // Delegation needs a persisted parent run to attach child runs to; without
+    // one (agents disabled or run-start failed) the parent stays solo.
+    if (!(profile.allowDelegation && chatSessionId && parentRunId)) {
+      return fileTools
+    }
+
+    return {
+      ...fileTools,
+      delegate: buildDelegateTool({
+        chatSessionId,
+        parentModelId: readStringValue(requestContext, "modelId") ?? null,
+        parentProfile: profile,
+        parentRunId,
+        projectPath
+      })
+    }
+  }
 })
 
 export const fileAgentMastra = new Mastra({

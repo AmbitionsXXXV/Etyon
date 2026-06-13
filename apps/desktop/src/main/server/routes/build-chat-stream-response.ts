@@ -372,6 +372,7 @@ const readLongTermMemorySystem = async ({
 
 export interface BuildChatStreamResponseOptions {
   abortSignal: AbortSignal
+  agentRunId?: string | null
   buildLongTermMemorySystem: (
     options: BuildLongTermMemorySystemOptions
   ) => Promise<string>
@@ -382,6 +383,7 @@ export interface BuildChatStreamResponseOptions {
   modelMessages: ModelMessage[]
   moonshotReasoningForAssistantToolCalls: readonly string[]
   onFinishPersist: (messages: UIMessage[]) => Promise<void>
+  profileId?: string | null
   projectPath: string
   promptTemplates?: readonly PromptTemplate[]
   requestStartedAt: number
@@ -395,6 +397,7 @@ export interface BuildChatStreamResponseOptions {
 
 export const buildChatStreamResponse = ({
   abortSignal,
+  agentRunId,
   buildLongTermMemorySystem,
   messages,
   model,
@@ -402,9 +405,11 @@ export const buildChatStreamResponse = ({
   modelMessages,
   moonshotReasoningForAssistantToolCalls,
   onFinishPersist,
+  profileId,
   projectPath,
   promptTemplates = [],
   requestStartedAt,
+  sessionId,
   settings,
   shouldRetrieveLongTermMemory,
   skillCommandSkills,
@@ -481,7 +486,10 @@ export const buildChatStreamResponse = ({
             messages: messages as never,
             requestContext: new RequestContext(
               Object.entries({
+                ...(agentRunId ? { agentRunId } : {}),
+                ...(sessionId ? { chatSessionId: sessionId } : {}),
                 ...(modelId ? { modelId } : {}),
+                ...(profileId ? { profileId } : {}),
                 projectPath
               })
             ),

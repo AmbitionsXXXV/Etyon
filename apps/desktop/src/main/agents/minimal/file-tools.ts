@@ -346,3 +346,22 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
 })
 
 export type FileTools = ReturnType<typeof buildFileTools>
+
+export type FileTool = FileTools[keyof FileTools]
+
+/** Narrows a tool set to a profile's allowed tool names (e.g. read-only). */
+export const selectFileTools = (
+  tools: FileTools,
+  allowed: readonly string[]
+): Record<string, FileTool> => {
+  const allowedSet = new Set(allowed)
+  const selected: Record<string, FileTool> = {}
+
+  for (const name of Object.keys(tools)) {
+    if (allowedSet.has(name)) {
+      selected[name] = tools[name as keyof FileTools]
+    }
+  }
+
+  return selected
+}

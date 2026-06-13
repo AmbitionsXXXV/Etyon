@@ -34,6 +34,7 @@ import { isToolUIPart } from "ai"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
+import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import {
   MessageActions,
@@ -1046,13 +1047,24 @@ const ChatMessageItem = memo(
             />
           )}
 
-          {isAssistant || isUser ? (
+          {isAssistant ? (
+            <div className="flex items-center gap-1">
+              <MessageActions
+                align="start"
+                isRegenerating={isRequestPending}
+                messageText={messageText}
+                onRegenerate={() => onRegenerate(message.id)}
+              />
+              <AgentRunInspector message={message} />
+            </div>
+          ) : null}
+          {isUser ? (
             <MessageActions
-              actions={isUser ? USER_MESSAGE_ACTIONS : undefined}
-              align={isUser ? "end" : "start"}
+              actions={USER_MESSAGE_ACTIONS}
+              align="end"
               isRegenerating={isRequestPending}
               messageText={messageText}
-              onEdit={isUser ? () => onStartEditMessage(message) : undefined}
+              onEdit={() => onStartEditMessage(message)}
               onRegenerate={() => onRegenerate(message.id)}
             />
           ) : null}

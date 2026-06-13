@@ -152,6 +152,17 @@
       "noOutput": "No output",
       "title": "Terminal output"
     },
+    "runInspector": {
+      "childRun": "Sub-agent run",
+      "description": "The recorded events and tool calls for this agent run.",
+      "empty": "No tool calls were recorded for this run.",
+      "error": "Could not load this run.",
+      "events": "Events",
+      "loading": "Loading run…",
+      "title": "Run details",
+      "toolCalls": "Tool calls",
+      "trigger": "Run details"
+    },
     "toolTrace": {
       "approve": "Approve",
       "approveAndRemember": "Approve and remember",

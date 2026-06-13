@@ -8,7 +8,6 @@ import {
   recordAgentRunOutcome,
   startAgentRun
 } from "@/main/agents/agent-event-store"
-import { FILE_AGENT_ID } from "@/main/agents/minimal/file-agent"
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
@@ -16,6 +15,7 @@ import { logger } from "@/main/logger"
 import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import { getSettings } from "@/main/settings"
+import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
   getChatAgentModeAgentsEnabled,
   getChatAgentModeSystemPrompt,
@@ -131,6 +131,10 @@ chatRoute.post("/chat", async (c) => {
     ? [...agentContext.systemPrompts, planSystemPrompt]
     : agentContext.systemPrompts
 
+  // Resolve the managed profile for this turn from settings (falls back to the
+  // first available profile when the default is missing or disabled).
+  const activeProfile = resolveActiveProfile(settings.agents)
+
   // Open an event-sourced run before streaming, so a crash mid-turn leaves a
   // recoverable `running` row that startup recovery closes.
   let agentRunId: string | null = null
@@ -141,7 +145,7 @@ chatRoute.post("/chat", async (c) => {
         chatSessionId: sessionId,
         db,
         modelId: effectiveModelId,
-        profileId: FILE_AGENT_ID
+        profileId: activeProfile.id
       })
     } catch (error) {
       logger.error("agent_run_start_failed", { error })
@@ -150,6 +154,7 @@ chatRoute.post("/chat", async (c) => {
 
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
+    agentRunId,
     buildLongTermMemorySystem: agentContext.buildLongTermMemorySystem,
     messages,
     model,
@@ -186,6 +191,7 @@ chatRoute.post("/chat", async (c) => {
         sessionId
       })
     },
+    profileId: activeProfile.id,
     projectPath: session.projectPath,
     promptTemplates: agentContext.promptTemplates,
     requestStartedAt,

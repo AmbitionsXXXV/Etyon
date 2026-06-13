@@ -2,6 +2,17 @@
 
 > Source PRD: `doc/agents.md`
 
+## Status (branch `feat/agent-event-sourcing`)
+
+All seven phases are implemented on the minimalist single-agent runtime:
+
+- **Phase 1–4** (settings, read-only tools, permissioned writes, event store): in place — `chat_messages` projection + append-only `agent_runs`/`agent_events`/`agent_tool_calls`/`agent_approvals`, write tools gated by `requireApproval`.
+- **Phase 5 — Profiles**: built-in roster (`general-purpose`, `explore`, `coder`, `plan`, `review`, `harness-operator`) in `shared/agents/profiles.ts`; the chat route resolves `settings.agents.defaultProfileId` and the single Mastra agent applies the profile's instructions / tool policy / model policy per request. Settings roster UI in `agents-tab.tsx`.
+- **Phase 6 — Delegation**: `delegate` tool (`agents/minimal/delegation.ts`), gated by `allowSubagentDelegation`, runs a headless read-only child via AI SDK `generateText` (no write/edit, no nested delegation → depth capped at 1), enforces `maxConcurrentSubagents`, persists the child run under `parentRunId`, returns summary + files read + child run id.
+- **Phase 7 — Run inspector**: `agent-run-inspection.ts` + `agents.inspectRun` / `listRuns` / `listPendingApprovals` RPC, surfaced by a per-message `AgentRunInspector` dialog (timeline + tool-output preview/summary). Pending approvals are durable across restart.
+
+**Deliberate boundary (unchanged):** no raw shell/command tool — the agent is file-only (read/ls/grep/edit/write), so Phase 3 "command" criteria (timeouts, destructive-command detection, `vp`/`rtk` command rules) are intentionally out of scope. Gates: tsc clean, lint clean, 277/277 tests. Remaining: interactive smoke with a real model key.
+
 ## Architectural Decisions
 
 Durable decisions that apply across all phases:
@@ -187,11 +198,11 @@ Only after the runtime and delegation phases are stable, add richer run inspecti
 
 ## Completion Checklist
 
-- [ ] `settings.agents.enabled = false` proves no behavioral change to normal chat.
-- [ ] Settings tabs use consistent readable form controls and responsive width rules.
-- [ ] Chat can show read-only tool activity inside the existing viewport.
-- [ ] Write-capable actions pause for approval and obey permissions.
-- [ ] Agent runs have append-only persisted events.
-- [ ] Profiles and delegation are configured through settings but executed only in runtime.
-- [ ] Multi-agent child traces are inspectable without polluting parent model context.
-- [ ] Docs and tests are updated phase by phase.
+- [x] `settings.agents.enabled = false` proves no behavioral change to normal chat.
+- [x] Settings tabs use consistent readable form controls and responsive width rules.
+- [x] Chat can show read-only tool activity inside the existing viewport.
+- [x] Write-capable actions pause for approval and obey permissions.
+- [x] Agent runs have append-only persisted events.
+- [x] Profiles and delegation are configured through settings but executed only in runtime.
+- [x] Multi-agent child traces are inspectable without polluting parent model context.
+- [x] Docs and tests are updated phase by phase.
