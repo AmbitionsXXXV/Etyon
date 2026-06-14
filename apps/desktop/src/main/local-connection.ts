@@ -30,7 +30,7 @@ export const writeLocalConnectionFile = (url: string): void => {
   const connectionFilePath = buildLocalConnectionFilePath()
   const connectionDir = path.dirname(connectionFilePath)
 
-  fs.mkdirSync(connectionDir, { recursive: true })
+  fs.mkdirSync(connectionDir, { mode: 0o700, recursive: true })
   fs.writeFileSync(
     connectionFilePath,
     JSON.stringify(
@@ -44,8 +44,13 @@ export const writeLocalConnectionFile = (url: string): void => {
       },
       null,
       2
-    )
+    ),
+    { mode: 0o600 }
   )
+  // writeFileSync's mode only applies on create and is umask-masked; enforce
+  // owner-only on every write so an overwrite of a pre-existing world-readable
+  // file is tightened.
+  fs.chmodSync(connectionFilePath, 0o600)
 }
 
 export const removeLocalConnectionFile = (): void => {
