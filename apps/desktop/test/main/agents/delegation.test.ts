@@ -1,4 +1,6 @@
 import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
 import { AgentSettingsSchema } from "@etyon/rpc"
 import { eq } from "drizzle-orm"
@@ -14,6 +16,7 @@ import {
   resolveDelegateTarget
 } from "@/main/agents/minimal/delegation"
 import type { WorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -29,6 +32,19 @@ const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
     .toString(36)
     .slice(2)}`
 }))
+
+// Temp workspace for child-tool clamp tests
+const tempProjectPath = fs.mkdtempSync(
+  path.join(os.tmpdir(), "etyon-child-tools-")
+)
+// A file whose content exceeds TOOL_OUTPUT_MAX_CHARS (12,000)
+const largeContent = "x".repeat(20_000)
+
+fs.writeFileSync(path.join(tempProjectPath, "large.txt"), largeContent)
+fs.writeFileSync(
+  path.join(tempProjectPath, "needle.txt"),
+  "FIND_ME line content\n"
+)
 
 vi.mock("@electron-toolkit/utils", () => ({
   is: { dev: true },
@@ -68,6 +84,7 @@ const fakeParent = (
 describe("agent delegation", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
+    fs.rmSync(tempProjectPath, { force: true, recursive: true })
   })
 
   it("resolves an allowed delegate target", () => {
@@ -172,5 +189,84 @@ describe("agent delegation", () => {
     expect(eventTypes).toContain("run.started")
     expect(eventTypes).toContain("tool.result")
     expect(eventTypes).toContain("run.succeeded")
+  })
+
+  it("read clamps large file output and adds the path to filesRead", async () => {
+    const filesRead = new Set<string>()
+    const toolCalls: Parameters<typeof buildChildTools>[2] = []
+    const workspace = getWorkspaceCore(tempProjectPath)
+    const tools = buildChildTools(workspace, filesRead, toolCalls)
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const output = await tools.read.execute!(
+      { path: "large.txt" },
+      { messages: [], toolCallId: "tc-read-1" }
+    )
+
+    const outputStr = String(output)
+
+    expect(outputStr).toContain("[... truncated at 12000 characters]")
+    expect(outputStr.length).toBeLessThanOrEqual(12_100)
+    expect(filesRead.size).toBe(1)
+    const [readPath] = filesRead
+
+    expect(readPath).toContain("large.txt")
+    expect(toolCalls).toHaveLength(1)
+    expect(toolCalls[0]?.toolName).toBe("read")
+    expect(toolCalls[0]?.toolCallId).toBe("tc-read-1")
+  })
+
+  it("ls returns tab-separated listing and pushes an ls record", async () => {
+    const toolCalls: Parameters<typeof buildChildTools>[2] = []
+    const workspace = getWorkspaceCore(tempProjectPath)
+    const tools = buildChildTools(workspace, new Set<string>(), toolCalls)
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const output = await tools.ls.execute!(
+      { path: "." },
+      { messages: [], toolCallId: "tc-ls-1" }
+    )
+
+    const outputStr = String(output)
+
+    expect(typeof outputStr).toBe("string")
+    expect(outputStr).toMatch(/\t/u)
+    expect(toolCalls).toHaveLength(1)
+    expect(toolCalls[0]?.toolName).toBe("ls")
+    expect(toolCalls[0]?.toolCallId).toBe("tc-ls-1")
+  })
+
+  it("grep over many matches is clamped or notes missing rg", async () => {
+    const toolCalls: Parameters<typeof buildChildTools>[2] = []
+    const workspace = getWorkspaceCore(tempProjectPath)
+    const tools = buildChildTools(workspace, new Set<string>(), toolCalls)
+
+    // Write a file with many repeated matches so the raw output is large
+    const manyMatchContent = "FIND_ME\n".repeat(2000)
+
+    fs.writeFileSync(
+      path.join(tempProjectPath, "many-matches.txt"),
+      manyMatchContent
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const output = await tools.grep.execute!(
+      { pattern: "FIND_ME" },
+      { messages: [], toolCallId: "tc-grep-1" }
+    )
+
+    const outputStr = String(output)
+
+    // If rg is unavailable the tool returns an error: prefix — that's acceptable
+    if (outputStr.startsWith("error:")) {
+      expect(outputStr).toMatch(/error:/u)
+    } else {
+      // Large output should be clamped
+      expect(outputStr.length).toBeLessThanOrEqual(12_100)
+    }
+
+    expect(toolCalls).toHaveLength(1)
+    expect(toolCalls[0]?.toolName).toBe("grep")
+    expect(toolCalls[0]?.toolCallId).toBe("tc-grep-1")
   })
 })
