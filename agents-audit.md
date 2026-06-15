@@ -1,5 +1,13 @@
 # Agents 设计审计报告
 
+> **⚠️ 本审计为历史记录，针对 pivot 前的较大 Agents runtime（日期 2026-06-01）。**
+>
+> 本审计针对**改造前**（pivot 前）的较大 Agents runtime，日期 2026-06-01。
+>
+> 其中引用的 `permission-engine.ts`、`tool-registry.ts`、`agent-loop.ts`、`agent-runtime.ts`、`agent-kernel.ts`、`execution-env.ts`、`agent-stream-hooks.ts`、`agent-session-tree.ts` 等文件**当前已不存在**（已在最小化改造中删除）。
+>
+> 当前实现与状态以 [`plans/agents-runtime.md`](plans/agents-runtime.md) 与 [`doc/agents.md`](doc/agents.md)（顶部 banner）为准；本文仅作历史记录。
+
 **日期:** 2026-06-01
 **范围:** `doc/agents.md` 设计文档 + 已落地的 `apps/desktop/src/main/agents/` 实现
 **方法:** 通读设计文档 + 关键模块源码 + 测试 + 参考仓库 (`/Users/jiantianjianghui/gh_projects/opencode@` `c7e1fc5e4`) 交叉对照

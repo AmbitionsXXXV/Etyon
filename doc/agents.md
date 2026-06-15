@@ -1,5 +1,17 @@
 # Agents 能力设计
 
+> **⚠️ 注意：本文档包含早期设计，部分内容已与当前实现不符。**
+>
+> 本文记录的是早期较大规模的 Agents 设计；其中相当一部分**未按原样落地**。
+>
+> 当前实际运行的是**最小化、仅文件**的 agent：工具仅 `read`/`ls`/`grep`/`find`/`edit`/`write`，无 shell、无命令执行、无 Git 工具。主 run 通过 Mastra `handleChatStream` 走单一 `Agent`，不是 self-managed loop。
+>
+> **权威的当前落地状态以 [`plans/agents-runtime.md`](../plans/agents-runtime.md) 为准。**
+>
+> 下文中描述 `permission-engine`、self-managed loop、run graph / kernel、`ExecutionEnv`、独立 `/agents` Workbench 页面等内容属于**历史设计（未落地）**，仅作背景保留。
+>
+> 最后对齐：2026-06-14
+
 ## 目标
 
 在当前 Etyon 桌面端 chat 能力之上，设计一套可渐进落地的 Agents 架构。目标不是复刻外部 runtime，而是把可复用结构收敛成适合 Etyon 的本地能力：
@@ -28,7 +40,7 @@
 ### Chat / AI SDK 消息主线
 
 - [x] `useChat<ChatUiMessage>()` + `DefaultChatTransport` + Hono `/api/chat` 仍是唯一 chat transport，Agents 关闭时继续走原有 `streamText` 路径。
-- [x] Agents 开启时，主 run 走 Etyon self-managed loop；AI SDK 仍执行 provider streaming 与 tool schema 暴露，Etyon loop 通过单步 provider turn 接管 tool execute、approval suspend 与 event settlement。
+- [x] Agents 开启时，主 run 走 Mastra `handleChatStream` 单 `Agent` 路径；AI SDK 仍执行 provider streaming 与 tool schema 暴露，`edit`/`write` 等写入工具由 Mastra/AI-SDK `requireApproval` 把关。（注：早期设计中曾规划 Etyon self-managed loop，该部分**未按原样落地**；参见下文历史设计部分。）
 - [x] 主 provider `fullStream` 会实时转成 AI SDK `UIMessageChunk`，覆盖 `text-*`、`reasoning-*`、`source-*`、`file`、`tool-input-*`、`tool-output-*`、`tool-approval-request`、`start-step` / `finish-step`。
 - [x] Chat timeline 按 `UIMessage.parts` 渲染 provider 文本、reasoning、tool trace、source、document source 与 file part，不再只等最终 assistant 文本结果。
 - [x] `agent_ui_stream_snapshot_created` 保存可恢复的可见 assistant parts；`start-step` / `finish-step` 保持为 live stream 边界，不写入 snapshot，避免恢复时出现空结构 part。
@@ -39,8 +51,8 @@
 ### Agent 工作流与 Workbench
 
 - [x] `agent_runs`、`agent_events`、`agent_tool_calls`、`agent_approvals`、`agent_artifacts` 已作为 run lifecycle、tool lifecycle、approval、artifact 的 append-only 事实来源。
-- [x] Chat 内 Agent Workbench panel 与独立 `/agents/$sessionId` 页面已能查看 run graph、timeline、tool calls、artifacts、approval、diff 和 retry 状态。
-- [x] Graph template、stage start、node execute、advance、retry、skip、until-idle 和 run graph approval continue-until-idle 已接入。
+- [ ] Chat 内 Agent Workbench panel 与独立 `/agents/$sessionId` 页面：**当前实现只有每条消息的 `AgentRunInspector` 对话框**，无独立 Workbench 页面，无 run graph / kernel。（早期设计中描述的 Workbench + run graph 未落地，属历史设计。）
+- [ ] Graph template、stage start、node execute、advance、retry、skip、until-idle：**run graph 未落地**，属历史设计。
 - [ ] Workbench 还需要产品化 node 输出的 inline streaming 展示，而不是主要依赖右侧 timeline / artifact 详情。
 
 ### Agent Mode / Composer
@@ -51,14 +63,14 @@
 
 ## P0–P5 状态快照
 
-| Phase              | 状态   | 关键交付                                                                                                       |
-| ------------------ | ------ | -------------------------------------------------------------------------------------------------------------- |
-| P0 文档与 schema   | 已落地 | `settings.agents` 默认关闭、profile 常量、基础 schema 预留                                                     |
-| P1 单 agent loop   | 已落地 | `/api/chat` agent 开关、profile tools、tool step budget、provider stream 投影                                  |
-| P2 权限与写入工具  | 已落地 | `permission-engine`、write / patch / shell approval、bounded `vp` check 与只读 Git inspection                  |
-| P3 Harness Runtime | 已落地 | `agent-runtime`、`Agent` facade、`ExecutionEnv`、append-only event store、approval suspend / resume            |
-| P4 Multi-Agent     | 已落地 | `agentExplore` / `agentPlan` / `agentReview` / `agentCoder`、run graph template、Workbench inspection          |
-| P5 高级 Harness    | 部分   | AgentLoop outer、stream hooks、prompt templates、plan mode 已落地；compaction、branch summary、run replay 待补 |
+| Phase              | 状态                   | 关键交付                                                                                                                                                                                                                                                 |
+| ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 文档与 schema   | 已落地                 | `settings.agents` 默认关闭、profile 常量、基础 schema 预留                                                                                                                                                                                               |
+| P1 单 agent loop   | 已落地                 | `/api/chat` agent 开关、profile tools、tool step budget、provider stream 投影                                                                                                                                                                            |
+| P2 权限与写入工具  | 部分（历史设计，见注） | 写入工具（`edit`/`write`）由 Mastra/AI-SDK `requireApproval` 把关；**`permission-engine`、shell approval、`vp` check、Git inspection 均未落地**（文件仅 `read`/`ls`/`grep`/`find`/`edit`/`write`，无 shell/命令/Git 工具）                               |
+| P3 Harness Runtime | 部分（历史设计，见注） | Append-only event store（`agent_runs`/`agent_events`/`agent_tool_calls`/`agent_approvals`）+ approval suspend/resume 已落地；**`agent-runtime` facade、`ExecutionEnv`、`agent-kernel` 等模块未落地**（`agent_artifacts` 表声明但当前无写入方，暂作预留） |
+| P4 Multi-Agent     | 部分（历史设计，见注） | Profile roster 已落地（`general-purpose`/`explore`/`coder`/`plan`/`review`/`harness-operator`）+ agent-as-tool delegation（depth=1，read-only child，generateText）；**run graph template、Workbench inspection 未落地**                                 |
+| P5 高级 Harness    | 部分                   | AgentLoop outer、stream hooks、prompt templates、plan mode 已落地；compaction、branch summary、run replay 待补                                                                                                                                           |
 
 ## AI SDK Message 渲染架构
 
@@ -130,7 +142,9 @@ streamText().fullStream
 - `apps/desktop/src/main/agents/agent-run-graph-templates.ts` 已把 `solo-coder`、`plan-execute-review`、`investigation`、`harness-debug` 固化为内建 run graph template 数据结构，包含 node role、profile、tool scope、parallel group、依赖边和 output contract；`agent-kernel.ts` 已提供 `startRun({ source })` 生命周期边界，chat root run、delegation child run、run graph root run 和 run graph node run 都会写入带 `source` 的标准 `agent_run_started` event；`agent-kernel.ts` 已能把 template 编译成 deterministic execution plan，解析每个 node 的 profile active tools、只读 / approval-gated tool scope、attempt、上次输出、失败原因和拓扑 stage，并通过 `agents.listRunGraphTemplates` / `agents.previewRunGraphTemplate` RPC 暴露给 renderer / workbench；`agents.instantiateRunGraphTemplate` 已能创建顶层 orchestrator run，并把完整 plan 写入 `agent_run_graph_instantiated` append-only event，作为后续 scheduler / UI 可恢复事实来源；`agents.startRunGraphNextStage` 已能 replay root run 的 graph events，启动下一批依赖满足的 ready nodes，创建 parent-linked child runs，并写入 `agent_run_graph_stage_started` / `agent_run_graph_node_started` events；run graph child run 已通过 Etyon `ModelRouter` 记录 profile model route，AI SDK graph node 执行可按 node route 选择 provider model，且 provider 抛错时会按 fallback chain 重试并记录 `agent_model_fallback_used`；`agents.executeRunGraphNode` 已通过 AI SDK provider 执行当前 running node；`agents.advanceRunGraph` 已能读取 running node 的 child run terminal status，把 succeeded / failed、输出和错误回写成 graph node event，并在依赖满足后自动启动下一批 ready nodes；`agents.runGraphUntilIdle` 已能循环 settle / start / execute graph，自动推进多节点 graph，直到 completed、blocked、suspended 或 iteration-limit；kernel 会在 stage start、node settlement 和 retry 后写 `agent_run_graph_checkpoint_created` checkpoint，后续节点 prompt 会带入依赖节点输出；`agents.retryRunGraphNode` 已能对 failed node 创建新 child run、递增 attempt 并保留前次错误上下文；`advanceRunGraph` 会按 `settings.agents.retry` 或 root run retry policy override 对 read-only 且 active tools 全部 safe / idempotent 的 provider / timeout 瞬态失败自动 retry，默认一次，写入 / shell / network 工具失败停在 failed 等待手动处理；`executeRunGraphNode()` 已能用 self-managed `AgentLoopModel` 执行 running graph node，写入 child `agent_loop_event` / run finished events，更新 child run status，再推进 graph；`executeRunGraphNodeWithAiSdk()` 已能把 AI SDK `LanguageModel` 和 tool set 接入同一 loop：provider 只看 tool schema，不自动执行 tool，实际执行走 Etyon tool registry / permission engine，并记录 child `tool_call_started` / `tool_call_finished` / `tool_call_failed` lifecycle；graph node 的 approval-gated tool 会按 Etyon HITL 语义 suspend child run，`agents.respondToRunGraphApproval` 会恢复原 assistant tool call 上下文，approve 后执行真实本地工具并继续推进对应 graph node，deny 后给模型明确 tool error；Workbench approval response 默认传入 `continueUntilIdle`，因此 approval 恢复当前 node 后会自动继续 run graph，直到再次 suspended / blocked / completed；tool output artifact 已写入持久 `agent_artifacts` catalog，通过 `agents.inspectRun` 返回，并可通过 `agents.readArtifact` 读取 bounded content preview，进入 renderer child trace / Agent Workbench panel；chat Workbench 已接入 template list、instantiate、start next stage、execute running node、run graph until idle、advance、failed node retry / skip、per-run retry policy、run graph approval approve / deny + continue-until-idle、stage / node / dependency graph panel、automatic / manual retry event preview、workspace diff preview 和 artifact content preview 操作，并补了 Workbench UI 决策 helper、message-port RPC 和 SSR render 回归。failed node 的 retry / skip 决策入口与 per-run retry policy 覆盖已接入。
 - Chat `AgentWorkbenchPanel` 的 run 列表 / 详情双栏区使用 `max-h-[min(24rem,40vh)]`；左侧 run graph list 与右侧 timeline events 列各自嵌套 HeroUI `ScrollShadow`，避免长 run 列表把 Disclosure body 整体撑高。
 
-## 激进架构进步方向
+## 激进架构进步方向（历史设计 / 未落地，2026-06 已被最小化 runtime 取代）
+
+> **本节为历史设计**，描述 pivot 前规划的较大 runtime 方向（AgentKernel、run graph、ExecutionEnv、Workbench 等），这些模块**当前均未落地**。当前已运行的最小化方案以 [`plans/agents-runtime.md`](../plans/agents-runtime.md) 为准。
 
 如果目标不是低风险接入，而是尽快追上成熟 agent runtime，Etyon 需要把架构重心从 “chat app 增强” 转成 “本地 Agent Workbench”。这意味着要主动推翻一些现有假设。
 
@@ -792,7 +806,9 @@ AI SDK v6 已经覆盖首版所需的 tool 能力：
 
 对 Etyon 的启发：首版可以继续用 `/api/chat + streamText`，先打通 tool parts、approval 和事件记录；runtime 稳定后再把内部实现切到 `ToolLoopAgent` 或 `createAgentUIStreamResponse()`。
 
-## 架构分层
+## 架构分层（历史设计 / 未落地，2026-06 已被最小化 runtime 取代）
+
+> **本节为历史设计**，描述 pivot 前规划的完整分层模块（`AgentLoop`、`AgentRuntime`、`PermissionEngine`、`ExecutionEnv`、`SessionTree`、`AgentEventStore`、`DelegationManager`、`AgentUIAdapter` 等）。这些抽象层**当前均未按原样落地**。当前已运行的最小化方案以 [`plans/agents-runtime.md`](../plans/agents-runtime.md) 为准。
 
 建议新增 `apps/desktop/src/main/agents/`，把 agent 能力拆成以下模块。
 
