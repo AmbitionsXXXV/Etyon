@@ -110,6 +110,12 @@ streamText().fullStream
 
 ## 已落地实现明细
 
+> **⚠️ 本节描述的是改造前（pivot 前）的实现，绝大部分已不符合当前最小化 runtime。**
+>
+> 下列条目大量引用**已删除**的模块——`agent-runtime`、`tool-registry`、`permission-engine`、`ExecutionEnv`、`agent-loop`、`agent-kernel` 与 run graph templates、`agent-session-tree`、`agent-stream-hooks`、`agent-state`、`agent-extensions`、`agent-chat-projection`，以及 `bash` / LSP / sandbox / `smartEdit` 等宽工具面、Agent Workbench panel 与独立 `/agents/$sessionId` 页面——这些在最小化改造中**当前均已不存在（历史设计 / 未落地）**。
+>
+> 实际落地并保留的仅为：append-only event store 数据表（`agent_runs` / `agent_events` / `agent_tool_calls` / `agent_approvals`）、内建 profile roster，以及 `settings.agents` 配置开关。完整且权威的当前状态以 [`plans/agents-runtime.md`](../plans/agents-runtime.md) 为准。
+
 截至当前实现，Etyon 已经完成首版 chat 内 agent runtime 接入：
 
 - `packages/rpc/src/schemas/settings.ts` 已新增 `settings.agents`，默认 `enabled=false`，旧 settings 会自动补齐 disabled 默认值；`settings.agents.approvals.approvalTtlMs` 默认 7 天；`settings.agents.retry` 默认 `maxAutomaticRetries=1` / `retryTransientFailures=true`；`settings.agents.sandbox` 默认 `enabled=false` / `failIfUnavailable=true` / `allowNetwork=false` / `autoAllowSandboxedShell=false`，`settings.agents.lsp` 默认 `enabled=false` / `requireSandbox=true` / `initTimeoutMs=15000` / `diagnosticTimeoutMs=5000`。
