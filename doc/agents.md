@@ -94,6 +94,7 @@ streamText().fullStream
 - Breaking contract：active run 的 chat projection 读取时总是从 `agent_events` / 最新 stream snapshot 重建，`chat_messages` 只作为 completed projection cache；即使缓存里已有非空 assistant projection，也不能覆盖当前 active response。
 - `chat-branch` custom entry 的不变量：fork / regenerate 只改变 projection leaf 与 retained message ids，不继承未完成 tool call row；pending approval 仍归属原 run，但当前可操作 approval 只来自该 session 最新顶层 active root run，旧 suspended branch 的 approval 会留在审计历史中，不再出现在 Workbench / approval inbox，也不能通过 `pendingApprovalOnly` resume。
 - Tool output summary cache 只缓存同一 root run 内的 dependency summary；缓存命中不能替代后续显式 `read` / `grep` 对最新文件状态的刷新。
+- 事件存储的密钥脱敏（best-effort）：`agent_tool_calls.input_json` / `output_json` 在写入前会经过 `redactSecretsFromJson` 做最优努力脱敏，将常见格式的凭证（OpenAI `sk-` key、Slack token、AWS AKIA key、GitHub token、JWT、Bearer header、`apiKey=value` 形式）替换为 `[REDACTED]`。该机制是纵深防御层，与 `workspace-core` 的路径级过滤互补而非替代。**重要**：`agent_tool_calls` 不是密钥保险库——脱敏是 pattern-based 且 best-effort，无法保证捕获所有凭证格式；已写入历史行不会被追溯脱敏；如确认存在真实凭证被持久化，应立即轮换该凭证。
 
 ## 已落地实现明细
 

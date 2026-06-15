@@ -11,12 +11,13 @@ import {
   getRunAssistantStartIndex,
   recordAgentRunOutcome,
   recoverInterruptedAgentRuns,
+  redactSecretsFromJson,
   startAgentRun
 } from "@/main/agents/agent-event-store"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
-import { agentApprovals, agentRuns } from "@/main/db/schema"
+import { agentApprovals, agentRuns, agentToolCalls } from "@/main/db/schema"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -340,5 +341,94 @@ describe("agent event store", () => {
     expect(expired).toBeGreaterThanOrEqual(1)
     expect(approval?.state).toBe("denied")
     expect(run?.status).toBe("failed")
+  })
+
+  describe("redactSecretsFromJson", () => {
+    it("redacts an OpenAI-style sk- key", () => {
+      const json = JSON.stringify({ key: "sk-abcdefghijklmnopqrstuvwx" })
+      const result = redactSecretsFromJson(json)
+      expect(result).not.toContain("sk-abcdefghijklmnopqrstuvwx")
+      expect(result).toContain("[REDACTED]")
+    })
+
+    it("keeps the Bearer prefix and redacts only the token", () => {
+      const json = JSON.stringify({ header: "Bearer eyABCDEFGHIJKLMN" })
+      const result = redactSecretsFromJson(json)
+      expect(result).toContain("Bearer [REDACTED]")
+      expect(result).not.toContain("eyABCDEFGHIJKLMN")
+    })
+
+    it("redacts a JWT", () => {
+      const token =
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+      const json = JSON.stringify({ token })
+      const result = redactSecretsFromJson(json)
+      expect(result).not.toContain(token)
+      expect(result).toContain("[REDACTED]")
+    })
+
+    it("keeps the apiKey name and redacts the value in a JSON fragment", () => {
+      const json = JSON.stringify({ apiKey: "supersecretvalue123" })
+      const result = redactSecretsFromJson(json)
+      expect(result).toContain("apiKey")
+      expect(result).not.toContain("supersecretvalue123")
+      expect(result).toContain("[REDACTED]")
+    })
+
+    it("does not alter a benign id/status payload", () => {
+      const json = JSON.stringify({ status: "succeeded", toolCallId: "tc-1" })
+      const result = redactSecretsFromJson(json)
+      expect(result).toBe(json)
+    })
+
+    it("returns valid JSON after redacting structured inputs", () => {
+      const json = JSON.stringify({
+        key: "sk-abcdefghijklmnopqrstuvwx",
+        status: "done"
+      })
+      const result = redactSecretsFromJson(json)
+      expect(() => JSON.parse(result)).not.toThrow()
+    })
+  })
+
+  it("redacts a secret embedded in tool output before persisting to agent_tool_calls", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+
+    const secretToken = "sk-testredactionsecret1234567890ab"
+    const messages = toMessages([
+      userMessage("read config"),
+      assistantMessage([
+        {
+          input: { path: "config.yaml" },
+          output: `apiKey: ${secretToken}`,
+          state: "output-available",
+          toolCallId: "tc-redact",
+          type: "tool-read"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      db,
+      messages,
+      runId
+    })
+
+    const [toolCallRow] = await db
+      .select()
+      .from(agentToolCalls)
+      .where(eq(agentToolCalls.runId, runId))
+
+    expect(toolCallRow?.outputJson).not.toContain(secretToken)
+    expect(toolCallRow?.outputJson).toContain("[REDACTED]")
   })
 })

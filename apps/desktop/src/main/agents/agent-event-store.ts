@@ -78,9 +78,48 @@ export interface AgentRunProjection {
 
 const nowIso = (): string => new Date().toISOString()
 
+// Best-effort, defense-in-depth redaction of obviously-secret tokens before
+// they are persisted. Complements the name-based secret-path filter in
+// workspace-core. Patterns are deliberately specific to avoid mangling the
+// id/status event payloads that also pass through serialize().
+const SECRET_TOKEN_PATTERNS: readonly RegExp[] = [
+  // OpenAI-style keys
+  /\bsk-[A-Za-z0-9]{16,}\b/gu,
+  // Slack tokens
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/gu,
+  // AWS access key id
+  /\bAKIA[0-9A-Z]{16}\b/gu,
+  // GitHub tokens
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/gu,
+  // JWTs
+  /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\b/gu,
+  // Authorization: Bearer ...
+  /(\bBearer\s+)[A-Za-z0-9._~+/-]{12,}=*/gu,
+  // key=value
+  /((?:api[_-]?key|secret|password|access[_-]?token)["']?\s*[:=]\s*["']?)[^\s"',}]{8,}/giu
+]
+
+const SECRET_PLACEHOLDER = "[REDACTED]"
+
+/** Replaces obviously-secret tokens in a serialized JSON string. Best-effort:
+ * it lowers, not eliminates, the chance of persisting a live credential. */
+export const redactSecretsFromJson = (json: string): string => {
+  let result = json
+
+  for (const pattern of SECRET_TOKEN_PATTERNS) {
+    result = result.replace(pattern, (match, prefix?: string) =>
+      typeof prefix === "string"
+        ? `${prefix}${SECRET_PLACEHOLDER}`
+        : SECRET_PLACEHOLDER
+    )
+  }
+
+  return result
+}
+
 const serialize = (value: unknown): string => {
   try {
-    return JSON.stringify(value ?? null)
+    return redactSecretsFromJson(JSON.stringify(value ?? null))
   } catch {
     return "null"
   }
