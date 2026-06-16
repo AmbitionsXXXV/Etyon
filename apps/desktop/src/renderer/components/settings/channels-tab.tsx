@@ -130,9 +130,11 @@ const TelegramSwitch = ({
   onChange: (checked: boolean) => void
 }) => (
   <Switch aria-label={label} isSelected={checked} onChange={onChange}>
-    <Switch.Control>
-      <Switch.Thumb />
-    </Switch.Control>
+    <Switch.Content>
+      <Switch.Control>
+        <Switch.Thumb />
+      </Switch.Control>
+    </Switch.Content>
   </Switch>
 )
 

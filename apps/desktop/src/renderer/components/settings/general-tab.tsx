@@ -10,7 +10,7 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
-import { Checkbox, Label } from "@heroui/react"
+import { Checkbox } from "@heroui/react"
 import { Tick01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useMemo } from "react"
@@ -174,11 +174,11 @@ const SettingsCheckbox = ({
       isSelected={value}
       onChange={handleChange}
     >
-      <Checkbox.Control>
-        <Checkbox.Indicator />
-      </Checkbox.Control>
       <Checkbox.Content>
-        <Label className="text-sm">{label}</Label>
+        <Checkbox.Control>
+          <Checkbox.Indicator />
+        </Checkbox.Control>
+        <span className="text-sm">{label}</span>
       </Checkbox.Content>
     </Checkbox>
   )

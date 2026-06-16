@@ -39,9 +39,11 @@ const Checkbox = ({
       variant={variant}
       {...props}
     >
-      <HeroCheckbox.Control>
-        <HeroCheckbox.Indicator />
-      </HeroCheckbox.Control>
+      <HeroCheckbox.Content>
+        <HeroCheckbox.Control>
+          <HeroCheckbox.Indicator />
+        </HeroCheckbox.Control>
+      </HeroCheckbox.Content>
     </HeroCheckbox>
   )
 }

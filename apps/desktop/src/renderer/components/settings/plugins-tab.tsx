@@ -84,9 +84,11 @@ const PluginDetailPanel = ({
           isSelected={activePlugin.enabled}
           onChange={onEnabledChange}
         >
-          <Switch.Control>
-            <Switch.Thumb />
-          </Switch.Control>
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
         </Switch>
       </div>
 

@@ -42,9 +42,9 @@
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@fontsource-variable/inter": "^5.2.8",
-    "@heroui-pro/react": "1.0.0-beta.5",
+    "@heroui-pro/react": "1.0.0-beta.6",
     "@heroui/react": "catalog:",
-    "@heroui/styles": "^3.1.0",
+    "@heroui/styles": "^3.2.0",
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@number-flow/react": "^0.6.0",

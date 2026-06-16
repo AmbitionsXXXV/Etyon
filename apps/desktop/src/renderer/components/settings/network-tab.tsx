@@ -131,10 +131,10 @@ export const NetworkTab = ({
           isSelected={proxy.enabled}
           onChange={handleEnabledChange}
         >
-          <Checkbox.Control>
-            <Checkbox.Indicator />
-          </Checkbox.Control>
           <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
             <span className="text-sm">
               {t("settings.network.proxy.enable")}
             </span>

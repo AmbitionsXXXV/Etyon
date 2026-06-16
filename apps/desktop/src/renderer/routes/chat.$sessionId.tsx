@@ -97,11 +97,24 @@ import {
   getNextChatAgentMode
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
+import { estimateChatContextUsagePercent } from "@/shared/chat/context-usage"
 import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRequestPhase,
   ChatStreamDataTypes
 } from "@/shared/chat/stream-data"
+
+const formatContextWindowLabel = (value: number | undefined): string | null => {
+  if (!value) {
+    return null
+  }
+
+  if (value >= 1000) {
+    return `${Math.round(value / 1000)}K`
+  }
+
+  return `${value}`
+}
 
 interface MentionQueryState {
   query: string
@@ -1082,6 +1095,7 @@ const ChatRuntime = ({
   isLoadingPromptTemplateItems,
   isLoadingProjectTreeItems,
   isLoadingSkillItems,
+  autoCompact,
   isModelUpdating,
   isProjectContextOpen,
   isProjectDiffLoading,
@@ -1109,6 +1123,7 @@ const ChatRuntime = ({
   transport
 }: {
   agentsEnabled: boolean
+  autoCompact?: { enabled: boolean; threshold: number }
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
@@ -1354,6 +1369,11 @@ const ChatRuntime = ({
     return []
   }, [messages])
 
+  const contextUsagePercent = useMemo(
+    () => estimateChatContextUsagePercent(messages),
+    [messages]
+  )
+
   const handleToolApprovalResponse = useCallback(
     (part: ChatToolPart, approved: boolean) => {
       respondToAssistantToolApproval({
@@ -1536,6 +1556,47 @@ const ChatRuntime = ({
     ]
   )
 
+  const selectedModelContextWindow = modelGroups
+    .flatMap((group) => group.options)
+    .find((option) => option.value === selectedModelValue)
+    ?.capabilities?.contextWindow
+  const contextWindowLabel = formatContextWindowLabel(
+    selectedModelContextWindow
+  )
+  const contextUsage = {
+    ariaLabel: t("chat.composer.contextUsageAriaLabel", {
+      percent: contextUsagePercent
+    }),
+    percent: contextUsagePercent,
+    threshold: autoCompact?.enabled ? autoCompact.threshold : undefined,
+    tooltip: (
+      <div className="flex flex-col gap-0.5">
+        <span className="font-medium">
+          {t("chat.composer.contextUsageTitle")}
+        </span>
+        <span>
+          {t("chat.composer.contextUsageUsed", {
+            percent: contextUsagePercent
+          })}
+        </span>
+        {autoCompact?.enabled ? (
+          <span className="text-muted-foreground">
+            {t("chat.composer.contextUsageAutoCompact", {
+              threshold: autoCompact.threshold
+            })}
+          </span>
+        ) : null}
+        {contextWindowLabel ? (
+          <span className="text-muted-foreground">
+            {t("chat.composer.contextUsageModelWindow", {
+              window: contextWindowLabel
+            })}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <ChatProjectContextLayout
       gitDiff={gitDiff}
@@ -1700,6 +1761,7 @@ const ChatRuntime = ({
             mentionSkillSearchPlaceholder={t(
               "chat.mentions.skillsSearchPlaceholder"
             )}
+            contextUsage={contextUsage}
             isOutputActive={isRequestPending}
             onAgentModeChange={handleAgentModeChange}
             onMentionQueryChange={onMentionQueryChange}
@@ -2168,6 +2230,7 @@ const ChatSessionPage = () => {
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
           agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
+          autoCompact={settingsQuery.data?.chat.autoCompact}
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}

@@ -128,9 +128,11 @@ const ProfileRosterRow = ({
         isSelected={profile.available}
         onChange={onAvailableChange}
       >
-        <Switch.Control>
-          <Switch.Thumb />
-        </Switch.Control>
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
       </Switch>
     </div>
   )
@@ -247,9 +249,11 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             isSelected={agents.enabled}
             onChange={handleEnabledChange}
           >
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
           </Switch>
         </div>
 
@@ -395,9 +399,11 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             isSelected={agents.requireApprovalForWrites}
             onChange={handleRequireApprovalChange}
           >
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
           </Switch>
         </div>
 
@@ -418,9 +424,11 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             isSelected={agents.allowSubagentDelegation}
             onChange={handleAllowDelegationChange}
           >
-            <Switch.Control>
-              <Switch.Thumb />
-            </Switch.Control>
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
           </Switch>
         </div>
 

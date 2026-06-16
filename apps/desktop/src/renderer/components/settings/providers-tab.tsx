@@ -222,9 +222,11 @@ const ProviderSwitch = ({
   onChange: (checked: boolean) => void
 }) => (
   <Switch aria-label={label} isSelected={checked} onChange={onChange}>
-    <Switch.Control>
-      <Switch.Thumb />
-    </Switch.Control>
+    <Switch.Content>
+      <Switch.Control>
+        <Switch.Thumb />
+      </Switch.Control>
+    </Switch.Content>
   </Switch>
 )
 
@@ -296,9 +298,11 @@ const ProviderModelItem = ({
         isSelected={isChecked}
         onChange={handleCheckedChange}
       >
-        <Checkbox.Control>
-          <Checkbox.Indicator />
-        </Checkbox.Control>
+        <Checkbox.Content>
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+        </Checkbox.Content>
       </Checkbox>
 
       <div className="min-w-0 flex-1">

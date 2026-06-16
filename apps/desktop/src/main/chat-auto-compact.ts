@@ -2,28 +2,16 @@ import type { AppSettings } from "@etyon/rpc"
 import type { UIMessage } from "ai"
 
 import { summarizeChatCompaction } from "@/main/memory/summarization"
+import {
+  estimateChatContextUsagePercent,
+  getMessageText
+} from "@/shared/chat/context-usage"
 
 export const AUTO_COMPACT_MESSAGE_ID = "etyon-auto-compact-summary"
+export { estimateChatContextUsagePercent }
 
-const AUTO_COMPACT_CONTEXT_CHAR_BUDGET = 24_000
 const MESSAGE_TEXT_MAX_CHARS = 1200
 const SUMMARY_MAX_CHARS = 6000
-const WHITESPACE_PATTERN = /\s+/gu
-
-const getTextParts = (
-  message: UIMessage
-): Extract<UIMessage["parts"][number], { type: "text" }>[] =>
-  message.parts.filter(
-    (part): part is Extract<UIMessage["parts"][number], { type: "text" }> =>
-      part.type === "text"
-  )
-
-const getMessageText = (message: UIMessage): string =>
-  getTextParts(message)
-    .map((part) => part.text)
-    .join(" ")
-    .replace(WHITESPACE_PATTERN, " ")
-    .trim()
 
 const truncateText = (value: string, maxLength: number): string => {
   if (value.length <= maxLength) {
@@ -82,20 +70,6 @@ const createAutoCompactMessage = (content: string): UIMessage => ({
   ],
   role: "system"
 })
-
-export const estimateChatContextUsagePercent = (
-  messages: UIMessage[]
-): number => {
-  const totalCharacters = messages.reduce(
-    (sum, message) => sum + getMessageText(message).length,
-    0
-  )
-
-  return Math.min(
-    100,
-    Math.round((totalCharacters / AUTO_COMPACT_CONTEXT_CHAR_BUDGET) * 100)
-  )
-}
 
 export const maybeCompactChatMessages = ({
   messages,

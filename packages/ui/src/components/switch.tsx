@@ -49,9 +49,11 @@ const Switch = ({
       size={resolveSwitchSize(size)}
       {...props}
     >
-      <HeroSwitch.Control>
-        <HeroSwitch.Thumb />
-      </HeroSwitch.Control>
+      <HeroSwitch.Content>
+        <HeroSwitch.Control>
+          <HeroSwitch.Thumb />
+        </HeroSwitch.Control>
+      </HeroSwitch.Content>
     </HeroSwitch>
   )
 }

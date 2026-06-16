@@ -6,7 +6,7 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
-import { ToggleButton } from "@heroui/react"
+import { ProgressCircle, ToggleButton, Tooltip } from "@heroui/react"
 import {
   CubeIcon,
   PencilEdit02Icon,
@@ -629,6 +629,63 @@ const PromptInputAgentModeControl = ({
   )
 }
 
+const resolveContextUsageTone = (
+  percent: number,
+  limit: number
+): "danger" | "default" | "warning" => {
+  if (percent >= limit) {
+    return "danger"
+  }
+
+  if (percent >= limit * 0.75) {
+    return "warning"
+  }
+
+  return "default"
+}
+
+const PromptInputContextUsage = ({
+  contextUsage
+}: {
+  contextUsage?: {
+    ariaLabel: string
+    percent: number
+    threshold?: number
+    tooltip: ReactNode
+  }
+}) => {
+  if (!contextUsage) {
+    return null
+  }
+
+  const { ariaLabel, percent, threshold, tooltip } = contextUsage
+  const clampedPercent = Math.max(0, Math.min(100, Math.round(percent)))
+  const tone = resolveContextUsageTone(clampedPercent, threshold ?? 100)
+
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger
+        aria-label={ariaLabel}
+        className="flex shrink-0 cursor-default items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
+      >
+        <ProgressCircle
+          aria-label={ariaLabel}
+          color={tone}
+          size="sm"
+          value={clampedPercent}
+        >
+          <ProgressCircle.Track>
+            <ProgressCircle.TrackCircle />
+            <ProgressCircle.FillCircle />
+          </ProgressCircle.Track>
+        </ProgressCircle>
+        <span>{clampedPercent}%</span>
+      </Tooltip.Trigger>
+      <Tooltip.Content>{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
 const PromptInputActions = ({
   disabled,
   hasInput,
@@ -743,6 +800,7 @@ export const PromptInput = ({
   commandPalettePromptLabel,
   commandPaletteSkillDescription,
   commandPaletteSkillLabel,
+  contextUsage,
   disabled = false,
   footer,
   isAgentModeToggleDisabled,
@@ -791,6 +849,12 @@ export const PromptInput = ({
   commandPalettePromptLabel: string
   commandPaletteSkillDescription: string
   commandPaletteSkillLabel: string
+  contextUsage?: {
+    ariaLabel: string
+    percent: number
+    threshold?: number
+    tooltip: ReactNode
+  }
   disabled?: boolean
   footer?: ReactNode
   isAgentModeToggleDisabled?: boolean
@@ -1387,6 +1451,7 @@ export const PromptInput = ({
     <HeroPromptInput
       className="relative shadow-none"
       isDisabled={disabled}
+      layout="stacked"
       lockInputOnRun={false}
       onStop={onStop}
       onSubmit={() => {
@@ -1502,6 +1567,7 @@ export const PromptInput = ({
                 toggleLabel={agentModeToggleLabel}
               />
               {footer}
+              <PromptInputContextUsage contextUsage={contextUsage} />
             </div>
           </HeroPromptInput.ToolbarStart>
           <HeroPromptInput.ToolbarEnd>
