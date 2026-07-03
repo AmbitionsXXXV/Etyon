@@ -37,3 +37,37 @@ export const estimateChatContextUsagePercent = (
     Math.round((totalCharacters / CHAT_CONTEXT_CHAR_BUDGET) * 100)
   )
 }
+
+export interface ChatContextUsageSegment {
+  characters: number
+  key: "assistant" | "user"
+}
+
+/**
+ * Breaks the same character estimate down by message role. This is the only
+ * split available at the renderer layer today — system prompt, tool, and
+ * skill token weight live in the main-process agent runtime and aren't sent
+ * to the client, so they can't be represented here without fabricating
+ * numbers.
+ */
+export const getChatContextUsageSegments = (
+  messages: UIMessage[]
+): ChatContextUsageSegment[] => {
+  let userCharacters = 0
+  let assistantCharacters = 0
+
+  for (const message of messages) {
+    const characters = getMessageText(message).length
+
+    if (message.role === "user") {
+      userCharacters += characters
+    } else if (message.role === "assistant") {
+      assistantCharacters += characters
+    }
+  }
+
+  return [
+    { characters: userCharacters, key: "user" },
+    { characters: assistantCharacters, key: "assistant" }
+  ]
+}

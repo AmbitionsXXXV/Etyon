@@ -25,6 +25,7 @@ import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
+import { ProviderIcon } from "@/renderer/components/providers/provider-icon"
 import { rpcClient } from "@/renderer/lib/rpc"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
 import {
@@ -261,10 +262,13 @@ const ProviderRailItem = ({
       onClick={handleClick}
       type="button"
     >
-      <div className="min-w-0">
-        <div className="truncate text-sm font-medium">{name}</div>
-        <div className="truncate pt-1 text-[0.6875rem] text-muted-foreground">
-          {summary}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <ProviderIcon className="size-5" providerId={providerId} />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium">{name}</div>
+          <div className="truncate pt-1 text-[0.6875rem] text-muted-foreground">
+            {summary}
+          </div>
         </div>
       </div>
 
@@ -831,6 +835,10 @@ export const ProvidersTab = ({
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
+                  <ProviderIcon
+                    className="size-5"
+                    providerId={activeProvider.id}
+                  />
                   <h3 className="text-base font-semibold">
                     {activeProvider.name}
                   </h3>

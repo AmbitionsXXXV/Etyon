@@ -6,7 +6,7 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
-import { ProgressCircle, ToggleButton, Tooltip } from "@heroui/react"
+import { Popover, ProgressCircle, ToggleButton, Tooltip } from "@heroui/react"
 import {
   CubeIcon,
   PencilEdit02Icon,
@@ -18,7 +18,7 @@ import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
-import type { KeyboardEvent, MouseEvent, ReactNode } from "react"
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
@@ -644,44 +644,153 @@ const resolveContextUsageTone = (
   return "default"
 }
 
+export interface PromptInputContextUsageSegment {
+  key: "assistant" | "user"
+  label: string
+  percent: number
+  valueLabel: string
+}
+
+const CONTEXT_USAGE_SEGMENT_COLOR: Record<
+  PromptInputContextUsageSegment["key"],
+  string
+> = {
+  assistant: "var(--ctx-assistant)",
+  user: "var(--ctx-user)"
+}
+
+// HeroUI v3 ProgressCircle's track defaults to --default, which is the same
+// color as the composer shell it sits on — invisible without this override.
+const CONTEXT_USAGE_TRACK_STYLE = {
+  "--progress-circle-track-stroke":
+    "color-mix(in oklab, var(--muted) 35%, transparent)"
+} as CSSProperties
+
 const PromptInputContextUsage = ({
   contextUsage
 }: {
   contextUsage?: {
     ariaLabel: string
+    hintLabel: string
     percent: number
+    remainingLabel: string
+    segments: PromptInputContextUsageSegment[]
+    summaryLabel: string
+    thresholdFootnote?: string
     threshold?: number
-    tooltip: ReactNode
+    title: string
+    windowFootnote?: string
   }
 }) => {
   if (!contextUsage) {
     return null
   }
 
-  const { ariaLabel, percent, threshold, tooltip } = contextUsage
+  const {
+    ariaLabel,
+    hintLabel,
+    percent,
+    remainingLabel,
+    segments,
+    summaryLabel,
+    thresholdFootnote,
+    threshold,
+    title,
+    windowFootnote
+  } = contextUsage
   const clampedPercent = Math.max(0, Math.min(100, Math.round(percent)))
   const tone = resolveContextUsageTone(clampedPercent, threshold ?? 100)
+  const usedSegments = segments.filter((segment) => segment.percent > 0)
+  const hasFootnote = Boolean(thresholdFootnote || windowFootnote)
 
   return (
     <Tooltip delay={300}>
-      <Tooltip.Trigger
-        aria-label={ariaLabel}
-        className="flex shrink-0 cursor-default items-center gap-1.5 text-xs text-muted-foreground tabular-nums"
-      >
-        <ProgressCircle
-          aria-label={ariaLabel}
-          color={tone}
-          size="sm"
-          value={clampedPercent}
-        >
-          <ProgressCircle.Track>
-            <ProgressCircle.TrackCircle />
-            <ProgressCircle.FillCircle />
-          </ProgressCircle.Track>
-        </ProgressCircle>
-        <span>{clampedPercent}%</span>
+      <Tooltip.Trigger className="inline-flex">
+        <Popover>
+          <Popover.Trigger
+            aria-label={ariaLabel}
+            className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground tabular-nums transition-colors hover:bg-default hover:text-foreground"
+          >
+            <ProgressCircle
+              aria-label={ariaLabel}
+              color={tone}
+              size="sm"
+              value={clampedPercent}
+            >
+              <ProgressCircle.Track>
+                <ProgressCircle.TrackCircle style={CONTEXT_USAGE_TRACK_STYLE} />
+                <ProgressCircle.FillCircle />
+              </ProgressCircle.Track>
+            </ProgressCircle>
+            <span>{clampedPercent}%</span>
+          </Popover.Trigger>
+          <Popover.Content className="w-80" placement="top start">
+            <Popover.Dialog>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-semibold text-foreground">
+                  {title}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {summaryLabel}
+                </span>
+              </div>
+
+              {usedSegments.length > 0 ? (
+                <div className="mt-3 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-muted-foreground/20">
+                  {usedSegments.map((segment) => (
+                    <span
+                      className="h-full"
+                      key={segment.key}
+                      style={{
+                        backgroundColor:
+                          CONTEXT_USAGE_SEGMENT_COLOR[segment.key],
+                        width: `${segment.percent}%`
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {usedSegments.length > 0 ? (
+                <ul className="mt-3 flex flex-col">
+                  {usedSegments.map((segment) => (
+                    <li
+                      className="flex items-center gap-2 border-t border-border/60 py-1.5 text-xs first:border-t-0"
+                      key={segment.key}
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-[3px]"
+                        style={{
+                          backgroundColor:
+                            CONTEXT_USAGE_SEGMENT_COLOR[segment.key]
+                        }}
+                      />
+                      <span className="text-foreground">{segment.label}</span>
+                      <span className="ml-auto text-muted-foreground tabular-nums">
+                        {segment.valueLabel}
+                      </span>
+                    </li>
+                  ))}
+                  <li className="flex items-center gap-2 border-t border-border/60 py-1.5 text-xs">
+                    <span className="size-2 shrink-0 rounded-[3px] bg-muted-foreground/25" />
+                    <span className="text-muted-foreground">
+                      {remainingLabel}
+                    </span>
+                  </li>
+                </ul>
+              ) : null}
+
+              {hasFootnote ? (
+                <div className="mt-3 flex flex-col gap-0.5 border-t border-border/60 pt-2 text-[0.6875rem] text-muted-foreground">
+                  {thresholdFootnote ? <span>{thresholdFootnote}</span> : null}
+                  {windowFootnote ? <span>{windowFootnote}</span> : null}
+                </div>
+              ) : null}
+            </Popover.Dialog>
+          </Popover.Content>
+        </Popover>
       </Tooltip.Trigger>
-      <Tooltip.Content>{tooltip}</Tooltip.Content>
+      <Tooltip.Content>{hintLabel}</Tooltip.Content>
     </Tooltip>
   )
 }
@@ -851,9 +960,15 @@ export const PromptInput = ({
   commandPaletteSkillLabel: string
   contextUsage?: {
     ariaLabel: string
+    hintLabel: string
     percent: number
+    remainingLabel: string
+    segments: PromptInputContextUsageSegment[]
+    summaryLabel: string
+    thresholdFootnote?: string
     threshold?: number
-    tooltip: ReactNode
+    title: string
+    windowFootnote?: string
   }
   disabled?: boolean
   footer?: ReactNode

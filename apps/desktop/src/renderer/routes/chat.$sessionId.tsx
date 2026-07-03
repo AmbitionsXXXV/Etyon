@@ -97,7 +97,11 @@ import {
   getNextChatAgentMode
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
-import { estimateChatContextUsagePercent } from "@/shared/chat/context-usage"
+import {
+  estimateChatContextUsagePercent,
+  getChatContextUsageSegments
+} from "@/shared/chat/context-usage"
+import type { ChatContextUsageSegment } from "@/shared/chat/context-usage"
 import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRequestPhase,
@@ -177,6 +181,7 @@ const getMessageText = (message: ChatUiMessage): string =>
     .filter((part): part is TextChatPart => part.type === "text")
     .map((part) => part.text)
     .join("")
+    .trim()
 
 const toRuntimeChatMessage = (
   message: PersistedChatUiMessage
@@ -753,7 +758,7 @@ const MessageSegmentContent = ({
 
 const hasRenderableAssistantContent = (message: ChatUiMessage | undefined) =>
   message?.role === "assistant" &&
-  (getMessageText(message).trim() !== "" ||
+  (getMessageText(message) !== "" ||
     getMessageReasoningParts(message).length > 0 ||
     getMessageToolParts(message).length > 0)
 
@@ -1373,6 +1378,10 @@ const ChatRuntime = ({
     () => estimateChatContextUsagePercent(messages),
     [messages]
   )
+  const contextUsageSegments = useMemo(
+    () => getChatContextUsageSegments(messages),
+    [messages]
+  )
 
   const handleToolApprovalResponse = useCallback(
     (part: ChatToolPart, approved: boolean) => {
@@ -1563,38 +1572,49 @@ const ChatRuntime = ({
   const contextWindowLabel = formatContextWindowLabel(
     selectedModelContextWindow
   )
+  const contextUsageSegmentLabel: Record<
+    ChatContextUsageSegment["key"],
+    string
+  > = {
+    assistant: t("chat.composer.contextUsageAssistantMessages"),
+    user: t("chat.composer.contextUsageUserMessages")
+  }
+  const contextUsageTotalCharacters = contextUsageSegments.reduce(
+    (sum, segment) => sum + segment.characters,
+    0
+  )
   const contextUsage = {
     ariaLabel: t("chat.composer.contextUsageAriaLabel", {
       percent: contextUsagePercent
     }),
+    hintLabel: t("chat.composer.contextUsageHint"),
     percent: contextUsagePercent,
+    remainingLabel: t("chat.composer.contextUsageRemaining"),
+    segments: contextUsageSegments.map((segment) => ({
+      key: segment.key,
+      label: contextUsageSegmentLabel[segment.key],
+      percent:
+        contextUsageTotalCharacters > 0
+          ? (segment.characters / contextUsageTotalCharacters) *
+            contextUsagePercent
+          : 0,
+      valueLabel: formatContextWindowLabel(segment.characters) ?? "0"
+    })),
+    summaryLabel: t("chat.composer.contextUsageUsed", {
+      percent: contextUsagePercent
+    }),
     threshold: autoCompact?.enabled ? autoCompact.threshold : undefined,
-    tooltip: (
-      <div className="flex flex-col gap-0.5">
-        <span className="font-medium">
-          {t("chat.composer.contextUsageTitle")}
-        </span>
-        <span>
-          {t("chat.composer.contextUsageUsed", {
-            percent: contextUsagePercent
-          })}
-        </span>
-        {autoCompact?.enabled ? (
-          <span className="text-muted-foreground">
-            {t("chat.composer.contextUsageAutoCompact", {
-              threshold: autoCompact.threshold
-            })}
-          </span>
-        ) : null}
-        {contextWindowLabel ? (
-          <span className="text-muted-foreground">
-            {t("chat.composer.contextUsageModelWindow", {
-              window: contextWindowLabel
-            })}
-          </span>
-        ) : null}
-      </div>
-    )
+    thresholdFootnote: autoCompact?.enabled
+      ? t("chat.composer.contextUsageAutoCompact", {
+          threshold: autoCompact.threshold
+        })
+      : undefined,
+    title: t("chat.composer.contextUsageTitle"),
+    windowFootnote: contextWindowLabel
+      ? t("chat.composer.contextUsageModelWindow", {
+          window: contextWindowLabel
+        })
+      : undefined
   }
 
   return (

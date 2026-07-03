@@ -1,6 +1,7 @@
 import { Button, Header, ListBox, Select } from "@heroui/react"
 import type { Key } from "@heroui/react"
 
+import { ProviderIcon } from "@/renderer/components/providers/provider-icon"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 
 export const ModelSelector = ({
@@ -69,15 +70,21 @@ export const ModelSelector = ({
             }
 
             return (
-              <span className="min-w-0 text-left">
-                <span className="block truncate text-sm font-medium">
-                  {selectedOption.label}
-                </span>
-                {selectedOption.summary ? (
-                  <span className="block truncate text-[0.6875rem] leading-4 text-muted-foreground">
-                    {selectedOption.summary}
+              <span className="flex min-w-0 items-center gap-2 text-left">
+                <ProviderIcon
+                  className="size-4 text-foreground"
+                  providerId={selectedOption.providerId}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">
+                    {selectedOption.label}
                   </span>
-                ) : null}
+                  {selectedOption.summary ? (
+                    <span className="block truncate text-[0.6875rem] leading-4 text-muted-foreground">
+                      {selectedOption.summary}
+                    </span>
+                  ) : null}
+                </span>
               </span>
             )
           }}
@@ -88,7 +95,11 @@ export const ModelSelector = ({
         <ListBox>
           {groups.map((group) => (
             <ListBox.Section key={group.providerId}>
-              <Header className="px-2 py-1 text-[0.6875rem] font-medium text-muted-foreground uppercase">
+              <Header className="flex items-center gap-1.5 px-2 py-1 text-[0.6875rem] font-medium text-muted-foreground uppercase">
+                <ProviderIcon
+                  className="size-3.5"
+                  providerId={group.providerId}
+                />
                 {group.providerName}
               </Header>
               {group.options.map((option) => (
