@@ -7,6 +7,8 @@ import type {
 
 import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { getSettings } from "@/main/settings"
+import type { BaseURLValidationError } from "@/shared/providers/base-url"
+import { validateBaseURL } from "@/shared/providers/base-url"
 import {
   getProviderCatalogEntry,
   getProviderSeedModels,
@@ -14,6 +16,15 @@ import {
 } from "@/shared/providers/provider-catalog"
 
 const FETCH_TIMEOUT_MS = 15_000
+
+const BASE_URL_VALIDATION_ERROR_MESSAGE: Record<
+  BaseURLValidationError,
+  string
+> = {
+  empty: "Base URL is required.",
+  invalid: "Base URL must be a valid URL.",
+  unsupportedProtocol: "Base URL must use http or https."
+}
 
 const buildModelsEndpoint = (baseURL: string, modelsApiPath: string) =>
   `${baseURL.replace(/\/+$/u, "")}/${modelsApiPath.replace(/^\/+/u, "")}`
@@ -236,6 +247,16 @@ const readErrorMessage = async (response: Response): Promise<string> => {
     if (isRecord(parsed) && typeof parsed.error === "string") {
       return parsed.error
     }
+
+    // OpenAI (and OpenAI-compatible gateways) nest the message as
+    // `{ error: { message } }` instead of a flat `{ error }` string.
+    if (
+      isRecord(parsed) &&
+      isRecord(parsed.error) &&
+      typeof parsed.error.message === "string"
+    ) {
+      return parsed.error.message
+    }
   } catch {
     return responseText
   }
@@ -286,12 +307,19 @@ export const fetchProviderModels = async ({
   }
 
   const catalogEntry = getProviderCatalogEntry(provider.providerId)
+  const resolvedBaseURL = resolveProviderBaseURL(provider.providerId, {
+    baseURL: provider.baseURL,
+    region: provider.region
+  })
+  const baseURLValidationError = validateBaseURL(resolvedBaseURL)
+
+  if (baseURLValidationError) {
+    throw new Error(BASE_URL_VALIDATION_ERROR_MESSAGE[baseURLValidationError])
+  }
+
   const controller = new AbortController()
   const endpoint = buildModelsEndpoint(
-    resolveProviderBaseURL(provider.providerId, {
-      baseURL: provider.baseURL,
-      region: provider.region
-    }),
+    resolvedBaseURL,
     catalogEntry.modelsApiPath
   )
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)

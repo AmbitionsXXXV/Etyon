@@ -128,13 +128,16 @@ const resolveImplicitModelId = (aiSettings: AiSettings): string => {
 const createProviderModel = (
   provider: ProviderName,
   model: string,
-  aiSettings: AiSettings
+  aiSettings: AiSettings,
+  proxy: ProxySettings
 ): LanguageModel => {
   const providerConfig = aiSettings.providers[provider]
 
   if (!providerConfig.enabled) {
     throw new Error(`Provider "${provider}" is disabled.`)
   }
+
+  const proxyAwareFetch = createProxyAwareFetch(proxy)
 
   const createOpenAICompatibleChatModel = ({
     baseURL,
@@ -153,7 +156,7 @@ const createProviderModel = (
       apiKey,
       name: provider,
       ...(baseURL ? { baseURL } : {}),
-      ...(customFetch ? { fetch: customFetch } : {})
+      fetch: customFetch ?? proxyAwareFetch
     })
 
     return openai.chat(model)
@@ -168,7 +171,8 @@ const createProviderModel = (
 
     const openai = createOpenAI({
       apiKey,
-      ...(baseURL ? { baseURL } : {})
+      ...(baseURL ? { baseURL } : {}),
+      fetch: proxyAwareFetch
     })
 
     return openai(model)
@@ -182,7 +186,7 @@ const createProviderModel = (
         throw new Error(`Provider "${provider}" is missing an API Key.`)
       }
 
-      const anthropic = createAnthropic({ apiKey })
+      const anthropic = createAnthropic({ apiKey, fetch: proxyAwareFetch })
 
       return anthropic(model)
     }
@@ -196,14 +200,14 @@ const createProviderModel = (
         throw new Error(`Provider "${provider}" is missing an API Key.`)
       }
 
-      const gateway = createGateway({ apiKey })
+      const gateway = createGateway({ apiKey, fetch: proxyAwareFetch })
 
       return gateway(model)
     }
     case "moonshot": {
       return createOpenAICompatibleChatModel({
         baseURL: resolveProviderBaseURL(provider, providerConfig),
-        fetch: createMoonshotFetch()
+        fetch: createMoonshotFetch(proxyAwareFetch)
       })
     }
     case "openai": {
@@ -227,12 +231,12 @@ const createProviderModel = (
 }
 
 export const resolveModel = (modelId?: string): LanguageModel => {
-  const { ai: aiSettings } = getSettings()
+  const { ai: aiSettings, proxy } = getSettings()
   const effectiveModelId = modelId || resolveImplicitModelId(aiSettings)
   const { model, provider } = parseModelId(
     effectiveModelId,
     aiSettings.defaultProvider
   )
 
-  return createProviderModel(provider, model, aiSettings)
+  return createProviderModel(provider, model, aiSettings, proxy)
 }

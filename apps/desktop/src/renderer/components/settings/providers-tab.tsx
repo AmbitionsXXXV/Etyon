@@ -29,11 +29,14 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ProviderIcon } from "@/renderer/components/providers/provider-icon"
 import { rpcClient } from "@/renderer/lib/rpc"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
+import type { BaseURLValidationError } from "@/shared/providers/base-url"
+import { validateBaseURL } from "@/shared/providers/base-url"
 import { hasProviderCredential } from "@/shared/providers/credentials"
 import { resolveMoonshotBaseURL } from "@/shared/providers/moonshot-region"
 import {
   getProviderDefaultBaseURL,
   getSettingsTabProviders,
+  resolveProviderBaseURL,
   SETTINGS_PROVIDER_IDS
 } from "@/shared/providers/provider-catalog"
 import type { SettingsTabProviderId } from "@/shared/providers/provider-catalog"
@@ -62,6 +65,16 @@ const OPENAI_API_MODE_OPTION_KEY: Record<ProviderApiMode, TranslationKey> = {
   responses: "settings.providers.fields.apiMode.option.responses"
 }
 
+const BASE_URL_VALIDATION_ERROR_KEY: Record<
+  BaseURLValidationError,
+  TranslationKey
+> = {
+  empty: "settings.providers.fields.baseUrl.error.empty",
+  invalid: "settings.providers.fields.baseUrl.error.invalid",
+  unsupportedProtocol:
+    "settings.providers.fields.baseUrl.error.unsupportedProtocol"
+}
+
 const createFetchStateMap = (): Record<
   SettingsTabProviderId,
   ProviderFetchState
@@ -86,11 +99,11 @@ const formatContextWindow = (contextWindow?: number) => {
 }
 
 const getProviderCredentialStatusKey = (
-  hasProviderCredential: boolean,
+  hasCredential: boolean,
   isCursorProvider: boolean,
   isCursorAuthPluginEnabled: boolean
 ): TranslationKey => {
-  if (hasProviderCredential) {
+  if (hasCredential) {
     return isCursorProvider
       ? "settings.providers.status.cursorReady"
       : "settings.providers.status.ready"
@@ -781,6 +794,11 @@ export const ProvidersTab = ({
     activeProvider.id,
     activeProviderConfig
   )
+  const baseURLValidationError = isCursorProvider
+    ? null
+    : validateBaseURL(
+        resolveProviderBaseURL(activeProvider.id, activeProviderConfig)
+      )
 
   return (
     <motion.section
@@ -828,6 +846,10 @@ export const ProvidersTab = ({
                 if (providerConfig.models.length > 0) {
                   summary = t("settings.providers.list.enabledModels", {
                     count: providerConfig.models.length
+                  })
+                } else if (providerConfig.availableModels.length > 0) {
+                  summary = t("settings.providers.list.allModelsAvailable", {
+                    count: providerConfig.availableModels.length
                   })
                 }
 
@@ -1032,6 +1054,13 @@ export const ProvidersTab = ({
                       onChange={handleBaseURLInputChange}
                       value={activeProviderConfig.baseURL}
                     />
+                    {baseURLValidationError && (
+                      <p className="text-[0.6875rem] leading-5 text-destructive">
+                        {t(
+                          BASE_URL_VALIDATION_ERROR_KEY[baseURLValidationError]
+                        )}
+                      </p>
+                    )}
                     <p className="text-[0.6875rem] leading-5 text-muted-foreground">
                       {t("settings.providers.fields.baseUrl.description", {
                         defaultBaseURL,
@@ -1057,7 +1086,8 @@ export const ProvidersTab = ({
                   <Button
                     isDisabled={
                       fetchModelsMutation.isPending ||
-                      !hasActiveProviderCredential
+                      !hasActiveProviderCredential ||
+                      Boolean(baseURLValidationError)
                     }
                     onPress={handleFetchClick}
                     type="button"

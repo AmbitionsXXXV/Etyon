@@ -2,6 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 
+vi.mock("@/main/settings", () => ({
+  getSettings: () => ({
+    proxy: {
+      enabled: false,
+      host: "",
+      password: "",
+      port: 8080,
+      type: "http",
+      username: ""
+    }
+  })
+}))
+
 describe("fetchProviderModels", () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -19,6 +32,50 @@ describe("fetchProviderModels", () => {
         }
       })
     ).rejects.toThrow("API Key is required before fetching models.")
+  })
+
+  it("rejects a malformed base url before making a request", async () => {
+    const fetchMock = vi.fn()
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(
+      fetchProviderModels({
+        provider: {
+          apiKey: "sk-test",
+          baseURL: "not a url",
+          providerId: "openai"
+        }
+      })
+    ).rejects.toThrow("Base URL must be a valid URL.")
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("surfaces openai's nested error message shape", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json(
+        {
+          error: {
+            code: "invalid_api_key",
+            message: "Incorrect API key provided.",
+            type: "invalid_request_error"
+          }
+        },
+        { status: 401 }
+      )
+    )
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(
+      fetchProviderModels({
+        provider: {
+          apiKey: "sk-bad",
+          baseURL: "https://api.openai.com/v1",
+          providerId: "openai"
+        }
+      })
+    ).rejects.toThrow("Incorrect API key provided.")
   })
 
   it("normalizes fetched models and fills missing capabilities from seed data", async () => {

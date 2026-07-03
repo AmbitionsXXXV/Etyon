@@ -913,6 +913,11 @@
         },
         "baseUrl": {
           "description": "Default: {{defaultBaseURL}} · Upstream Models API: {{upstreamModelsApi}}",
+          "error": {
+            "empty": "Base URL is required.",
+            "invalid": "Enter a valid URL.",
+            "unsupportedProtocol": "Base URL must start with http:// or https://."
+          },
           "label": "Base URL"
         },
         "cursorAuth": {
@@ -929,6 +934,7 @@
         }
       },
       "list": {
+        "allModelsAvailable": "All {{count}} models available",
         "enabledModels": "{{count}} models enabled",
         "noEnabledModels": "No models enabled"
       },

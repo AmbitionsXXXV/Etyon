@@ -136,6 +136,7 @@ describe("resolveModel", () => {
     expect(createOpenAIMock).toHaveBeenCalledWith({
       apiKey: "zai-key",
       baseURL: "https://api.z.ai/api/coding/paas/v4",
+      fetch: expect.any(Function),
       name: "zai-coding-plan"
     })
     expect(openAIProviderMock).not.toHaveBeenCalled()
@@ -147,7 +148,8 @@ describe("resolveModel", () => {
 
     expect(createOpenAIMock).toHaveBeenCalledWith({
       apiKey: "openai-key",
-      baseURL: "https://api.openai.com/v1"
+      baseURL: "https://api.openai.com/v1",
+      fetch: expect.any(Function)
     })
     expect(openAIProviderMock).toHaveBeenCalledWith("gpt-5.4")
     expect(openAIProviderMock.chat).not.toHaveBeenCalled()
@@ -178,7 +180,8 @@ describe("resolveModel", () => {
 
     expect(createOpenAIMock).toHaveBeenCalledWith({
       apiKey: "openai-key",
-      baseURL: "https://openai.example.com/v1"
+      baseURL: "https://openai.example.com/v1",
+      fetch: expect.any(Function)
     })
     expect(openAIProviderMock).toHaveBeenCalledWith("gpt-5.4")
   })
@@ -206,6 +209,7 @@ describe("resolveModel", () => {
     expect(createOpenAIMock).toHaveBeenCalledWith({
       apiKey: "openai-key",
       baseURL: "https://openai-gateway.example.com/v1",
+      fetch: expect.any(Function),
       name: "openai"
     })
     expect(openAIProviderMock).not.toHaveBeenCalled()

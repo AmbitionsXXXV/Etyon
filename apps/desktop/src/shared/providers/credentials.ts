@@ -1,6 +1,6 @@
 import type { AiProviderConfig } from "@etyon/rpc"
 
-import { getProviderCatalogEntry } from "./provider-catalog"
+import type { getProviderCatalogEntry } from "./provider-catalog"
 
 type ProviderCatalogEntry = ReturnType<typeof getProviderCatalogEntry>
 

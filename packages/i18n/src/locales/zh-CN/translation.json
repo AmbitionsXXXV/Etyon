@@ -913,6 +913,11 @@
         },
         "baseUrl": {
           "description": "默认地址：{{defaultBaseURL}} · 上游 Models API：{{upstreamModelsApi}}",
+          "error": {
+            "empty": "请填写 Base URL。",
+            "invalid": "请输入合法的 URL。",
+            "unsupportedProtocol": "Base URL 必须以 http:// 或 https:// 开头。"
+          },
           "label": "Base URL"
         },
         "cursorAuth": {
@@ -929,6 +934,7 @@
         }
       },
       "list": {
+        "allModelsAvailable": "全部 {{count}} 个模型可用",
         "enabledModels": "已启用 {{count}} 个模型",
         "noEnabledModels": "未启用模型"
       },

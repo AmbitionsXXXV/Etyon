@@ -913,6 +913,11 @@
         },
         "baseUrl": {
           "description": "既定値：{{defaultBaseURL}} · 上流 Models API：{{upstreamModelsApi}}",
+          "error": {
+            "empty": "Base URL を入力してください。",
+            "invalid": "有効な URL を入力してください。",
+            "unsupportedProtocol": "Base URL は http:// または https:// で始めてください。"
+          },
           "label": "Base URL"
         },
         "cursorAuth": {
@@ -929,6 +934,7 @@
         }
       },
       "list": {
+        "allModelsAvailable": "{{count}} 件のモデルがすべて利用可能",
         "enabledModels": "{{count}} 件のモデルを有効化",
         "noEnabledModels": "有効なモデルはありません"
       },
