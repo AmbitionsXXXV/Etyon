@@ -4,6 +4,7 @@ import type {
   AiProviderConfig,
   AiSettings,
   MoonshotRegion,
+  ProviderApiMode,
   ProviderFetchModelsOutput,
   StoredProviderModel
 } from "@etyon/rpc"
@@ -28,11 +29,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ProviderIcon } from "@/renderer/components/providers/provider-icon"
 import { rpcClient } from "@/renderer/lib/rpc"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
+import { hasProviderCredential } from "@/shared/providers/credentials"
+import { resolveMoonshotBaseURL } from "@/shared/providers/moonshot-region"
 import {
-  getDefaultMoonshotBaseURL,
-  resolveMoonshotBaseURL
-} from "@/shared/providers/moonshot-region"
-import { getSettingsTabProviders } from "@/shared/providers/provider-catalog"
+  getProviderDefaultBaseURL,
+  getSettingsTabProviders,
+  SETTINGS_PROVIDER_IDS
+} from "@/shared/providers/provider-catalog"
 import type { SettingsTabProviderId } from "@/shared/providers/provider-catalog"
 
 interface ProviderFetchState {
@@ -43,28 +46,32 @@ interface ProviderFetchState {
 const CURSOR_LOGIN_POLL_INTERVAL_MS = 2000
 const CURSOR_LOGIN_TIMEOUT_MS = 3 * 60 * 1000
 
-const PROVIDER_DESCRIPTION_KEY_BY_ID: Record<
-  SettingsTabProviderId,
-  TranslationKey
-> = {
-  cursor: "settings.providers.provider.cursor.description",
-  moonshot: "settings.providers.provider.moonshot.description",
-  "zai-coding-plan": "settings.providers.provider.zaiCodingPlan.description"
-}
-
 const MOONSHOT_REGION_OPTIONS: readonly MoonshotRegion[] = [
   "china",
   "international"
 ]
 
+const OPENAI_API_MODE_OPTIONS: readonly ProviderApiMode[] = [
+  "responses",
+  "chat-completions"
+]
+
+const OPENAI_API_MODE_OPTION_KEY: Record<ProviderApiMode, TranslationKey> = {
+  "chat-completions":
+    "settings.providers.fields.apiMode.option.chatCompletions",
+  responses: "settings.providers.fields.apiMode.option.responses"
+}
+
 const createFetchStateMap = (): Record<
   SettingsTabProviderId,
   ProviderFetchState
-> => ({
-  cursor: { kind: "idle", message: "" },
-  moonshot: { kind: "idle", message: "" },
-  "zai-coding-plan": { kind: "idle", message: "" }
-})
+> =>
+  Object.fromEntries(
+    SETTINGS_PROVIDER_IDS.map((providerId) => [
+      providerId,
+      { kind: "idle", message: "" } satisfies ProviderFetchState
+    ])
+  ) as Record<SettingsTabProviderId, ProviderFetchState>
 
 const formatContextWindow = (contextWindow?: number) => {
   if (!contextWindow) {
@@ -345,7 +352,7 @@ export const ProvidersTab = ({
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const [activeProviderId, setActiveProviderId] =
-    useState<SettingsTabProviderId>("cursor")
+    useState<SettingsTabProviderId>(SETTINGS_PROVIDER_IDS[0])
   const [fetchStates, setFetchStates] = useState(createFetchStateMap)
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false)
   const [cursorLoginRequestId, setCursorLoginRequestId] = useState<
@@ -666,6 +673,20 @@ export const ProvidersTab = ({
     [activeProvider.id, handleProviderFieldChange]
   )
 
+  const handleOpenAiApiModeChange = useCallback(
+    (value: ProviderApiMode | null) => {
+      if (activeProvider.id !== "openai" || !value) {
+        return
+      }
+
+      handleProviderFieldChange("openai", (previousProvider) => ({
+        ...previousProvider,
+        apiMode: value
+      }))
+    },
+    [activeProvider.id, handleProviderFieldChange]
+  )
+
   const handleModelCheckedChange = useCallback(
     (checked: boolean, model: StoredProviderModel) =>
       handleProviderFieldChange(activeProvider.id, (previousProvider) => ({
@@ -720,14 +741,16 @@ export const ProvidersTab = ({
 
   const providerFetchState =
     fetchStates[activeProvider.id as keyof typeof fetchStates]
-  const hasProviderCredential = isCursorProvider
-    ? isCursorAuthPluginEnabled && isCursorAuthenticated
-    : Boolean(activeProviderConfig.apiKey.trim())
+  const hasActiveProviderCredential = hasProviderCredential(
+    activeProvider,
+    activeProviderConfig,
+    { cursorAuthenticated: isCursorAuthPluginEnabled && isCursorAuthenticated }
+  )
   const providerStatusMessage =
     providerFetchState.message ||
     t(
       getProviderCredentialStatusKey(
-        hasProviderCredential,
+        hasActiveProviderCredential,
         isCursorProvider,
         isCursorAuthPluginEnabled
       )
@@ -754,10 +777,10 @@ export const ProvidersTab = ({
       ? "settings.providers.actions.hideApiKey"
       : "settings.providers.actions.showApiKey"
   )
-  const defaultBaseURL =
-    activeProvider.id === "moonshot"
-      ? getDefaultMoonshotBaseURL(activeProviderConfig.region)
-      : activeProvider.baseURL
+  const defaultBaseURL = getProviderDefaultBaseURL(
+    activeProvider.id,
+    activeProviderConfig
+  )
 
   return (
     <motion.section
@@ -787,17 +810,17 @@ export const ProvidersTab = ({
                 const isActive = provider.id === activeProvider.id
                 let statusClassName = "bg-muted-foreground/40"
 
-                if (providerConfig.enabled && providerConfig.apiKey.trim()) {
-                  statusClassName = "bg-primary"
-                } else if (
-                  provider.id === "cursor" &&
-                  providerConfig.enabled &&
-                  isCursorAuthPluginEnabled &&
-                  isCursorAuthenticated
-                ) {
-                  statusClassName = "bg-primary"
-                } else if (providerConfig.enabled) {
-                  statusClassName = "bg-amber-400"
+                if (providerConfig.enabled) {
+                  statusClassName = hasProviderCredential(
+                    provider,
+                    providerConfig,
+                    {
+                      cursorAuthenticated:
+                        isCursorAuthPluginEnabled && isCursorAuthenticated
+                    }
+                  )
+                    ? "bg-primary"
+                    : "bg-amber-400"
                 }
 
                 let summary = t("settings.providers.list.noEnabledModels")
@@ -852,11 +875,7 @@ export const ProvidersTab = ({
                   />
                 </div>
                 <p className="max-w-xl text-xs text-muted-foreground">
-                  {t(
-                    PROVIDER_DESCRIPTION_KEY_BY_ID[
-                      activeProvider.id as keyof typeof PROVIDER_DESCRIPTION_KEY_BY_ID
-                    ]
-                  )}
+                  {t(activeProvider.descriptionKey)}
                 </p>
               </div>
 
@@ -969,6 +988,40 @@ export const ProvidersTab = ({
                       </div>
                     )}
 
+                    {activeProvider.id === "openai" && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium">
+                          {t("settings.providers.fields.apiMode.label")}
+                        </label>
+                        <Select
+                          onValueChange={handleOpenAiApiModeChange}
+                          value={activeProviderConfig.apiMode ?? "responses"}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {t(
+                                OPENAI_API_MODE_OPTION_KEY[
+                                  activeProviderConfig.apiMode ?? "responses"
+                                ]
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {OPENAI_API_MODE_OPTIONS.map((apiMode) => (
+                                <SelectItem key={apiMode} value={apiMode}>
+                                  {t(OPENAI_API_MODE_OPTION_KEY[apiMode])}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[0.6875rem] leading-5 text-muted-foreground">
+                          {t("settings.providers.fields.apiMode.description")}
+                        </p>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between gap-2">
                       <label className="text-xs font-medium">
                         {t("settings.providers.fields.baseUrl.label")}
@@ -1003,7 +1056,8 @@ export const ProvidersTab = ({
                   </div>
                   <Button
                     isDisabled={
-                      fetchModelsMutation.isPending || !hasProviderCredential
+                      fetchModelsMutation.isPending ||
+                      !hasActiveProviderCredential
                     }
                     onPress={handleFetchClick}
                     type="button"

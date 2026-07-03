@@ -24,6 +24,24 @@ import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { applySettings } from "../settings"
 import { settingsEqual } from "./settings-equal"
 
+const patchProviderEnabled = (
+  settings: AppSettings,
+  providerId: AiProviderName,
+  enabled: boolean
+): AppSettings => ({
+  ...settings,
+  ai: {
+    ...settings.ai,
+    providers: {
+      ...settings.ai.providers,
+      [providerId]: {
+        ...settings.ai.providers[providerId],
+        enabled
+      }
+    }
+  }
+})
+
 export const useSettingsPageDraft = () => {
   const queryClient = useQueryClient()
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
@@ -135,6 +153,44 @@ export const useSettingsPageDraft = () => {
       if (!hasNewerLocalChanges) {
         setDraft(data)
       }
+    }
+  })
+
+  const updateProviderEnabledMutation = useMutation<
+    AppSettings,
+    Error,
+    { enabled: boolean; providerId: AiProviderName },
+    { previousSavedSnapshot: AppSettings | null }
+  >({
+    mutationFn: ({ enabled, providerId }) => {
+      const baseline = savedSnapshotRef.current ?? draftRef.current
+
+      if (!baseline) {
+        return Promise.reject(new Error("Settings have not loaded yet."))
+      }
+
+      return rpcClient.settings.update(
+        patchProviderEnabled(baseline, providerId, enabled)
+      )
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousSavedSnapshot) {
+        syncSavedSnapshot(context.previousSavedSnapshot)
+      }
+    },
+    onMutate: ({ enabled, providerId }) => {
+      const previousSavedSnapshot = savedSnapshotRef.current
+      const baseline = previousSavedSnapshot ?? draftRef.current
+
+      if (baseline) {
+        syncSavedSnapshot(patchProviderEnabled(baseline, providerId, enabled))
+      }
+
+      return { previousSavedSnapshot }
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(settingsQueryKey, data)
+      syncSavedSnapshot(data)
     }
   })
 
@@ -297,24 +353,10 @@ export const useSettingsPageDraft = () => {
         return
       }
 
-      const nextSettings: AppSettings = {
-        ...current,
-        ai: {
-          ...current.ai,
-          providers: {
-            ...current.ai.providers,
-            [providerId]: {
-              ...current.ai.providers[providerId],
-              enabled
-            }
-          }
-        }
-      }
-
-      setDraft(nextSettings)
-      updateMutation.mutate(nextSettings)
+      setDraft(patchProviderEnabled(current, providerId, enabled))
+      updateProviderEnabledMutation.mutate({ enabled, providerId })
     },
-    [updateMutation]
+    [updateProviderEnabledMutation]
   )
   const handleLocaleChange = useCallback(
     (v: LocalePreference) => updateDraftRef.current("locale", v),

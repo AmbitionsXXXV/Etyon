@@ -117,6 +117,54 @@ export const CURSOR_PROVIDER_SEED_MODELS: StoredProviderModel[] = [
   }
 ]
 
+const OPENAI_SEED_MODELS: StoredProviderModel[] = [
+  {
+    capabilities: {
+      contextWindow: 1_000_000,
+      functionCalling: true,
+      imageOutput: false,
+      jsonMode: true,
+      maxOutputTokens: 128_000,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-5.5",
+    isManual: undefined,
+    name: "GPT-5.5"
+  },
+  {
+    capabilities: {
+      contextWindow: 1_000_000,
+      functionCalling: true,
+      imageOutput: false,
+      jsonMode: true,
+      maxOutputTokens: 128_000,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-5.4",
+    isManual: undefined,
+    name: "GPT-5.4"
+  },
+  {
+    capabilities: {
+      contextWindow: 400_000,
+      functionCalling: true,
+      imageOutput: false,
+      jsonMode: true,
+      maxOutputTokens: 128_000,
+      reasoning: true,
+      streaming: true,
+      vision: true
+    },
+    id: "gpt-5.4-mini",
+    isManual: undefined,
+    name: "GPT-5.4 Mini"
+  }
+]
+
 const ZAI_CODING_PLAN_SEED_MODELS: StoredProviderModel[] = [
   {
     capabilities: {
@@ -173,6 +221,6 @@ export const BUILT_IN_PROVIDER_SEED_MODELS: Record<
   cursor: CURSOR_PROVIDER_SEED_MODELS,
   gateway: [],
   moonshot: MOONSHOT_SEED_MODELS,
-  openai: [],
+  openai: OPENAI_SEED_MODELS,
   "zai-coding-plan": ZAI_CODING_PLAN_SEED_MODELS
 }

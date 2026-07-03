@@ -11,6 +11,8 @@ export const BuiltInProviderIdSchema = z.enum([
 
 export const MoonshotRegionSchema = z.enum(["china", "international"])
 
+export const ProviderApiModeSchema = z.enum(["chat-completions", "responses"])
+
 export const StoredProviderModelCapabilitiesSchema = z.object({
   contextWindow: z.number().optional(),
   functionCalling: z.boolean().optional(),
@@ -44,6 +46,7 @@ export const ProviderFetchModelsOutputSchema = z.object({
 
 export type BuiltInProviderId = z.infer<typeof BuiltInProviderIdSchema>
 export type MoonshotRegion = z.infer<typeof MoonshotRegionSchema>
+export type ProviderApiMode = z.infer<typeof ProviderApiModeSchema>
 export type ProviderFetchModelsInput = z.infer<
   typeof ProviderFetchModelsInputSchema
 >

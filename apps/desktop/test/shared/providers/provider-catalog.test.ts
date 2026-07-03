@@ -8,15 +8,17 @@ import {
 } from "@/shared/providers/provider-catalog"
 
 describe("provider-catalog", () => {
-  it("shows cursor, moonshot, and z.ai in the settings providers tab", () => {
+  it("shows openai, cursor, moonshot, and z.ai in the settings providers tab", () => {
     const providers = getSettingsTabProviders()
 
     expect(providers.map(({ id }) => id)).toEqual([
+      "openai",
       "cursor",
       "moonshot",
       "zai-coding-plan"
     ])
     expect(providers.map(({ name }) => name)).toEqual([
+      "OpenAI",
       "Cursor",
       "Moonshot",
       "Z.AI Coding Plan"
@@ -56,6 +58,32 @@ describe("provider-catalog", () => {
     expect(
       hydratedAiSettings.providers["zai-coding-plan"].models.map(({ id }) => id)
     ).toEqual(["glm-5", "glm-5-turbo", "glm-4.7"])
+  })
+
+  it("backfills the official openai base url and seed models for legacy ai settings", () => {
+    const rawAiSettings = {
+      defaultProvider: "openai",
+      providers: {
+        openai: {
+          apiKey: "sk-test"
+        }
+      }
+    }
+
+    const aiSettings = AiSettingsSchema.parse(
+      rawAiSettings
+    ) satisfies AiSettings
+    const hydratedAiSettings = hydrateAiSettingsProviders(
+      aiSettings,
+      rawAiSettings
+    )
+
+    expect(hydratedAiSettings.providers.openai.baseURL).toBe(
+      "https://api.openai.com/v1"
+    )
+    expect(
+      hydratedAiSettings.providers.openai.availableModels.map(({ id }) => id)
+    ).toEqual(["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"])
   })
 
   it("infers the legacy moonshot region from the stored base url", () => {

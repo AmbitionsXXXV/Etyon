@@ -903,6 +903,14 @@
           "label": "API Key",
           "placeholder": "输入 API Key"
         },
+        "apiMode": {
+          "description": "Responses 是 OpenAI 的默认接口；如果对接的网关只实现了旧版接口，请切换到 Chat Completions。",
+          "label": "API 模式",
+          "option": {
+            "chatCompletions": "Chat Completions",
+            "responses": "Responses（默认）"
+          }
+        },
         "baseUrl": {
           "description": "默认地址：{{defaultBaseURL}} · 上游 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
@@ -936,6 +944,9 @@
         },
         "moonshot": {
           "description": "Moonshot 提供兼容 OpenAI 的 Kimi 模型接口。"
+        },
+        "openai": {
+          "description": "OpenAI 官方 Chat 模型；填写自定义 Base URL 后也可接入兼容 OpenAI 接口的网关。"
         },
         "zaiCodingPlan": {
           "description": "Z.AI Coding Plan 提供面向 Coding Plan 的 GLM 模型接口。"

@@ -6,7 +6,7 @@ import {
 } from "../../src/schemas/settings"
 
 describe("AppSettingsSchema", () => {
-  it("adds cursor, moonshot and z.ai provider defaults for empty settings", () => {
+  it("adds cursor, moonshot, openai and z.ai provider defaults for empty settings", () => {
     const settings = AppSettingsSchema.parse({})
 
     expect(settings.ai.providers.cursor).toMatchObject({
@@ -24,6 +24,13 @@ describe("AppSettingsSchema", () => {
     })
     expect(settings.ai.providers.moonshot.availableModels).toEqual([])
     expect(settings.ai.providers.moonshot.models).toEqual([])
+    expect(settings.ai.providers.openai).toMatchObject({
+      apiKey: "",
+      baseURL: "https://api.openai.com/v1",
+      enabled: false
+    })
+    expect(settings.ai.providers.openai.availableModels).toEqual([])
+    expect(settings.ai.providers.openai.models).toEqual([])
     expect(settings.ai.providers["zai-coding-plan"]).toMatchObject({
       apiKey: "",
       baseURL: "https://api.z.ai/api/coding/paas/v4",
@@ -31,6 +38,24 @@ describe("AppSettingsSchema", () => {
     })
     expect(settings.ai.providers["zai-coding-plan"].availableModels).toEqual([])
     expect(settings.ai.providers["zai-coding-plan"].models).toEqual([])
+  })
+
+  it("accepts an explicit openai apiMode override", () => {
+    const settings = AppSettingsSchema.parse({
+      ai: {
+        providers: {
+          openai: {
+            apiMode: "chat-completions",
+            baseURL: "https://openai-gateway.example.com/v1"
+          }
+        }
+      }
+    })
+
+    expect(settings.ai.providers.openai.apiMode).toBe("chat-completions")
+    expect(settings.ai.providers.openai.baseURL).toBe(
+      "https://openai-gateway.example.com/v1"
+    )
   })
 
   it("keeps existing provider config while backfilling new provider records", () => {

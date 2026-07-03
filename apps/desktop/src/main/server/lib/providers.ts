@@ -4,14 +4,18 @@ import { createOpenAI } from "@ai-sdk/openai"
 import type {
   AiProviderConfig,
   AiSettings,
-  BuiltInProviderId
+  BuiltInProviderId,
+  ProxySettings
 } from "@etyon/rpc"
 import type { LanguageModel } from "ai"
 
+import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { getSettings } from "@/main/settings"
+import { hasProviderCredential } from "@/shared/providers/credentials"
 import { createMoonshotFetch } from "@/shared/providers/moonshot-reasoning"
 import {
   BUILT_IN_PROVIDER_CATALOG,
+  getProviderCatalogEntry,
   resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
 
@@ -37,8 +41,18 @@ const getProviderModelId = (
   return models[0]?.id
 }
 
-const hasUsableProvider = (providerConfig: AiProviderConfig): boolean =>
-  providerConfig.enabled && Boolean(providerConfig.apiKey.trim())
+const hasUsableProvider = (
+  providerId: ProviderName,
+  providerConfig: AiProviderConfig
+): boolean => {
+  const catalogEntry = getProviderCatalogEntry(providerId)
+
+  return (
+    providerConfig.enabled &&
+    catalogEntry.runtimeReady &&
+    hasProviderCredential(catalogEntry, providerConfig)
+  )
+}
 
 const parseModelId = (
   modelId: string,
@@ -72,7 +86,7 @@ const resolveFallbackModelId = (aiSettings: AiSettings): string | null => {
   for (const providerId of providerCandidates) {
     const providerConfig = aiSettings.providers[providerId]
 
-    if (!hasUsableProvider(providerConfig)) {
+    if (!hasUsableProvider(providerId, providerConfig)) {
       continue
     }
 
@@ -93,7 +107,7 @@ const resolveImplicitModelId = (aiSettings: AiSettings): string => {
       aiSettings.defaultProvider
     )
 
-    if (hasUsableProvider(aiSettings.providers[provider])) {
+    if (hasUsableProvider(provider, aiSettings.providers[provider])) {
       return aiSettings.defaultModel
     }
   }
@@ -193,7 +207,11 @@ const createProviderModel = (
       })
     }
     case "openai": {
-      return createOpenAIResponsesModel(providerConfig.baseURL)
+      const baseURL = resolveProviderBaseURL(provider, providerConfig)
+
+      return providerConfig.apiMode === "chat-completions"
+        ? createOpenAICompatibleChatModel({ baseURL })
+        : createOpenAIResponsesModel(baseURL)
     }
     case "zai-coding-plan": {
       return createOpenAICompatibleChatModel({

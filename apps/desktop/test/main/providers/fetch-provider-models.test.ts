@@ -116,6 +116,33 @@ describe("fetchProviderModels", () => {
     ])
   })
 
+  it("filters non-chat models out of the openai models list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        data: [
+          { id: "gpt-5.4" },
+          { id: "whisper-1" },
+          { id: "text-embedding-3-large" },
+          { id: "dall-e-3" },
+          { id: "gpt-4o-mini-tts" },
+          { id: "omni-moderation-latest" }
+        ]
+      })
+    )
+
+    vi.stubGlobal("fetch", fetchMock)
+
+    const output = await fetchProviderModels({
+      provider: {
+        apiKey: "sk-test",
+        baseURL: "https://api.openai.com/v1",
+        providerId: "openai"
+      }
+    })
+
+    expect(output.models.map((model) => model.id)).toEqual(["gpt-5.4"])
+  })
+
   it("switches the moonshot models endpoint according to region", async () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: [] }))
 

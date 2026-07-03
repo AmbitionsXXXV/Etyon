@@ -903,6 +903,14 @@
           "label": "API Key",
           "placeholder": "API Key を入力"
         },
+        "apiMode": {
+          "description": "Responses が OpenAI の既定 API です。旧来のエンドポイントのみ実装する OpenAI 互換ゲートウェイを使う場合は Chat Completions に切り替えてください。",
+          "label": "API Mode",
+          "option": {
+            "chatCompletions": "Chat Completions",
+            "responses": "Responses（既定）"
+          }
+        },
         "baseUrl": {
           "description": "既定値：{{defaultBaseURL}} · 上流 Models API：{{upstreamModelsApi}}",
           "label": "Base URL"
@@ -936,6 +944,9 @@
         },
         "moonshot": {
           "description": "Moonshot は OpenAI 互換 API で Kimi モデルを提供します。"
+        },
+        "openai": {
+          "description": "OpenAI 公式の chat モデルに加え、カスタム Base URL を設定すれば OpenAI 互換のエンドポイントにも接続できます。"
         },
         "zaiCodingPlan": {
           "description": "Z.AI Coding Plan は Coding Plan 向けの GLM モデル API を提供します。"

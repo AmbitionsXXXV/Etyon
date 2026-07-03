@@ -6,7 +6,11 @@ import type {
 } from "@etyon/rpc"
 import { MEMORY_TOOL_MODEL_AUTO_VALUE } from "@etyon/rpc"
 
-import { BUILT_IN_PROVIDER_CATALOG } from "@/shared/providers/provider-catalog"
+import { hasProviderCredential } from "@/shared/providers/credentials"
+import {
+  BUILT_IN_PROVIDER_CATALOG,
+  getProviderCatalogEntry
+} from "@/shared/providers/provider-catalog"
 
 export interface MemoryToolModelResolution {
   diagnostic: null | string
@@ -65,11 +69,8 @@ const getProviderModels = (
     ? providerConfig.models
     : providerConfig.availableModels
 
-const hasProviderCredential = (providerConfig: AiProviderConfig): boolean =>
-  Boolean(providerConfig.apiKey.trim())
-
 const isSupportedMemoryToolProvider = (provider: AiProviderName): boolean =>
-  provider !== "cursor"
+  getProviderCatalogEntry(provider).runtimeReady
 
 const parseMemoryToolModelId = (
   modelId: string,
@@ -164,7 +165,12 @@ const resolveConcreteMemoryToolModel = ({
     }
   }
 
-  if (!hasProviderCredential(providerConfig)) {
+  if (
+    !hasProviderCredential(
+      getProviderCatalogEntry(parsedModel.provider),
+      providerConfig
+    )
+  ) {
     return {
       diagnostic: `Provider "${parsedModel.provider}" is missing an API Key.`,
       modelId: null
@@ -197,7 +203,7 @@ const resolveAutoMemoryToolModel = (
     if (
       !isSupportedMemoryToolProvider(provider) ||
       !providerConfig.enabled ||
-      !hasProviderCredential(providerConfig)
+      !hasProviderCredential(getProviderCatalogEntry(provider), providerConfig)
     ) {
       continue
     }

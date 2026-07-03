@@ -5,6 +5,7 @@ import { MemorySettingsSchema } from "./memory"
 import {
   BuiltInProviderIdSchema,
   MoonshotRegionSchema,
+  ProviderApiModeSchema,
   StoredProviderModelSchema
 } from "./providers"
 import { SkillsSettingsSchema } from "./skills"
@@ -101,6 +102,7 @@ const EMPTY_PROVIDER_MODELS: z.infer<typeof StoredProviderModelSchema>[] = []
 
 export const AiProviderConfigSchema = z.object({
   apiKey: z.string().default(""),
+  apiMode: ProviderApiModeSchema.optional(),
   availableModels: z
     .array(StoredProviderModelSchema)
     .default(EMPTY_PROVIDER_MODELS),
@@ -146,8 +148,8 @@ const MOONSHOT_PROVIDER_CONFIG_DEFAULT = {
 const OPENAI_PROVIDER_CONFIG_DEFAULT = {
   apiKey: "",
   availableModels: EMPTY_PROVIDER_MODELS,
-  baseURL: "",
-  enabled: true,
+  baseURL: "https://api.openai.com/v1",
+  enabled: false,
   models: EMPTY_PROVIDER_MODELS
 }
 

@@ -4,7 +4,11 @@ import type {
   StoredProviderModel
 } from "@etyon/rpc"
 
-import { BUILT_IN_PROVIDER_CATALOG } from "@/shared/providers/provider-catalog"
+import { hasProviderCredential } from "@/shared/providers/credentials"
+import {
+  BUILT_IN_PROVIDER_CATALOG,
+  getProviderCatalogEntry
+} from "@/shared/providers/provider-catalog"
 
 export interface ChatModelOption {
   capabilities: StoredProviderModel["capabilities"]
@@ -86,12 +90,17 @@ export const buildChatModelGroups = (
       providerName: provider.name
     }
   })
-    .filter(
-      (group) =>
-        aiSettings.providers[group.providerId].enabled &&
-        Boolean(aiSettings.providers[group.providerId].apiKey.trim()) &&
+    .filter((group) => {
+      const providerConfig = aiSettings.providers[group.providerId]
+      const catalogEntry = getProviderCatalogEntry(group.providerId)
+
+      return (
+        providerConfig.enabled &&
+        catalogEntry.runtimeReady &&
+        hasProviderCredential(catalogEntry, providerConfig) &&
         group.options.length > 0
-    )
+      )
+    })
     .toSorted((left, right) =>
       left.providerName.localeCompare(right.providerName)
     )

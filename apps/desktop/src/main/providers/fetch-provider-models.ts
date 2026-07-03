@@ -5,6 +5,8 @@ import type {
   StoredProviderModelCapabilities
 } from "@etyon/rpc"
 
+import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
+import { getSettings } from "@/main/settings"
 import {
   getProviderCatalogEntry,
   getProviderSeedModels,
@@ -210,6 +212,17 @@ const normalizeModelsPayload = (payload: unknown): StoredProviderModel[] => {
   return [...modelsById.values()]
 }
 
+const filterExcludedModels = (
+  models: StoredProviderModel[],
+  modelIdExcludePattern?: RegExp
+): StoredProviderModel[] => {
+  if (!modelIdExcludePattern) {
+    return models
+  }
+
+  return models.filter((model) => !modelIdExcludePattern.test(model.id))
+}
+
 const readErrorMessage = async (response: Response): Promise<string> => {
   const responseText = await response.text()
 
@@ -282,9 +295,11 @@ export const fetchProviderModels = async ({
     catalogEntry.modelsApiPath
   )
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const { proxy } = getSettings()
+  const proxyAwareFetch = createProxyAwareFetch(proxy)
 
   try {
-    const response = await fetch(endpoint, {
+    const response = await proxyAwareFetch(endpoint, {
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${apiKey}`
@@ -301,7 +316,10 @@ export const fetchProviderModels = async ({
 
     return {
       models: withSeedFallbacks(
-        normalizeModelsPayload(payload),
+        filterExcludedModels(
+          normalizeModelsPayload(payload),
+          catalogEntry.modelIdExcludePattern
+        ),
         provider.providerId
       )
     }

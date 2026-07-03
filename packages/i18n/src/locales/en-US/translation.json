@@ -903,6 +903,14 @@
           "label": "API Key",
           "placeholder": "Enter API Key"
         },
+        "apiMode": {
+          "description": "Responses is OpenAI's default API. Switch to Chat Completions for OpenAI-compatible gateways that only implement the older endpoint.",
+          "label": "API Mode",
+          "option": {
+            "chatCompletions": "Chat Completions",
+            "responses": "Responses (default)"
+          }
+        },
         "baseUrl": {
           "description": "Default: {{defaultBaseURL}} · Upstream Models API: {{upstreamModelsApi}}",
           "label": "Base URL"
@@ -936,6 +944,9 @@
         },
         "moonshot": {
           "description": "Moonshot exposes Kimi models through an OpenAI-compatible API."
+        },
+        "openai": {
+          "description": "OpenAI's official chat models, plus any OpenAI-compatible endpoint you configure with a custom Base URL."
         },
         "zaiCodingPlan": {
           "description": "Z.AI Coding Plan exposes GLM models for the Coding Plan subscription."

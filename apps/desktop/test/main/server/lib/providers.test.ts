@@ -146,13 +146,73 @@ describe("resolveModel", () => {
     const model = resolveModel("openai/gpt-5.4")
 
     expect(createOpenAIMock).toHaveBeenCalledWith({
-      apiKey: "openai-key"
+      apiKey: "openai-key",
+      baseURL: "https://api.openai.com/v1"
     })
     expect(openAIProviderMock).toHaveBeenCalledWith("gpt-5.4")
     expect(openAIProviderMock.chat).not.toHaveBeenCalled()
     expect(model).toEqual({
       modelId: "gpt-5.4",
       transport: "responses"
+    })
+  })
+
+  it("honors a custom openai base url in responses mode", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          openai: {
+            ...settings.ai.providers.openai,
+            baseURL: "https://openai.example.com/v1"
+          }
+        }
+      }
+    })
+
+    resolveModel("openai/gpt-5.4")
+
+    expect(createOpenAIMock).toHaveBeenCalledWith({
+      apiKey: "openai-key",
+      baseURL: "https://openai.example.com/v1"
+    })
+    expect(openAIProviderMock).toHaveBeenCalledWith("gpt-5.4")
+  })
+
+  it("uses chat completions for openai when apiMode is chat-completions", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          openai: {
+            ...settings.ai.providers.openai,
+            apiMode: "chat-completions",
+            baseURL: "https://openai-gateway.example.com/v1"
+          }
+        }
+      }
+    })
+
+    const model = resolveModel("openai/gpt-5.4")
+
+    expect(createOpenAIMock).toHaveBeenCalledWith({
+      apiKey: "openai-key",
+      baseURL: "https://openai-gateway.example.com/v1",
+      name: "openai"
+    })
+    expect(openAIProviderMock).not.toHaveBeenCalled()
+    expect(openAIProviderMock.chat).toHaveBeenCalledWith("gpt-5.4")
+    expect(model).toEqual({
+      modelId: "gpt-5.4",
+      transport: "chat-completions"
     })
   })
 
