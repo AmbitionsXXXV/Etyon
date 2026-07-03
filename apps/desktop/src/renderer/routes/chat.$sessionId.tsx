@@ -830,7 +830,7 @@ const AssistantLiveStatus = ({
   return (
     <ChatMessage.Assistant className="group/message flex justify-start outline-none">
       <ChatMessage.Bubble className="w-full max-w-3xl bg-transparent px-1 py-2 shadow-none">
-        <ChatMessage.Body>
+        <ChatMessage.Body className="pr-0">
           <ChatMessage.Content className="flex flex-col gap-1 text-xs">
             <span className="flex items-center gap-2 text-muted-foreground/80">
               <ChatLoader.Dots
@@ -934,7 +934,7 @@ const ChatMessageBubble = ({
   if (isAssistant) {
     return (
       <ChatMessage.Bubble className="w-full min-w-0 bg-transparent px-1 py-1 shadow-none">
-        <ChatMessage.Body>
+        <ChatMessage.Body className="pr-0">
           <ChatMessage.Content className="text-sm leading-6 text-foreground">
             <AssistantWorkTime
               liveStartedAt={
@@ -970,7 +970,7 @@ const ChatMessageBubble = ({
 
   return (
     <ChatMessage.Bubble className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground">
-      <ChatMessage.Body>
+      <ChatMessage.Body className="pr-0">
         <ChatMessage.Content>
           {mentions.length > 0 && !hasInlineMentions ? (
             <MessageMentionChips
