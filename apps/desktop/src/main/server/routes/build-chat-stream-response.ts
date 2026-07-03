@@ -3,6 +3,7 @@ import { handleChatStream } from "@mastra/ai-sdk"
 import { RequestContext } from "@mastra/core/request-context"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
 import {
+  APICallError,
   createUIMessageStream,
   createUIMessageStreamResponse,
   streamText
@@ -33,9 +34,54 @@ const PROMPT_TEMPLATE_FALLBACK_PROMPT =
 const SKILL_COMMAND_PATTERN = /^\/skill(?:\s+|$)/iu
 const SKILL_COMMAND_FALLBACK_PROMPT =
   "Skill command was incomplete. Ask the user which skill and command to run."
+const RESPONSES_ITEM_NOT_FOUND_PATTERN = /item with id .* not found/iu
+const OFFICIAL_OPENAI_HOST_PATTERN = /^https:\/\/api\.openai\.com\//u
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
+
+/**
+ * Matches the AI SDK's default `onError` (`getErrorMessage`, from the
+ * ai-sdk provider utils package): stringify by type, no special-casing.
+ * Kept in sync so unrecognized errors still read exactly as they did before.
+ */
+const describeGenericError = (error: unknown): string => {
+  if (error === null || error === undefined) {
+    return "unknown error"
+  }
+
+  if (typeof error === "string") {
+    return error
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return JSON.stringify(error)
+}
+
+/**
+ * The OpenAI Responses API lets a message reference a prior response item by
+ * id instead of resending its content — a token-saving optimization that
+ * assumes the provider still has that item stored server-side. Third-party
+ * endpoints proxying the Responses API often don't persist items the way
+ * OpenAI's own servers do, so a later turn's reference 404s even though
+ * nothing the user did was wrong. Detected narrowly (custom host + this
+ * exact upstream message) so unrelated API errors are never relabeled.
+ */
+export const describeChatStreamError = (error: unknown): string => {
+  if (
+    APICallError.isInstance(error) &&
+    error.url.includes("/responses") &&
+    !OFFICIAL_OPENAI_HOST_PATTERN.test(error.url) &&
+    RESPONSES_ITEM_NOT_FOUND_PATTERN.test(error.message)
+  ) {
+    return `${error.message}\n\nThis endpoint (${error.url}) doesn't appear to persist OpenAI Responses API conversation state the way api.openai.com does, so referencing an earlier reply by id fails. Try switching this provider to "Chat Completions" API mode in Settings → Providers, which resends full message history instead of relying on stored items.`
+  }
+
+  return describeGenericError(error)
+}
 
 const stripPromptTemplateCommand = (text: string): string =>
   text.replace(PROMPT_TEMPLATE_COMMAND_PATTERN, "").trim()
@@ -491,6 +537,7 @@ export const buildChatStreamResponse = ({
           ) as never
         )
       },
+      onError: describeChatStreamError,
       onFinish: async ({ messages: nextMessages }) => {
         const workTimeMs = Date.now() - requestStartedAt
 

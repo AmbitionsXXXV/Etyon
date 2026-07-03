@@ -1,9 +1,13 @@
 import { AppSettingsSchema } from "@etyon/rpc"
-import type * as Ai from "ai"
+import { APICallError } from "ai"
 import type { LanguageModel, ModelMessage, UIMessage } from "ai"
+import type * as Ai from "ai"
 import { describe, expect, it, vi } from "vite-plus/test"
 
-import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
+import {
+  buildChatStreamResponse,
+  describeChatStreamError
+} from "@/main/server/routes/build-chat-stream-response"
 
 const { handleChatStreamMock, streamTextMock } = vi.hoisted(() => ({
   handleChatStreamMock: vi.fn(),
@@ -228,5 +232,58 @@ describe("buildChatStreamResponse", () => {
       (assistantMessage?.metadata as { workTimeMs?: number } | undefined)
         ?.workTimeMs
     ).toBeTypeOf("number")
+  })
+})
+
+const buildResponsesApiError = (overrides?: {
+  message?: string
+  url?: string
+}): APICallError =>
+  new APICallError({
+    message: overrides?.message ?? "Item with id 'msg_123' not found.",
+    requestBodyValues: {},
+    url: overrides?.url ?? "https://api.amux.ai/v1/responses"
+  })
+
+describe("describeChatStreamError", () => {
+  it("explains item-reference failures from a non-official Responses API host", () => {
+    const message = describeChatStreamError(buildResponsesApiError())
+
+    expect(message).toContain("Item with id 'msg_123' not found.")
+    expect(message).toContain("api.amux.ai")
+    expect(message).toContain("Chat Completions")
+  })
+
+  it("leaves the message untouched for the official OpenAI host", () => {
+    const error = buildResponsesApiError({
+      url: "https://api.openai.com/v1/responses"
+    })
+
+    expect(describeChatStreamError(error)).toBe(error.message)
+  })
+
+  it("leaves the message untouched for an unrelated error on a custom host", () => {
+    const error = buildResponsesApiError({
+      message: "Incorrect API key provided."
+    })
+
+    expect(describeChatStreamError(error)).toBe(error.message)
+  })
+
+  it("leaves the message untouched for a non-Responses-API call", () => {
+    const error = buildResponsesApiError({
+      url: "https://api.amux.ai/v1/chat/completions"
+    })
+
+    expect(describeChatStreamError(error)).toBe(error.message)
+  })
+
+  it("matches the AI SDK's default error formatting for non-API errors", () => {
+    expect(describeChatStreamError(new Error("boom"))).toBe("boom")
+    expect(describeChatStreamError("plain string")).toBe("plain string")
+    expect(describeChatStreamError(null)).toBe("unknown error")
+    expect(describeChatStreamError({ some: "object" })).toBe(
+      JSON.stringify({ some: "object" })
+    )
   })
 })
