@@ -28,6 +28,29 @@ vi.mock("@/main/agents/minimal/file-agent", () => ({
   fileAgentMastra: {}
 }))
 
+vi.mock("@electron-toolkit/utils", () => ({
+  platform: {
+    isLinux: true,
+    isMacOS: false,
+    isWindows: false
+  }
+}))
+
+vi.mock("electron", () => {
+  const electronMock = {
+    app: {
+      getLocale: () => "en-US",
+      getPath: () => "/tmp/etyon-test-home",
+      getVersion: () => "0.1.0-test"
+    }
+  }
+
+  return {
+    ...electronMock,
+    default: electronMock
+  }
+})
+
 const createEmptyUiStream = () =>
   new ReadableStream({
     start(controller) {
@@ -67,7 +90,6 @@ const readResponseText = async (response: Response): Promise<string> => {
 
 const buildBaseOptions = () => ({
   abortSignal: new AbortController().signal,
-  buildLongTermMemorySystem: () => Promise.resolve(""),
   messages: [
     {
       id: "message-1",
@@ -93,7 +115,6 @@ const buildBaseOptions = () => ({
   projectPath: "/tmp/project-a",
   requestStartedAt: Date.now(),
   sessionId: "session-1",
-  shouldRetrieveLongTermMemory: false,
   systemPrompts: ["base system"]
 })
 

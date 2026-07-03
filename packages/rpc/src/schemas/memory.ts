@@ -2,7 +2,12 @@ import * as z from "zod"
 
 export const MemoryScopeSchema = z.enum(["chatbot", "global", "project"])
 
-export const MemorySourceSchema = z.enum(["chat-session", "chatbot"])
+export const MemorySourceSchema = z.enum([
+  "agent-note",
+  "chat-session",
+  "chatbot",
+  "project-digest"
+])
 
 export const MemoryKindSchema = z.enum(["episodic", "semantic", "working"])
 
@@ -18,7 +23,7 @@ export const MemorySettingsSchema = z
     maxContextEntries: z.number().int().min(1).max(20).default(8),
     maxRetrievedMemories: z.number().int().min(1).max(20).optional(),
     memoryToolModel: z.string().default(MEMORY_TOOL_MODEL_AUTO_VALUE),
-    queryRewriting: z.boolean().default(true),
+    queryRewriting: z.boolean().default(false),
     shareAcrossProjects: z.boolean().default(true),
     similarityThreshold: z.number().min(0).max(1).default(0.1)
   })

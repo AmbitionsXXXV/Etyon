@@ -226,7 +226,7 @@ export const memoryEntries = sqliteTable(
       onDelete: "cascade"
     }),
     source: text("source", {
-      enum: ["chat-session", "chatbot"]
+      enum: ["agent-note", "chat-session", "chatbot", "project-digest"]
     }).notNull(),
     sourceId: text("source_id").notNull(),
     updatedAt: text("updated_at").notNull()

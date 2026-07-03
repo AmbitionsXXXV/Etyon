@@ -7,7 +7,12 @@ import {
   buildFileTools,
   selectFileTools
 } from "@/main/agents/minimal/file-tools"
+import {
+  buildSaveMemoryTool,
+  buildSearchMemoryTool
+} from "@/main/agents/minimal/memory-tools"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { getDb } from "@/main/db"
 import { resolveModel } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
@@ -115,21 +120,31 @@ const fileAgent = new Agent({
     const chatSessionId = readStringValue(requestContext, "chatSessionId")
     const parentRunId = readStringValue(requestContext, "agentRunId")
 
-    // Delegation needs a persisted parent run to attach child runs to; without
-    // one (agents disabled or run-start failed) the parent stays solo.
-    if (!(profile.allowDelegation && chatSessionId && parentRunId)) {
-      return fileTools
-    }
-
     return {
       ...fileTools,
-      delegate: buildDelegateTool({
-        chatSessionId,
-        parentModelId: readStringValue(requestContext, "modelId") ?? null,
-        parentProfile: profile,
-        parentRunId,
-        projectPath
-      })
+      // Delegation needs a persisted parent run to attach child runs to;
+      // without one (agents disabled or run-start failed) the parent stays
+      // solo.
+      ...(profile.allowDelegation && chatSessionId && parentRunId
+        ? {
+            delegate: buildDelegateTool({
+              chatSessionId,
+              parentModelId: readStringValue(requestContext, "modelId") ?? null,
+              parentProfile: profile,
+              parentRunId,
+              projectPath
+            })
+          }
+        : {}),
+      // The project digest (in the system prompt) is the free tier; these
+      // cost a network round trip, so they're only offered when memory is
+      // on, and only paid when the agent itself calls them.
+      ...(getSettings().memory.enabled
+        ? {
+            save_memory: buildSaveMemoryTool({ db: getDb(), projectPath }),
+            search_memory: buildSearchMemoryTool({ db: getDb(), projectPath })
+          }
+        : {})
     }
   }
 })

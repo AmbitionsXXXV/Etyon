@@ -82,6 +82,17 @@ const createUserMessage = (id: string, text: string): UIMessage => ({
   role: "user"
 })
 
+const createAssistantMessage = (id: string, text: string): UIMessage => ({
+  id,
+  parts: [
+    {
+      text,
+      type: "text"
+    }
+  ],
+  role: "assistant"
+})
+
 describe("memory", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
@@ -145,7 +156,8 @@ describe("memory", () => {
         createUserMessage(
           "shared-message",
           "Remember that Awesome-AI-Memory inspired memory should expose lifecycle retrieval."
-        )
+        ),
+        createAssistantMessage("shared-reply", "Noted, I'll keep that in mind.")
       ],
       sessionId: sourceSession.id
     })

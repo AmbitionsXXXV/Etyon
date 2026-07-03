@@ -17,6 +17,7 @@ import {
   parseCommandArgs
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
+import { logger } from "@/main/logger"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
 import {
   isChatPlanCommandText,
@@ -26,7 +27,6 @@ import { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-me
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
 
-const LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS = 2500
 const PROMPT_TEMPLATE_COMMAND_PATTERN = /^\/prompt(?:\s+|$)/iu
 const PROMPT_TEMPLATE_FALLBACK_PROMPT =
   "Prompt template command was incomplete. Ask the user which template to use."
@@ -325,59 +325,39 @@ const writeRequestPhase = (
   })
 }
 
-interface BuildLongTermMemorySystemOptions {
-  abortSignal: AbortSignal
-}
-
-const createAbortSignalAny = (signals: readonly AbortSignal[]): AbortSignal => {
-  const abortSignal = AbortSignal as typeof AbortSignal & {
-    any: (signals: readonly AbortSignal[]) => AbortSignal
+// Temporary latency diagnostics: logs how long each stream takes to produce
+// its first chunk, without altering the chunks themselves. Falls back to the
+// untouched stream if the value isn't a real ReadableStream at runtime.
+const tapFirstChunkLatency = <TChunk>(
+  stream: ReadableStream<TChunk>,
+  eventName: string,
+  fields: Record<string, unknown>
+): ReadableStream<TChunk> => {
+  if (typeof stream.pipeThrough !== "function") {
+    return stream
   }
 
-  return abortSignal.any(signals)
-}
+  const chunkLog = logger.startEvent(eventName, fields)
+  let loggedFirstChunk = false
 
-const readLongTermMemorySystem = async ({
-  abortSignal,
-  buildLongTermMemorySystem,
-  timeoutMs
-}: {
-  abortSignal: AbortSignal
-  buildLongTermMemorySystem: (
-    options: BuildLongTermMemorySystemOptions
-  ) => Promise<string>
-  timeoutMs: number
-}): Promise<string> => {
-  if (abortSignal.aborted || timeoutMs <= 0) {
-    return ""
-  }
+  return stream.pipeThrough(
+    new TransformStream<TChunk, TChunk>({
+      transform(chunk, controller) {
+        if (!loggedFirstChunk) {
+          loggedFirstChunk = true
+          chunkLog.end()
+        }
 
-  const memoryAbortSignal = createAbortSignalAny([
-    abortSignal,
-    AbortSignal.timeout(timeoutMs)
-  ])
-
-  try {
-    return await buildLongTermMemorySystem({
-      abortSignal: memoryAbortSignal
+        controller.enqueue(chunk)
+      }
     })
-  } catch (error) {
-    if (memoryAbortSignal.aborted) {
-      return ""
-    }
-
-    throw error
-  }
+  )
 }
 
 export interface BuildChatStreamResponseOptions {
   abortSignal: AbortSignal
   agentRunId?: string | null
-  buildLongTermMemorySystem: (
-    options: BuildLongTermMemorySystemOptions
-  ) => Promise<string>
   messages: UIMessage[]
-  memoryRetrievalTimeoutMs?: number
   model: LanguageModel
   modelId: string | null
   modelMessages: ModelMessage[]
@@ -389,7 +369,6 @@ export interface BuildChatStreamResponseOptions {
   requestStartedAt: number
   sessionId: string
   settings: AppSettings
-  shouldRetrieveLongTermMemory: boolean
   skillCommandSkills?: readonly ParsedSkill[]
   systemPrompts: string[]
   trigger?: "regenerate-message" | "submit-message"
@@ -398,7 +377,6 @@ export interface BuildChatStreamResponseOptions {
 export const buildChatStreamResponse = ({
   abortSignal,
   agentRunId,
-  buildLongTermMemorySystem,
   messages,
   model,
   modelId,
@@ -411,11 +389,9 @@ export const buildChatStreamResponse = ({
   requestStartedAt,
   sessionId,
   settings,
-  shouldRetrieveLongTermMemory,
   skillCommandSkills,
   systemPrompts,
-  trigger,
-  memoryRetrievalTimeoutMs = LONG_TERM_MEMORY_RETRIEVAL_TIMEOUT_MS
+  trigger
 }: BuildChatStreamResponseOptions): Response => {
   const preparedModelMessages = applyComposerCommandsToLatestModelMessage({
     modelMessages,
@@ -423,26 +399,16 @@ export const buildChatStreamResponse = ({
     promptTemplates,
     skillCommandSkills
   })
+  // Long-term memory is resolved before this point now (a cheap digest read
+  // in prepareAgentChatContext, not a live search), so systemPrompts already
+  // reflects it — nothing left to fetch here before the model call.
+  const effectiveSystemPrompts = systemPrompts.filter(
+    (prompt) => prompt.length > 0
+  )
 
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute: async ({ writer }) => {
-        if (shouldRetrieveLongTermMemory) {
-          writeRequestPhase(writer, "memory-loading")
-        }
-
-        const longTermMemorySystem = shouldRetrieveLongTermMemory
-          ? await readLongTermMemorySystem({
-              abortSignal,
-              buildLongTermMemorySystem,
-              timeoutMs: memoryRetrievalTimeoutMs
-            })
-          : ""
-        const effectiveSystemPrompts = [
-          ...systemPrompts,
-          longTermMemorySystem
-        ].filter((prompt) => prompt.length > 0)
-
         writeRequestPhase(writer, "model-start")
 
         if (!settings.agents.enabled) {
@@ -464,10 +430,14 @@ export const buildChatStreamResponse = ({
           )
 
           writer.merge(
-            result.toUIMessageStream({
-              originalMessages: messages,
-              sendReasoning: true
-            })
+            tapFirstChunkLatency(
+              result.toUIMessageStream({
+                originalMessages: messages,
+                sendReasoning: true
+              }),
+              "chat_first_chunk",
+              { agent_mode: false, session_id: sessionId }
+            )
           )
 
           return
@@ -475,6 +445,10 @@ export const buildChatStreamResponse = ({
 
         writeRequestPhase(writer, "agent-turn")
 
+        const agentStreamSetupLog = logger.startEvent(
+          "chat_agent_stream_setup",
+          { agent_run_id: agentRunId, session_id: sessionId }
+        )
         const agentStream = await handleChatStream({
           agentId: FILE_AGENT_ID,
           mastra: fileAgentMastra,
@@ -501,10 +475,21 @@ export const buildChatStreamResponse = ({
           sendReasoning: true,
           version: "v6"
         })
+        agentStreamSetupLog.end()
 
         // The bridge stream and Etyon share the AI SDK v6 UIMessageChunk
         // wire format; the cast bridges its vendored type declarations.
-        writer.merge(agentStream as never)
+        writer.merge(
+          tapFirstChunkLatency(
+            agentStream as never as ReadableStream<unknown>,
+            "chat_first_chunk",
+            {
+              agent_mode: true,
+              agent_run_id: agentRunId,
+              session_id: sessionId
+            }
+          ) as never
+        )
       },
       onFinish: async ({ messages: nextMessages }) => {
         const workTimeMs = Date.now() - requestStartedAt

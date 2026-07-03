@@ -5,7 +5,12 @@ import { compactChatMessages } from "@/main/chat-auto-compact"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
 import { chatMessages, chatSessions } from "@/main/db/schema"
+import { logger } from "@/main/logger"
 import { upsertChatSessionMemoryEntry } from "@/main/memory"
+import {
+  maybeRefreshProjectMemoryDigest,
+  shouldRefreshLongTermMemory
+} from "@/main/memory/project-digest"
 import { getSettings } from "@/main/settings"
 import { isRecord } from "@/renderer/lib/utils"
 
@@ -204,12 +209,43 @@ export const replaceChatMessages = async ({
     messages: normalizedMessages,
     sessionId
   })
-  if (settings.memory.enabled) {
-    await upsertChatSessionMemoryEntry({
-      db,
-      messages: normalizedMessages,
-      session
-    })
+  // Both writes below are best-effort and deliberately not awaited: this
+  // turn's response is already persisted above, and long-term memory (an
+  // LLM/embedding round trip) must never delay the chat stream's close
+  // signal. Gated the same way chat-auto-compact gates its own LLM call —
+  // not every turn, only once meaningful new content has accumulated.
+  if (
+    settings.memory.enabled &&
+    shouldRefreshLongTermMemory(normalizedMessages.length)
+  ) {
+    void (async () => {
+      try {
+        await upsertChatSessionMemoryEntry({
+          db,
+          messages: normalizedMessages,
+          session
+        })
+      } catch (error) {
+        logger.error("chat_session_memory_entry_failed", { error, sessionId })
+      }
+    })()
+
+    void (async () => {
+      try {
+        await maybeRefreshProjectMemoryDigest({
+          db,
+          messages: normalizedMessages,
+          projectPath: session.projectPath,
+          settings
+        })
+      } catch (error) {
+        logger.error("project_memory_digest_refresh_failed", {
+          error,
+          projectPath: session.projectPath,
+          sessionId
+        })
+      }
+    })()
   }
 
   return listChatMessages({

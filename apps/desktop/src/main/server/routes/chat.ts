@@ -155,7 +155,6 @@ chatRoute.post("/chat", async (c) => {
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
     agentRunId,
-    buildLongTermMemorySystem: agentContext.buildLongTermMemorySystem,
     messages,
     model,
     modelId: effectiveModelId,
@@ -197,7 +196,6 @@ chatRoute.post("/chat", async (c) => {
     requestStartedAt,
     sessionId,
     settings,
-    shouldRetrieveLongTermMemory: agentContext.shouldRetrieveLongTermMemory,
     systemPrompts,
     ...(isChatRequestTrigger(trigger) ? { trigger } : {})
   })

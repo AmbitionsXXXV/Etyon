@@ -27,11 +27,13 @@ interface MockChatSession {
 const {
   buildMentionContextMock,
   buildMemorySystemPromptMock,
+  buildProjectDigestSystemPromptMock,
   buildSkillsSystemPromptMock,
   buildSessionMemorySystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionByIdMock,
   getChatSessionMemoryMock,
+  getProjectMemoryDigestMock,
   getSettingsMock,
   listSkillPromptTemplatesMock,
   mockedHomeDir,
@@ -94,6 +96,7 @@ const {
     buildMemorySystemPromptMock: vi.fn(() =>
       Promise.resolve("long-term memory context")
     ),
+    buildProjectDigestSystemPromptMock: vi.fn(() => "project digest context"),
     buildSkillsSystemPromptMock: vi.fn(() => "skills context"),
     buildSessionMemorySystemPromptMock: vi.fn(() => "session memory context"),
     convertToModelMessagesMock: vi.fn((messages) => Promise.resolve(messages)),
@@ -107,6 +110,7 @@ const {
         updatedAt: "2026-04-06T09:01:00.000Z"
       })
     ),
+    getProjectMemoryDigestMock: vi.fn(() => Promise.resolve("")),
     getSettingsMock: vi.fn(() => buildSettings()),
     listSkillPromptTemplatesMock: vi.fn(() => []),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -241,6 +245,11 @@ vi.mock("@/main/chat-sessions", () => ({
 
 vi.mock("@/main/memory", () => ({
   buildMemorySystemPrompt: buildMemorySystemPromptMock
+}))
+
+vi.mock("@/main/memory/project-digest", () => ({
+  buildProjectDigestSystemPrompt: buildProjectDigestSystemPromptMock,
+  getProjectMemoryDigest: getProjectMemoryDigestMock
 }))
 
 vi.mock("@/main/project-snapshot", () => ({
@@ -449,25 +458,10 @@ describe("hono app", () => {
       mentions,
       projectPath: "/tmp/project-a"
     })
-    expect(buildMemorySystemPromptMock).toHaveBeenCalledWith({
-      abortSignal: expect.any(AbortSignal),
-      db: expect.anything(),
-      projectPath: "/tmp/project-a",
-      query: "",
-      settings: {
-        autoRetrieve: true,
-        autoSummarize: false,
-        embeddingModel: "",
-        enabled: true,
-        includeChatbot: true,
-        maxContextEntries: 8,
-        maxRetrievedMemories: 8,
-        memoryToolModel: "__auto__",
-        queryRewriting: true,
-        shareAcrossProjects: true,
-        similarityThreshold: 0.1
-      }
-    })
+    expect(getProjectMemoryDigestMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "/tmp/project-a"
+    )
     expect(buildSkillsSystemPromptMock).toHaveBeenCalledWith({
       projectPath: "/tmp/project-a",
       query: "",
@@ -482,7 +476,7 @@ describe("hono app", () => {
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
         system:
-          "session memory context\n\nskills context\n\nsnapshot context\n\nlong-term memory context"
+          "session memory context\n\nproject digest context\n\nskills context\n\nsnapshot context"
       })
     )
     expect(replaceChatMessagesMock).toHaveBeenCalledWith(

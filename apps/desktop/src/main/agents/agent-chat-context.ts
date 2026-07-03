@@ -8,7 +8,10 @@ import {
   getChatSessionMemory
 } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
-import { buildMemorySystemPrompt } from "@/main/memory"
+import {
+  buildProjectDigestSystemPrompt,
+  getProjectMemoryDigest
+} from "@/main/memory/project-digest"
 import { buildMentionContext } from "@/main/project-snapshot"
 import {
   buildSkillsSystemPrompt,
@@ -25,12 +28,8 @@ export interface PrepareAgentChatContextOptions {
 }
 
 export interface PreparedAgentChatContext {
-  buildLongTermMemorySystem: (options: {
-    abortSignal?: AbortSignal
-  }) => Promise<string>
   modelMessages: ModelMessage[]
   promptTemplates: ReturnType<typeof listSkillPromptTemplates>
-  shouldRetrieveLongTermMemory: boolean
   systemPrompts: string[]
 }
 
@@ -68,10 +67,11 @@ export const prepareAgentChatContext = async ({
 }: PrepareAgentChatContextOptions): Promise<PreparedAgentChatContext> => {
   const selectedSkills = mentions.filter((mention) => mention.kind === "skill")
   const memoryQuery = buildAgentChatMemoryQuery(messages)
-  const shouldRetrieveLongTermMemory =
-    settings.memory.enabled && settings.memory.autoRetrieve
-  const [memory, modelMessages] = await Promise.all([
+  const [memory, projectDigest, modelMessages] = await Promise.all([
     getChatSessionMemory(db, sessionId),
+    settings.memory.enabled
+      ? getProjectMemoryDigest(db, projectPath)
+      : Promise.resolve(""),
     convertToModelMessages(messages)
   ])
   const { system } = buildMentionContext({
@@ -79,30 +79,25 @@ export const prepareAgentChatContext = async ({
     projectPath
   })
   const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
+  const digestSystem = buildProjectDigestSystemPrompt(projectDigest)
   const skillsSystem = buildSkillsSystemPrompt({
     projectPath,
     query: memoryQuery,
     selectedSkills,
     settings: settings.skills
   })
-  const systemPrompts = [sessionMemorySystem, skillsSystem, system].filter(
-    isSystemPrompt
-  )
+  const systemPrompts = [
+    sessionMemorySystem,
+    digestSystem,
+    skillsSystem,
+    system
+  ].filter(isSystemPrompt)
 
   return {
-    buildLongTermMemorySystem: ({ abortSignal }) =>
-      buildMemorySystemPrompt({
-        abortSignal,
-        db,
-        projectPath,
-        query: memoryQuery,
-        settings: settings.memory
-      }),
     modelMessages: completeUnresolvedToolCallsInModelMessages(modelMessages),
     promptTemplates: listSkillPromptTemplates({
       projectPaths: [projectPath]
     }),
-    shouldRetrieveLongTermMemory,
     systemPrompts
   }
 }

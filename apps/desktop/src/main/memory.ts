@@ -398,6 +398,44 @@ export const upsertChatSessionMemoryEntry = async ({
   return entry
 }
 
+/**
+ * Direct write for the `save_memory` agent tool: the agent that's already
+ * generating this turn writes the note itself, so unlike the other memory
+ * writes above there's no extra summarization call — only the embedding
+ * call needed to make the note searchable later.
+ */
+export const saveAgentMemoryNote = async ({
+  content,
+  db,
+  projectPath
+}: {
+  content: string
+  db: AppDatabase
+  projectPath: string
+}): Promise<MemoryEntry | undefined> => {
+  const appSettings = getSettings()
+  const entry = await upsertMemoryEntry({
+    content,
+    db,
+    kind: "semantic",
+    projectPath,
+    scope: "project",
+    sessionId: null,
+    source: "agent-note",
+    sourceId: crypto.randomUUID()
+  })
+
+  if (entry) {
+    await upsertMemoryEntryEmbedding({
+      db,
+      entry,
+      settings: appSettings
+    })
+  }
+
+  return entry
+}
+
 export const upsertChatbotMemoryEntry = async ({
   chatbotId,
   db,

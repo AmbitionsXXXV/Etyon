@@ -10,18 +10,21 @@ import {
 } from "@/main/agents/agent-chat-context"
 
 const {
-  buildMemorySystemPromptMock,
   buildMentionContextMock,
+  buildProjectDigestSystemPromptMock,
   buildSessionMemorySystemPromptMock,
   buildSkillsSystemPromptMock,
   convertToModelMessagesMock,
   getChatSessionMemoryMock,
+  getProjectMemoryDigestMock,
   listSkillPromptTemplatesMock
 } = vi.hoisted(() => ({
-  buildMemorySystemPromptMock: vi.fn(() => Promise.resolve("long memory")),
   buildMentionContextMock: vi.fn(() => ({
     system: "mention context"
   })),
+  buildProjectDigestSystemPromptMock: vi.fn((digest: string) =>
+    digest ? "project digest" : ""
+  ),
   buildSessionMemorySystemPromptMock: vi.fn(() => "session memory"),
   buildSkillsSystemPromptMock: vi.fn(() => "skills context"),
   convertToModelMessagesMock: vi.fn<() => Promise<Ai.ModelMessage[]>>(() =>
@@ -41,6 +44,7 @@ const {
       updatedAt: "2026-05-24T00:00:00.000Z"
     })
   ),
+  getProjectMemoryDigestMock: vi.fn(() => Promise.resolve("digest content")),
   listSkillPromptTemplatesMock: vi.fn(() => [
     {
       content: "Review this.",
@@ -66,8 +70,9 @@ vi.mock("@/main/chat-session-memory", () => ({
   getChatSessionMemory: getChatSessionMemoryMock
 }))
 
-vi.mock("@/main/memory", () => ({
-  buildMemorySystemPrompt: buildMemorySystemPromptMock
+vi.mock("@/main/memory/project-digest", () => ({
+  buildProjectDigestSystemPrompt: buildProjectDigestSystemPromptMock,
+  getProjectMemoryDigest: getProjectMemoryDigestMock
 }))
 
 vi.mock("@/main/project-snapshot", () => ({
@@ -153,7 +158,6 @@ describe("agent chat context", () => {
         enabled: true
       }
     })
-    const abortController = new AbortController()
 
     const context = await prepareAgentChatContext({
       db: {} as Parameters<typeof prepareAgentChatContext>[0]["db"],
@@ -169,9 +173,6 @@ describe("agent chat context", () => {
       sessionId: "session-1",
       settings
     })
-    const longTermMemory = await context.buildLongTermMemorySystem({
-      abortSignal: abortController.signal
-    })
 
     expect(context).toMatchObject({
       modelMessages: [
@@ -180,18 +181,37 @@ describe("agent chat context", () => {
           role: "user"
         }
       ],
-      shouldRetrieveLongTermMemory: true,
-      systemPrompts: ["session memory", "skills context", "mention context"]
+      systemPrompts: [
+        "session memory",
+        "project digest",
+        "skills context",
+        "mention context"
+      ]
     })
     expect(context.promptTemplates).toHaveLength(1)
-    expect(longTermMemory).toBe("long memory")
-    expect(buildMemorySystemPromptMock).toHaveBeenCalledWith({
-      abortSignal: abortController.signal,
-      db: {},
-      projectPath: "/project",
-      query: "Read the diff",
-      settings: settings.memory
+    expect(getProjectMemoryDigestMock).toHaveBeenCalledWith({}, "/project")
+  })
+
+  it("skips the digest read entirely when memory is disabled", async () => {
+    const settings = AppSettingsSchema.parse({
+      memory: {
+        enabled: false
+      }
     })
+
+    getProjectMemoryDigestMock.mockClear()
+
+    const context = await prepareAgentChatContext({
+      db: {} as Parameters<typeof prepareAgentChatContext>[0]["db"],
+      mentions: [],
+      messages: [createTextMessage({ id: "user-1", role: "user", text: "Hi" })],
+      projectPath: "/project",
+      sessionId: "session-1",
+      settings
+    })
+
+    expect(getProjectMemoryDigestMock).not.toHaveBeenCalled()
+    expect(context.systemPrompts).not.toContain("project digest")
   })
 
   it("completes unresolved tool calls before exposing model messages", async () => {

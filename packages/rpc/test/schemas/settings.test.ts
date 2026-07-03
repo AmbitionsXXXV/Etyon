@@ -121,7 +121,7 @@ describe("AppSettingsSchema", () => {
       maxContextEntries: 8,
       maxRetrievedMemories: 8,
       memoryToolModel: "__auto__",
-      queryRewriting: true,
+      queryRewriting: false,
       shareAcrossProjects: true,
       similarityThreshold: 0.1
     })
