@@ -7,6 +7,7 @@ import type {
   WorkspaceCore,
   WorkspaceFileError
 } from "@/main/agents/minimal/workspace-core"
+import { ensureGitignored } from "@/main/agents/minimal/workspace-gitignore"
 
 /**
  * Shared image-generation core used by both the `imagen` agent tool and the
@@ -126,6 +127,13 @@ export const generateAndPersistImage = async ({
   if (!writeResult.ok) {
     return throwWorkspaceError(writeResult.error)
   }
+
+  // Keep generated images out of the user's git history automatically — they
+  // are regenerable output, not source. Best-effort; never blocks the result.
+  await ensureGitignored({
+    entry: `${IMAGE_OUTPUT_DIR}/`,
+    projectPath: workspace.projectPath
+  })
 
   return {
     byteLength: writeResult.value.bytesWritten,

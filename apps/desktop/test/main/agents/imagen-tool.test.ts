@@ -111,4 +111,37 @@ describe("imagen tool", () => {
       })
     ).rejects.toThrow(/no image/u)
   })
+
+  it("adds generated-images/ to .gitignore when the project is a git repo", async () => {
+    const gitProjectPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "etyon-imagen-git-")
+    )
+    fs.mkdirSync(path.join(gitProjectPath, ".git"))
+    const { execute: executeGitTool } = buildImagenTool(
+      getWorkspaceCore(gitProjectPath)
+    ) as unknown as {
+      execute: (inputData: never, context?: never) => Promise<unknown>
+    }
+
+    generateImageMock.mockResolvedValueOnce({
+      images: [
+        { mediaType: "image/png", uint8Array: new Uint8Array([1, 2, 3]) }
+      ]
+    })
+
+    await executeGitTool({
+      prompt: "a shiba",
+      quality: "medium",
+      size: "1024x1024",
+      title: "Shiba"
+    } as never)
+
+    const gitignore = fs.readFileSync(
+      path.join(gitProjectPath, ".gitignore"),
+      "utf-8"
+    )
+    expect(gitignore).toContain("generated-images/")
+
+    fs.rmSync(gitProjectPath, { force: true, recursive: true })
+  })
 })
