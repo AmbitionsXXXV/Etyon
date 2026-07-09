@@ -17,6 +17,35 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "artifact": {
+      "badge": "Artifact",
+      "close": "Close artifact preview",
+      "codeView": "Show artifact source",
+      "open": "Open artifact: {title}",
+      "previewView": "Show artifact preview",
+      "publishFailed": "Publish failed",
+      "publishing": "Publishing...",
+      "readError": "Unable to read the artifact file.",
+      "refresh": "Refresh artifact"
+    },
+    "imageMode": {
+      "label": "Image",
+      "tooltip": "Generate an image from your message",
+      "unsupported": "The selected model can't generate images"
+    },
+    "imagen": {
+      "close": "Close image",
+      "copied": "Copied",
+      "copy": "Copy image",
+      "download": "Download image",
+      "failed": "Image generation failed",
+      "generating": "Generating image...",
+      "rotate": "Rotate",
+      "viewFull": "View full size",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "zoomReset": "Reset zoom"
+    },
     "chainOfThought": {
       "label": "Thinking",
       "stepCount": "{count} steps"
@@ -70,6 +99,8 @@
       "waiting": "Preparing response..."
     },
     "mentions": {
+      "commandImagenDescription": "Generate an image",
+      "commandImagenLabel": "Imagen",
       "commandPaletteEmpty": "No matching commands.",
       "commandPaletteGroup": "Commands",
       "commandPlanDescription": "Plan mode",
@@ -162,6 +193,7 @@
       "title": "Terminal output"
     },
     "runInspector": {
+      "artifacts": "Artifacts",
       "childRun": "Sub-agent run",
       "description": "The recorded events and tool calls for this agent run.",
       "empty": "No tool calls were recorded for this run.",
@@ -171,6 +203,9 @@
       "title": "Run details",
       "toolCalls": "Tool calls",
       "trigger": "Run details"
+    },
+    "runLimit": {
+      "notice": "Stopped at the step limit ({{maxSteps}} steps). Reply to continue, or raise the limit in Settings → Agents."
     },
     "toolTrace": {
       "approve": "Approve",

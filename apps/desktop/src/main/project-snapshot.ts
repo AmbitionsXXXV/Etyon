@@ -10,6 +10,7 @@ import type {
   ProjectSnapshotFolderItem,
   ProjectSnapshotItem,
   ProjectSnapshotState,
+  ReadProjectBinaryFileOutput,
   ReadProjectFileOutput
 } from "@etyon/rpc"
 
@@ -909,6 +910,63 @@ export const readProjectFile = ({
   return {
     content: buffer.toString("utf-8"),
     language: inferLanguage(resolvedPath),
+    relativePath: normalizeRelativePath(resolvedPath, normalizedProjectPath)
+  }
+}
+
+const IMAGE_MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp"
+}
+const READ_BINARY_FILE_MAX_SIZE = 16 * 1024 * 1024
+
+/**
+ * Reads a project file as base64 for the renderer (e.g. image artifacts, which
+ * the text {@link readProjectFile} rejects). Same project-root containment
+ * check; the media type is inferred from the extension.
+ */
+export const readProjectBinaryFile = ({
+  filePath,
+  projectPath
+}: {
+  filePath: string
+  projectPath: string
+}): ReadProjectBinaryFileOutput => {
+  const resolvedPath = path.resolve(projectPath, filePath)
+  const normalizedProjectPath = path.resolve(projectPath)
+
+  if (!resolvedPath.startsWith(normalizedProjectPath + path.sep)) {
+    throw new Error("File path is outside the project directory.")
+  }
+
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`File not found: ${filePath}`)
+  }
+
+  const stats = fs.statSync(resolvedPath)
+
+  if (!stats.isFile()) {
+    throw new Error(`Not a file: ${filePath}`)
+  }
+
+  if (stats.size > READ_BINARY_FILE_MAX_SIZE) {
+    throw new Error(
+      `File too large (${Math.round(stats.size / 1024)}KB). Maximum supported size is ${READ_BINARY_FILE_MAX_SIZE / 1024}KB.`
+    )
+  }
+
+  const buffer = fs.readFileSync(resolvedPath)
+  const extension = path.extname(resolvedPath).toLowerCase()
+
+  return {
+    base64: buffer.toString("base64"),
+    byteLength: buffer.byteLength,
+    mediaType:
+      IMAGE_MEDIA_TYPE_BY_EXTENSION[extension] ?? "application/octet-stream",
     relativePath: normalizeRelativePath(resolvedPath, normalizedProjectPath)
   }
 }

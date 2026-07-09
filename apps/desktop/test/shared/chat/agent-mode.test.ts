@@ -8,7 +8,9 @@ import {
   getChatAgentModeToggleDisabled,
   getNextChatAgentMode,
   isChatAgentMode,
+  isChatImagenCommandText,
   isChatPlanCommandText,
+  stripChatImagenCommand,
   stripChatPlanCommand
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
@@ -65,6 +67,16 @@ describe("chat agent mode helpers", () => {
     expect(isChatPlanCommandText("plan the work")).toBe(false)
     expect(stripChatPlanCommand("/plan refactor the auth flow")).toBe(
       "refactor the auth flow"
+    )
+  })
+
+  it("detects and strips the /imagen command prefix", () => {
+    expect(isChatImagenCommandText("/imagen a sunset over tokyo")).toBe(true)
+    expect(isChatImagenCommandText("  /imagen ")).toBe(true)
+    expect(isChatImagenCommandText("/imagenary")).toBe(false)
+    expect(isChatImagenCommandText("draw an image")).toBe(false)
+    expect(stripChatImagenCommand("/imagen a sunset over tokyo")).toBe(
+      "a sunset over tokyo"
     )
   })
 

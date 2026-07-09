@@ -18,7 +18,7 @@ describe("agents settings helpers", () => {
   it("clamps the max steps setting", () => {
     expect(clampAgentMaxSteps(0)).toBe(1)
     expect(clampAgentMaxSteps(8.5)).toBe(9)
-    expect(clampAgentMaxSteps(99)).toBe(20)
+    expect(clampAgentMaxSteps(999)).toBe(200)
   })
 
   it("clamps the concurrent subagents setting", () => {

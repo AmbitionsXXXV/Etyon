@@ -69,6 +69,7 @@ export const agentRuns = sqliteTable(
       .references(() => chatSessions.id, { onDelete: "cascade" }),
     errorMessage: text("error_message"),
     finishedAt: text("finished_at"),
+    finishReason: text("finish_reason"),
     id: text("id").primaryKey(),
     modelId: text("model_id"),
     parentRunId: text("parent_run_id"),

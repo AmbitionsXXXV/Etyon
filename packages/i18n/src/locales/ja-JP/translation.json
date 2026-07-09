@@ -17,6 +17,35 @@
     "version": "etyon v{version}"
   },
   "chat": {
+    "artifact": {
+      "badge": "アーティファクト",
+      "close": "アーティファクトプレビューを閉じる",
+      "codeView": "アーティファクトのソースを表示",
+      "open": "アーティファクトを開く：{title}",
+      "previewView": "アーティファクトのプレビューを表示",
+      "publishFailed": "公開に失敗しました",
+      "publishing": "公開中...",
+      "readError": "アーティファクトファイルを読み取れません。",
+      "refresh": "アーティファクトを更新"
+    },
+    "imageMode": {
+      "label": "画像",
+      "tooltip": "オンにすると、メッセージから画像を生成します",
+      "unsupported": "選択中のモデルは画像生成に対応していません"
+    },
+    "imagen": {
+      "close": "画像を閉じる",
+      "copied": "コピーしました",
+      "copy": "画像をコピー",
+      "download": "画像をダウンロード",
+      "failed": "画像の生成に失敗しました",
+      "generating": "画像を生成中...",
+      "rotate": "回転",
+      "viewFull": "フルサイズで表示",
+      "zoomIn": "拡大",
+      "zoomOut": "縮小",
+      "zoomReset": "ズームをリセット"
+    },
     "chainOfThought": {
       "label": "思考",
       "stepCount": "{count} ステップ"
@@ -70,6 +99,8 @@
       "waiting": "応答を準備中..."
     },
     "mentions": {
+      "commandImagenDescription": "画像を生成",
+      "commandImagenLabel": "Imagen",
       "commandPaletteEmpty": "一致する commands がありません。",
       "commandPaletteGroup": "Commands",
       "commandPlanDescription": "Plan mode",
@@ -162,6 +193,7 @@
       "title": "ターミナル出力"
     },
     "runInspector": {
+      "artifacts": "アーティファクト",
       "childRun": "サブエージェント実行",
       "description": "このエージェント実行で記録されたイベントとツール呼び出し。",
       "empty": "この実行ではツール呼び出しは記録されませんでした。",
@@ -171,6 +203,9 @@
       "title": "実行の詳細",
       "toolCalls": "ツール呼び出し",
       "trigger": "実行の詳細"
+    },
+    "runLimit": {
+      "notice": "ステップ上限({{maxSteps}})に達したため停止しました。返信すると続行できます。上限は 設定 → Agents で変更できます。"
     },
     "toolTrace": {
       "approve": "承認",

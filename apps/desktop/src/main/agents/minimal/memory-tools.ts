@@ -1,4 +1,4 @@
-import { createTool } from "@mastra/core/tools"
+import { tool } from "ai"
 import { z } from "zod"
 
 import type { AppDatabase } from "@/main/db"
@@ -45,7 +45,7 @@ export const buildSearchMemoryTool = ({
   db,
   projectPath
 }: MemoryToolsContext) =>
-  createTool({
+  tool({
     description:
       "Search long-term memory (past sessions and saved notes) for a specific detail the project memory digest already in context doesn't cover. Costs a network round trip — use only when you actually need it.",
     execute: async ({ query }, context) => {
@@ -60,12 +60,11 @@ export const buildSearchMemoryTool = ({
 
       return result || "No relevant memories found."
     },
-    id: "search_memory",
     inputSchema: SearchMemoryInputSchema
   })
 
 export const buildSaveMemoryTool = ({ db, projectPath }: MemoryToolsContext) =>
-  createTool({
+  tool({
     description:
       "Save a specific fact, decision, or user preference to long-term memory for future sessions. Use for things worth remembering beyond this conversation, not routine chat content.",
     execute: async ({ content }) => {
@@ -73,6 +72,5 @@ export const buildSaveMemoryTool = ({ db, projectPath }: MemoryToolsContext) =>
 
       return { saved: Boolean(entry) }
     },
-    id: "save_memory",
     inputSchema: SaveMemoryInputSchema
   })

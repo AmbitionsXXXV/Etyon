@@ -6,20 +6,30 @@ import { prepareAgentChatContext } from "@/main/agents/agent-chat-context"
 import {
   getRunAssistantStartIndex,
   recordAgentRunOutcome,
+  recordAgentRunStep,
   startAgentRun
 } from "@/main/agents/agent-event-store"
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { logger } from "@/main/logger"
-import { resolveModel } from "@/main/server/lib/providers"
+import {
+  isImageOutputModelSelection,
+  resolveModel
+} from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
+import {
+  buildImageGenerationStreamResponse,
+  getLatestUserMessageText
+} from "@/main/server/routes/build-image-generation-response"
 import { getSettings } from "@/main/settings"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
+  CHAT_IMAGEN_SYSTEM_PROMPT,
   getChatAgentModeAgentsEnabled,
   getChatAgentModeSystemPrompt,
   isChatAgentMode,
+  isChatImagenCommandText,
   isChatPlanCommandText
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
@@ -30,11 +40,6 @@ const chatRoute = new Hono()
 
 const isMoonshotModelId = (modelId: string | null | undefined): boolean =>
   typeof modelId === "string" && modelId.startsWith("moonshot/")
-
-const isChatRequestTrigger = (
-  trigger: unknown
-): trigger is "regenerate-message" | "submit-message" =>
-  trigger === "regenerate-message" || trigger === "submit-message"
 
 const applyChatAgentModeToSettings = ({
   agentMode,
@@ -56,40 +61,45 @@ const applyChatAgentModeToSettings = ({
   }
 }
 
-const getLatestUserMessageText = (messages: UIMessage[]): string => {
-  const latestUserMessage = messages.findLast(
-    (message) => message.role === "user"
-  )
-
-  if (!latestUserMessage) {
-    return ""
+// A typed `/plan` command forces plan mode for this turn; `/imagen` forces
+// agent mode (tools on) so the imagen tool is reachable. Both override the
+// composer's selected mode.
+const resolveEffectiveAgentMode = ({
+  composerMode,
+  isImagenCommand,
+  isPlanCommand
+}: {
+  composerMode: ChatAgentMode | undefined
+  isImagenCommand: boolean
+  isPlanCommand: boolean
+}): ChatAgentMode | undefined => {
+  if (isPlanCommand) {
+    return "plan"
   }
 
-  return latestUserMessage.parts
-    .filter(
-      (part): part is Extract<UIMessage["parts"][number], { type: "text" }> =>
-        part.type === "text"
-    )
-    .map((part) => part.text)
-    .join("\n")
+  if (isImagenCommand) {
+    return "agent"
+  }
+
+  return composerMode
 }
 
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
     agentMode: rawAgentMode,
+    imageMode: rawImageMode,
     mentions = [],
     messages,
     model: requestedModelId,
-    sessionId,
-    trigger
+    sessionId
   } = body as {
     agentMode?: unknown
+    imageMode?: unknown
     mentions?: ChatMention[]
     messages: UIMessage[]
     model?: string
     sessionId: string
-    trigger?: string
   }
   const db = getDb()
   const session = await getChatSessionById(db, sessionId)
@@ -98,17 +108,43 @@ chatRoute.post("/chat", async (c) => {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  const baseSettings = getSettings()
+  const effectiveModelId = requestedModelId ?? session.modelId ?? null
+
+  // Direct image mode bypasses the LLM chat/agent loop entirely: the message
+  // text goes straight to the selected image model's Images API, and the result
+  // renders through the existing inline imagen pipeline. The renderer only
+  // enables the toggle for image-output models; re-validate here as a safety
+  // net and fall through to the normal chat path when it does not hold.
+  if (
+    rawImageMode === true &&
+    effectiveModelId &&
+    isImageOutputModelSelection(baseSettings.ai, effectiveModelId)
+  ) {
+    return buildImageGenerationStreamResponse({
+      abortSignal: c.req.raw.signal,
+      messages,
+      modelValue: effectiveModelId,
+      onFinishPersist: async (nextMessages) => {
+        await replaceChatMessages({ db, messages: nextMessages, sessionId })
+      },
+      projectPath: session.projectPath,
+      requestStartedAt: Date.now(),
+      sessionId
+    })
+  }
+
   const agentMode = isChatAgentMode(rawAgentMode) ? rawAgentMode : undefined
-  // A typed `/plan` command forces plan mode for this turn regardless of the
-  // composer's selected mode.
-  const effectiveAgentMode: ChatAgentMode | undefined = isChatPlanCommandText(
-    getLatestUserMessageText(messages)
-  )
-    ? "plan"
-    : agentMode
+  const latestUserMessageText = getLatestUserMessageText(messages)
+  const isImagenCommand = isChatImagenCommandText(latestUserMessageText)
+  const effectiveAgentMode = resolveEffectiveAgentMode({
+    composerMode: agentMode,
+    isImagenCommand,
+    isPlanCommand: isChatPlanCommandText(latestUserMessageText)
+  })
   const settings = applyChatAgentModeToSettings({
     agentMode: effectiveAgentMode,
-    settings: getSettings()
+    settings: baseSettings
   })
   const agentContext = await prepareAgentChatContext({
     db,
@@ -118,7 +154,6 @@ chatRoute.post("/chat", async (c) => {
     sessionId,
     settings
   })
-  const effectiveModelId = requestedModelId ?? session.modelId ?? null
   const model = resolveModel(effectiveModelId ?? undefined)
   const moonshotReasoningForAssistantToolCalls = isMoonshotModelId(
     effectiveModelId
@@ -127,9 +162,11 @@ chatRoute.post("/chat", async (c) => {
     : []
   const requestStartedAt = Date.now()
   const planSystemPrompt = getChatAgentModeSystemPrompt(effectiveAgentMode)
-  const systemPrompts = planSystemPrompt
-    ? [...agentContext.systemPrompts, planSystemPrompt]
-    : agentContext.systemPrompts
+  const systemPrompts = [
+    ...agentContext.systemPrompts,
+    ...(planSystemPrompt ? [planSystemPrompt] : []),
+    ...(isImagenCommand ? [CHAT_IMAGEN_SYSTEM_PROMPT] : [])
+  ]
 
   // Resolve the managed profile for this turn from settings (falls back to the
   // first available profile when the default is missing or disabled).
@@ -152,6 +189,9 @@ chatRoute.post("/chat", async (c) => {
     }
   }
 
+  // Const capture so closures below narrow the run id without re-checking.
+  const startedRunId = agentRunId
+
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
     agentRunId,
@@ -160,7 +200,13 @@ chatRoute.post("/chat", async (c) => {
     modelId: effectiveModelId,
     modelMessages: agentContext.modelMessages,
     moonshotReasoningForAssistantToolCalls,
-    onFinishPersist: async (nextMessages) => {
+    ...(startedRunId
+      ? {
+          onAgentStep: (step) =>
+            recordAgentRunStep({ db, runId: startedRunId, step })
+        }
+      : {}),
+    onFinishPersist: async (nextMessages, agentOutcome) => {
       let messagesToPersist = nextMessages
 
       if (agentRunId) {
@@ -172,6 +218,7 @@ chatRoute.post("/chat", async (c) => {
             assistantStartIndex,
             db,
             messages: nextMessages,
+            outcome: agentOutcome,
             runId: agentRunId
           })
         } catch (error) {
@@ -196,8 +243,7 @@ chatRoute.post("/chat", async (c) => {
     requestStartedAt,
     sessionId,
     settings,
-    systemPrompts,
-    ...(isChatRequestTrigger(trigger) ? { trigger } : {})
+    systemPrompts
   })
 })
 

@@ -10,6 +10,7 @@ import {
   expireStaleApprovals,
   getRunAssistantStartIndex,
   recordAgentRunOutcome,
+  recordAgentRunStep,
   recoverInterruptedAgentRuns,
   redactSecretsFromJson,
   startAgentRun
@@ -17,7 +18,12 @@ import {
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
-import { agentApprovals, agentRuns, agentToolCalls } from "@/main/db/schema"
+import {
+  agentApprovals,
+  agentArtifacts,
+  agentRuns,
+  agentToolCalls
+} from "@/main/db/schema"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -92,6 +98,129 @@ describe("agent event store", () => {
     expect(derived.toolCalls[0]?.state).toBe("finished")
     expect(derived.toolCalls[0]?.toolName).toBe("edit")
     expect(derived.approvedToolCallIds).toEqual(["tc1"])
+  })
+
+  it("derives artifacts from finished artifact tool calls only", () => {
+    const messages = toMessages([
+      userMessage("make a report"),
+      assistantMessage([
+        {
+          input: { path: "artifacts/report.html", title: "Report" },
+          output: {
+            byteLength: 64,
+            kind: "html",
+            path: "artifacts/report.html",
+            title: "Report"
+          },
+          state: "output-available",
+          toolCallId: "tc-artifact",
+          type: "tool-artifact"
+        },
+        {
+          input: { path: "artifacts/pending.html", title: "Pending" },
+          state: "input-available",
+          toolCallId: "tc-artifact-pending",
+          type: "tool-artifact"
+        }
+      ])
+    ])
+
+    const derived = deriveAgentRunRecords({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      messages
+    })
+
+    expect(derived.artifacts).toHaveLength(1)
+    expect(derived.artifacts[0]).toMatchObject({
+      byteLength: 64,
+      kind: "html",
+      path: "artifacts/report.html",
+      toolCallId: "tc-artifact"
+    })
+    expect(JSON.parse(derived.artifacts[0]?.metadataJson ?? "{}")).toEqual({
+      description: null,
+      title: "Report"
+    })
+  })
+
+  it("does not record imagen output as an artifact (images render inline)", () => {
+    const messages = toMessages([
+      userMessage("draw a shiba"),
+      assistantMessage([
+        {
+          input: { prompt: "a neon shiba", title: "Shiba" },
+          output: {
+            byteLength: 2048,
+            kind: "image",
+            path: "generated-images/shiba-1a2b3c4d.png",
+            title: "Shiba"
+          },
+          state: "output-available",
+          toolCallId: "tc-imagen",
+          type: "tool-imagen"
+        }
+      ])
+    ])
+
+    const derived = deriveAgentRunRecords({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      messages
+    })
+
+    expect(derived.artifacts).toHaveLength(0)
+  })
+
+  it("persists artifacts and an artifact.published event", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const messages = toMessages([
+      userMessage("publish"),
+      assistantMessage([
+        {
+          input: { path: "artifacts/report.html", title: "Report" },
+          output: {
+            byteLength: 64,
+            kind: "html",
+            path: "artifacts/report.html",
+            title: "Report"
+          },
+          state: "output-available",
+          toolCallId: "tc-artifact-db",
+          type: "tool-artifact"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      db,
+      messages,
+      runId
+    })
+
+    const artifacts = await db
+      .select()
+      .from(agentArtifacts)
+      .where(eq(agentArtifacts.runId, runId))
+    const projection = await buildRunProjection({ db, runId })
+
+    expect(artifacts).toHaveLength(1)
+    expect(artifacts[0]?.id).toBe(`${runId}:tc-artifact-db`)
+    expect(artifacts[0]?.kind).toBe("html")
+    expect(artifacts[0]?.path).toBe("artifacts/report.html")
+    expect(projection?.events.map((event) => event.type)).toEqual([
+      "run.started",
+      "tool.result",
+      "artifact.published",
+      "run.succeeded"
+    ])
   })
 
   it("derives a suspended run with a pending approval", () => {
@@ -341,6 +470,225 @@ describe("agent event store", () => {
     expect(expired).toBeGreaterThanOrEqual(1)
     expect(approval?.state).toBe("denied")
     expect(run?.status).toBe("failed")
+  })
+
+  it("settles a model-error outcome as a failed run with finish_reason", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const messages = toMessages([
+      userMessage("hello"),
+      assistantMessage([{ state: "done", text: "partial", type: "text" }])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      db,
+      messages,
+      outcome: {
+        errorMessage: "boom: provider down",
+        exitReason: "model-error",
+        finishReason: "error",
+        nudged: false,
+        stepCount: 1
+      },
+      runId
+    })
+
+    const [run] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+    const projection = await buildRunProjection({ db, runId })
+
+    expect(run?.status).toBe("failed")
+    expect(run?.finishReason).toBe("error")
+    expect(run?.errorMessage).toBe("boom: provider down")
+    expect(projection?.events.at(-1)?.type).toBe("run.failed")
+  })
+
+  it("records a max-steps outcome as a visible truncation", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+
+    await recordAgentRunStep({
+      db,
+      runId,
+      step: { finishReason: "tool-calls", stepIndex: 1, toolCallCount: 1 }
+    })
+
+    const messages = toMessages([
+      userMessage("loop"),
+      assistantMessage([
+        {
+          input: {},
+          output: {},
+          state: "output-available",
+          toolCallId: "tc-limit",
+          type: "tool-ls"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      db,
+      messages,
+      outcome: {
+        errorMessage: null,
+        exitReason: "max-steps",
+        finishReason: "tool-calls",
+        nudged: false,
+        stepCount: 1
+      },
+      runId
+    })
+
+    const [run] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+    const projection = await buildRunProjection({ db, runId })
+
+    expect(run?.status).toBe("succeeded")
+    expect(run?.finishReason).toBe("max-steps")
+    expect(projection?.events.map((event) => event.type)).toEqual([
+      "run.started",
+      "step.finished",
+      "tool.result",
+      "run.truncated",
+      "run.succeeded"
+    ])
+  })
+
+  it("finalizes unsettled tool calls when the run closes", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const messages = toMessages([
+      userMessage("imagen"),
+      assistantMessage([
+        {
+          input: { prompt: "a cat" },
+          state: "input-available",
+          toolCallId: "tc-stuck",
+          type: "tool-imagen"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      db,
+      messages,
+      outcome: {
+        errorMessage: null,
+        exitReason: "completed",
+        finishReason: "stop",
+        nudged: false,
+        stepCount: 1
+      },
+      runId
+    })
+
+    const [toolCall] = await db
+      .select()
+      .from(agentToolCalls)
+      .where(eq(agentToolCalls.runId, runId))
+
+    expect(toolCall?.state).toBe("failed")
+    expect(toolCall?.finishedAt).not.toBeNull()
+  })
+
+  it("advances an approval-requested tool row when the run resumes", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const suspendedMessages = toMessages([
+      userMessage("write"),
+      assistantMessage([
+        {
+          approval: { id: "ap-resume" },
+          input: {},
+          state: "approval-requested",
+          toolCallId: "tc-resume",
+          type: "tool-write"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(suspendedMessages),
+      db,
+      messages: suspendedMessages,
+      runId
+    })
+
+    const resumedMessages = toMessages([
+      userMessage("write"),
+      assistantMessage([
+        {
+          approval: { id: "ap-resume" },
+          input: {},
+          output: { bytesWritten: 3 },
+          state: "output-available",
+          toolCallId: "tc-resume",
+          type: "tool-write"
+        }
+      ])
+    ])
+
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(resumedMessages),
+      db,
+      messages: resumedMessages,
+      outcome: {
+        errorMessage: null,
+        exitReason: "completed",
+        finishReason: "stop",
+        nudged: false,
+        stepCount: 1
+      },
+      runId
+    })
+
+    const [toolCall] = await db
+      .select()
+      .from(agentToolCalls)
+      .where(eq(agentToolCalls.runId, runId))
+    const [run] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+
+    expect(toolCall?.state).toBe("finished")
+    expect(toolCall?.approvalState).toBe("not_required")
+    expect(run?.status).toBe("succeeded")
   })
 
   describe("redactSecretsFromJson", () => {

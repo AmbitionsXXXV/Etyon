@@ -237,7 +237,7 @@ const AGENT_SETTINGS_DEFAULT = {
   enabled: false,
   lsp: AGENT_LSP_SETTINGS_DEFAULT,
   maxConcurrentSubagents: 2,
-  maxSteps: 8,
+  maxSteps: 64,
   profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
   retry: AGENT_RETRY_SETTINGS_DEFAULT,
@@ -372,7 +372,10 @@ export const AgentSettingsSchema = z.object({
   enabled: z.boolean().default(false),
   lsp: AgentLspSettingsSchema.default(AGENT_LSP_SETTINGS_DEFAULT),
   maxConcurrentSubagents: z.number().int().min(1).max(4).default(2),
-  maxSteps: z.number().int().min(1).max(20).default(8),
+  // A step cap is a safety backstop, not a task budget: real agent runs
+  // routinely take dozens of tool calls, and hitting the cap truncates the
+  // run (surfaced in chat as a visible run-limit notice).
+  maxSteps: z.number().int().min(1).max(200).default(64),
   profiles: z.array(AgentProfileSchema).default([]),
   requireApprovalForWrites: z.boolean().default(true),
   retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),

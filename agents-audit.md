@@ -8,10 +8,7 @@
 >
 > 当前实现与状态以 [`plans/agents-runtime.md`](plans/agents-runtime.md) 与 [`doc/agents.md`](doc/agents.md)（顶部 banner）为准；本文仅作历史记录。
 
-**日期:** 2026-06-01
-**范围:** `doc/agents.md` 设计文档 + 已落地的 `apps/desktop/src/main/agents/` 实现
-**方法:** 通读设计文档 + 关键模块源码 + 测试 + 参考仓库 (`/Users/jiantianjianghui/gh_projects/opencode@` `c7e1fc5e4`) 交叉对照
-**目的:** 列出设计漂移、架构风险、已确认 bug，给出可执行修复顺序与测试覆盖缺口
+**日期:** 2026-06-01 **范围:** `doc/agents.md` 设计文档 + 已落地的 `apps/desktop/src/main/agents/` 实现 **方法:** 通读设计文档 + 关键模块源码 + 测试 + 参考仓库 (`/Users/jiantianjianghui/gh_projects/opencode@` `c7e1fc5e4`) 交叉对照 **目的:** 列出设计漂移、架构风险、已确认 bug，给出可执行修复顺序与测试覆盖缺口
 
 > 本文件是**审计 / 修复指引**，不是 `doc/agents.md` 的替代或重写。所有 doc 漂移条目都引用 `doc/agents.md` 行号；所有 bug 定位都引用 `apps/desktop/src/main/...` 路径与行号。
 
@@ -19,20 +16,20 @@
 
 ## TL;DR
 
-| #   | 严重度 | 标题                                                                              | 位置                                                                                     |
-| --- | ------ | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| F1  | 🔴 P0  | `doc/agents.md` P0–P5 路线图与"当前落地状态"互相矛盾，文档未自洽                  | `doc/agents.md:26–57` vs `:1418–1473`                                                    |
-| F2  | 🔴 P0  | 参考 opencode 路径已过时（`packages/agent/` 不存在，实际是 `packages/core/src/`） | `doc/agents.md:196, 486–567, 672–688`                                                    |
-| F3  | 🔴 P0  | Coder agent 续接消息未合并：onFinish 写库时未归一化 `originalMessageCount` 边界   | `apps/desktop/src/main/server/routes/build-chat-stream-response.ts:797`                  |
-| F4  | 🔴 P0  | Allowlist 整串相等比较 → 同一 `git diff --cached` intent 不同 flag 各自重新审批   | `apps/desktop/src/main/agents/permission-engine.ts:159–190`                              |
-| F5  | 🟡 P1  | `isSafeReadonlyGitCommand` 正则不识别 `rtk ` 前缀                                 | `apps/desktop/src/main/agents/permission-engine.ts:43–49` + `tool-registry.ts:2102–2129` |
-| F6  | 🟡 P1  | `runCheck` 不应用 `isSafeReadonlyGitCommand`                                      | `apps/desktop/src/main/agents/permission-engine.ts:310–317`                              |
-| F7  | 🟡 P1  | `MessageToolTrace` 按 `toolCallId` 渲染 → 同 tool 多 invocation 各自成卡          | `apps/desktop/src/renderer/components/chat/message-tool-trace.tsx:1239–1247`             |
-| F8  | 🟡 P1  | 测试文件数错（写 36 实际 38）                                                     | `doc/agents.md:591`                                                                      |
-| F9  | 🟡 P1  | "AI SDK 只作为 provider stream adapter" 措辞与实际实现不符                        | `doc/agents.md:42` 及多处                                                                |
-| F10 | 🟢 P2  | 跨轮次续接无视觉标记（`continuation` 元数据未生成）                               | `apps/desktop/src/main/agents/agent-chat-projection.ts:791–840`                          |
-| F11 | 🟢 P2  | 文档结构问题："当前落地状态"在前，"架构分层"在后                                  | `doc/agents.md:26` vs `:704`                                                             |
-| F12 | 🟢 P2  | "激进路线"与"架构分层"模块重复                                                    | `doc/agents.md:59–482` vs `:704–1336`                                                    |
+| # | 严重度 | 标题 | 位置 |
+| --- | --- | --- | --- |
+| F1 | 🔴 P0 | `doc/agents.md` P0–P5 路线图与"当前落地状态"互相矛盾，文档未自洽 | `doc/agents.md:26–57` vs `:1418–1473` |
+| F2 | 🔴 P0 | 参考 opencode 路径已过时（`packages/agent/` 不存在，实际是 `packages/core/src/`） | `doc/agents.md:196, 486–567, 672–688` |
+| F3 | 🔴 P0 | Coder agent 续接消息未合并：onFinish 写库时未归一化 `originalMessageCount` 边界 | `apps/desktop/src/main/server/routes/build-chat-stream-response.ts:797` |
+| F4 | 🔴 P0 | Allowlist 整串相等比较 → 同一 `git diff --cached` intent 不同 flag 各自重新审批 | `apps/desktop/src/main/agents/permission-engine.ts:159–190` |
+| F5 | 🟡 P1 | `isSafeReadonlyGitCommand` 正则不识别 `rtk ` 前缀 | `apps/desktop/src/main/agents/permission-engine.ts:43–49` + `tool-registry.ts:2102–2129` |
+| F6 | 🟡 P1 | `runCheck` 不应用 `isSafeReadonlyGitCommand` | `apps/desktop/src/main/agents/permission-engine.ts:310–317` |
+| F7 | 🟡 P1 | `MessageToolTrace` 按 `toolCallId` 渲染 → 同 tool 多 invocation 各自成卡 | `apps/desktop/src/renderer/components/chat/message-tool-trace.tsx:1239–1247` |
+| F8 | 🟡 P1 | 测试文件数错（写 36 实际 38） | `doc/agents.md:591` |
+| F9 | 🟡 P1 | "AI SDK 只作为 provider stream adapter" 措辞与实际实现不符 | `doc/agents.md:42` 及多处 |
+| F10 | 🟢 P2 | 跨轮次续接无视觉标记（`continuation` 元数据未生成） | `apps/desktop/src/main/agents/agent-chat-projection.ts:791–840` |
+| F11 | 🟢 P2 | 文档结构问题："当前落地状态"在前，"架构分层"在后 | `doc/agents.md:26` vs `:704` |
+| F12 | 🟢 P2 | "激进路线"与"架构分层"模块重复 | `doc/agents.md:59–482` vs `:704–1336` |
 
 最高杠杆修复路径：**F1（加 P0–P5 状态快照）→ F3（修 onFinish 边界）→ F4–F6（修 allowlist + rtk/runCheck）→ F7（修 trace 折叠）→ F2（重锚 opencode 路径）**。
 
@@ -46,30 +43,30 @@
 
 **对照表（节选）:**
 
-| P5 列出项 (`:1460–1473`)            | 落地状态声称 (行号)                  | 实际状态                                                                          |
-| ----------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------- |
-| `AgentLoop` 替换 SDK 内部 tool loop | `agent-loop.ts:42` "已覆盖"          | 仅 outer turn + `stepCountIs(1)`，未替换 SDK 内部                                 |
-| `Phase` 状态机 (`:1464`)            | `agent-state.ts:50` "已覆盖"         | 只实现了 `idle` / `turn`，`compaction` / `branch_summary` / `retry` 未实现        |
-| `ErrorHandling` 分层 (`:1465`)      | `agent-errors.ts:53` "已覆盖"        | 已有 `AgentRuntimeError`，但 `ExecutionEnv` 仍有部分抛异常路径                    |
-| stream hook 链 (`:1470`)            | `agent-stream-hooks.ts:54` "已覆盖"  | 实际有，但当前 Etyon loop 不通过 `streamFn` wrapper 注入，只在入口 patch          |
-| prompt template 加载 (`:1471`)      | `prompt-templates.ts:44` "已覆盖"    | 已实现                                                                            |
-| plan/execute 工程 (`:1472`)         | `agent-plan-progress.ts:55` "已覆盖" | plan mode 入口已实现；execute handoff 仅 P4 `agentCoder`，未到 P5 graph template  |
-| durable approval (`:1472`)          | 多处 "已覆盖"                        | 入口与重启恢复已实现，但 **suspended run 没有 TTL / abandonment 策略**（见 §4.4） |
-| run replay (`:1468`)                | —                                    | 未实现                                                                            |
+| P5 列出项 (`:1460–1473`) | 落地状态声称 (行号) | 实际状态 |
+| --- | --- | --- |
+| `AgentLoop` 替换 SDK 内部 tool loop | `agent-loop.ts:42` "已覆盖" | 仅 outer turn + `stepCountIs(1)`，未替换 SDK 内部 |
+| `Phase` 状态机 (`:1464`) | `agent-state.ts:50` "已覆盖" | 只实现了 `idle` / `turn`，`compaction` / `branch_summary` / `retry` 未实现 |
+| `ErrorHandling` 分层 (`:1465`) | `agent-errors.ts:53` "已覆盖" | 已有 `AgentRuntimeError`，但 `ExecutionEnv` 仍有部分抛异常路径 |
+| stream hook 链 (`:1470`) | `agent-stream-hooks.ts:54` "已覆盖" | 实际有，但当前 Etyon loop 不通过 `streamFn` wrapper 注入，只在入口 patch |
+| prompt template 加载 (`:1471`) | `prompt-templates.ts:44` "已覆盖" | 已实现 |
+| plan/execute 工程 (`:1472`) | `agent-plan-progress.ts:55` "已覆盖" | plan mode 入口已实现；execute handoff 仅 P4 `agentCoder`，未到 P5 graph template |
+| durable approval (`:1472`) | 多处 "已覆盖" | 入口与重启恢复已实现，但 **suspended run 没有 TTL / abandonment 策略**（见 §4.4） |
+| run replay (`:1468`) | — | 未实现 |
 
 **修复建议:**
 
 加一张 P0–P5 状态快照表（放在 `:57` 之后）:
 
 ```markdown
-| Phase                 | 状态      | 关键交付                                                                                                                                             |
-| --------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P0 文档与 schema 预留 | ✅ 已落地 | settings.agents、profile 常量                                                                                                                        |
-| P1 单 agent tool loop | ✅ 已落地 | /api/chat + tools + stopWhen                                                                                                                         |
-| P2 权限与写入工具     | ✅ 已落地 | permission-engine, applyPatch, runCheck                                                                                                              |
-| P3 Harness Runtime    | ✅ 已落地 | agent-runtime, ExecutionEnv, event store                                                                                                             |
-| P4 Multi-Agent        | ✅ 已落地 | agentExplore/Plan/Review/Coder, run graph 模板                                                                                                       |
-| P5 高级 Harness       | 🟡 部分   | AgentLoop outer / stream hooks / prompt templates / plan mode 已落地；agent-layer compaction / branch summary / run replay / Phase 状态机扩展 未落地 |
+| Phase | 状态 | 关键交付 |
+| --- | --- | --- |
+| P0 文档与 schema 预留 | ✅ 已落地 | settings.agents、profile 常量 |
+| P1 单 agent tool loop | ✅ 已落地 | /api/chat + tools + stopWhen |
+| P2 权限与写入工具 | ✅ 已落地 | permission-engine, applyPatch, runCheck |
+| P3 Harness Runtime | ✅ 已落地 | agent-runtime, ExecutionEnv, event store |
+| P4 Multi-Agent | ✅ 已落地 | agentExplore/Plan/Review/Coder, run graph 模板 |
+| P5 高级 Harness | 🟡 部分 | AgentLoop outer / stream hooks / prompt templates / plan mode 已落地；agent-layer compaction / branch summary / run replay / Phase 状态机扩展 未落地 |
 ```
 
 并在"当前落地状态"段开头加一行 `> 状态对照表见上`避免读者漏掉。
@@ -90,9 +87,7 @@
 在 `:486` 顶部加一段说明:
 
 ```markdown
-> ⚠️ 参考仓库自 `c7e1fc5e` 之后已重组为 `packages/core/src/{agent, session-event, session-prompt, permission, event, provider, plugin}.ts` 布局。
-> 本节 `packages/agent/` / `packages/coding-agent/` 路径保留作历史对照；评估具体 capability 时
-> 应按 `packages/core/src/` 重新对照。
+> ⚠️ 参考仓库自 `c7e1fc5e` 之后已重组为 `packages/core/src/{agent, session-event, session-prompt, permission, event, provider, plugin}.ts` 布局。本节 `packages/agent/` / `packages/coding-agent/` 路径保留作历史对照；评估具体 capability 时应按 `packages/core/src/` 重新对照。
 ```
 
 并把对照表 (`:535–567`) 的"参考路径"列改为新布局（`packages/core/src/agent.ts`、`packages/core/src/session-prompt.ts` 等）。该项工作量较大，可以分批改；最小可接受版本是只加上面的说明段 + 重新钉到更近的 opencode commit（如果有 `dev` 后续 commit）。
@@ -240,12 +235,12 @@ const getLatestUserMessageBoundary = (messages) => ...
 
 ### 2.4 测试缺口
 
-| 缺口                                                                     | 建议文件 / it()                                                                                     |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| 端到端：coder + approval + resume → `chat_messages` 中 assistant 数 == 1 | `regressions/coder-approval-resume-continuation.test.ts`                                            |
-| onFinish → replaceChatMessages → repair 链路                             | `build-chat-stream-response.test.ts` 加 `chat_messages_after_finish_has_single_assistant_on_resume` |
-| `continuation` 元数据生成                                                | `agent-chat-projection.test.ts` 加 merge 直接测                                                     |
-| 渲染层 pill                                                              | `assistant-message-timeline.test.tsx` 新建（若不存在）                                              |
+| 缺口 | 建议文件 / it() |
+| --- | --- |
+| 端到端：coder + approval + resume → `chat_messages` 中 assistant 数 == 1 | `regressions/coder-approval-resume-continuation.test.ts` |
+| onFinish → replaceChatMessages → repair 链路 | `build-chat-stream-response.test.ts` 加 `chat_messages_after_finish_has_single_assistant_on_resume` |
+| `continuation` 元数据生成 | `agent-chat-projection.test.ts` 加 merge 直接测 |
+| 渲染层 pill | `assistant-message-timeline.test.tsx` 新建（若不存在） |
 
 ---
 
@@ -420,20 +415,20 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 
 ### 3.7 测试缺口
 
-| 缺口                                        | 建议 it()                                                                                                      |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 同 intent 不同 argv 覆盖                    | `permission-engine.test.ts`: "allows a remembered git diff --stat invocation to cover git diff --cached paths" |
-| 反向：bad rule 不覆盖                       | "does not let a remembered rm -rf invocation cover git diff"                                                   |
-| git log/show/status 共享 rule               | "covers git log / git show / git status with one remember rule"                                                |
-| rtkCommand 走 `rtk git diff`                | "covers rtkCommand rtk git diff via the same allowlist intent"                                                 |
-| 防御：destructive 不被 allowlist 覆盖       | "does not let rtk prefix bypass side-effect flag detection"                                                    |
-| safe-readonly-git 应用到 rtkCommand         | "auto-allows rtk git diff for rtkCommand"                                                                      |
-| safe-readonly-git 应用到 runCheck           | "auto-allows git diff for runCheck as a read-only inspection"                                                  |
-| 多 flag / 路径组合 / `-U<n>` / `--no-color` | `tool-registry.test.ts`                                                                                        |
-| `git diff` 端到端                           | `command-tools.test.ts`（当前完全无 git diff 覆盖）                                                            |
-| UI 折叠                                     | `message-tool-trace.test.ts`: "collapses repeated identical git diff invocations into one card with count"     |
-| 审批不折叠                                  | "does not collapse approval-requested or input-streaming parts"                                                |
-| `ToolUIPart` 等价折叠 helper                | `tool-ui.test.ts`: "exposes a ToolUIPart-aware compaction helper"                                              |
+| 缺口 | 建议 it() |
+| --- | --- |
+| 同 intent 不同 argv 覆盖 | `permission-engine.test.ts`: "allows a remembered git diff --stat invocation to cover git diff --cached paths" |
+| 反向：bad rule 不覆盖 | "does not let a remembered rm -rf invocation cover git diff" |
+| git log/show/status 共享 rule | "covers git log / git show / git status with one remember rule" |
+| rtkCommand 走 `rtk git diff` | "covers rtkCommand rtk git diff via the same allowlist intent" |
+| 防御：destructive 不被 allowlist 覆盖 | "does not let rtk prefix bypass side-effect flag detection" |
+| safe-readonly-git 应用到 rtkCommand | "auto-allows rtk git diff for rtkCommand" |
+| safe-readonly-git 应用到 runCheck | "auto-allows git diff for runCheck as a read-only inspection" |
+| 多 flag / 路径组合 / `-U<n>` / `--no-color` | `tool-registry.test.ts` |
+| `git diff` 端到端 | `command-tools.test.ts`（当前完全无 git diff 覆盖） |
+| UI 折叠 | `message-tool-trace.test.ts`: "collapses repeated identical git diff invocations into one card with count" |
+| 审批不折叠 | "does not collapse approval-requested or input-streaming parts" |
+| `ToolUIPart` 等价折叠 helper | `tool-ui.test.ts`: "exposes a ToolUIPart-aware compaction helper" |
 
 ---
 
@@ -471,8 +466,7 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 ### suspended run 老化策略（v1 占位）
 
 - 当前：app 重启后保留所有 suspended approval run，pending / resume query 都能看到。
-- 待补：`settings.agents.approvalTtl` 默认 7 天；超期 suspended run 标记为
-  `failed(reason="approval_timeout")` 并通过 `agents.listRecoverableRuns` 暴露。
+- 待补：`settings.agents.approvalTtl` 默认 7 天；超期 suspended run 标记为 `failed(reason="approval_timeout")` 并通过 `agents.listRecoverableRuns` 暴露。
 - 何时引入：P5 durable execution 收尾时。
 ```
 
@@ -489,9 +483,7 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 **建议:** doc 加 "transient classification" 段：
 
 ```markdown
-> 注：`advanceRunGraph` 的 `settings.agents.retry` 仅对 `provider / network / timeout` 分类为 transient。
-> 写入类工具（`write-fs` / `shell`）的失败不会自动 retry，避免 double-write / 幂等性问题。
-> 后续应要求 retryable tool 显式声明 `idempotencyKey` 才能进入 retry 范围。
+> 注：`advanceRunGraph` 的 `settings.agents.retry` 仅对 `provider / network / timeout` 分类为 transient。写入类工具（`write-fs` / `shell`）的失败不会自动 retry，避免 double-write / 幂等性问题。后续应要求 retryable tool 显式声明 `idempotencyKey` 才能进入 retry 范围。
 ```
 
 实现侧：permission-engine 拒绝 retry `manifest.riskLevel !== "safe"` 的工具（除非显式声明 `idempotent: true`）。
@@ -534,25 +526,25 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 
 按 ROI 排序（先做高杠杆、低风险、依赖少的项）:
 
-| #   | 优先级 | 标题                                                                                                       | 依赖 | 估时 | 状态             |
-| --- | ------ | ---------------------------------------------------------------------------------------------------------- | ---- | ---- | ---------------- |
-| 1   | 🔴 P0  | F3 修 onFinish `originalMessageCount` 边界（`build-chat-stream-response.ts:797`）                          | —    | 1h   | 需先写失败用例   |
-| 2   | 🔴 P0  | F4 抽 `isCommandCoveredByRule` 并接入 `commandMatchesApprovalAllowlist` + `isSameAgentCommandApprovalRule` | —    | 1.5h | 同上             |
-| 3   | 🟡 P1  | F5 `SAFE_READONLY_GIT_COMMAND_PATTERN` 加 `rtk ` 前缀                                                      | #2   | 0.5h | —                |
-| 4   | 🟡 P1  | F6 `isSafeReadonlyGitCommand` 应用到 `runCheck` 分支                                                       | #2   | 0.5h | —                |
-| 5   | 🟡 P1  | F1 doc 加 P0–P5 状态快照表                                                                                 | —    | 0.5h | doc 改动         |
-| 6   | 🟡 P1  | F8 修测试文件数（36 → 38）                                                                                 | —    | 0.1h | doc 改动         |
-| 7   | 🟡 P1  | F7 `MessageToolTrace` 折叠同 `(toolName, canonicalInput, terminalState)` 终态 part                         | —    | 1.5h | —                |
-| 8   | 🟡 P1  | F9 "AI SDK 只作为 provider stream adapter" 措辞修订                                                        | —    | 0.2h | doc 改动         |
-| 9   | 🟢 P2  | F10 `continuation` 元数据 + 渲染层 pill                                                                    | #1   | 1h   | 视觉增强         |
-| 10  | 🟢 P2  | F2 doc 参考 opencode 路径加过时说明 + 重新钉 commit                                                        | —    | 0.5h | doc 改动         |
-| 11  | 🟢 P2  | F11, F12 doc 结构: "当前落地状态" 挪到附录 + 合并"激进路线"与"架构分层"                                    | —    | 2h   | doc 改动         |
-| 12  | 🟢 P2  | §4.4 doc 加 stale-approval policy 段                                                                       | —    | 0.3h | doc 改动         |
-| 13  | 🟢 P2  | §4.5 doc 加 transient classification 段 + 实现侧 idempotent 校验                                           | —    | 1h   | doc + code       |
-| 14  | 🟢 P2  | §4.7 doc 加 chat-branch 不变量段                                                                           | —    | 0.3h | doc 改动         |
-| 15  | 🟢 P2  | §4.8 doc 加未采纳参考能力段                                                                                | —    | 0.5h | doc 改动         |
-| 16  | 🟢 P2  | §4.2 doc 加 event payload 软 schema 段                                                                     | —    | 0.3h | doc 改动         |
-| 17  | 🟢 P2  | §4.3 `chat_messages` 加 `agent_projection_run_id` 列 + on-read projection migration                        | —    | 3h   | code + migration |
+| # | 优先级 | 标题 | 依赖 | 估时 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 🔴 P0 | F3 修 onFinish `originalMessageCount` 边界（`build-chat-stream-response.ts:797`） | — | 1h | 需先写失败用例 |
+| 2 | 🔴 P0 | F4 抽 `isCommandCoveredByRule` 并接入 `commandMatchesApprovalAllowlist` + `isSameAgentCommandApprovalRule` | — | 1.5h | 同上 |
+| 3 | 🟡 P1 | F5 `SAFE_READONLY_GIT_COMMAND_PATTERN` 加 `rtk ` 前缀 | #2 | 0.5h | — |
+| 4 | 🟡 P1 | F6 `isSafeReadonlyGitCommand` 应用到 `runCheck` 分支 | #2 | 0.5h | — |
+| 5 | 🟡 P1 | F1 doc 加 P0–P5 状态快照表 | — | 0.5h | doc 改动 |
+| 6 | 🟡 P1 | F8 修测试文件数（36 → 38） | — | 0.1h | doc 改动 |
+| 7 | 🟡 P1 | F7 `MessageToolTrace` 折叠同 `(toolName, canonicalInput, terminalState)` 终态 part | — | 1.5h | — |
+| 8 | 🟡 P1 | F9 "AI SDK 只作为 provider stream adapter" 措辞修订 | — | 0.2h | doc 改动 |
+| 9 | 🟢 P2 | F10 `continuation` 元数据 + 渲染层 pill | #1 | 1h | 视觉增强 |
+| 10 | 🟢 P2 | F2 doc 参考 opencode 路径加过时说明 + 重新钉 commit | — | 0.5h | doc 改动 |
+| 11 | 🟢 P2 | F11, F12 doc 结构: "当前落地状态" 挪到附录 + 合并"激进路线"与"架构分层" | — | 2h | doc 改动 |
+| 12 | 🟢 P2 | §4.4 doc 加 stale-approval policy 段 | — | 0.3h | doc 改动 |
+| 13 | 🟢 P2 | §4.5 doc 加 transient classification 段 + 实现侧 idempotent 校验 | — | 1h | doc + code |
+| 14 | 🟢 P2 | §4.7 doc 加 chat-branch 不变量段 | — | 0.3h | doc 改动 |
+| 15 | 🟢 P2 | §4.8 doc 加未采纳参考能力段 | — | 0.5h | doc 改动 |
+| 16 | 🟢 P2 | §4.2 doc 加 event payload 软 schema 段 | — | 0.3h | doc 改动 |
+| 17 | 🟢 P2 | §4.3 `chat_messages` 加 `agent_projection_run_id` 列 + on-read projection migration | — | 3h | code + migration |
 
 **总估时:** ~15h（不含大表结构调整）。其中 code 改动约 9h，doc 改动约 5h，测试约 1h（分散在每个修复中）。
 
@@ -562,42 +554,42 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 
 按文件列出当前缺口，按建议 it() 见 §2.4 / §3.7 / §4:
 
-| 文件                                                                                   | 缺口                                              | 优先级 |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------- | ------ |
-| `apps/desktop/test/main/agents/permission-engine.test.ts`                              | F4, F5, F6 相关 intent 覆盖 + rtk/runCheck + 防御 | 🔴     |
-| `apps/desktop/test/main/agents/tool-registry.test.ts`                                  | F4, F5, F6 集成覆盖                               | 🟡     |
-| `apps/desktop/test/main/agents/command-tools.test.ts`                                  | 完全无 git diff 端到端                            | 🟡     |
-| `apps/desktop/test/main/agents/agent-chat-projection.test.ts`                          | F3, F10 merge continuation 测                     | 🔴     |
-| `apps/desktop/test/main/agents/build-chat-stream-response.test.ts`                     | F3 onFinish → repair 链路测                       | 🔴     |
-| `apps/desktop/test/main/agents/regressions/coder-approval-resume-continuation.test.ts` | F3 端到端                                         | 🔴     |
-| `apps/desktop/test/main/agents/agent-event-store.test.ts`                              | §4.2 event payload 软 schema 测                   | 🟢     |
-| `apps/desktop/test/main/agents/agent-session-tree.test.ts`                             | §4.7 chat-branch 不变量测                         | 🟢     |
-| `apps/desktop/test/renderer/components/chat/message-tool-trace.test.ts`                | F7 trace 折叠测                                   | 🟡     |
-| `apps/desktop/test/renderer/components/chat/assistant-message-timeline.test.tsx`       | F10 continuation pill 测                          | 🟢     |
-| `apps/desktop/test/renderer/lib/chat/tool-ui.test.ts`                                  | F7 `ToolUIPart` 等价折叠 helper 测                | 🟢     |
+| 文件 | 缺口 | 优先级 |
+| --- | --- | --- |
+| `apps/desktop/test/main/agents/permission-engine.test.ts` | F4, F5, F6 相关 intent 覆盖 + rtk/runCheck + 防御 | 🔴 |
+| `apps/desktop/test/main/agents/tool-registry.test.ts` | F4, F5, F6 集成覆盖 | 🟡 |
+| `apps/desktop/test/main/agents/command-tools.test.ts` | 完全无 git diff 端到端 | 🟡 |
+| `apps/desktop/test/main/agents/agent-chat-projection.test.ts` | F3, F10 merge continuation 测 | 🔴 |
+| `apps/desktop/test/main/agents/build-chat-stream-response.test.ts` | F3 onFinish → repair 链路测 | 🔴 |
+| `apps/desktop/test/main/agents/regressions/coder-approval-resume-continuation.test.ts` | F3 端到端 | 🔴 |
+| `apps/desktop/test/main/agents/agent-event-store.test.ts` | §4.2 event payload 软 schema 测 | 🟢 |
+| `apps/desktop/test/main/agents/agent-session-tree.test.ts` | §4.7 chat-branch 不变量测 | 🟢 |
+| `apps/desktop/test/renderer/components/chat/message-tool-trace.test.ts` | F7 trace 折叠测 | 🟡 |
+| `apps/desktop/test/renderer/components/chat/assistant-message-timeline.test.tsx` | F10 continuation pill 测 | 🟢 |
+| `apps/desktop/test/renderer/lib/chat/tool-ui.test.ts` | F7 `ToolUIPart` 等价折叠 helper 测 | 🟢 |
 
 ---
 
 ## 7. 文档修订项汇总（按位置）
 
-| 位置          | 修订                                               | 来源     |
-| ------------- | -------------------------------------------------- | -------- |
-| `:26` 段首    | 加"状态对照表见上"指针                             | F1       |
-| `:57` 之后    | 新增 P0–P5 状态快照表                              | F1       |
-| `:42` 及多处  | "AI SDK 只作为 provider stream adapter" → 准确措辞 | F9       |
-| `:196`        | 重新钉到更新的 opencode commit（如 `dev` 后续）    | F2       |
-| `:486` 段首   | 加过时路径说明段                                   | F2       |
-| `:535–567`    | 重锚对照表到 `packages/core/src/`                  | F2       |
-| `:591`        | 测试文件数 36 → 38                                 | F8       |
-| `:660–670`    | 清理与已落地重叠的"建议补测优先级"项               | 文档清理 |
-| 新增 § 4.4 段 | stale-approval policy                              | §4.4     |
-| 新增 § 4.5 段 | transient classification                           | §4.5     |
-| 新增 § 4.7 段 | chat-branch 不变量                                 | §4.7     |
-| 新增 § 4.8 段 | 未采纳参考能力                                     | §4.8     |
-| 新增 § 4.2 段 | event payload 软 schema                            | §4.2     |
-| 新增 § 4.3 段 | chat_messages vs agent_events 对账                 | §4.3     |
-| 档案化        | "当前落地状态" 整段挪到"验收标准"后                | F11      |
-| 合并          | "激进路线" 与 "架构分层" 合并为 Current vs Target  | F12      |
+| 位置 | 修订 | 来源 |
+| --- | --- | --- |
+| `:26` 段首 | 加"状态对照表见上"指针 | F1 |
+| `:57` 之后 | 新增 P0–P5 状态快照表 | F1 |
+| `:42` 及多处 | "AI SDK 只作为 provider stream adapter" → 准确措辞 | F9 |
+| `:196` | 重新钉到更新的 opencode commit（如 `dev` 后续） | F2 |
+| `:486` 段首 | 加过时路径说明段 | F2 |
+| `:535–567` | 重锚对照表到 `packages/core/src/` | F2 |
+| `:591` | 测试文件数 36 → 38 | F8 |
+| `:660–670` | 清理与已落地重叠的"建议补测优先级"项 | 文档清理 |
+| 新增 § 4.4 段 | stale-approval policy | §4.4 |
+| 新增 § 4.5 段 | transient classification | §4.5 |
+| 新增 § 4.7 段 | chat-branch 不变量 | §4.7 |
+| 新增 § 4.8 段 | 未采纳参考能力 | §4.8 |
+| 新增 § 4.2 段 | event payload 软 schema | §4.2 |
+| 新增 § 4.3 段 | chat_messages vs agent_events 对账 | §4.3 |
+| 档案化 | "当前落地状态" 整段挪到"验收标准"后 | F11 |
+| 合并 | "激进路线" 与 "架构分层" 合并为 Current vs Target | F12 |
 
 ---
 
@@ -677,5 +669,4 @@ const BOUNDED_INTENT_MATCHERS: readonly BoundedIntentMatcher[] = [
 
 ---
 
-**最后审查日期:** 2026-06-01
-**下次审查触发条件:** P5 剩余项（agent-layer compaction / branch summary / run replay）落地后，或 §4 中任一架构风险被实测触发后。
+**最后审查日期:** 2026-06-01 **下次审查触发条件:** P5 剩余项（agent-layer compaction / branch summary / run replay）落地后，或 §4 中任一架构风险被实测触发后。

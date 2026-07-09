@@ -1,7 +1,10 @@
 import type { AppSettings, ParsedSkill } from "@etyon/rpc"
-import { handleChatStream } from "@mastra/ai-sdk"
-import { RequestContext } from "@mastra/core/request-context"
-import type { LanguageModel, ModelMessage, UIMessage } from "ai"
+import type {
+  LanguageModel,
+  ModelMessage,
+  UIMessage,
+  UIMessageStreamWriter
+} from "ai"
 import {
   APICallError,
   createUIMessageStream,
@@ -9,17 +12,24 @@ import {
   streamText
 } from "ai"
 
+import { runAgentLoop } from "@/main/agents/minimal/agent-loop"
+import type {
+  AgentLoopOutcome,
+  AgentLoopStep
+} from "@/main/agents/minimal/agent-loop"
 import {
-  FILE_AGENT_ID,
-  fileAgentMastra
-} from "@/main/agents/minimal/file-agent"
+  buildAgentSystemPrompt,
+  buildAgentToolset
+} from "@/main/agents/minimal/agent-toolset"
 import {
   formatPromptTemplateInvocation,
   parseCommandArgs
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
 import { logger } from "@/main/logger"
+import { resolveModel } from "@/main/server/lib/providers"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
+import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
   isChatPlanCommandText,
   stripChatPlanCommand
@@ -352,7 +362,7 @@ const applyComposerCommandsToLatestModelMessage = ({
   )
 }
 
-const writeRequestPhase = (
+export const writeRequestPhase = (
   writer: {
     write: (part: {
       data: ChatRequestPhaseData
@@ -400,6 +410,33 @@ const tapFirstChunkLatency = <TChunk>(
   )
 }
 
+// The agent loop merges one stream per model round-trip; tapping only the
+// first merged stream mirrors what tapFirstChunkLatency does for the plain
+// path.
+const withFirstChunkLatency = (
+  writer: UIMessageStreamWriter<UIMessage>,
+  fields: Record<string, unknown>
+): UIMessageStreamWriter<UIMessage> => {
+  let tapped = false
+
+  return {
+    merge: (stream) => {
+      if (tapped) {
+        writer.merge(stream)
+
+        return
+      }
+
+      tapped = true
+      writer.merge(tapFirstChunkLatency(stream, "chat_first_chunk", fields))
+    },
+    onError: writer.onError,
+    write: (chunk) => {
+      writer.write(chunk)
+    }
+  }
+}
+
 export interface BuildChatStreamResponseOptions {
   abortSignal: AbortSignal
   agentRunId?: string | null
@@ -408,7 +445,12 @@ export interface BuildChatStreamResponseOptions {
   modelId: string | null
   modelMessages: ModelMessage[]
   moonshotReasoningForAssistantToolCalls: readonly string[]
-  onFinishPersist: (messages: UIMessage[]) => Promise<void>
+  /** Best-effort per-step observer for the agent loop (event store). */
+  onAgentStep?: (step: AgentLoopStep) => Promise<void> | void
+  onFinishPersist: (
+    messages: UIMessage[],
+    agentOutcome: AgentLoopOutcome | null
+  ) => Promise<void>
   profileId?: string | null
   projectPath: string
   promptTemplates?: readonly PromptTemplate[]
@@ -417,7 +459,6 @@ export interface BuildChatStreamResponseOptions {
   settings: AppSettings
   skillCommandSkills?: readonly ParsedSkill[]
   systemPrompts: string[]
-  trigger?: "regenerate-message" | "submit-message"
 }
 
 export const buildChatStreamResponse = ({
@@ -428,6 +469,7 @@ export const buildChatStreamResponse = ({
   modelId,
   modelMessages,
   moonshotReasoningForAssistantToolCalls,
+  onAgentStep,
   onFinishPersist,
   profileId,
   projectPath,
@@ -436,8 +478,7 @@ export const buildChatStreamResponse = ({
   sessionId,
   settings,
   skillCommandSkills,
-  systemPrompts,
-  trigger
+  systemPrompts
 }: BuildChatStreamResponseOptions): Response => {
   const preparedModelMessages = applyComposerCommandsToLatestModelMessage({
     modelMessages,
@@ -451,6 +492,7 @@ export const buildChatStreamResponse = ({
   const effectiveSystemPrompts = systemPrompts.filter(
     (prompt) => prompt.length > 0
   )
+  let agentLoopOutcome: AgentLoopOutcome | null = null
 
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
@@ -495,54 +537,53 @@ export const buildChatStreamResponse = ({
           "chat_agent_stream_setup",
           { agent_run_id: agentRunId, session_id: sessionId }
         )
-        const agentStream = await handleChatStream({
-          agentId: FILE_AGENT_ID,
-          mastra: fileAgentMastra,
-          params: {
-            abortSignal,
-            maxSteps: settings.agents.maxSteps,
-            // The Mastra bridge converts UIMessages itself and detects
-            // approval responses in the trailing assistant message.
-            messages: messages as never,
-            requestContext: new RequestContext(
-              Object.entries({
-                ...(agentRunId ? { agentRunId } : {}),
-                ...(sessionId ? { chatSessionId: sessionId } : {}),
-                ...(modelId ? { modelId } : {}),
-                ...(profileId ? { profileId } : {}),
-                projectPath
-              })
-            ),
-            ...(effectiveSystemPrompts.length > 0
-              ? { system: effectiveSystemPrompts.join("\n\n") }
-              : {}),
-            ...(trigger ? { trigger } : {})
-          },
-          sendReasoning: true,
-          version: "v6"
+        const profile = resolveActiveProfile(settings.agents, profileId ?? null)
+        // A profile's preferred model overrides the session model, matching
+        // the model resolution the Mastra agent previously did per request.
+        const agentModel =
+          profile.preferredModel.length > 0
+            ? resolveModel(profile.preferredModel)
+            : model
+        const agentTools = buildAgentToolset({
+          agentRunId: agentRunId ?? null,
+          chatSessionId: sessionId,
+          modelId,
+          profile,
+          projectPath
         })
+        const agentSystem = [
+          buildAgentSystemPrompt(profile),
+          ...effectiveSystemPrompts
+        ].join("\n\n")
+
         agentStreamSetupLog.end()
 
-        // The bridge stream and Etyon share the AI SDK v6 UIMessageChunk
-        // wire format; the cast bridges its vendored type declarations.
-        writer.merge(
-          tapFirstChunkLatency(
-            agentStream as never as ReadableStream<unknown>,
-            "chat_first_chunk",
-            {
-              agent_mode: true,
-              agent_run_id: agentRunId,
-              session_id: sessionId
-            }
-          ) as never
-        )
+        // The prepared model messages carry composer command transforms,
+        // dangling-tool-call repair, and pending approval responses — the
+        // AI SDK executes approved tool calls at the start of the next stream.
+        agentLoopOutcome = await runAgentLoop({
+          abortSignal,
+          describeError: describeChatStreamError,
+          maxSteps: settings.agents.maxSteps,
+          messages: preparedModelMessages,
+          model: agentModel,
+          ...(onAgentStep ? { onStepFinish: onAgentStep } : {}),
+          system: agentSystem,
+          tools: agentTools,
+          writer: withFirstChunkLatency(writer, {
+            agent_mode: true,
+            agent_run_id: agentRunId,
+            session_id: sessionId
+          })
+        })
       },
       onError: describeChatStreamError,
       onFinish: async ({ messages: nextMessages }) => {
         const workTimeMs = Date.now() - requestStartedAt
 
         await onFinishPersist(
-          attachWorkTimeToLatestAssistantMessage(nextMessages, workTimeMs)
+          attachWorkTimeToLatestAssistantMessage(nextMessages, workTimeMs),
+          agentLoopOutcome
         )
       },
       originalMessages: messages

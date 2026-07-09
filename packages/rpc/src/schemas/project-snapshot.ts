@@ -68,6 +68,18 @@ export const ReadProjectFileOutputSchema = z.object({
   relativePath: z.string()
 })
 
+export const ReadProjectBinaryFileInputSchema = z.object({
+  filePath: z.string(),
+  sessionId: z.string()
+})
+
+export const ReadProjectBinaryFileOutputSchema = z.object({
+  base64: z.string(),
+  byteLength: z.number().int().min(0),
+  mediaType: z.string(),
+  relativePath: z.string()
+})
+
 export type EnsureProjectSnapshotInput = z.infer<
   typeof EnsureProjectSnapshotInputSchema
 >
@@ -88,5 +100,11 @@ export type ProjectSnapshotFolderItem = z.infer<
 >
 export type ProjectSnapshotItem = z.infer<typeof ProjectSnapshotItemSchema>
 export type ProjectSnapshotState = z.infer<typeof ProjectSnapshotStateSchema>
+export type ReadProjectBinaryFileInput = z.infer<
+  typeof ReadProjectBinaryFileInputSchema
+>
+export type ReadProjectBinaryFileOutput = z.infer<
+  typeof ReadProjectBinaryFileOutputSchema
+>
 export type ReadProjectFileInput = z.infer<typeof ReadProjectFileInputSchema>
 export type ReadProjectFileOutput = z.infer<typeof ReadProjectFileOutputSchema>

@@ -2,16 +2,13 @@
 
 ## 概述
 
-桌面端主进程现已铺设本地数据库基础设施，采用 `drizzle-orm + @libsql/client` 连接本地 SQLite 文件。
-当前已包含 `chat_sessions`、`chat_messages`、`chat_session_memories` 与 `memory_entries`，用于持久化 sidebar 所需的 chat session 元数据、AI SDK UIMessage 历史、session 级 memory 与跨 session / project / chatbot 的长期 memory。
+桌面端主进程现已铺设本地数据库基础设施，采用 `drizzle-orm + @libsql/client` 连接本地 SQLite 文件。当前已包含 `chat_sessions`、`chat_messages`、`chat_session_memories` 与 `memory_entries`，用于持久化 sidebar 所需的 chat session 元数据、AI SDK UIMessage 历史、session 级 memory 与跨 session / project / chatbot 的长期 memory。
 
 ## 选型
 
 - 选用 `@libsql/client` 的本地文件模式，对应数据库 URL 形如 `file:/.../etyon.sqlite`
 - 保持 `drizzle-kit` 配置在 `apps/desktop/` 内部，不改动 monorepo 根级任务
-- 暂不使用 `better-sqlite3`
-  原因：
-  当前 Electron 打包链路还没有为原生模块补齐 rebuild / unpack / 发布验证流程，`libsql` 可以先把数据库基础设施接通，同时避免新增 native packaging 复杂度
+- 暂不使用 `better-sqlite3` 原因：当前 Electron 打包链路还没有为原生模块补齐 rebuild / unpack / 发布验证流程，`libsql` 可以先把数据库基础设施接通，同时避免新增 native packaging 复杂度
 
 ## 路径
 
@@ -98,21 +95,21 @@
 
 `memory_entries` 是长期 memory 存储层。它借鉴 Awesome-AI-Memory 中关于显式外部记忆、生命周期管理、检索与共享范围的工程拆分，当前实现保持本地 SQLite 边界，并通过 `memory_embeddings` 支持 hybrid retrieval。
 
-| 字段               | 类型    | 说明                                                    |
-| ------------------ | ------- | ------------------------------------------------------- |
-| `id`               | text    | memory 条目主键                                         |
-| `scope`            | text    | `project` / `chatbot` / `global`                        |
-| `kind`             | text    | `episodic` / `semantic` / `working`                     |
-| `source`           | text    | `chat-session` / `chatbot`                              |
-| `source_id`        | text    | 来源唯一 ID；chat session 使用 `session_id`             |
-| `session_id`       | text    | 可选关联 `chat_sessions.id`，级联删除                   |
-| `project_path`     | text    | project memory 的所属项目路径；chatbot memory 可为 null |
-| `content`          | text    | 压缩后的 memory 文本                                    |
-| `access_count`     | integer | 被检索注入的次数                                        |
-| `last_accessed_at` | text    | 最近检索时间                                            |
-| `archived_at`      | text    | 归档时间；`null` 表示仍可检索                           |
-| `created_at`       | text    | ISO 时间戳                                              |
-| `updated_at`       | text    | ISO 时间戳                                              |
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | text | memory 条目主键 |
+| `scope` | text | `project` / `chatbot` / `global` |
+| `kind` | text | `episodic` / `semantic` / `working` |
+| `source` | text | `chat-session` / `chatbot` |
+| `source_id` | text | 来源唯一 ID；chat session 使用 `session_id` |
+| `session_id` | text | 可选关联 `chat_sessions.id`，级联删除 |
+| `project_path` | text | project memory 的所属项目路径；chatbot memory 可为 null |
+| `content` | text | 压缩后的 memory 文本 |
+| `access_count` | integer | 被检索注入的次数 |
+| `last_accessed_at` | text | 最近检索时间 |
+| `archived_at` | text | 归档时间；`null` 表示仍可检索 |
+| `created_at` | text | ISO 时间戳 |
+| `updated_at` | text | ISO 时间戳 |
 
 - 唯一索引：`memory_entries_source_id_idx`，保证同一个 source / source_id 只维护一条当前 memory
 - 普通索引：
@@ -127,15 +124,15 @@
 
 `memory_embeddings` 保存长期 memory 的 embedding vector，继续保持本地 SQLite 边界：
 
-| 字段           | 类型    | 说明                                                                    |
-| -------------- | ------- | ----------------------------------------------------------------------- |
-| `memory_id`    | text    | 关联 `memory_entries.id`，级联删除                                      |
-| `model`        | text    | embedding model id，如 `text-embedding-3-small` 或 `local:minilm-l6-v2` |
-| `vector_json`  | text    | embedding vector JSON                                                   |
-| `content_hash` | text    | 生成 embedding 时的 content hash                                        |
-| `dimensions`   | integer | vector 维度                                                             |
-| `created_at`   | text    | ISO 时间戳                                                              |
-| `updated_at`   | text    | ISO 时间戳                                                              |
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `memory_id` | text | 关联 `memory_entries.id`，级联删除 |
+| `model` | text | embedding model id，如 `text-embedding-3-small` 或 `local:minilm-l6-v2` |
+| `vector_json` | text | embedding vector JSON |
+| `content_hash` | text | 生成 embedding 时的 content hash |
+| `dimensions` | integer | vector 维度 |
+| `created_at` | text | ISO 时间戳 |
+| `updated_at` | text | ISO 时间戳 |
 
 - 唯一索引：`memory_embeddings_memory_model_idx`，同一 memory 在同一 embedding model 下只保留一个最新 vector
 - 普通索引：`memory_embeddings_memory_id_idx`

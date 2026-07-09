@@ -78,11 +78,20 @@ export interface WorkspaceCore {
     requestedPath: string,
     signal?: AbortSignal
   ) => Promise<WorkspaceResult<WorkspaceFileView>>
+  writeBinaryFile: (
+    requestedPath: string,
+    content: Uint8Array,
+    options?: WorkspaceWriteBinaryFileOptions
+  ) => Promise<WorkspaceResult<WorkspaceWriteFileResult>>
   writeFile: (
     requestedPath: string,
     content: string,
     options?: WorkspaceWriteFileOptions
   ) => Promise<WorkspaceResult<WorkspaceWriteFileResult>>
+}
+
+export interface WorkspaceWriteBinaryFileOptions {
+  signal?: AbortSignal
 }
 
 const SECRET_BASENAMES = new Set([
@@ -834,6 +843,67 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
           ok: true,
           value: {
             bytesWritten: Buffer.byteLength(content, "utf-8"),
+            info: writtenInfo.value
+          }
+        }
+      })
+    },
+    // Writes generated binary artifacts (e.g. images) under the same path
+    // sandbox as text writes. Parent directories are created, and since these
+    // are always fresh files there is no stale-write snapshot guard.
+    writeBinaryFile: async (requestedPath, content, options) => {
+      const aborted = getPreAbortedResult({
+        requestedPath,
+        signal: options?.signal
+      })
+
+      if (aborted) {
+        return aborted
+      }
+
+      const secretCheck = assertNonSecretPath(requestedPath)
+
+      if (!secretCheck.ok) {
+        return secretCheck
+      }
+
+      const resolvedPath = resolveProjectPath(requestedPath)
+
+      if (!resolvedPath.ok) {
+        return resolvedPath
+      }
+
+      const lockKey = getWriteLockKey(resolvedPath.value.absolutePath)
+
+      return await withWorkspaceWriteLock(lockKey, async () => {
+        const parentCheck = await ensureExistingAncestorInsideProject({
+          absolutePath: path.dirname(resolvedPath.value.absolutePath),
+          requestedPath
+        })
+
+        if (!parentCheck.ok) {
+          return parentCheck
+        }
+
+        try {
+          await fs.mkdir(path.dirname(resolvedPath.value.absolutePath), {
+            recursive: true
+          })
+          await fs.writeFile(resolvedPath.value.absolutePath, content)
+        } catch (error) {
+          return toFileSystemError({ error, requestedPath })
+        }
+
+        const writtenInfo = await fileStat(requestedPath, options?.signal)
+
+        if (!writtenInfo.ok) {
+          return writtenInfo
+        }
+
+        return {
+          ok: true,
+          value: {
+            bytesWritten: content.byteLength,
             info: writtenInfo.value
           }
         }

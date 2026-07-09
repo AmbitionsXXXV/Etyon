@@ -27,27 +27,27 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 
 ### 包结构
 
-| 层级               | 路径                                                       | 职责                                                                                                                                                                                       |
-| ------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Schema             | `packages/rpc/src/schemas/settings.ts`                     | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`）                                                                                                              |
-| Font Schema        | `packages/rpc/src/schemas/fonts.ts`                        | `FontListOutputSchema` — 系统字体列表返回值 schema                                                                                                                                         |
-| Main Store         | `apps/desktop/src/main/settings.ts`                        | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json`                                                             |
-| Main Fonts         | `apps/desktop/src/main/fonts.ts`                           | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存                                                                                                                |
-| RPC Router         | `apps/desktop/src/main/rpc/router.ts`                      | `settings.get` / `settings.update` / `fonts.list` 路由                                                                                                                                     |
-| Window             | `apps/desktop/src/main/window.ts`                          | `createSettingsWindow()` 单例窗口创建                                                                                                                                                      |
-| Menu               | `apps/desktop/src/main/menu.ts`                            | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()`                                                                                                                            |
-| IPC                | `apps/desktop/src/main/index.ts`                           | `open-settings` IPC handler，供 renderer 快捷键触发                                                                                                                                        |
-| Provider Catalog   | `apps/desktop/src/shared/providers/provider-catalog.ts`    | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水                                                                                                                     |
-| Provider Fetch     | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填                                                                                                                      |
-| Memory Runtime     | `apps/desktop/src/main/memory.ts`                          | 长期 memory 的写入、检索、prompt 注入与统计                                                                                                                                                |
-| Skills Runtime     | `apps/desktop/src/main/skills.ts`                          | 从全局与 project 级 `SKILL.md` 文件解析 skills，并在 chat 请求时注入匹配 instructions                                                                                                      |
-| Token Savings      | `apps/desktop/src/main/rtk-token-savings.ts`               | 通过 `rtk gain --daily --format json` 与 `rtk gain --history` 读取 RTK token savings、daily graph、command ranking；recent commands 优先从 RTK `history.db` 的 `original_cmd` 读取完整命令 |
-| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx`   | 设置页面 UI 组件（分区布局、骨架与动效编排）                                                                                                                                               |
-| Settings Page Lib  | `apps/desktop/src/renderer/lib/settings-page/`             | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦）                                                                                                      |
-| Telegram Bridge    | `apps/desktop/src/main/telegram/`                          | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime                                                                                                       |
-| Renderer Entry     | `apps/desktop/src/renderer/index.tsx`                      | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用                                                                                                                         |
-| Settings Lib       | `apps/desktop/src/renderer/lib/settings.ts`                | `applySettings()` DOM 应用函数                                                                                                                                                             |
-| i18n Package       | `packages/i18n/`                                           | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析                                                                                                                               |
+| 层级 | 路径 | 职责 |
+| --- | --- | --- |
+| Schema | `packages/rpc/src/schemas/settings.ts` | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`） |
+| Font Schema | `packages/rpc/src/schemas/fonts.ts` | `FontListOutputSchema` — 系统字体列表返回值 schema |
+| Main Store | `apps/desktop/src/main/settings.ts` | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
+| Main Fonts | `apps/desktop/src/main/fonts.ts` | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存 |
+| RPC Router | `apps/desktop/src/main/rpc/router.ts` | `settings.get` / `settings.update` / `fonts.list` 路由 |
+| Window | `apps/desktop/src/main/window.ts` | `createSettingsWindow()` 单例窗口创建 |
+| Menu | `apps/desktop/src/main/menu.ts` | 原生菜单，含 Settings 菜单项，直接调用 `createSettingsWindow()` |
+| IPC | `apps/desktop/src/main/index.ts` | `open-settings` IPC handler，供 renderer 快捷键触发 |
+| Provider Catalog | `apps/desktop/src/shared/providers/provider-catalog.ts` | 内建 provider catalog、静态 seed 模型挂载与 settings provider 默认补水 |
+| Provider Fetch | `apps/desktop/src/main/providers/fetch-provider-models.ts` | 主进程侧 `GET {baseURL}/models` 抓取、归一化与 seed capabilities 回填 |
+| Memory Runtime | `apps/desktop/src/main/memory.ts` | 长期 memory 的写入、检索、prompt 注入与统计 |
+| Skills Runtime | `apps/desktop/src/main/skills.ts` | 从全局与 project 级 `SKILL.md` 文件解析 skills，并在 chat 请求时注入匹配 instructions |
+| Token Savings | `apps/desktop/src/main/rtk-token-savings.ts` | 通过 `rtk gain --daily --format json` 与 `rtk gain --history` 读取 RTK token savings、daily graph、command ranking；recent commands 优先从 RTK `history.db` 的 `original_cmd` 读取完整命令 |
+| Settings Component | `apps/desktop/src/renderer/components/settings-page.tsx` | 设置页面 UI 组件（分区布局、骨架与动效编排） |
+| Settings Page Lib | `apps/desktop/src/renderer/lib/settings-page/` | 草稿状态 hook、导航与选项数据、色板 swatch 常量、动效与侧栏宽度常量（与 UI 组件解耦） |
+| Telegram Bridge | `apps/desktop/src/main/telegram/` | Chat SDK Telegram adapter bridge、`getMe` 连接测试与已保存设置驱动的 polling runtime |
+| Renderer Entry | `apps/desktop/src/renderer/index.tsx` | URL 参数分流：`?window=settings` 渲染 SettingsPage，否则渲染主应用 |
+| Settings Lib | `apps/desktop/src/renderer/lib/settings.ts` | `applySettings()` DOM 应用函数 |
+| i18n Package | `packages/i18n/` | 共享 locale schema、翻译资源、React Provider、`CLI` 参数解析 |
 
 ## 数据模型
 
@@ -317,11 +317,11 @@ interface StoredProviderModel {
 
 ## 入口方式
 
-| 方式     | 触发                                                     | 说明                                                                       |
-| -------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
-| 快捷键   | `Cmd+,`（macOS）/ `Ctrl+,`（Win/Linux）                  | renderer `useHotkey` → `ipcRenderer.send("open-settings")` → main 创建窗口 |
-| 原生菜单 | App → Settings...（macOS）/ File → Settings（Win/Linux） | 菜单 click 直接调用 `createSettingsWindow()`                               |
-| 路由     | `/settings`（主窗口内）                                  | 保留 TanStack Router route，复用同一组件                                   |
+| 方式 | 触发 | 说明 |
+| --- | --- | --- |
+| 快捷键 | `Cmd+,`（macOS）/ `Ctrl+,`（Win/Linux） | renderer `useHotkey` → `ipcRenderer.send("open-settings")` → main 创建窗口 |
+| 原生菜单 | App → Settings...（macOS）/ File → Settings（Win/Linux） | 菜单 click 直接调用 `createSettingsWindow()` |
+| 路由 | `/settings`（主窗口内） | 保留 TanStack Router route，复用同一组件 |
 
 ## 主题应用
 
@@ -428,8 +428,7 @@ Other Renderers (RendererRoot)
 ### 解析顺序
 
 - 当 `locale !== "system"` 时，直接使用用户显式选择
-- 当 `locale === "system"` 时：
-  `main` 使用 `app.getLocale()`，`renderer` 使用 `navigator.language`
+- 当 `locale === "system"` 时： `main` 使用 `app.getLocale()`，`renderer` 使用 `navigator.language`
 - 不支持的 locale 会回退到 `en-US`
 
 ### 生效范围

@@ -9,8 +9,8 @@ import {
   describeChatStreamError
 } from "@/main/server/routes/build-chat-stream-response"
 
-const { handleChatStreamMock, streamTextMock } = vi.hoisted(() => ({
-  handleChatStreamMock: vi.fn(),
+const { runAgentLoopMock, streamTextMock } = vi.hoisted(() => ({
+  runAgentLoopMock: vi.fn(),
   streamTextMock: vi.fn()
 }))
 
@@ -23,13 +23,17 @@ vi.mock("ai", async (importOriginal) => {
   }
 })
 
-vi.mock("@mastra/ai-sdk", () => ({
-  handleChatStream: handleChatStreamMock
+vi.mock("@/main/agents/minimal/agent-loop", () => ({
+  runAgentLoop: runAgentLoopMock
 }))
 
-vi.mock("@/main/agents/minimal/file-agent", () => ({
-  FILE_AGENT_ID: "file-agent",
-  fileAgentMastra: {}
+vi.mock("@/main/agents/minimal/agent-toolset", () => ({
+  buildAgentSystemPrompt: () => "agent instructions",
+  buildAgentToolset: () => ({})
+}))
+
+vi.mock("@/main/server/lib/providers", () => ({
+  resolveModel: vi.fn(() => ({ modelId: "profile-preferred" }))
 }))
 
 vi.mock("@electron-toolkit/utils", () => ({
@@ -134,7 +138,7 @@ describe("buildChatStreamResponse", () => {
 
     await readResponseText(response)
 
-    expect(handleChatStreamMock).not.toHaveBeenCalled()
+    expect(runAgentLoopMock).not.toHaveBeenCalled()
     expect(streamTextMock).toHaveBeenCalledTimes(1)
 
     const streamOptions = streamTextMock.mock.calls[0]?.[0]
@@ -144,9 +148,22 @@ describe("buildChatStreamResponse", () => {
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
   })
 
-  it("routes agent-enabled requests through the Mastra file agent bridge", async () => {
-    handleChatStreamMock.mockResolvedValue(createEmptyUiStream())
+  it("routes agent-enabled requests through the self-owned loop", async () => {
     streamTextMock.mockClear()
+    runAgentLoopMock.mockImplementation(
+      ({ writer }: { writer: { write: (chunk: unknown) => void } }) => {
+        writer.write({ type: "start" })
+        writer.write({ type: "finish" })
+
+        return Promise.resolve({
+          errorMessage: null,
+          exitReason: "completed",
+          finishReason: "stop",
+          nudged: false,
+          stepCount: 1
+        })
+      }
+    )
 
     const options = buildBaseOptions()
     const response = buildChatStreamResponse({
@@ -156,29 +173,29 @@ describe("buildChatStreamResponse", () => {
           enabled: true,
           maxSteps: 5
         }
-      }),
-      trigger: "submit-message"
+      })
     })
 
     await readResponseText(response)
 
     expect(streamTextMock).not.toHaveBeenCalled()
-    expect(handleChatStreamMock).toHaveBeenCalledTimes(1)
+    expect(runAgentLoopMock).toHaveBeenCalledTimes(1)
 
-    const bridgeOptions = handleChatStreamMock.mock.calls[0]?.[0]
+    const loopOptions = runAgentLoopMock.mock.calls[0]?.[0]
 
-    expect(bridgeOptions?.agentId).toBe("file-agent")
-    expect(bridgeOptions?.version).toBe("v6")
-    expect(bridgeOptions?.params.maxSteps).toBe(5)
-    expect(bridgeOptions?.params.trigger).toBe("submit-message")
-    expect(bridgeOptions?.params.messages).toEqual(options.messages)
-    expect(bridgeOptions?.params.requestContext.get("modelId")).toBe(
-      "openai/gpt-4.1"
-    )
-    expect(bridgeOptions?.params.requestContext.get("projectPath")).toBe(
-      "/tmp/project-a"
-    )
+    expect(loopOptions?.maxSteps).toBe(5)
+    expect(loopOptions?.messages).toEqual(options.modelMessages)
+    expect(loopOptions?.system).toContain("agent instructions")
+    expect(loopOptions?.system).toContain("base system")
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
+
+    const persistedOutcome = (
+      options.onFinishPersist.mock.calls as unknown as [unknown, unknown][]
+    )[0]?.[1]
+
+    expect(persistedOutcome).toEqual(
+      expect.objectContaining({ exitReason: "completed" })
+    )
   })
 
   it("attaches work time metadata to the persisted assistant message", async () => {

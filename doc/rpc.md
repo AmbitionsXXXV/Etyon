@@ -6,13 +6,13 @@
 
 ## 包结构
 
-| 包/应用          | 路径                                   | 职责                                       |
-| ---------------- | -------------------------------------- | ------------------------------------------ |
-| `@etyon/rpc`     | `packages/rpc/`                        | 共享 Zod schema，不依赖 Electron API       |
-| `@etyon/i18n`    | `packages/i18n/`                       | 共享 locale schema 与翻译能力，供 RPC 消费 |
-| `@etyon/desktop` | `apps/desktop/src/main/rpc/`           | 定义 router + handler，创建 RPCHandler     |
-| `@etyon/desktop` | `apps/desktop/src/main/db/`            | Drizzle / libsql 数据库基础设施            |
-| `@etyon/desktop` | `apps/desktop/src/renderer/lib/rpc.ts` | 创建 oRPC client + TanStack Query utils    |
+| 包/应用 | 路径 | 职责 |
+| --- | --- | --- |
+| `@etyon/rpc` | `packages/rpc/` | 共享 Zod schema，不依赖 Electron API |
+| `@etyon/i18n` | `packages/i18n/` | 共享 locale schema 与翻译能力，供 RPC 消费 |
+| `@etyon/desktop` | `apps/desktop/src/main/rpc/` | 定义 router + handler，创建 RPCHandler |
+| `@etyon/desktop` | `apps/desktop/src/main/db/` | Drizzle / libsql 数据库基础设施 |
+| `@etyon/desktop` | `apps/desktop/src/renderer/lib/rpc.ts` | 创建 oRPC client + TanStack Query utils |
 
 ## 架构
 

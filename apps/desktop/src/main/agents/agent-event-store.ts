@@ -6,6 +6,7 @@ import { and, asc, eq, inArray, lt } from "drizzle-orm"
 import type { AppDatabase } from "@/main/db"
 import {
   agentApprovals,
+  agentArtifacts,
   agentEvents,
   agentRuns,
   agentToolCalls
@@ -57,8 +58,17 @@ interface DerivedApproval {
   toolCallId: string
 }
 
+export interface DerivedArtifact {
+  byteLength: number | null
+  kind: string
+  metadataJson: string
+  path: string
+  toolCallId: string
+}
+
 export interface DerivedRunRecords {
   approvedToolCallIds: string[]
+  artifacts: DerivedArtifact[]
   deniedToolCallIds: string[]
   pendingApprovals: DerivedApproval[]
   runStatus: "succeeded" | "suspended"
@@ -187,6 +197,38 @@ const parseToolPart = (part: unknown): ParsedToolPart | null => {
   }
 }
 
+// Only the `artifact` tool publishes artifacts. Generated images are not
+// artifacts — they render inline in the message and are not recorded here.
+const ARTIFACT_TOOL_NAME = "artifact"
+
+/** Reads the artifact record out of a finished `artifact` tool result. */
+const parseArtifactToolOutput = (
+  output: unknown
+): Omit<DerivedArtifact, "toolCallId"> | null => {
+  if (!isRecord(output)) {
+    return null
+  }
+
+  const kind = typeof output.kind === "string" ? output.kind : null
+  const path = typeof output.path === "string" ? output.path : null
+
+  if (!kind || !path) {
+    return null
+  }
+
+  return {
+    byteLength:
+      typeof output.byteLength === "number" ? output.byteLength : null,
+    kind,
+    metadataJson: serialize({
+      description:
+        typeof output.description === "string" ? output.description : null,
+      title: typeof output.title === "string" ? output.title : null
+    }),
+    path
+  }
+}
+
 const mapToolPartState = (
   state: string
 ): { approvalColumnState: ApprovalColumnState; state: ToolCallState } => {
@@ -231,6 +273,7 @@ export const deriveAgentRunRecords = ({
   messages: UIMessage[]
 }): DerivedRunRecords => {
   const toolCalls: DerivedToolCall[] = []
+  const artifacts: DerivedArtifact[] = []
   const pendingApprovals: DerivedApproval[] = []
   const approvedToolCallIds: string[] = []
   const deniedToolCallIds: string[] = []
@@ -265,6 +308,17 @@ export const deriveAgentRunRecords = ({
         toolName: tool.toolName
       })
 
+      if (
+        tool.toolName === ARTIFACT_TOOL_NAME &&
+        tool.state === "output-available"
+      ) {
+        const artifact = parseArtifactToolOutput(tool.output)
+
+        if (artifact) {
+          artifacts.push({ ...artifact, toolCallId: tool.toolCallId })
+        }
+      }
+
       if (tool.state === "approval-requested") {
         suspended = true
 
@@ -287,6 +341,7 @@ export const deriveAgentRunRecords = ({
 
   return {
     approvedToolCallIds,
+    artifacts,
     deniedToolCallIds,
     pendingApprovals,
     runStatus: suspended ? "suspended" : "succeeded",
@@ -431,20 +486,91 @@ export const recordDelegatedRunOutcome = async ({
   })
 }
 
+export type AgentRunExitReason =
+  | "aborted"
+  | "completed"
+  | "max-steps"
+  | "model-error"
+  | "suspended"
+
+/**
+ * Loop-reported outcome used to settle a run. Structurally identical to the
+ * agent loop's `AgentLoopOutcome`, declared here so the event store does not
+ * depend on the loop module.
+ */
+export interface AgentRunLoopOutcome {
+  errorMessage: string | null
+  exitReason: AgentRunExitReason
+  finishReason: string | null
+  nudged: boolean
+  stepCount: number
+}
+
+export interface AgentRunStepRecord {
+  finishReason: string
+  stepIndex: number
+  toolCallCount: number
+}
+
+/** Appends a `step.finished` event while the loop is running (best-effort). */
+export const recordAgentRunStep = async ({
+  db,
+  runId,
+  step
+}: {
+  db: AppDatabase
+  runId: string
+  step: AgentRunStepRecord
+}): Promise<void> => {
+  await db.insert(agentEvents).values({
+    createdAt: nowIso(),
+    id: randomUUID(),
+    payloadJson: serialize(step),
+    runId,
+    sequence: await countRunEvents(db, runId),
+    type: "step.finished"
+  })
+}
+
+const resolveRunFinishReason = (
+  outcome: AgentRunLoopOutcome
+): string | null => {
+  switch (outcome.exitReason) {
+    case "aborted": {
+      return "aborted"
+    }
+    case "max-steps": {
+      return "max-steps"
+    }
+    case "model-error": {
+      return "error"
+    }
+    default: {
+      return outcome.finishReason
+    }
+  }
+}
+
 /**
  * Closes a run: appends its tool-call, approval and lifecycle events, links the
- * run to `succeeded`/`suspended`, and reconciles any prior pending approvals
- * that this turn resolved (the approve/deny-after-restart path).
+ * run to `succeeded`/`suspended`/`failed`, and reconciles any prior pending
+ * approvals that this turn resolved (the approve/deny-after-restart path).
+ *
+ * A `suspended` projection (pending approval parts) always wins so the durable
+ * approval flow stays intact; otherwise a loop-reported `model-error` settles
+ * the run as `failed` instead of a silent success.
  */
 export const recordAgentRunOutcome = async ({
   assistantStartIndex,
   db,
   messages,
+  outcome = null,
   runId
 }: {
   assistantStartIndex: number
   db: AppDatabase
   messages: UIMessage[]
+  outcome?: AgentRunLoopOutcome | null
   runId: string
 }): Promise<void> => {
   const [run] = await db
@@ -460,6 +586,22 @@ export const recordAgentRunOutcome = async ({
   const derived = deriveAgentRunRecords({ assistantStartIndex, messages })
   const now = nowIso()
   const startSequence = await countRunEvents(db, runId)
+  const resolveRunStatus = (): "failed" | "succeeded" | "suspended" => {
+    if (derived.runStatus === "suspended") {
+      return "suspended"
+    }
+
+    if (outcome?.exitReason === "model-error") {
+      return "failed"
+    }
+
+    return derived.runStatus
+  }
+  const runStatus = resolveRunStatus()
+  const finishReason =
+    runStatus === "suspended" || !outcome
+      ? null
+      : resolveRunFinishReason(outcome)
 
   await db.transaction(async (tx) => {
     let sequence = startSequence
@@ -468,6 +610,9 @@ export const recordAgentRunOutcome = async ({
       const toolCallRowId = `${runId}:${toolCall.toolCallId}`
       const isTerminal =
         toolCall.state === "finished" || toolCall.state === "failed"
+      // Upsert: a row first written during a suspended turn (state
+      // `approval_requested`) must advance to its resumed state instead of
+      // being frozen by insert-only conflict handling.
       await tx
         .insert(agentToolCalls)
         .values({
@@ -481,7 +626,15 @@ export const recordAgentRunOutcome = async ({
           state: toolCall.state,
           toolName: toolCall.toolName
         })
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          set: {
+            approvalState: toolCall.approvalColumnState,
+            finishedAt: isTerminal ? now : null,
+            outputJson: toolCall.outputJson,
+            state: toolCall.state
+          },
+          target: agentToolCalls.id
+        })
       await tx.insert(agentEvents).values({
         createdAt: now,
         id: randomUUID(),
@@ -493,6 +646,38 @@ export const recordAgentRunOutcome = async ({
         runId,
         sequence,
         type: toolCall.state === "finished" ? "tool.result" : "tool.call"
+      })
+      sequence += 1
+    }
+
+    for (const artifact of derived.artifacts) {
+      const artifactId = `${runId}:${artifact.toolCallId}`
+
+      await tx
+        .insert(agentArtifacts)
+        .values({
+          byteLength: artifact.byteLength,
+          createdAt: now,
+          id: artifactId,
+          kind: artifact.kind,
+          metadataJson: artifact.metadataJson,
+          path: artifact.path,
+          runId,
+          toolCallId: artifact.toolCallId
+        })
+        .onConflictDoNothing()
+      await tx.insert(agentEvents).values({
+        createdAt: now,
+        id: randomUUID(),
+        payloadJson: serialize({
+          artifactId,
+          kind: artifact.kind,
+          path: artifact.path,
+          toolCallId: artifact.toolCallId
+        }),
+        runId,
+        sequence,
+        type: "artifact.published"
       })
       sequence += 1
     }
@@ -572,21 +757,68 @@ export const recordAgentRunOutcome = async ({
     await resolvePriorApprovals(derived.approvedToolCallIds, "approved")
     await resolvePriorApprovals(derived.deniedToolCallIds, "denied")
 
+    // A terminal settlement finalizes tool calls the stream left unsettled
+    // (abort or crash mid-call), so a closed run can never keep a `running`
+    // tool-call row forever.
+    if (runStatus !== "suspended") {
+      await tx
+        .update(agentToolCalls)
+        .set({ finishedAt: now, state: "failed" })
+        .where(
+          and(
+            eq(agentToolCalls.runId, runId),
+            inArray(agentToolCalls.state, ["requested", "running"])
+          )
+        )
+    }
+
+    if (outcome?.exitReason === "max-steps") {
+      await tx.insert(agentEvents).values({
+        createdAt: now,
+        id: randomUUID(),
+        payloadJson: serialize({ stepCount: outcome.stepCount }),
+        runId,
+        sequence,
+        type: "run.truncated"
+      })
+      sequence += 1
+    }
+
     await tx
       .update(agentRuns)
       .set({
-        finishedAt: derived.runStatus === "suspended" ? null : now,
-        status: derived.runStatus
+        errorMessage: outcome?.errorMessage ?? null,
+        finishedAt: runStatus === "suspended" ? null : now,
+        finishReason,
+        status: runStatus
       })
       .where(eq(agentRuns.id, runId))
+
+    const resolveFinalEventType = (): string => {
+      if (runStatus === "failed") {
+        return "run.failed"
+      }
+
+      if (runStatus === "suspended") {
+        return "run.suspended"
+      }
+
+      return "run.succeeded"
+    }
+
     await tx.insert(agentEvents).values({
       createdAt: now,
       id: randomUUID(),
-      payloadJson: serialize({ status: derived.runStatus }),
+      payloadJson: serialize({
+        ...(finishReason ? { finishReason } : {}),
+        ...(outcome
+          ? { nudged: outcome.nudged, stepCount: outcome.stepCount }
+          : {}),
+        status: runStatus
+      }),
       runId,
       sequence,
-      type:
-        derived.runStatus === "suspended" ? "run.suspended" : "run.succeeded"
+      type: resolveFinalEventType()
     })
   })
 }
@@ -619,9 +851,19 @@ export const recoverInterruptedAgentRuns = async ({
         .set({
           errorMessage: "Interrupted by app restart",
           finishedAt: now,
+          finishReason: "interrupted",
           status: "failed"
         })
         .where(eq(agentRuns.id, run.id))
+      await tx
+        .update(agentToolCalls)
+        .set({ finishedAt: now, state: "failed" })
+        .where(
+          and(
+            eq(agentToolCalls.runId, run.id),
+            inArray(agentToolCalls.state, ["requested", "running"])
+          )
+        )
       await tx.insert(agentEvents).values({
         createdAt: now,
         id: randomUUID(),

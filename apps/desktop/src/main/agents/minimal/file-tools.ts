@@ -1,4 +1,4 @@
-import { createTool } from "@mastra/core/tools"
+import { tool } from "ai"
 import { z } from "zod"
 
 import type {
@@ -166,7 +166,7 @@ const truncateForMessage = (text: string): string =>
   text.length > 120 ? `${text.slice(0, 120)}…` : text
 
 export const buildFileTools = (workspace: WorkspaceCore) => ({
-  edit: createTool({
+  edit: tool({
     description:
       "Apply one or more exact text replacements to a file. Each oldText must appear exactly once. Read the file first to know its current content.",
     execute: async (inputData, context) => {
@@ -207,11 +207,10 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
         path: writeResult.value.info.path
       }
     },
-    id: "edit",
     inputSchema: EditInputSchema,
-    requireApproval: true
+    needsApproval: true
   }),
-  grep: createTool({
+  grep: tool({
     description:
       "Search file contents in the project with ripgrep. Returns matching lines as 'path:line:text'.",
     execute: async (inputData, context) => {
@@ -248,10 +247,9 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
         truncated
       }
     },
-    id: "grep",
     inputSchema: GrepInputSchema
   }),
-  ls: createTool({
+  ls: tool({
     description: "List the entries of a project directory with kind and size.",
     execute: async (inputData, context) => {
       const listResult = await workspace.listDir(
@@ -277,10 +275,9 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
         truncated: listResult.value.length > entries.length
       }
     },
-    id: "ls",
     inputSchema: LsInputSchema
   }),
-  read: createTool({
+  read: tool({
     description:
       "Read a text file from the project. Supports offset/limit for large files; output is line-numbered.",
     execute: async (inputData, context) => {
@@ -311,10 +308,9 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
         truncated: truncated || offset - 1 + limit < lines.length
       }
     },
-    id: "read",
     inputSchema: ReadInputSchema
   }),
-  write: createTool({
+  write: tool({
     description:
       "Create or overwrite a file with the given content. Overwriting an existing file requires reading it first.",
     execute: async (inputData, context) => {
@@ -339,9 +335,8 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
         path: writeResult.value.info.path
       }
     },
-    id: "write",
     inputSchema: WriteInputSchema,
-    requireApproval: true
+    needsApproval: true
   })
 })
 

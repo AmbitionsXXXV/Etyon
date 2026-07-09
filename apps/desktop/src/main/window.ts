@@ -31,6 +31,35 @@ const getWindowBehaviorSettings = (): WindowBehaviorSettings => {
   }
 }
 
+const isAllowedTopLevelNavigationUrl = (url: string): boolean =>
+  MAIN_WINDOW_VITE_DEV_SERVER_URL
+    ? url.startsWith(MAIN_WINDOW_VITE_DEV_SERVER_URL)
+    : url.startsWith("file://")
+
+// srcdoc/blank loads are how the artifact preview iframe mounts; everything
+// else a subframe could navigate to is remote content and gets cancelled.
+const isAllowedSubframeNavigationUrl = (url: string): boolean =>
+  url === "about:blank" || url === "about:srcdoc"
+
+/**
+ * Untrusted embedded content (e.g. sandboxed artifact previews) must never
+ * open windows or navigate the app: window.open is denied, subframes may only
+ * load srcdoc/blank documents, and top-level navigation is pinned to the
+ * renderer's own origin. External links go through shell.openExternal via IPC.
+ */
+const hardenWindowWebContents = (window: BrowserWindow) => {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  window.webContents.on("will-frame-navigate", (event) => {
+    const isAllowed = event.isMainFrame
+      ? isAllowedTopLevelNavigationUrl(event.url)
+      : isAllowedSubframeNavigationUrl(event.url)
+
+    if (!isAllowed) {
+      event.preventDefault()
+    }
+  })
+}
+
 const loadRenderer = (
   win: BrowserWindow,
   queryParams?: Record<string, string>
@@ -120,6 +149,7 @@ export const createWindow = () => {
   })
 
   syncMainWindowReference(window)
+  hardenWindowWebContents(window)
   applyLiquidGlass(window)
   loadRenderer(window)
 
@@ -203,6 +233,7 @@ export const createSettingsWindow = (tab?: string) => {
     settingsWindow.webContents.openDevTools({ mode: "undocked" })
   }
 
+  hardenWindowWebContents(settingsWindow)
   settingsWindow.center()
   applyLiquidGlass(settingsWindow)
 

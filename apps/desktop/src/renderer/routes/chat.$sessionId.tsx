@@ -13,7 +13,14 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatLoader, ChatMessage, Resizable } from "@heroui-pro/react"
 import type { PanelImperativeHandle } from "@heroui-pro/react"
-import { Button, Chip, ScrollShadow, TextArea } from "@heroui/react"
+import {
+  Button,
+  Chip,
+  ScrollShadow,
+  TextArea,
+  ToggleButton,
+  Tooltip
+} from "@heroui/react"
 import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
@@ -21,6 +28,7 @@ import {
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
+  Image01Icon,
   PanelRightCloseIcon,
   PanelRightOpenIcon
 } from "@hugeicons/core-free-icons"
@@ -35,6 +43,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
+import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import {
   MessageActions,
@@ -44,7 +53,19 @@ import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
+import {
+  ARTIFACT_PANEL_VIEW_ID,
+  collectPublishedArtifactRefs
+} from "@/renderer/lib/chat/artifact-panel"
+import type {
+  ChatArtifactRef,
+  ChatSidePanelView
+} from "@/renderer/lib/chat/artifact-panel"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
+import {
+  getImageModeToggleDisabled,
+  resolveImageModeForModelChange
+} from "@/renderer/lib/chat/image-mode"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
   resolveAssistantLiveStatus
@@ -63,6 +84,7 @@ import {
 import {
   formatProjectDiffCount,
   getProjectDiffSummary,
+  isProjectContextPanelView,
   parseProjectDiffFiles,
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
@@ -107,6 +129,7 @@ import type {
   ChatRequestPhase,
   ChatStreamDataTypes
 } from "@/shared/chat/stream-data"
+import { isImageOutputModel } from "@/shared/providers/image-output"
 
 const formatContextWindowLabel = (value: number | undefined): string | null => {
   if (!value) {
@@ -118,6 +141,70 @@ const formatContextWindowLabel = (value: number | undefined): string | null => {
   }
 
   return `${value}`
+}
+
+const isSelectedModelImageOutput = (
+  modelGroups: ChatModelGroup[],
+  selectedModelValue: string
+): boolean => {
+  const selectedOption = modelGroups
+    .flatMap((group) => group.options)
+    .find((option) => option.value === selectedModelValue)
+
+  return selectedOption
+    ? isImageOutputModel({
+        capabilities: selectedOption.capabilities,
+        id: selectedOption.id
+      })
+    : false
+}
+
+// Mirrors the PromptInputAgentModeControl recipe. Renders a bare button while
+// disabled (no image model selected / request in flight) and wraps it in the
+// explanatory tooltip only when actionable — following the conditional-tooltip
+// precedent in project-context-panel.tsx.
+const ComposerImageModeControl = ({
+  isDisabled,
+  isSelected,
+  label,
+  onPress,
+  tooltip,
+  unsupportedLabel
+}: {
+  isDisabled: boolean
+  isSelected: boolean
+  label: string
+  onPress: () => void
+  tooltip: string
+  unsupportedLabel: string
+}) => {
+  const button = (
+    <ToggleButton
+      aria-label={isDisabled ? unsupportedLabel : tooltip}
+      className={cn(
+        "h-8 min-w-0 shrink-0 px-2.5 text-xs",
+        isSelected && "bg-primary/15! text-primary!"
+      )}
+      isDisabled={isDisabled}
+      isSelected={isSelected}
+      onPress={onPress}
+      size="sm"
+    >
+      <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={2} />
+      <span>{label}</span>
+    </ToggleButton>
+  )
+
+  if (isDisabled) {
+    return button
+  }
+
+  return (
+    <Tooltip>
+      <Tooltip.Trigger>{button}</Tooltip.Trigger>
+      <Tooltip.Content placement="top">{tooltip}</Tooltip.Content>
+    </Tooltip>
+  )
 }
 
 interface MentionQueryState {
@@ -152,6 +239,9 @@ const NOOP_AGENT_MODE_CHANGE = (mode: ChatAgentMode): void => {
   void mode
 }
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
+const NOOP_IMAGE_MODE_TOGGLE = (): void => {
+  // No-op: the image toggle is inert while the session is still loading.
+}
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
 const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
@@ -424,7 +514,7 @@ const ProjectContextCollapsedToolbar = ({
 }: {
   changedFileCount: number
   onOpenView: (view: ProjectContextPanelView) => void
-  selectedView: ProjectContextPanelView
+  selectedView: ChatSidePanelView
 }) => {
   const { t } = useI18n()
 
@@ -463,6 +553,7 @@ const ProjectContextCollapsedToolbar = ({
 }
 
 const ChatProjectContextLayout = ({
+  activeArtifact = null,
   children,
   gitDiff,
   isDiffLoading,
@@ -475,6 +566,7 @@ const ChatProjectContextLayout = ({
   selectedSession,
   selectedView
 }: {
+  activeArtifact?: ChatArtifactRef | null
   children: ReactNode
   gitDiff?: GitProjectDiffOutput
   isDiffLoading: boolean
@@ -485,11 +577,18 @@ const ChatProjectContextLayout = ({
   onRefresh: () => void
   projectItems: ProjectSnapshotItem[]
   selectedSession: ChatSessionSummary
-  selectedView: ProjectContextPanelView
+  selectedView: ChatSidePanelView
 }) => {
   const { t } = useI18n()
   const projectContextPanelRef = useRef<PanelImperativeHandle | null>(null)
   const changedFileCount = selectedSession.gitStatus?.changedFileCount ?? 0
+  const isArtifactView =
+    selectedView === ARTIFACT_PANEL_VIEW_ID && activeArtifact !== null
+  const projectPanelView: ProjectContextPanelView = isProjectContextPanelView(
+    selectedView
+  )
+    ? selectedView
+    : PROJECT_CONTEXT_FILES_TAB_ID
 
   useEffect(() => {
     const projectContextPanel = projectContextPanelRef.current
@@ -554,16 +653,25 @@ const ChatProjectContextLayout = ({
           onCollapse={() => onOpenChange(false)}
           onExpand={() => onOpenChange(true)}
         >
-          <ProjectContextPanel
-            gitDiff={gitDiff}
-            isDiffLoading={isDiffLoading}
-            isTreeLoading={isTreeLoading}
-            onRefresh={onRefresh}
-            onViewChange={onViewChange}
-            projectItems={projectItems}
-            selectedSession={selectedSession}
-            selectedView={selectedView}
-          />
+          {isArtifactView && activeArtifact ? (
+            <ArtifactPanel
+              artifact={activeArtifact}
+              key={activeArtifact.toolCallId}
+              onClose={() => onOpenChange(false)}
+              sessionId={selectedSession.id}
+            />
+          ) : (
+            <ProjectContextPanel
+              gitDiff={gitDiff}
+              isDiffLoading={isDiffLoading}
+              isTreeLoading={isTreeLoading}
+              onRefresh={onRefresh}
+              onViewChange={onViewChange}
+              projectItems={projectItems}
+              selectedSession={selectedSession}
+              selectedView={projectPanelView}
+            />
+          )}
         </Resizable.Panel>
       </Resizable>
       {isOpen ? null : (
@@ -907,6 +1015,8 @@ const ChatMessageBubble = ({
   liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
+  onOpenArtifact,
+  sessionId,
   streamdownAnimation
 }: {
   isAssistant: boolean
@@ -919,6 +1029,8 @@ const ChatMessageBubble = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
+  onOpenArtifact?: (artifact: ChatArtifactRef) => void
+  sessionId: string
   streamdownAnimation: StreamdownAnimation
 }) => {
   const metadata = parseChatMessageMetadata(message.metadata)
@@ -960,6 +1072,8 @@ const ChatMessageBubble = ({
               isApprovalActionDisabled={isRequestPending}
               message={message}
               onApprovalResponse={onApprovalResponse}
+              onOpenArtifact={onOpenArtifact}
+              sessionId={sessionId}
               streamdownAnimation={streamdownAnimation}
             />
           </ChatMessage.Content>
@@ -1002,9 +1116,11 @@ const ChatMessageItem = memo(
     onApprovalResponse,
     onCancelEditMessage,
     onEditingMessageTextChange,
+    onOpenArtifact,
     onRegenerate,
     onStartEditMessage,
     onSubmitEditedMessage,
+    sessionId,
     streamdownAnimation
   }: {
     editingMessageId: string | null
@@ -1020,9 +1136,11 @@ const ChatMessageItem = memo(
     ) => void
     onCancelEditMessage: () => void
     onEditingMessageTextChange: (value: string) => void
+    onOpenArtifact?: (artifact: ChatArtifactRef) => void
     onRegenerate: (messageId?: string) => void
     onStartEditMessage: (message: ChatUiMessage) => void
     onSubmitEditedMessage: (message: ChatUiMessage) => void
+    sessionId: string
     streamdownAnimation: StreamdownAnimation
   }) => {
     const isAssistant = message.role === "assistant"
@@ -1061,6 +1179,8 @@ const ChatMessageItem = memo(
               liveWorkTimeStartedAt={liveWorkTimeStartedAt}
               message={message}
               onApprovalResponse={onApprovalResponse}
+              onOpenArtifact={onOpenArtifact}
+              sessionId={sessionId}
               streamdownAnimation={streamdownAnimation}
             />
           )}
@@ -1094,6 +1214,7 @@ const ChatMessageItem = memo(
 ChatMessageItem.displayName = "ChatMessageItem"
 
 const ChatRuntime = ({
+  activeArtifact,
   agentsEnabled,
   gitDiff,
   isLoadingFileItems,
@@ -1111,6 +1232,7 @@ const ChatRuntime = ({
   onChatFinish,
   onMentionQueryChange,
   onModelChange,
+  onOpenArtifact,
   onOpenSettings,
   onPromptTemplateQueryChange,
   onProjectContextOpenChange,
@@ -1127,6 +1249,7 @@ const ChatRuntime = ({
   streamdownAnimation,
   transport
 }: {
+  activeArtifact: ChatArtifactRef | null
   agentsEnabled: boolean
   autoCompact?: { enabled: boolean; threshold: number }
   gitDiff?: GitProjectDiffOutput
@@ -1147,6 +1270,7 @@ const ChatRuntime = ({
     trigger: PromptMentionTrigger | null
   ) => void
   onModelChange: (value: string | null) => void
+  onOpenArtifact: (artifact: ChatArtifactRef) => void
   onOpenSettings: () => void
   onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
@@ -1155,7 +1279,7 @@ const ChatRuntime = ({
   onToggleProjectContext: () => void
   onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
-  projectContextView: ProjectContextPanelView
+  projectContextView: ChatSidePanelView
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
@@ -1175,6 +1299,12 @@ const ChatRuntime = ({
   const [agentMode, setAgentMode] = useState<ChatAgentMode>(() =>
     getChatAgentModeFromAgentsEnabled(agentsEnabled)
   )
+  const isSelectedModelImageCapable = useMemo(
+    () => isSelectedModelImageOutput(modelGroups, selectedModelValue),
+    [modelGroups, selectedModelValue]
+  )
+  const [isImageMode, setIsImageMode] = useState(isSelectedModelImageCapable)
+  const previousImageCapableRef = useRef(isSelectedModelImageCapable)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [queuedMessages, setQueuedMessages] = useState<QueuedPromptMessage[]>(
     []
@@ -1221,16 +1351,68 @@ const ChatRuntime = ({
     setAgentMode(getChatAgentModeFromAgentsEnabled(agentsEnabled))
   }, [agentsEnabled, selectedSession.id])
 
+  // Re-derive the image toggle whenever the selected model changes: a newly
+  // capable model defaults ON, a non-capable model forces OFF, and an unchanged
+  // capability preserves the user's choice.
+  useEffect(() => {
+    setIsImageMode((previous) =>
+      resolveImageModeForModelChange({
+        isCapable: isSelectedModelImageCapable,
+        previous,
+        wasCapable: previousImageCapableRef.current
+      })
+    )
+    previousImageCapableRef.current = isSelectedModelImageCapable
+  }, [isSelectedModelImageCapable])
+
+  // Auto-open the preview panel when a new artifact is published during a
+  // turn. The first pass per session marks history as seen so reloading or
+  // switching sessions never reopens old artifacts. (Generated images render
+  // inline in the message, not here.)
+  const seenArtifactsRef = useRef<{
+    seenToolCallIds: Set<string>
+    sessionId: string
+  } | null>(null)
+
+  useEffect(() => {
+    const published = collectPublishedArtifactRefs(messages)
+    const tracker = seenArtifactsRef.current
+
+    if (!tracker || tracker.sessionId !== selectedSession.id) {
+      seenArtifactsRef.current = {
+        seenToolCallIds: new Set(
+          published.map((artifact) => artifact.toolCallId)
+        ),
+        sessionId: selectedSession.id
+      }
+      return
+    }
+
+    let latestNewArtifact: ChatArtifactRef | null = null
+
+    for (const artifact of published) {
+      if (!tracker.seenToolCallIds.has(artifact.toolCallId)) {
+        tracker.seenToolCallIds.add(artifact.toolCallId)
+        latestNewArtifact = artifact
+      }
+    }
+
+    if (latestNewArtifact) {
+      onOpenArtifact(latestNewArtifact)
+    }
+  }, [messages, onOpenArtifact, selectedSession.id])
+
   const buildChatRequestOptions = useCallback(
     (mentions: ChatMention[], mode: ChatAgentMode = agentMode) => ({
       body: {
         agentMode: mode,
+        imageMode: isImageMode || undefined,
         mentions,
         model: selectedModelValue || undefined,
         sessionId: selectedSession.id
       }
     }),
-    [agentMode, selectedModelValue, selectedSession.id]
+    [agentMode, isImageMode, selectedModelValue, selectedSession.id]
   )
 
   const updateScrollToBottomVisibility = useCallback(
@@ -1329,6 +1511,18 @@ const ChatRuntime = ({
 
     setAgentMode(getNextChatAgentMode)
   }, [isAgentModeToggleDisabled])
+  const isImageModeToggleDisabled = getImageModeToggleDisabled({
+    isCapable: isSelectedModelImageCapable,
+    isModelUpdating,
+    isRequestPending
+  })
+  const handleImageModeToggle = useCallback(() => {
+    if (isImageModeToggleDisabled) {
+      return
+    }
+
+    setIsImageMode((previous) => !previous)
+  }, [isImageModeToggleDisabled])
 
   useHotkey("Shift+Tab", handleAgentModeToggle, {
     enabled: !isAgentModeToggleDisabled,
@@ -1619,6 +1813,7 @@ const ChatRuntime = ({
 
   return (
     <ChatProjectContextLayout
+      activeArtifact={activeArtifact}
       gitDiff={gitDiff}
       isDiffLoading={isProjectDiffLoading}
       isOpen={isProjectContextOpen}
@@ -1683,9 +1878,11 @@ const ChatRuntime = ({
                         onApprovalResponse={handleToolApprovalResponse}
                         onCancelEditMessage={handleCancelEditMessage}
                         onEditingMessageTextChange={setEditingMessageText}
+                        onOpenArtifact={onOpenArtifact}
                         onRegenerate={handleRegenerate}
                         onStartEditMessage={handleStartEditMessage}
                         onSubmitEditedMessage={handleSubmitEditedMessage}
+                        sessionId={selectedSession.id}
                         streamdownAnimation={streamdownAnimation}
                       />
                     )
@@ -1740,6 +1937,10 @@ const ChatRuntime = ({
             agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+            commandPaletteImagenDescription={t(
+              "chat.mentions.commandImagenDescription"
+            )}
+            commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
             commandPalettePlanDescription={t(
               "chat.mentions.commandPlanDescription"
             )}
@@ -1763,6 +1964,14 @@ const ChatRuntime = ({
                   onOpenSettings={onOpenSettings}
                   onValueChange={onModelChange}
                   value={selectedModelValue}
+                />
+                <ComposerImageModeControl
+                  isDisabled={isImageModeToggleDisabled}
+                  isSelected={isImageMode}
+                  label={t("chat.imageMode.label")}
+                  onPress={handleImageModeToggle}
+                  tooltip={t("chat.imageMode.tooltip")}
+                  unsupportedLabel={t("chat.imageMode.unsupported")}
                 />
               </div>
             }
@@ -1853,7 +2062,7 @@ const ChatPendingState = ({
   onToggleProjectContext: () => void
   onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
-  projectContextView: ProjectContextPanelView
+  projectContextView: ChatSidePanelView
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
@@ -1901,6 +2110,10 @@ const ChatPendingState = ({
             agentModeToggleLabel={t("chat.composer.agentModeToggle")}
             commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
             commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+            commandPaletteImagenDescription={t(
+              "chat.mentions.commandImagenDescription"
+            )}
+            commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
             commandPalettePlanDescription={t(
               "chat.mentions.commandPlanDescription"
             )}
@@ -1924,6 +2137,14 @@ const ChatPendingState = ({
                   onOpenSettings={onOpenSettings}
                   onValueChange={onModelChange}
                   value={selectedModelValue}
+                />
+                <ComposerImageModeControl
+                  isDisabled
+                  isSelected={false}
+                  label={t("chat.imageMode.label")}
+                  onPress={NOOP_IMAGE_MODE_TOGGLE}
+                  tooltip={t("chat.imageMode.tooltip")}
+                  unsupportedLabel={t("chat.imageMode.unsupported")}
                 />
               </div>
             }
@@ -1965,7 +2186,10 @@ const ChatSessionPage = () => {
   const { sessionId } = Route.useParams()
   const [isProjectContextOpen, setProjectContextOpen] = useState(false)
   const [projectContextView, setProjectContextView] =
-    useState<ProjectContextPanelView>(PROJECT_CONTEXT_FILES_TAB_ID)
+    useState<ChatSidePanelView>(PROJECT_CONTEXT_FILES_TAB_ID)
+  const [activeArtifact, setActiveArtifact] = useState<ChatArtifactRef | null>(
+    null
+  )
   const [transport, setTransport] =
     useState<DefaultChatTransport<ChatUiMessage> | null>(null)
   const chatSessionsQuery = useQuery({
@@ -2209,6 +2433,20 @@ const ChatSessionPage = () => {
     },
     []
   )
+  const handleOpenArtifact = useCallback((artifact: ChatArtifactRef) => {
+    setActiveArtifact(artifact)
+    setProjectContextView(ARTIFACT_PANEL_VIEW_ID)
+    setProjectContextOpen(true)
+  }, [])
+
+  // Artifact paths are project-relative, so a session switch drops the active
+  // artifact instead of resolving the old path inside the new project.
+  useEffect(() => {
+    setActiveArtifact(null)
+    setProjectContextView((view) =>
+      view === ARTIFACT_PANEL_VIEW_ID ? PROJECT_CONTEXT_FILES_TAB_ID : view
+    )
+  }, [sessionId])
 
   const handleGoHome = useCallback(() => {
     navigate({ to: "/" })
@@ -2249,6 +2487,7 @@ const ChatSessionPage = () => {
     <section className="flex min-h-0 flex-1 overflow-hidden">
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
+          activeArtifact={activeArtifact}
           agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
           autoCompact={settingsQuery.data?.chat.autoCompact}
           gitDiff={gitDiffQuery.data}
@@ -2266,15 +2505,20 @@ const ChatSessionPage = () => {
           onChatFinish={handleChatFinish}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
+          onOpenArtifact={handleOpenArtifact}
           onOpenSettings={handleOpenSettings}
           onPromptTemplateQueryChange={handlePromptTemplateQueryChange}
           onProjectContextOpenChange={handleProjectContextOpenChange}
           onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
           onSyncPersistedMessagesAfterFinish={async () => {
-            const result = await queryClient.fetchQuery(
-              chatSessionMessagesQueryOptions
-            )
+            // The post-turn repair must read the just-persisted transcript;
+            // the global 60s staleTime would otherwise hand back the pre-turn
+            // cache and wipe the latest exchange from the live messages.
+            const result = await queryClient.fetchQuery({
+              ...chatSessionMessagesQueryOptions,
+              staleTime: 0
+            })
 
             return result.messages.map(toRuntimeChatMessage)
           }}

@@ -7,6 +7,7 @@ import {
   buildMentionContext,
   ensureProjectSnapshot,
   listProjectSnapshotFiles,
+  readProjectBinaryFile,
   readProjectFile
 } from "@/main/project-snapshot"
 
@@ -270,6 +271,36 @@ describe("project snapshot", () => {
     expect(fileData.content).toBe(content)
     expect(fileData.language).toBe("typescript")
     expect(fileData.relativePath).toBe("src/generated.ts")
+  })
+
+  it("reads binary files as base64 with an inferred image media type", () => {
+    const projectPath = createTestProjectPath("read-binary-file")
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])
+
+    writeProjectFile("artifacts/images/pic.png", bytes, projectPath)
+
+    const fileData = readProjectBinaryFile({
+      filePath: "artifacts/images/pic.png",
+      projectPath
+    })
+
+    expect(fileData.base64).toBe(bytes.toString("base64"))
+    expect(fileData.byteLength).toBe(6)
+    expect(fileData.mediaType).toBe("image/png")
+    expect(fileData.relativePath).toBe("artifacts/images/pic.png")
+  })
+
+  it("rejects binary reads outside the project directory", () => {
+    const projectPath = createTestProjectPath("read-binary-escape")
+
+    writeProjectFile("keep.txt", "x\n", projectPath)
+
+    expect(() =>
+      readProjectBinaryFile({
+        filePath: "../escape.png",
+        projectPath
+      })
+    ).toThrow(/outside the project/u)
   })
 
   it("builds folder mention context from files under the referenced folder only", () => {

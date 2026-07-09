@@ -15,11 +15,12 @@ import { BUILT_IN_PROVIDER_SEED_MODELS } from "./provider-seed-models"
 
 type ProviderCredentialKind = "apiKey" | "oauth"
 
-// OpenAI's /v1/models list includes non-chat models (audio, image, embedding,
-// moderation, legacy completion) alongside chat models. Filter those out so
-// the settings model picker only shows models usable as a chat LanguageModel.
+// OpenAI's /v1/models list includes non-generative models (audio, embedding,
+// moderation, legacy completion) alongside chat models. Filter those out of the
+// picker. Image-output models are intentionally kept selectable — the composer
+// image mode targets them directly.
 const OPENAI_NON_CHAT_MODEL_ID_PATTERN =
-  /audio|babbage|dall-e|davinci|embedding|image|moderation|realtime|transcribe|tts|whisper/iu
+  /audio|babbage|davinci|embedding|moderation|realtime|transcribe|tts|whisper/iu
 
 interface ProviderCatalogEntry {
   baseURL: string
@@ -225,6 +226,26 @@ export const resolveProviderBaseURL = (
   }
 
   return providerConfig.baseURL || getProviderDefaultBaseURL(providerId)
+}
+
+/**
+ * An explicit apiMode always wins. Without one, only the official OpenAI
+ * endpoint defaults to the Responses API: third-party OpenAI-compatible
+ * gateways generally implement /chat/completions fully but reject or silently
+ * drop the Responses API's HTTP multi-turn tool continuation (item_reference
+ * resolution), which strands agent tool loops after the first step.
+ */
+export const resolveOpenAiApiMode = (
+  providerConfig: Pick<AiProviderConfig, "apiMode" | "baseURL" | "region">
+): "chat-completions" | "responses" => {
+  if (providerConfig.apiMode) {
+    return providerConfig.apiMode
+  }
+
+  return resolveProviderBaseURL("openai", providerConfig) ===
+    getProviderDefaultBaseURL("openai")
+    ? "responses"
+    : "chat-completions"
 }
 
 export const getSettingsTabProviders = (): SettingsTabProviderCatalogEntry[] =>

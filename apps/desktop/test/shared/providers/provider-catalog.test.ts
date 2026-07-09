@@ -4,7 +4,8 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   getSettingsTabProviders,
-  hydrateAiSettingsProviders
+  hydrateAiSettingsProviders,
+  resolveOpenAiApiMode
 } from "@/shared/providers/provider-catalog"
 
 describe("provider-catalog", () => {
@@ -109,5 +110,30 @@ describe("provider-catalog", () => {
       "https://api.moonshot.ai/v1"
     )
     expect(hydratedAiSettings.providers.moonshot.region).toBe("international")
+  })
+
+  it("defaults the openai api mode to responses only on the official endpoint", () => {
+    expect(resolveOpenAiApiMode({ baseURL: "" })).toBe("responses")
+    expect(resolveOpenAiApiMode({ baseURL: "https://api.openai.com/v1" })).toBe(
+      "responses"
+    )
+    expect(resolveOpenAiApiMode({ baseURL: "https://api.amux.ai/v1" })).toBe(
+      "chat-completions"
+    )
+  })
+
+  it("lets an explicit openai api mode override the base url default", () => {
+    expect(
+      resolveOpenAiApiMode({
+        apiMode: "responses",
+        baseURL: "https://api.amux.ai/v1"
+      })
+    ).toBe("responses")
+    expect(
+      resolveOpenAiApiMode({
+        apiMode: "chat-completions",
+        baseURL: ""
+      })
+    ).toBe("chat-completions")
   })
 })

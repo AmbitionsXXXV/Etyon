@@ -1,5 +1,4 @@
 import type { AgentSettings } from "@etyon/rpc"
-import { createTool } from "@mastra/core/tools"
 import { generateText, stepCountIs, tool } from "ai"
 import { z } from "zod"
 
@@ -232,7 +231,7 @@ export const buildDelegateTool = ({
   parentRunId,
   projectPath
 }: DelegateToolContext) =>
-  createTool({
+  tool({
     description: `Delegate a bounded, read-only investigation to a specialist sub-agent. The child cannot modify files; it returns a summary, the files it read, and recommended changes for you to apply under approval. Allowed profiles: ${parentProfile.allowedDelegateProfileIds.join(", ")}.`,
     execute: async (inputData, context) => {
       const settings = getSettings().agents
@@ -301,7 +300,6 @@ export const buildDelegateTool = ({
         releaseChildSlot(parentRunId)
       }
     },
-    id: "delegate",
     inputSchema: z
       .object({
         context: z

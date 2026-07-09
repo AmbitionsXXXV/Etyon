@@ -175,6 +175,38 @@ describe("workspace-core", () => {
     }
   })
 
+  it("writes binary files and creates their parent directories", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff])
+    const result = await workspace.writeBinaryFile(
+      "artifacts/images/pic.png",
+      bytes
+    )
+
+    expect(result.ok).toBe(true)
+
+    if (result.ok) {
+      expect(result.value.bytesWritten).toBe(6)
+      expect(result.value.info.path).toBe("artifacts/images/pic.png")
+      const written = fs.readFileSync(
+        path.join(projectPath, "artifacts", "images", "pic.png")
+      )
+      expect([...written]).toEqual([...bytes])
+    }
+  })
+
+  it("rejects binary writes outside the project root", async () => {
+    const result = await workspace.writeBinaryFile(
+      "../escape.png",
+      new Uint8Array([1, 2, 3])
+    )
+
+    expect(result.ok).toBe(false)
+
+    if (!result.ok) {
+      expect(result.error.code).toBe("outside-project")
+    }
+  })
+
   it("searches file contents with ripgrep", async () => {
     const result = await workspace.searchContent({
       limit: 10,

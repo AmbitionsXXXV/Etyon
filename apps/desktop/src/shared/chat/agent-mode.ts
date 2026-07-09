@@ -39,6 +39,14 @@ export const isChatPlanCommandText = (text: string): boolean =>
 export const stripChatPlanCommand = (text: string): string =>
   text.trimStart().replace(PLAN_COMMAND_PATTERN, "").trimStart()
 
+const IMAGEN_COMMAND_PATTERN = /^\/imagen(?:\s+|$)/iu
+
+export const isChatImagenCommandText = (text: string): boolean =>
+  IMAGEN_COMMAND_PATTERN.test(text.trimStart())
+
+export const stripChatImagenCommand = (text: string): string =>
+  text.trimStart().replace(IMAGEN_COMMAND_PATTERN, "").trimStart()
+
 export const CHAT_PLAN_MODE_SYSTEM_PROMPT = `You are operating in PLAN MODE.
 
 Your job is to investigate and produce a clear, actionable implementation plan — not to make changes.
@@ -51,3 +59,14 @@ Your job is to investigate and produce a clear, actionable implementation plan �
 export const getChatAgentModeSystemPrompt = (
   mode: ChatAgentMode | undefined
 ): null | string => (mode === "plan" ? CHAT_PLAN_MODE_SYSTEM_PROMPT : null)
+
+// Turn-scoped prompt injected when the user runs the /imagen command. Unlike
+// plan, imagen is not a persistent mode — it nudges the current agent turn to
+// generate an image with the imagen tool.
+export const CHAT_IMAGEN_SYSTEM_PROMPT = `The user invoked the /imagen command: they want you to generate an image.
+
+- Use the imagen tool. Treat the message (after "/imagen") as the image request.
+- Craft a vivid, specific prompt for the tool: subject, style, composition, lighting, mood. Enrich a terse request with sensible detail rather than asking follow-up questions.
+- Choose reasonable defaults for size and quality unless the user specified them; only ask if the request is genuinely ambiguous.
+- After the image is generated, describe in one sentence what you created. Do not repeat the full prompt.
+- If the imagen tool is not available, tell the user an OpenAI provider must be configured and that the profile must allow writes.`

@@ -29,6 +29,10 @@ import {
   MemoryStatsOutputSchema,
   ListProjectSnapshotFilesInputSchema,
   ListProjectSnapshotFilesOutputSchema,
+  ReadAgentArtifactInputSchema,
+  ReadAgentArtifactOutputSchema,
+  ReadProjectBinaryFileInputSchema,
+  ReadProjectBinaryFileOutputSchema,
   ReadProjectFileInputSchema,
   ReadProjectFileOutputSchema,
   LogEventSchema,
@@ -66,7 +70,8 @@ import { BrowserWindow } from "electron"
 import {
   inspectAgentRun,
   listAgentRuns,
-  listPendingAgentApprovals
+  listPendingAgentApprovals,
+  readAgentArtifact
 } from "@/main/agents/agent-run-inspection"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
@@ -105,6 +110,7 @@ import {
 import {
   ensureProjectSnapshot,
   listProjectSnapshotFiles,
+  readProjectBinaryFile,
   readProjectFile
 } from "@/main/project-snapshot"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
@@ -471,6 +477,22 @@ const projectSnapshotsReadFile = rpc
     })
   })
 
+const projectSnapshotsReadBinaryFile = rpc
+  .input(ReadProjectBinaryFileInputSchema)
+  .output(ReadProjectBinaryFileOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return readProjectBinaryFile({
+      filePath: input.filePath,
+      projectPath: session.projectPath
+    })
+  })
+
 const sidebarStateGet = rpc
   .output(SidebarUiStateSchema)
   .handler(() => getSidebarUiState())
@@ -545,11 +567,30 @@ const agentsListPendingApprovals = rpc
     })
   )
 
+const agentsReadArtifact = rpc
+  .input(ReadAgentArtifactInputSchema)
+  .output(ReadAgentArtifactOutputSchema)
+  .handler(async ({ context, input }) => {
+    const result = await readAgentArtifact({
+      artifactId: input.artifactId,
+      db: context.db,
+      ...(input.maxChars === undefined ? {} : { maxChars: input.maxChars }),
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId })
+    })
+
+    if (!result) {
+      throw new Error(`Agent artifact not found: ${input.artifactId}`)
+    }
+
+    return result
+  })
+
 export const router = {
   agents: {
     inspectRun: agentsInspectRun,
     listPendingApprovals: agentsListPendingApprovals,
-    listRuns: agentsListRuns
+    listRuns: agentsListRuns,
+    readArtifact: agentsReadArtifact
   },
   chatSessions: {
     archive: chatSessionsArchive,
@@ -593,6 +634,7 @@ export const router = {
   projectSnapshots: {
     ensure: projectSnapshotsEnsure,
     listFiles: projectSnapshotsListFiles,
+    readBinaryFile: projectSnapshotsReadBinaryFile,
     readFile: projectSnapshotsReadFile
   },
   providers: {

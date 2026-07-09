@@ -13,8 +13,7 @@
 
 Main 进程的日志收集器（`apps/desktop/src/main/logger.ts`）因依赖 Electron API（`app`、`ipcMain`、`fs`），保留在 desktop 应用内部。
 
-Main 进程业务代码应优先调用 `@/main/logger` 暴露的 `logger.info()`、`logger.debug()`、`logger.critical()`，避免直接使用 `console.log()`。
-需要表达错误语义时，优先使用 `logger.error()`；它当前会映射到内部 `critical` 级别，兼顾现有事件 schema 与更直观的调用方式。
+Main 进程业务代码应优先调用 `@/main/logger` 暴露的 `logger.info()`、`logger.debug()`、`logger.critical()`，避免直接使用 `console.log()`。需要表达错误语义时，优先使用 `logger.error()`；它当前会映射到内部 `critical` 级别，兼顾现有事件 schema 与更直观的调用方式。
 
 ## 架构
 
@@ -115,13 +114,13 @@ import type { LogEvent, LogLevel, LogTransport } from "@etyon/logger/types"
 
 ## 涉及文件
 
-| 包/应用          | 文件                   | 说明                                  |
-| ---------------- | ---------------------- | ------------------------------------- |
-| `@etyon/logger`  | `src/core.ts`          | 通用 Logger 工厂与 wide event builder |
-| `@etyon/logger`  | `src/types.ts`         | 日志事件类型定义                      |
-| `@etyon/logger`  | `src/renderer.ts`      | Renderer 端 Logger SDK                |
-| `@etyon/desktop` | `src/main/logger.ts`   | Main 进程日志收集器                   |
-| `@etyon/desktop` | `src/preload/index.ts` | Preload IPC bridge                    |
+| 包/应用 | 文件 | 说明 |
+| --- | --- | --- |
+| `@etyon/logger` | `src/core.ts` | 通用 Logger 工厂与 wide event builder |
+| `@etyon/logger` | `src/types.ts` | 日志事件类型定义 |
+| `@etyon/logger` | `src/renderer.ts` | Renderer 端 Logger SDK |
+| `@etyon/desktop` | `src/main/logger.ts` | Main 进程日志收集器 |
+| `@etyon/desktop` | `src/preload/index.ts` | Preload IPC bridge |
 
 ## 扩展点
 

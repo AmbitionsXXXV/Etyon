@@ -6,10 +6,10 @@
 
 ## 平台适配
 
-| 平台          | 行为                                                                           |
-| ------------- | ------------------------------------------------------------------------------ |
-| macOS         | `titleBarStyle: "hidden"` 保留红绿灯按钮，通过 `trafficLightPosition` 微调位置 |
-| Windows/Linux | `titleBarOverlay: { height: 36 }` 恢复原生窗口控制按钮                         |
+| 平台 | 行为 |
+| --- | --- |
+| macOS | `titleBarStyle: "hidden"` 保留红绿灯按钮，通过 `trafficLightPosition` 微调位置 |
+| Windows/Linux | `titleBarOverlay: { height: 36 }` 恢复原生窗口控制按钮 |
 
 ## BrowserWindow 配置
 

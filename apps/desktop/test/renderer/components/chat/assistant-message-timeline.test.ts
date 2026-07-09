@@ -52,6 +52,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "none"
         })
       )
@@ -92,6 +93,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "none"
         })
       )
@@ -129,6 +131,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "none"
         })
       )
@@ -158,6 +161,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "none"
         })
       )
@@ -165,6 +169,39 @@ describe("AssistantMessageTimeline", () => {
 
     expect(html).not.toContain("Thinking")
     expect(html).toContain("Done.")
+  })
+
+  it("renders a visible notice when the run hit the step limit", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        TestI18nProvider,
+        { locale: "en-US" },
+        createElement(AssistantMessageTimeline, {
+          isApprovalActionDisabled: false,
+          isStreamdownAnimating: false,
+          message: {
+            id: "assistant-1",
+            parts: [
+              {
+                text: "Partial work so far.",
+                type: "text"
+              },
+              {
+                data: { maxSteps: 64 },
+                type: "data-run-limit"
+              }
+            ],
+            role: "assistant"
+          },
+          onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
+          streamdownAnimation: "none"
+        })
+      )
+    )
+
+    expect(html).toContain("Stopped at the step limit")
+    expect(html).toContain("64")
   })
 
   it("renders markdown tables without the Streamdown table wrapper", () => {
@@ -186,6 +223,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "none"
         })
       )
@@ -215,6 +253,7 @@ describe("AssistantMessageTimeline", () => {
             role: "assistant"
           },
           onApprovalResponse: vi.fn(),
+          sessionId: "test-session",
           streamdownAnimation: "typewriter"
         })
       )

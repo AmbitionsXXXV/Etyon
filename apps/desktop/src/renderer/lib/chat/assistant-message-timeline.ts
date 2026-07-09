@@ -1,9 +1,15 @@
 import type { UIMessage } from "@ai-sdk/react"
 import { isToolUIPart } from "ai"
 
+import { isArtifactToolPart } from "@/renderer/lib/chat/artifact-panel"
+import { isImagenToolPart } from "@/renderer/lib/chat/imagen-message"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import { compactStructuredToolTraceParts } from "@/renderer/lib/chat/message-tool-trace"
-import type { ChatStreamDataTypes } from "@/shared/chat/stream-data"
+import { isChatRunLimitDataPart } from "@/shared/chat/stream-data"
+import type {
+  ChatRunLimitData,
+  ChatStreamDataTypes
+} from "@/shared/chat/stream-data"
 
 export type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
 
@@ -77,6 +83,12 @@ export const buildAssistantChainEntries = (
   }
 
   for (const part of message.parts) {
+    // Artifact publishes render as standalone cards, and generated images
+    // render inline — both after the message body, not as chain steps.
+    if (isArtifactToolPart(part) || isImagenToolPart(part)) {
+      continue
+    }
+
     if (isToolUIPart(part as never)) {
       toolRun.push(part as ChatToolPart)
       continue
@@ -115,6 +127,19 @@ export const getAssistantBodyText = (message: ChatUiMessage): string =>
     .filter((part): part is TextChatPart => part.type === "text")
     .map((part) => part.text)
     .join("\n\n")
+
+/** Step-limit marker the agent loop appends when a run is truncated. */
+export const getRunLimitData = (
+  message: ChatUiMessage
+): ChatRunLimitData | null => {
+  for (const part of message.parts) {
+    if (isChatRunLimitDataPart(part)) {
+      return part.data
+    }
+  }
+
+  return null
+}
 
 export const openExternalUrl = (url: string): void => {
   window.electron.ipcRenderer.invoke("open-external-url", url)

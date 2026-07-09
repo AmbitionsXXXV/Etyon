@@ -18,51 +18,51 @@ Etyon workspace 层暴露 `view`、`search_content`、`find_files`、`file_stat`
 
 内建 code agent 默认暴露 13 个核心工具；`plan` / `coder` 额外暴露 `requestAccess`；开启 sandbox + LSP 后，`coder` / `explore` / `review` 额外暴露 `inspect` / `symbolSearch` / `symbols`；选中的 skill 声明 `network` capability 时额外暴露 `webSearch` / `webExtract`：
 
-| Tool            | 自动执行 | 输入                                                                         | 结果                                                                          | 说明                                                                                                                            |
-| --------------- | -------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `read`          | 是       | `path`, `offset?`, `limit?`                                                  | `content: [{ type: "text", text }]`, `details?`                               | 读取 workspace 内文件；大文件用 `offset` / `limit` 分段读取。                                                                   |
-| `grep`          | 是       | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?` | `content`, `details?`                                                         | 底层使用 BurntSushi `ripgrep` (`rg --json`) 搜索文件内容，返回 `path:line:text` 形态。                                          |
-| `find`          | 是       | `pattern`, `path?`, `limit?`                                                 | `content`, `details?`                                                         | 底层使用 `fd` 按 glob 查找文件路径，例如 `*.ts`、`**/*.json`、`src/**/*.spec.ts`。                                              |
-| `ls`            | 是       | `path?`, `limit?`                                                            | `content`, `details?`                                                         | 列目录，目录名带 `/` 后缀。                                                                                                     |
-| `stat`          | 是       | `path`                                                                       | `content`, `details?`                                                         | 读取单个 project path 的 kind、size、mtime、language、symlink metadata，不跟随 symlink。                                        |
-| `bash`          | 条件允许 | `command`, `timeout?`, `background?`                                         | `content`, `details?`                                                         | 执行本地命令；`timeout` 使用秒，`background=true` 返回 Etyon processId，泛用命令需要 approval。                                 |
-| `processOutput` | 是       | `processId`                                                                  | `content`, `details.process`                                                  | 读取 Etyon-managed background process 的 bounded stdout / stderr。                                                              |
-| `stopProcess`   | 是       | `processId`                                                                  | `content`, `details.process`                                                  | 停止 Etyon-managed background process。                                                                                         |
-| `mkdir`         | 否       | `path`, `recursive?`                                                         | `content`, `details?`                                                         | 创建目录，默认递归创建父目录；写入类 filesystem op，必须 approval。                                                             |
-| `delete`        | 否       | `path`, `recursive?`                                                         | `content`, `details?`                                                         | 删除文件或目录；目录删除需 `recursive=true`，必须 approval。                                                                    |
-| `edit`          | 否       | `path`, `edits: [{ oldText, newText }]`                                      | `content`, `details.diff`                                                     | 对单文件做精确替换；兼容模型把 `edits` 发成 JSON 字符串，或发旧式 `oldText` / `newText`；写入按 path 加锁并校验读取快照 mtime。 |
-| `smartEdit`     | 否       | `path`, `symbol`, `replacement`, `kind?`                                     | `content`, `details.diff`                                                     | 对 TS/JS 文件中唯一命名声明做 AST 边界替换，写入按 path 加锁并校验读取快照 mtime，并在写入后追加 LSP diagnostics。              |
-| `write`         | 否       | `path`, `content`                                                            | `content`, `details?`                                                         | 创建 UTF-8 文本文件，并自动创建父目录；覆盖已有文件前必须先 `read` 当前快照。                                                   |
-| `requestAccess` | 否       | `reason`, `scope?`, `actions?`                                               | `approved`, `reason`, `scope`, `actions`                                      | 只在 `plan` / `coder` 暴露；不执行底层动作，只让模型请求用户批准一个窄 scope。                                                  |
-| `inspect`       | 是       | `path`, `line`, `match`                                                      | `hover`, `definition`, `implementation`, `references`, `calls`, `diagnostics` | LSP 位置检查；`match` 必须匹配目标行，并用唯一 `<<<` 标记光标，结果由 sandboxed LSP server 提供。                               |
-| `symbolSearch`  | 是       | `query`, `limit?`                                                            | `content`, `details.symbols`                                                  | LSP workspace 符号搜索；按 name / fuzzy query 搜索项目符号，结果由 sandboxed LSP server 提供。                                  |
-| `symbols`       | 是       | `path`, `query?`, `limit?`                                                   | `content`, `details.symbols`                                                  | LSP 文件符号列表；可按 name / kind / detail / container 过滤，结果由 sandboxed LSP server 提供。                                |
-| `webSearch`     | 否       | `query`, `limit?`                                                            | `content`, `details.results`                                                  | 只在 selected skill 声明 `network` capability 时暴露；查询会离开本地 workspace，必须 approval。                                 |
-| `webExtract`    | 否       | `url`, `maxChars?`                                                           | `content`, `contentType`, `title`, `truncated`                                | 只在 selected skill 声明 `network` capability 时暴露；抓取公网网页并提取 bounded readable text。                                |
+| Tool | 自动执行 | 输入 | 结果 | 说明 |
+| --- | --- | --- | --- | --- |
+| `read` | 是 | `path`, `offset?`, `limit?` | `content: [{ type: "text", text }]`, `details?` | 读取 workspace 内文件；大文件用 `offset` / `limit` 分段读取。 |
+| `grep` | 是 | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?` | `content`, `details?` | 底层使用 BurntSushi `ripgrep` (`rg --json`) 搜索文件内容，返回 `path:line:text` 形态。 |
+| `find` | 是 | `pattern`, `path?`, `limit?` | `content`, `details?` | 底层使用 `fd` 按 glob 查找文件路径，例如 `*.ts`、`**/*.json`、`src/**/*.spec.ts`。 |
+| `ls` | 是 | `path?`, `limit?` | `content`, `details?` | 列目录，目录名带 `/` 后缀。 |
+| `stat` | 是 | `path` | `content`, `details?` | 读取单个 project path 的 kind、size、mtime、language、symlink metadata，不跟随 symlink。 |
+| `bash` | 条件允许 | `command`, `timeout?`, `background?` | `content`, `details?` | 执行本地命令；`timeout` 使用秒，`background=true` 返回 Etyon processId，泛用命令需要 approval。 |
+| `processOutput` | 是 | `processId` | `content`, `details.process` | 读取 Etyon-managed background process 的 bounded stdout / stderr。 |
+| `stopProcess` | 是 | `processId` | `content`, `details.process` | 停止 Etyon-managed background process。 |
+| `mkdir` | 否 | `path`, `recursive?` | `content`, `details?` | 创建目录，默认递归创建父目录；写入类 filesystem op，必须 approval。 |
+| `delete` | 否 | `path`, `recursive?` | `content`, `details?` | 删除文件或目录；目录删除需 `recursive=true`，必须 approval。 |
+| `edit` | 否 | `path`, `edits: [{ oldText, newText }]` | `content`, `details.diff` | 对单文件做精确替换；兼容模型把 `edits` 发成 JSON 字符串，或发旧式 `oldText` / `newText`；写入按 path 加锁并校验读取快照 mtime。 |
+| `smartEdit` | 否 | `path`, `symbol`, `replacement`, `kind?` | `content`, `details.diff` | 对 TS/JS 文件中唯一命名声明做 AST 边界替换，写入按 path 加锁并校验读取快照 mtime，并在写入后追加 LSP diagnostics。 |
+| `write` | 否 | `path`, `content` | `content`, `details?` | 创建 UTF-8 文本文件，并自动创建父目录；覆盖已有文件前必须先 `read` 当前快照。 |
+| `requestAccess` | 否 | `reason`, `scope?`, `actions?` | `approved`, `reason`, `scope`, `actions` | 只在 `plan` / `coder` 暴露；不执行底层动作，只让模型请求用户批准一个窄 scope。 |
+| `inspect` | 是 | `path`, `line`, `match` | `hover`, `definition`, `implementation`, `references`, `calls`, `diagnostics` | LSP 位置检查；`match` 必须匹配目标行，并用唯一 `<<<` 标记光标，结果由 sandboxed LSP server 提供。 |
+| `symbolSearch` | 是 | `query`, `limit?` | `content`, `details.symbols` | LSP workspace 符号搜索；按 name / fuzzy query 搜索项目符号，结果由 sandboxed LSP server 提供。 |
+| `symbols` | 是 | `path`, `query?`, `limit?` | `content`, `details.symbols` | LSP 文件符号列表；可按 name / kind / detail / container 过滤，结果由 sandboxed LSP server 提供。 |
+| `webSearch` | 否 | `query`, `limit?` | `content`, `details.results` | 只在 selected skill 声明 `network` capability 时暴露；查询会离开本地 workspace，必须 approval。 |
+| `webExtract` | 否 | `url`, `maxChars?` | `content`, `contentType`, `title`, `truncated` | 只在 selected skill 声明 `network` capability 时暴露；抓取公网网页并提取 bounded readable text。 |
 
 ## Etyon Workspace 对照
 
-| Etyon alias     | Etyon workspace op      | 当前 Etyon 实现边界                                                                                                                                               |
-| --------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read`          | `view`                  | 通过 `AgentWorkspace.operations.fileStat` / `readTextFile` 读取 bounded text；编辑类工具可复用 `view`。                                                           |
-| `grep`          | `search_content`        | 使用 `rg --json`，保留 secret-like path 排除和输出截断；底层 spawn 通过 `AgentWorkspace.operations.searchContent`。                                               |
-| `find`          | `find_files`            | 使用 `fd --glob` 做路径查找；底层 spawn 通过 `AgentWorkspace.operations.findFiles`，后续可继续收敛到 workspace index。                                            |
-| `ls`            | `find_files` / list     | 通过 `AgentWorkspace.operations.listDir` 做目录列举别名，输出紧凑 entries。                                                                                       |
-| `stat`          | `file_stat`             | 通过 `AgentWorkspace.operations.fileStat` 读取 metadata，不跟随 symlink，保留 secret-like path 边界。                                                             |
-| `bash`          | `execute_command`       | 走 permission engine；泛用命令需要 approval；实际执行通过 `AgentWorkspace.operations.executeCommand` / `startProcess`。                                           |
-| `processOutput` | `process_output`        | 通过 `AgentWorkspace.operations.getProcess` / `recoverProcess` 读取当前 workspace 内 background process 输出。                                                    |
-| `stopProcess`   | `stop_process`          | 通过 `AgentWorkspace.operations.stopProcess` 停止当前 workspace 内 background process。                                                                           |
-| `mkdir`         | `mkdir`                 | 通过 `AgentWorkspace.operations.mkdir` 创建目录，写入类 tool，永远走 approval。                                                                                   |
-| `delete`        | `delete_file`           | 通过 `AgentWorkspace.operations.deleteFile` 删除文件或目录，写入类 tool，永远走 approval。                                                                        |
-| `edit`          | `string_replace_lsp`    | 当前是 exact replacement；通过 `AgentWorkspace.operations.view` / `writeFile` 读写，写入按 path 加锁并校验读取快照 mtime，写入后追加 LSP diagnostics。            |
-| `smartEdit`     | `ast_smart_edit`        | 对唯一命名 TS/JS declaration 做 AST 边界替换；写入按 path 加锁并校验读取快照 mtime；写入类 tool，永远走 approval。                                                |
-| `write`         | `write_file`            | 通过 `AgentWorkspace.operations.writeFile` 写入文件并创建父目录；覆盖已有文件前要求同一 workspace 内已有最新读取快照，同一 path 写入会串行执行，永远走 approval。 |
-| `requestAccess` | `request_access`        | tool registry 级授权 checkpoint；执行前必须 approval，成功后只返回已批准的 `scope` / `reason` / `actions`。                                                       |
-| `inspect`       | `lsp_inspect`           | 只在 sandbox + LSP 同时开启时暴露；通过 TS/JS LSP 返回 hover / 跳转 / references / call hierarchy / 诊断。                                                        |
-| `symbolSearch`  | `lsp_workspace_symbols` | 只在 sandbox + LSP 同时开启时暴露；通过 `AgentWorkspace.operations.lspWorkspaceSymbols` 返回 TS/JS workspace 符号搜索结果。                                       |
-| `symbols`       | `lsp_symbols`           | 只在 sandbox + LSP 同时开启时暴露；通过 `AgentWorkspace.operations.lspDocumentSymbols` 返回 TS/JS 文件符号列表。                                                  |
-| `webSearch`     | `web_search`            | selected skill 声明 `network` capability 时暴露；通过 `AgentWorkspace.operations.webSearch` 查询并必须 approval。                                                 |
-| `webExtract`    | `web_extract`           | selected skill 声明 `network` capability 时暴露；通过 `AgentWorkspace.operations.webExtract` 提取 readable text，必须 approval。                                  |
+| Etyon alias | Etyon workspace op | 当前 Etyon 实现边界 |
+| --- | --- | --- |
+| `read` | `view` | 通过 `AgentWorkspace.operations.fileStat` / `readTextFile` 读取 bounded text；编辑类工具可复用 `view`。 |
+| `grep` | `search_content` | 使用 `rg --json`，保留 secret-like path 排除和输出截断；底层 spawn 通过 `AgentWorkspace.operations.searchContent`。 |
+| `find` | `find_files` | 使用 `fd --glob` 做路径查找；底层 spawn 通过 `AgentWorkspace.operations.findFiles`，后续可继续收敛到 workspace index。 |
+| `ls` | `find_files` / list | 通过 `AgentWorkspace.operations.listDir` 做目录列举别名，输出紧凑 entries。 |
+| `stat` | `file_stat` | 通过 `AgentWorkspace.operations.fileStat` 读取 metadata，不跟随 symlink，保留 secret-like path 边界。 |
+| `bash` | `execute_command` | 走 permission engine；泛用命令需要 approval；实际执行通过 `AgentWorkspace.operations.executeCommand` / `startProcess`。 |
+| `processOutput` | `process_output` | 通过 `AgentWorkspace.operations.getProcess` / `recoverProcess` 读取当前 workspace 内 background process 输出。 |
+| `stopProcess` | `stop_process` | 通过 `AgentWorkspace.operations.stopProcess` 停止当前 workspace 内 background process。 |
+| `mkdir` | `mkdir` | 通过 `AgentWorkspace.operations.mkdir` 创建目录，写入类 tool，永远走 approval。 |
+| `delete` | `delete_file` | 通过 `AgentWorkspace.operations.deleteFile` 删除文件或目录，写入类 tool，永远走 approval。 |
+| `edit` | `string_replace_lsp` | 当前是 exact replacement；通过 `AgentWorkspace.operations.view` / `writeFile` 读写，写入按 path 加锁并校验读取快照 mtime，写入后追加 LSP diagnostics。 |
+| `smartEdit` | `ast_smart_edit` | 对唯一命名 TS/JS declaration 做 AST 边界替换；写入按 path 加锁并校验读取快照 mtime；写入类 tool，永远走 approval。 |
+| `write` | `write_file` | 通过 `AgentWorkspace.operations.writeFile` 写入文件并创建父目录；覆盖已有文件前要求同一 workspace 内已有最新读取快照，同一 path 写入会串行执行，永远走 approval。 |
+| `requestAccess` | `request_access` | tool registry 级授权 checkpoint；执行前必须 approval，成功后只返回已批准的 `scope` / `reason` / `actions`。 |
+| `inspect` | `lsp_inspect` | 只在 sandbox + LSP 同时开启时暴露；通过 TS/JS LSP 返回 hover / 跳转 / references / call hierarchy / 诊断。 |
+| `symbolSearch` | `lsp_workspace_symbols` | 只在 sandbox + LSP 同时开启时暴露；通过 `AgentWorkspace.operations.lspWorkspaceSymbols` 返回 TS/JS workspace 符号搜索结果。 |
+| `symbols` | `lsp_symbols` | 只在 sandbox + LSP 同时开启时暴露；通过 `AgentWorkspace.operations.lspDocumentSymbols` 返回 TS/JS 文件符号列表。 |
+| `webSearch` | `web_search` | selected skill 声明 `network` capability 时暴露；通过 `AgentWorkspace.operations.webSearch` 查询并必须 approval。 |
+| `webExtract` | `web_extract` | selected skill 声明 `network` capability 时暴露；通过 `AgentWorkspace.operations.webExtract` 提取 readable text，必须 approval。 |
 
 ## Profile 暴露规则
 

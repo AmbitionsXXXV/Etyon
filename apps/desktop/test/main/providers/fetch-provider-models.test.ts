@@ -173,7 +173,7 @@ describe("fetchProviderModels", () => {
     ])
   })
 
-  it("filters non-chat models out of the openai models list", async () => {
+  it("filters non-generative models but keeps image models in the openai list", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       Response.json({
         data: [
@@ -197,7 +197,12 @@ describe("fetchProviderModels", () => {
       }
     })
 
-    expect(output.models.map((model) => model.id)).toEqual(["gpt-5.4"])
+    // Image-output models are intentionally selectable now (composer image
+    // mode targets them); only audio/embedding/moderation/etc. are filtered.
+    expect(output.models.map((model) => model.id)).toEqual([
+      "gpt-5.4",
+      "dall-e-3"
+    ])
   })
 
   it("switches the moonshot models endpoint according to region", async () => {

@@ -2,7 +2,11 @@ import type { AppSettings } from "@etyon/rpc"
 import { AppSettingsSchema } from "@etyon/rpc"
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
-import { resolveModel } from "@/main/server/lib/providers"
+import {
+  isImageGenerationAvailable,
+  resolveImageModel,
+  resolveModel
+} from "@/main/server/lib/providers"
 
 const {
   createAnthropicMock,
@@ -20,6 +24,10 @@ const {
       chat: vi.fn((modelId: string) => ({
         modelId,
         transport: "chat-completions"
+      })),
+      image: vi.fn((modelId: string) => ({
+        modelId,
+        transport: "image"
       }))
     }
   )
@@ -159,7 +167,7 @@ describe("resolveModel", () => {
     })
   })
 
-  it("honors a custom openai base url in responses mode", () => {
+  it("defaults a custom openai base url to chat completions", () => {
     const settings = createSettings()
 
     getSettingsMock.mockReturnValue({
@@ -176,6 +184,40 @@ describe("resolveModel", () => {
       }
     })
 
+    const model = resolveModel("openai/gpt-5.4")
+
+    expect(createOpenAIMock).toHaveBeenCalledWith({
+      apiKey: "openai-key",
+      baseURL: "https://openai.example.com/v1",
+      fetch: expect.any(Function),
+      name: "openai"
+    })
+    expect(openAIProviderMock).not.toHaveBeenCalled()
+    expect(openAIProviderMock.chat).toHaveBeenCalledWith("gpt-5.4")
+    expect(model).toEqual({
+      modelId: "gpt-5.4",
+      transport: "chat-completions"
+    })
+  })
+
+  it("honors an explicit responses api mode on a custom openai base url", () => {
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          openai: {
+            ...settings.ai.providers.openai,
+            apiMode: "responses",
+            baseURL: "https://openai.example.com/v1"
+          }
+        }
+      }
+    })
+
     resolveModel("openai/gpt-5.4")
 
     expect(createOpenAIMock).toHaveBeenCalledWith({
@@ -184,6 +226,7 @@ describe("resolveModel", () => {
       fetch: expect.any(Function)
     })
     expect(openAIProviderMock).toHaveBeenCalledWith("gpt-5.4")
+    expect(openAIProviderMock.chat).not.toHaveBeenCalled()
   })
 
   it("uses chat completions for openai when apiMode is chat-completions", () => {
@@ -305,6 +348,42 @@ describe("resolveModel", () => {
       modelId: "kimi-k2.6",
       transport: "chat-completions"
     })
+  })
+
+  it("builds a gpt-image model through the openai provider for image generation", () => {
+    const model = resolveImageModel()
+
+    expect(createOpenAIMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "openai-key",
+        baseURL: "https://api.openai.com/v1",
+        fetch: expect.any(Function)
+      })
+    )
+    expect(openAIProviderMock.image).toHaveBeenCalledWith("gpt-image-2")
+    expect(model).toEqual({ modelId: "gpt-image-2", transport: "image" })
+  })
+
+  it("reports image generation availability from the openai provider", () => {
+    expect(isImageGenerationAvailable()).toBe(true)
+
+    const settings = createSettings()
+
+    getSettingsMock.mockReturnValue({
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          openai: {
+            ...settings.ai.providers.openai,
+            apiKey: ""
+          }
+        }
+      }
+    })
+
+    expect(isImageGenerationAvailable()).toBe(false)
   })
 
   it("keeps explicit unavailable models as configuration errors", () => {

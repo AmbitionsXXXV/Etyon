@@ -12,8 +12,7 @@
 
 ## 样式系统共存
 
-- `packages/ui/src/styles/globals.css` 的导入顺序是：
-  `tailwindcss` -> `@heroui/styles` -> `@heroui-pro/react/css` -> `tw-animate-css` -> `shadcn/tailwind.css` -> 项目主题文件。
+- `packages/ui/src/styles/globals.css` 的导入顺序是： `tailwindcss` -> `@heroui/styles` -> `@heroui-pro/react/css` -> `tw-animate-css` -> `shadcn/tailwind.css` -> 项目主题文件。
 - 以 HeroUI 语义 token 为主：`surface`、`overlay`、`separator`、`default`、`success`、`warning`、`danger`、`segment`、`surface-shadow`、`overlay-shadow`。
 - 主题切换使用 HeroUI v3 推荐的 `data-theme`：`default` 会解析为 `light` / `dark`，内置 schema 会解析为 `one-light`、`paper`、`aquarium` 等具体主题名。
 - HeroUI Pro preset theme 使用 `@etyon/ui/themes/*` 重导出，目前覆盖 `brutalism`、`glass`、`mouve`；Settings 中对应的 `data-theme` 值是 `*-light` / `*-dark`。

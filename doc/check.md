@@ -1,9 +1,6 @@
 # Check
 
-`vp check` 当前已在工作区根目录通过。
-`vp lint` 当前也可以在工作区根目录通过；`packages/ui` 需要使用 `vp lint`，不能直接调用 IDE 专用的 `oxlint` 包装命令。
-`vp run typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。
-`vp test` 现在会读取根目录 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `test.projects`，统一运行 monorepo 里的测试项目。
+`vp check` 当前已在工作区根目录通过。 `vp lint` 当前也可以在工作区根目录通过；`packages/ui` 需要使用 `vp lint`，不能直接调用 IDE 专用的 `oxlint` 包装命令。 `vp run typecheck` 现在也可以在工作区根目录直接运行，会通过 `turbo` 调用各包的 `typecheck` 脚本。 `vp test` 现在会读取根目录 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `test.projects`，统一运行 monorepo 里的测试项目。
 
 ## Tests
 

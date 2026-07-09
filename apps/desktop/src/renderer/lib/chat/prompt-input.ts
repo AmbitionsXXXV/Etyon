@@ -71,7 +71,7 @@ export interface PromptMentionQueryState {
 export interface PromptCommandPaletteItem {
   command: string
   description: string
-  id: "plan" | "prompt" | "skill"
+  id: "imagen" | "plan" | "prompt" | "skill"
   insertText: string
   label: string
 }

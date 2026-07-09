@@ -1,6 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import type {
   AgentRunStatus,
+  AgentRunTraceArtifact,
   AgentRunTraceEvent,
   AgentRunTraceToolCall,
   InspectAgentRunOutput
@@ -13,13 +14,14 @@ import {
   DialogTitle
 } from "@etyon/ui/components/dialog"
 import { Button } from "@heroui/react"
-import { WorkflowSquare02Icon } from "@hugeicons/core-free-icons"
+import { BrowserIcon, WorkflowSquare02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { getToolIcon } from "@/renderer/lib/chat/message-tool-trace"
 import { orpc } from "@/renderer/lib/rpc"
+import { getString, isRecord } from "@/renderer/lib/utils"
 import { summarizeToolOutput } from "@/shared/agents/tool-output-summary"
 import { getAgentProjectionRunId } from "@/shared/chat/message-metadata"
 
@@ -84,6 +86,31 @@ const ToolCallRow = ({ toolCall }: { toolCall: AgentRunTraceToolCall }) => {
   )
 }
 
+const ArtifactRow = ({ artifact }: { artifact: AgentRunTraceArtifact }) => {
+  const title = isRecord(artifact.metadata)
+    ? getString(artifact.metadata, "title")
+    : undefined
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background p-2">
+      <HugeiconsIcon
+        className="shrink-0 text-muted-foreground"
+        icon={BrowserIcon}
+        size={13}
+      />
+      <span className="min-w-0 truncate text-xs font-medium">
+        {title || artifact.path}
+      </span>
+      <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+        {artifact.kind}
+      </span>
+      <span className="max-w-40 shrink-0 truncate text-[10px] text-muted-foreground">
+        {artifact.path}
+      </span>
+    </div>
+  )
+}
+
 const RunInspectorBody = ({
   data,
   isError,
@@ -103,7 +130,7 @@ const RunInspectorBody = ({
     return <p className="text-sm text-destructive">{t("error")}</p>
   }
 
-  const { events, run, toolCalls } = data
+  const { artifacts, events, run, toolCalls } = data
 
   return (
     <div className="space-y-4">
@@ -138,6 +165,19 @@ const RunInspectorBody = ({
           </div>
         )}
       </section>
+
+      {artifacts.length > 0 ? (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold text-muted-foreground">
+            {t("artifacts")}
+          </h3>
+          <div className="space-y-1.5">
+            {artifacts.map((artifact) => (
+              <ArtifactRow artifact={artifact} key={artifact.id} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-1.5">
         <h3 className="text-xs font-semibold text-muted-foreground">

@@ -835,6 +835,8 @@ const PromptInputActions = ({
 
 const usePromptCommandPaletteItems = ({
   activeRange,
+  imagenDescription,
+  imagenLabel,
   planDescription,
   planLabel,
   promptDescription,
@@ -843,6 +845,8 @@ const usePromptCommandPaletteItems = ({
   skillLabel
 }: {
   activeRange: { query: string } | null
+  imagenDescription: string
+  imagenLabel: string
   planDescription: string
   planLabel: string
   promptDescription: string
@@ -860,6 +864,13 @@ const usePromptCommandPaletteItems = ({
         label: planLabel
       },
       {
+        command: "/imagen",
+        description: imagenDescription,
+        id: "imagen",
+        insertText: "/imagen ",
+        label: imagenLabel
+      },
+      {
         command: "/prompt",
         description: promptDescription,
         id: "prompt",
@@ -875,6 +886,8 @@ const usePromptCommandPaletteItems = ({
       }
     ],
     [
+      imagenDescription,
+      imagenLabel,
       planDescription,
       planLabel,
       promptDescription,
@@ -903,6 +916,8 @@ export const PromptInput = ({
   agentModeToggleLabel,
   commandPaletteEmptyLabel,
   commandPaletteGroupLabel,
+  commandPaletteImagenDescription,
+  commandPaletteImagenLabel,
   commandPalettePlanDescription,
   commandPalettePlanLabel,
   commandPalettePromptDescription,
@@ -952,6 +967,8 @@ export const PromptInput = ({
   agentModeToggleLabel: string
   commandPaletteEmptyLabel: string
   commandPaletteGroupLabel: string
+  commandPaletteImagenDescription: string
+  commandPaletteImagenLabel: string
   commandPalettePlanDescription: string
   commandPalettePlanLabel: string
   commandPalettePromptDescription: string
@@ -1044,6 +1061,8 @@ export const PromptInput = ({
   > | null>(null)
   const commandPaletteItems = usePromptCommandPaletteItems({
     activeRange: activeCommandPaletteRange,
+    imagenDescription: commandPaletteImagenDescription,
+    imagenLabel: commandPaletteImagenLabel,
     planDescription: commandPalettePlanDescription,
     planLabel: commandPalettePlanLabel,
     promptDescription: commandPalettePromptDescription,

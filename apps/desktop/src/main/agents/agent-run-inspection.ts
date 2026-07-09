@@ -6,10 +6,13 @@ import type {
   AgentRunTraceToolCall,
   InspectAgentRunOutput,
   PendingAgentApproval,
-  PendingAgentApprovalsOutput
+  PendingAgentApprovalsOutput,
+  ReadAgentArtifactOutput
 } from "@etyon/rpc"
 import { and, asc, desc, eq } from "drizzle-orm"
 
+import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { getChatSessionById } from "@/main/chat-sessions"
 import type { AppDatabase } from "@/main/db"
 import {
   agentApprovals,
@@ -132,6 +135,62 @@ export const inspectAgentRun = async ({
     events: events.map(toTraceEvent),
     run: toTraceRun(run),
     toolCalls: toolCalls.map(toTraceToolCall)
+  }
+}
+
+/**
+ * Reads a persisted artifact's current file content through the workspace
+ * sandbox of its run's project. Returns null when the artifact is unknown or
+ * does not belong to the requested session.
+ */
+export const readAgentArtifact = async ({
+  artifactId,
+  db,
+  maxChars,
+  sessionId
+}: {
+  artifactId: string
+  db: AppDatabase
+  maxChars?: number
+  sessionId?: string
+}): Promise<ReadAgentArtifactOutput | null> => {
+  const [row] = await db
+    .select({ artifact: agentArtifacts, run: agentRuns })
+    .from(agentArtifacts)
+    .innerJoin(agentRuns, eq(agentArtifacts.runId, agentRuns.id))
+    .where(eq(agentArtifacts.id, artifactId))
+    .limit(1)
+
+  if (!row || (sessionId && row.run.chatSessionId !== sessionId)) {
+    return null
+  }
+
+  const session = await getChatSessionById(db, row.run.chatSessionId)
+
+  if (!session) {
+    return null
+  }
+
+  const viewResult = await getWorkspaceCore(session.projectPath).view(
+    row.artifact.path
+  )
+
+  if (!viewResult.ok) {
+    throw new Error(
+      `Failed to read artifact file: ${viewResult.error.message} (${viewResult.error.code}: ${viewResult.error.path})`
+    )
+  }
+
+  const { content } = viewResult.value
+  const limitedContent =
+    maxChars === undefined ? content : content.slice(0, maxChars)
+
+  return {
+    artifact: toTraceArtifact(row.artifact),
+    content: limitedContent,
+    omittedChars: content.length - limitedContent.length,
+    totalChars: content.length,
+    truncated: limitedContent.length < content.length
   }
 }
 

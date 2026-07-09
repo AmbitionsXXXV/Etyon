@@ -7,15 +7,17 @@ import type {
   BuiltInProviderId,
   ProxySettings
 } from "@etyon/rpc"
-import type { LanguageModel } from "ai"
+import type { ImageModel, LanguageModel } from "ai"
 
 import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { getSettings } from "@/main/settings"
 import { hasProviderCredential } from "@/shared/providers/credentials"
+import { isImageOutputModel } from "@/shared/providers/image-output"
 import { createMoonshotFetch } from "@/shared/providers/moonshot-reasoning"
 import {
   BUILT_IN_PROVIDER_CATALOG,
   getProviderCatalogEntry,
+  resolveOpenAiApiMode,
   resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
 
@@ -213,7 +215,7 @@ const createProviderModel = (
     case "openai": {
       const baseURL = resolveProviderBaseURL(provider, providerConfig)
 
-      return providerConfig.apiMode === "chat-completions"
+      return resolveOpenAiApiMode(providerConfig) === "chat-completions"
         ? createOpenAICompatibleChatModel({ baseURL })
         : createOpenAIResponsesModel(baseURL)
     }
@@ -239,4 +241,98 @@ export const resolveModel = (modelId?: string): LanguageModel => {
   )
 
   return createProviderModel(provider, model, aiSettings, proxy)
+}
+
+// Image generation always runs through the OpenAI provider's Images API
+// (gpt-image-*), independent of the session's chat model. It reuses the
+// provider's key, base URL, and proxy-aware fetch, so a configured OpenAI
+// endpoint (official or a compatible gateway) works without extra setup.
+export const IMAGE_MODEL_ID = "gpt-image-2"
+
+export const isImageGenerationAvailable = (): boolean =>
+  hasUsableProvider("openai", getSettings().ai.providers.openai)
+
+export const resolveImageModel = (): ImageModel => {
+  const { ai: aiSettings, proxy } = getSettings()
+  const providerConfig = aiSettings.providers.openai
+  const apiKey = providerConfig.apiKey.trim()
+
+  if (!apiKey) {
+    throw new Error('Provider "openai" is missing an API Key.')
+  }
+
+  const openai = createOpenAI({
+    apiKey,
+    baseURL: resolveProviderBaseURL("openai", providerConfig),
+    fetch: createProxyAwareFetch(proxy)
+  })
+
+  return openai.image(IMAGE_MODEL_ID)
+}
+
+// Direct composer image mode: resolve the *selected* chat model as an image
+// model (unlike the imagen tool, which always targets gpt-image-2 on openai).
+// Only providers with an Images API are supported.
+export const resolveImageModelById = (compoundId: string): ImageModel => {
+  const { ai: aiSettings, proxy } = getSettings()
+  const { model, provider } = parseModelId(
+    compoundId,
+    aiSettings.defaultProvider
+  )
+  const providerConfig = aiSettings.providers[provider]
+  const proxyAwareFetch = createProxyAwareFetch(proxy)
+
+  if (provider === "openai") {
+    const apiKey = providerConfig.apiKey.trim()
+
+    if (!apiKey) {
+      throw new Error('Provider "openai" is missing an API Key.')
+    }
+
+    const openai = createOpenAI({
+      apiKey,
+      baseURL: resolveProviderBaseURL("openai", providerConfig),
+      fetch: proxyAwareFetch
+    })
+
+    return openai.image(model)
+  }
+
+  if (provider === "gateway") {
+    const apiKey = providerConfig.apiKey.trim()
+
+    if (!apiKey) {
+      throw new Error('Provider "gateway" is missing an API Key.')
+    }
+
+    const gateway = createGateway({ apiKey, fetch: proxyAwareFetch })
+
+    return gateway.imageModel(model)
+  }
+
+  throw new Error(`Provider "${provider}" does not support image generation.`)
+}
+
+// Safety-net re-validation for the composer image toggle: parse the compound id
+// and check the matching stored model's capability (falling back to the id
+// heuristic when the model is not in the catalog).
+export const isImageOutputModelSelection = (
+  aiSettings: AiSettings,
+  compoundId: string
+): boolean => {
+  let parsed: { model: string; provider: ProviderName }
+
+  try {
+    parsed = parseModelId(compoundId, aiSettings.defaultProvider)
+  } catch {
+    return false
+  }
+
+  const providerConfig = aiSettings.providers[parsed.provider]
+  const entry = [
+    ...providerConfig.models,
+    ...providerConfig.availableModels
+  ].find((candidate) => candidate.id === parsed.model)
+
+  return isImageOutputModel(entry ?? { id: parsed.model })
 }

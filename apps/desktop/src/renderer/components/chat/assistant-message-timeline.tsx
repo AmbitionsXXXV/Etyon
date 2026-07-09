@@ -2,15 +2,24 @@ import { useI18n } from "@etyon/i18n/react"
 import type { StreamdownAnimation } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChainOfThought } from "@heroui-pro/react"
+import { BrowserIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 import { Streamdown } from "streamdown"
 import type { Components, ExtraProps } from "streamdown"
 
+import { ImagenMessageImage } from "@/renderer/components/chat/imagen-message"
 import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool-trace"
+import {
+  getPublishedArtifactRef,
+  isArtifactToolPart
+} from "@/renderer/lib/chat/artifact-panel"
+import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
 import {
   buildAssistantChainEntries,
   getAssistantBodyText,
+  getRunLimitData,
   getUrlHost,
   hasPendingApproval,
   isReferencePart,
@@ -24,6 +33,7 @@ import type {
   SourceDocumentChatPart,
   SourceUrlChatPart
 } from "@/renderer/lib/chat/assistant-message-timeline"
+import { isImagenToolPart } from "@/renderer/lib/chat/imagen-message"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 
@@ -183,6 +193,89 @@ const AssistantChainOfThought = ({
   )
 }
 
+const AssistantArtifactCard = ({
+  onOpenArtifact,
+  part
+}: {
+  onOpenArtifact?: (artifact: ChatArtifactRef) => void
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+  const publishedArtifact = getPublishedArtifactRef(part)
+  const isFailed =
+    part.state === "output-error" || part.state === "output-denied"
+  const pendingTitle =
+    typeof (part.input as { title?: unknown } | undefined)?.title === "string"
+      ? (part.input as { title: string }).title
+      : null
+
+  if (isFailed) {
+    return (
+      <div className="inline-flex max-w-full items-center gap-2.5 rounded-xl border border-danger/40 bg-danger/5 px-3 py-2 text-xs">
+        <HugeiconsIcon
+          className="shrink-0 text-danger"
+          icon={BrowserIcon}
+          size={18}
+          strokeWidth={2}
+        />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium text-foreground">
+            {pendingTitle ?? t("chat.artifact.badge")}
+          </span>
+          <span className="truncate text-danger">
+            {t("chat.artifact.publishFailed")}
+          </span>
+        </span>
+      </div>
+    )
+  }
+
+  if (!publishedArtifact) {
+    return (
+      <div className="inline-flex max-w-full animate-pulse items-center gap-2.5 rounded-xl border border-border/70 bg-muted/50 px-3 py-2 text-xs">
+        <HugeiconsIcon
+          className="shrink-0 text-muted-foreground"
+          icon={BrowserIcon}
+          size={18}
+          strokeWidth={2}
+        />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium text-foreground">
+            {pendingTitle ?? t("chat.artifact.badge")}
+          </span>
+          <span className="truncate text-muted-foreground">
+            {t("chat.artifact.publishing")}
+          </span>
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      aria-label={t("chat.artifact.open", { title: publishedArtifact.title })}
+      className="group inline-flex max-w-full cursor-pointer items-center gap-2.5 rounded-xl border border-border/70 bg-muted/50 px-3 py-2 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted"
+      onClick={() => onOpenArtifact?.(publishedArtifact)}
+      type="button"
+    >
+      <HugeiconsIcon
+        className="shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+        icon={BrowserIcon}
+        size={18}
+        strokeWidth={2}
+      />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate font-medium text-foreground">
+          {publishedArtifact.title}
+        </span>
+        <span className="truncate text-muted-foreground">
+          {t("chat.artifact.badge")} · {publishedArtifact.path}
+        </span>
+      </span>
+    </button>
+  )
+}
+
 const AssistantFilePartTimeline = ({ part }: { part: FileChatPart }) => (
   <div className="inline-flex max-w-full flex-col gap-1 rounded-md border border-border/70 bg-muted/50 px-3 py-2 text-xs">
     <span className="font-medium text-foreground">File</span>
@@ -256,6 +349,8 @@ export const AssistantMessageTimeline = ({
   isApprovalActionDisabled,
   message,
   onApprovalResponse,
+  onOpenArtifact,
+  sessionId,
   streamdownAnimation
 }: {
   className?: string
@@ -267,10 +362,20 @@ export const AssistantMessageTimeline = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
+  onOpenArtifact?: (artifact: ChatArtifactRef) => void
+  sessionId: string
   streamdownAnimation: StreamdownAnimation
 }) => {
+  const { t } = useI18n()
   const chainEntries = buildAssistantChainEntries(message)
   const bodyText = getAssistantBodyText(message)
+  const runLimit = getRunLimitData(message)
+  const artifactParts = message.parts.filter((part) =>
+    isArtifactToolPart(part)
+  ) as ChatToolPart[]
+  const imagenParts = message.parts.filter((part) =>
+    isImagenToolPart(part)
+  ) as ChatToolPart[]
   const referenceParts = message.parts
     .map((part, index) => ({ index, part }))
     .filter(({ part }) => isReferencePart(part))
@@ -288,6 +393,25 @@ export const AssistantMessageTimeline = ({
         streamdownAnimation={streamdownAnimation}
         text={bodyText}
       />
+      {runLimit ? (
+        <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          {t("chat.runLimit.notice", { maxSteps: runLimit.maxSteps })}
+        </p>
+      ) : null}
+      {artifactParts.map((part) => (
+        <AssistantArtifactCard
+          key={`${message.id}-artifact-${part.toolCallId}`}
+          onOpenArtifact={onOpenArtifact}
+          part={part}
+        />
+      ))}
+      {imagenParts.map((part) => (
+        <ImagenMessageImage
+          key={`${message.id}-imagen-${part.toolCallId}`}
+          part={part}
+          sessionId={sessionId}
+        />
+      ))}
       {referenceParts.map(({ index, part }) => (
         <AssistantReferencePart
           key={`${message.id}-reference-${index}`}

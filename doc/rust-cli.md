@@ -1,7 +1,6 @@
 # Rust CLI
 
-Etyon now uses a Rust-first CLI workspace. The legacy TypeScript CLI under
-`apps/cli` has been removed.
+Etyon now uses a Rust-first CLI workspace. The legacy TypeScript CLI under `apps/cli` has been removed.
 
 ## Workspace
 
@@ -27,15 +26,13 @@ The desktop app writes a connection file after its local server starts:
 ~/.config/etyon/connection.json
 ```
 
-The file contains the desktop URL, process id, transport version, and a
-per-start token. `/health` stays public; `/rpc/*` and `/api/chat` require:
+The file contains the desktop URL, process id, transport version, and a per-start token. `/health` stays public; `/rpc/*` and `/api/chat` require:
 
 ```text
 Authorization: Bearer <token>
 ```
 
-The CLI expects desktop to already be running. It does not start desktop in the
-first Rust CLI version.
+The CLI expects desktop to already be running. It does not start desktop in the first Rust CLI version.
 
 ## Commands
 
@@ -49,8 +46,7 @@ cargo run -p etyon-cli -- projects index refresh --project /path/to/project
 cargo run -p etyon-cli -- projects index status --project /path/to/project
 ```
 
-`--tui` and `etyon tui` are reserved entry points. They return a stable
-planned-but-unavailable result until a TUI is implemented.
+`--tui` and `etyon tui` are reserved entry points. They return a stable planned-but-unavailable result until a TUI is implemented.
 
 ## Project Index
 
@@ -68,8 +64,7 @@ Project indexing writes:
   embeddings/
 ```
 
-Git projects automatically get `.etyon-snapshot/` added to `.gitignore`.
-Non-Git projects are not given a `.gitignore`.
+Git projects automatically get `.etyon-snapshot/` added to `.gitignore`. Non-Git projects are not given a `.gitignore`.
 
 Embeddings are reserved in the data model but disabled by default.
 

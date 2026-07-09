@@ -107,3 +107,5 @@ package_back.json
 target/
 
 .superpowers/
+artifacts/images
+generated-images

@@ -186,6 +186,7 @@ describe("AppSettingsSchema", () => {
     expect(settings.agents).toEqual({
       allowSubagentDelegation: false,
       approvals: {
+        approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
       defaultProfileId: "general-purpose",
@@ -197,7 +198,7 @@ describe("AppSettingsSchema", () => {
         requireSandbox: true
       },
       maxConcurrentSubagents: 2,
-      maxSteps: 8,
+      maxSteps: 64,
       profiles: [],
       requireApprovalForWrites: true,
       retry: {
@@ -209,8 +210,7 @@ describe("AppSettingsSchema", () => {
         autoAllowSandboxedShell: false,
         enabled: false,
         failIfUnavailable: true
-      },
-      showToolTraces: true
+      }
     })
   })
 
@@ -226,6 +226,7 @@ describe("AppSettingsSchema", () => {
     expect(update.agents).toEqual({
       allowSubagentDelegation: false,
       approvals: {
+        approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
       defaultProfileId: "coder",
@@ -249,8 +250,7 @@ describe("AppSettingsSchema", () => {
         autoAllowSandboxedShell: false,
         enabled: false,
         failIfUnavailable: true
-      },
-      showToolTraces: true
+      }
     })
   })
 

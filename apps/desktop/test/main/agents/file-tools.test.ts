@@ -34,11 +34,11 @@ afterAll(() => {
 
 describe("file tools", () => {
   it("marks edit and write as approval-gated and the rest as free", () => {
-    expect(tools.edit.requireApproval).toBe(true)
-    expect(tools.write.requireApproval).toBe(true)
-    expect(tools.read.requireApproval).toBeFalsy()
-    expect(tools.ls.requireApproval).toBeFalsy()
-    expect(tools.grep.requireApproval).toBeFalsy()
+    expect(tools.edit.needsApproval).toBe(true)
+    expect(tools.write.needsApproval).toBe(true)
+    expect(tools.read.needsApproval).toBeFalsy()
+    expect(tools.ls.needsApproval).toBeFalsy()
+    expect(tools.grep.needsApproval).toBeFalsy()
   })
 
   it("reads files with line numbers and offset/limit", async () => {

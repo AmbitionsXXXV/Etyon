@@ -296,6 +296,8 @@ export {
   ProjectSnapshotFolderItemSchema,
   ProjectSnapshotItemSchema,
   ProjectSnapshotStateSchema,
+  ReadProjectBinaryFileInputSchema,
+  ReadProjectBinaryFileOutputSchema,
   ReadProjectFileInputSchema,
   ReadProjectFileOutputSchema
 } from "./schemas/project-snapshot"
@@ -308,6 +310,8 @@ export type {
   ProjectSnapshotFolderItem,
   ProjectSnapshotItem,
   ProjectSnapshotState,
+  ReadProjectBinaryFileInput,
+  ReadProjectBinaryFileOutput,
   ReadProjectFileInput,
   ReadProjectFileOutput
 } from "./schemas/project-snapshot"

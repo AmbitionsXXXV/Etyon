@@ -5,6 +5,7 @@ import type {
 } from "@etyon/rpc"
 
 import { hasProviderCredential } from "@/shared/providers/credentials"
+import { isImageOutputModel } from "@/shared/providers/image-output"
 import {
   BUILT_IN_PROVIDER_CATALOG,
   getProviderCatalogEntry
@@ -40,6 +41,7 @@ const formatContextWindow = (contextWindow?: number): string | null => {
 
 const buildModelSummary = (model: StoredProviderModel): string =>
   [
+    isImageOutputModel(model) ? "Image" : null,
     model.capabilities?.vision ? "Vision" : null,
     model.capabilities?.reasoning ? "Reasoning" : null,
     model.capabilities?.functionCalling ? "Tools" : null,

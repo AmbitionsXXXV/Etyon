@@ -7,9 +7,10 @@
 All seven phases are implemented on the minimalist single-agent runtime:
 
 - **Phase 1–4** (settings, read-only tools, permissioned writes, event store): in place — `chat_messages` projection + append-only `agent_runs`/`agent_events`/`agent_tool_calls`/`agent_approvals`, write tools gated by `requireApproval`.
-- **Phase 5 — Profiles**: built-in roster (`general-purpose`, `explore`, `coder`, `plan`, `review`, `harness-operator`) in `shared/agents/profiles.ts`; the chat route resolves `settings.agents.defaultProfileId` and the single Mastra agent applies the profile's instructions / tool policy / model policy per request. Settings roster UI in `agents-tab.tsx`.
+- **Phase 5 — Profiles**: built-in roster (`general-purpose`, `explore`, `coder`, `plan`, `review`, `harness-operator`) in `shared/agents/profiles.ts`; the chat route resolves `settings.agents.defaultProfileId` and `agents/minimal/agent-toolset.ts` applies the profile's instructions / tool policy / model policy per request. Settings roster UI in `agents-tab.tsx`.
 - **Phase 6 — Delegation**: `delegate` tool (`agents/minimal/delegation.ts`), gated by `allowSubagentDelegation`, runs a headless read-only child via AI SDK `generateText` (no write/edit, no nested delegation → depth capped at 1), enforces `maxConcurrentSubagents`, persists the child run under `parentRunId`, returns summary + files read + child run id.
 - **Phase 7 — Run inspector**: `agent-run-inspection.ts` + `agents.inspectRun` / `listRuns` / `listPendingApprovals` RPC, surfaced by a per-message `AgentRunInspector` dialog (timeline + tool-output preview/summary). Pending approvals are durable across restart.
+- **Phase 8 — Self-owned loop (2026-07-07)**: the Mastra `Agent` + `@mastra/ai-sdk` `handleChatStream` bridge is replaced by a harness-owned loop (`agents/minimal/agent-loop.ts`, modeled on Claude Code's query loop: one model round-trip per iteration, the harness decides continue-or-stop). Typed exits (`completed` / `max-steps` / `model-error` / `suspended` / `aborted`) settle `agent_runs.finish_reason` and a real `failed` status; hitting `maxSteps` appends a visible run-limit notice in chat instead of ending silently; a single-shot nudge counters announce-then-stop preamble endings; per-step `step.finished` events land in the event store. Tools are plain AI SDK `tool()` definitions with native `needsApproval` on `edit`/`write` (approval suspend/resume rides the persisted message history via `collectToolApprovals`).
 
 **Deliberate boundary (unchanged):** no raw shell/command tool — the agent is file-only (read/ls/grep/edit/write), so Phase 3 "command" criteria (timeouts, destructive-command detection, `vp`/`rtk` command rules) are intentionally out of scope. Gates: tsc clean, lint clean, 277/277 tests. Remaining: interactive smoke with a real model key.
 
@@ -32,12 +33,12 @@ Durable decisions that apply across all phases:
 
 Use this split when deciding whether a setting belongs in `Chat` or `Agents`:
 
-| Surface   | Belongs Here                                                                                                                                                              | Avoid Here                                                                |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Chat      | Auto compact, default tool selection, default skill selection, tool trace visibility, approval density, chat-run budget defaults that affect every chat request           | Full profile editing, delegation graph editing, decorative run dashboards |
-| Agents    | Enable managed agents, default profile, profile roster, profile instructions, execution mode, delegation permissions, max sub-agents, max steps, model policy per profile | Generic chat rendering options, unrelated markdown/math/sound toggles     |
-| Providers | Provider credentials, model availability, provider-specific login and model refresh                                                                                       | Agent role descriptions or tool permission policy                         |
-| Skills    | Skill discovery and instruction retrieval controls                                                                                                                        | Treating skills as executable tools before a capability manifest exists   |
+| Surface | Belongs Here | Avoid Here |
+| --- | --- | --- |
+| Chat | Auto compact, default tool selection, default skill selection, tool trace visibility, approval density, chat-run budget defaults that affect every chat request | Full profile editing, delegation graph editing, decorative run dashboards |
+| Agents | Enable managed agents, default profile, profile roster, profile instructions, execution mode, delegation permissions, max sub-agents, max steps, model policy per profile | Generic chat rendering options, unrelated markdown/math/sound toggles |
+| Providers | Provider credentials, model availability, provider-specific login and model refresh | Agent role descriptions or tool permission policy |
+| Skills | Skill discovery and instruction retrieval controls | Treating skills as executable tools before a capability manifest exists |
 
 Alma settings worth borrowing:
 
