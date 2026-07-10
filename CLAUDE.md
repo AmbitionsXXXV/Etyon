@@ -6,12 +6,14 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 Rankings, higher = better. Cost reflects what I actually pay (OpenAI has really generous limits), not list price. Intelligence is how hard a problem you can hand the model unsupervised. Taste covers UI/UX, code quality, API design, and copy.
 
-| model    | cost | intelligence | taste |
-| -------- | ---- | ------------ | ----- |
-| gpt-5.5  | 9    | 8            | 5     |
-| sonnet-5 | 5    | 5            | 7     |
-| opus-4.8 | 4    | 7            | 8     |
-| fable-5  | 2    | 9            | 9     |
+| model         | cost | intelligence | taste |
+| ------------- | ---- | ------------ | ----- |
+| gpt-5.6 sol   | 8    | 9            | 5     |
+| gpt-5.6 terra | 9    | 8            | 5     |
+| gpt-5.6 luna  | 9    | 7            | 5     |
+| sonnet-5      | 5    | 5            | 7     |
+| opus-4.8      | 4    | 7            | 8     |
+| fable-5       | 2    | 9            | 9     |
 
 How to apply:
 
