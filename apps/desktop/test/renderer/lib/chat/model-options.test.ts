@@ -10,6 +10,7 @@ import {
 const buildAiSettingsFixture = (): AiSettings => ({
   defaultModel: "moonshot/kimi-k2.5",
   defaultProvider: "moonshot",
+  modelEffort: { anthropic: "high", openai: "medium" },
   providers: {
     anthropic: {
       apiKey: "",

@@ -161,9 +161,37 @@ const ZAI_CODING_PLAN_PROVIDER_CONFIG_DEFAULT = {
   models: EMPTY_PROVIDER_MODELS
 }
 
+// Reasoning-effort levels use each provider's official naming: Anthropic's
+// `output_config.effort` and OpenAI's `reasoning_effort` (gpt-5.1+ dropped
+// "minimal"). Defaults match each provider's own omitted-value default
+// (Claude "high", OpenAI "medium").
+export const AnthropicModelEffortSchema = z.enum([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max"
+])
+
+export const OpenAiModelEffortSchema = z.enum([
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh"
+])
+
+export const ModelEffortSettingsSchema = z
+  .object({
+    anthropic: AnthropicModelEffortSchema.default("high"),
+    openai: OpenAiModelEffortSchema.default("medium")
+  })
+  .default({ anthropic: "high", openai: "medium" })
+
 export const AiSettingsSchema = z.object({
   defaultModel: z.string().default(""),
   defaultProvider: AiProviderNameSchema.default("openai"),
+  modelEffort: ModelEffortSettingsSchema,
   providers: z
     .object({
       anthropic: AiProviderConfigSchema.default(
@@ -387,6 +415,7 @@ export const AppSettingsSchema = z.object({
   ai: AiSettingsSchema.default({
     defaultModel: "",
     defaultProvider: "openai",
+    modelEffort: { anthropic: "high", openai: "medium" },
     providers: {
       anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
       cursor: CURSOR_PROVIDER_CONFIG_DEFAULT,
@@ -462,6 +491,7 @@ export type CustomThemeType = z.infer<typeof CustomThemeTypeSchema>
 export type DarkColorSchema = z.infer<typeof DarkColorSchemaSchema>
 export type LightColorSchema = z.infer<typeof LightColorSchemaSchema>
 export type MemorySettings = z.infer<typeof MemorySettingsSchema>
+export type ModelEffortSettings = z.infer<typeof ModelEffortSettingsSchema>
 export type ProxySettings = z.infer<typeof ProxySettingsSchema>
 export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>

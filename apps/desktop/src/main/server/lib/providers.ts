@@ -13,6 +13,8 @@ import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { getSettings } from "@/main/settings"
 import { hasProviderCredential } from "@/shared/providers/credentials"
 import { isImageOutputModel } from "@/shared/providers/image-output"
+import { resolveEffortProviderOptions } from "@/shared/providers/model-effort"
+import type { EffortProviderOptions } from "@/shared/providers/model-effort"
 import { createMoonshotFetch } from "@/shared/providers/moonshot-reasoning"
 import {
   BUILT_IN_PROVIDER_CATALOG,
@@ -335,4 +337,38 @@ export const isImageOutputModelSelection = (
   ].find((candidate) => candidate.id === parsed.model)
 
   return isImageOutputModel(entry ?? { id: parsed.model })
+}
+
+// Effort → AI SDK providerOptions for the current chat model selection. Mirrors
+// isImageOutputModelSelection: parse the compound id, resolve the stored model
+// (falling back to the id heuristic), then delegate to the shared effort
+// resolver. Returns undefined when the provider has no effort knob or the id
+// cannot be parsed.
+export const resolveEffortProviderOptionsForSelection = (
+  aiSettings: AiSettings,
+  compoundId: string | null | undefined
+): EffortProviderOptions | undefined => {
+  if (!compoundId) {
+    return undefined
+  }
+
+  let parsed: { model: string; provider: ProviderName }
+
+  try {
+    parsed = parseModelId(compoundId, aiSettings.defaultProvider)
+  } catch {
+    return undefined
+  }
+
+  const providerConfig = aiSettings.providers[parsed.provider]
+  const entry = [
+    ...providerConfig.models,
+    ...providerConfig.availableModels
+  ].find((candidate) => candidate.id === parsed.model)
+
+  return resolveEffortProviderOptions({
+    model: entry ?? { id: parsed.model },
+    modelEffort: aiSettings.modelEffort,
+    providerId: parsed.provider
+  })
 }

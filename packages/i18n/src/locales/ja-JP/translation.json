@@ -139,8 +139,19 @@
       "title": "セッションが見つかりません"
     },
     "model": {
+      "effort": {
+        "none": "なし",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "xhigh": "超高",
+        "max": "最大"
+      },
+      "effortLabel": "思考の強さ",
       "emptyAction": "Settings を開く",
-      "emptyDescription": "利用可能なモデルがありません。"
+      "emptyDescription": "利用可能なモデルがありません。",
+      "searchEmpty": "一致するモデルがありません",
+      "searchPlaceholder": "モデルを検索…"
     },
     "placeholder": {
       "description": "session メタデータと sidebar mode は接続済みです。次に完全な chat UI とメッセージ永続化を追加します。",

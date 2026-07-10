@@ -139,8 +139,19 @@
       "title": "Session Not Found"
     },
     "model": {
+      "effort": {
+        "none": "None",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Very high",
+        "max": "Max"
+      },
+      "effortLabel": "Effort",
       "emptyAction": "Open Settings",
-      "emptyDescription": "No enabled models are available."
+      "emptyDescription": "No enabled models are available.",
+      "searchEmpty": "No matching models",
+      "searchPlaceholder": "Search models…"
     },
     "placeholder": {
       "description": "Session metadata and sidebar modes are now wired up. The full chat UI and message persistence will land next.",

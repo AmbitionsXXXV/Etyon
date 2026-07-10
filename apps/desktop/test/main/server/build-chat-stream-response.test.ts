@@ -33,6 +33,7 @@ vi.mock("@/main/agents/minimal/agent-toolset", () => ({
 }))
 
 vi.mock("@/main/server/lib/providers", () => ({
+  resolveEffortProviderOptionsForSelection: vi.fn(),
   resolveModel: vi.fn(() => ({ modelId: "profile-preferred" }))
 }))
 

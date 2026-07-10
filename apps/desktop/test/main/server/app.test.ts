@@ -227,6 +227,7 @@ vi.mock("electron", () => {
 })
 
 vi.mock("@/main/server/lib/providers", () => ({
+  resolveEffortProviderOptionsForSelection: vi.fn(),
   resolveModel: resolveModelMock
 }))
 

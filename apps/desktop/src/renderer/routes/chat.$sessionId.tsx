@@ -6,6 +6,7 @@ import type {
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
   GitProjectDiffOutput,
+  ModelEffortSettings,
   ProjectSnapshotItem,
   PromptTemplate,
   StreamdownAnimation
@@ -130,6 +131,12 @@ import type {
   ChatStreamDataTypes
 } from "@/shared/chat/stream-data"
 import { isImageOutputModel } from "@/shared/providers/image-output"
+import { DEFAULT_MODEL_EFFORT } from "@/shared/providers/model-effort"
+import type {
+  AnthropicEffortLevel,
+  EffortProviderId,
+  OpenAiEffortLevel
+} from "@/shared/providers/model-effort"
 
 const formatContextWindowLabel = (value: number | undefined): string | null => {
   if (!value) {
@@ -1227,9 +1234,11 @@ const ChatRuntime = ({
   isProjectDiffLoading,
   mentionItems,
   mentionSkillItems,
+  modelEffort,
   modelGroups,
   initialMessages,
   onChatFinish,
+  onEffortChange,
   onMentionQueryChange,
   onModelChange,
   onOpenArtifact,
@@ -1263,8 +1272,13 @@ const ChatRuntime = ({
   initialMessages: ChatUiMessage[]
   mentionItems: ProjectSnapshotItem[]
   mentionSkillItems: PromptSkillMentionItem[]
+  modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
   onChatFinish: () => void
+  onEffortChange: (
+    provider: EffortProviderId,
+    level: AnthropicEffortLevel | OpenAiEffortLevel
+  ) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
@@ -1288,6 +1302,17 @@ const ChatRuntime = ({
   transport: DefaultChatTransport<ChatUiMessage>
 }) => {
   const { t } = useI18n()
+  const effortLevelLabels = useMemo(
+    () => ({
+      high: t("chat.model.effort.high"),
+      low: t("chat.model.effort.low"),
+      max: t("chat.model.effort.max"),
+      medium: t("chat.model.effort.medium"),
+      none: t("chat.model.effort.none"),
+      xhigh: t("chat.model.effort.xhigh")
+    }),
+    [t]
+  )
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -1958,11 +1983,17 @@ const ChatRuntime = ({
               <div className="flex items-center gap-3">
                 <ModelSelector
                   disabled={isModelUpdating}
+                  effortLabel={t("chat.model.effortLabel")}
+                  effortLevelLabels={effortLevelLabels}
                   emptyActionLabel={t("chat.model.emptyAction")}
                   emptyLabel={t("chat.model.emptyDescription")}
                   groups={modelGroups}
+                  modelEffort={modelEffort}
+                  onEffortChange={onEffortChange}
                   onOpenSettings={onOpenSettings}
                   onValueChange={onModelChange}
+                  searchEmptyLabel={t("chat.model.searchEmpty")}
+                  searchPlaceholder={t("chat.model.searchPlaceholder")}
                   value={selectedModelValue}
                 />
                 <ComposerImageModeControl
@@ -2026,7 +2057,9 @@ const ChatPendingState = ({
   isLoadingSkillItems,
   isProjectContextOpen,
   isProjectDiffLoading,
+  modelEffort,
   modelGroups,
+  onEffortChange,
   onMentionQueryChange,
   onModelChange,
   onOpenSettings,
@@ -2049,7 +2082,12 @@ const ChatPendingState = ({
   isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
   isProjectDiffLoading: boolean
+  modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
+  onEffortChange: (
+    provider: EffortProviderId,
+    level: AnthropicEffortLevel | OpenAiEffortLevel
+  ) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
@@ -2069,6 +2107,17 @@ const ChatPendingState = ({
   sessionTitle: string
 }) => {
   const { t } = useI18n()
+  const effortLevelLabels = useMemo(
+    () => ({
+      high: t("chat.model.effort.high"),
+      low: t("chat.model.effort.low"),
+      max: t("chat.model.effort.max"),
+      medium: t("chat.model.effort.medium"),
+      none: t("chat.model.effort.none"),
+      xhigh: t("chat.model.effort.xhigh")
+    }),
+    [t]
+  )
 
   return (
     <ChatProjectContextLayout
@@ -2131,11 +2180,17 @@ const ChatPendingState = ({
               <div className="flex items-center gap-3">
                 <ModelSelector
                   disabled
+                  effortLabel={t("chat.model.effortLabel")}
+                  effortLevelLabels={effortLevelLabels}
                   emptyActionLabel={t("chat.model.emptyAction")}
                   emptyLabel={t("chat.model.emptyDescription")}
                   groups={modelGroups}
+                  modelEffort={modelEffort}
+                  onEffortChange={onEffortChange}
                   onOpenSettings={onOpenSettings}
                   onValueChange={onModelChange}
+                  searchEmptyLabel={t("chat.model.searchEmpty")}
+                  searchPlaceholder={t("chat.model.searchPlaceholder")}
                   value={selectedModelValue}
                 />
                 <ComposerImageModeControl
@@ -2282,6 +2337,7 @@ const ChatSessionPage = () => {
         : "",
     [modelGroups, session, settingsQuery.data]
   )
+  const modelEffort = settingsQuery.data?.ai.modelEffort ?? DEFAULT_MODEL_EFFORT
   const setModelMutation = useMutation({
     mutationFn: async (modelId: string | null) => {
       const nextSession = await rpcClient.chatSessions.setModel({
@@ -2315,6 +2371,24 @@ const ChatSessionPage = () => {
           })
       )
 
+      if (nextSettings) {
+        queryClient.setQueryData(settingsQueryOptions.queryKey, nextSettings)
+      }
+    }
+  })
+  const setEffortMutation = useMutation({
+    mutationFn: async (next: ModelEffortSettings) => {
+      if (!settingsQuery.data) {
+        return null
+      }
+
+      const nextSettings = await rpcClient.settings.update({
+        ai: { ...settingsQuery.data.ai, modelEffort: next }
+      })
+
+      return nextSettings
+    },
+    onSuccess: (nextSettings) => {
       if (nextSettings) {
         queryClient.setQueryData(settingsQueryOptions.queryKey, nextSettings)
       }
@@ -2397,6 +2471,15 @@ const ChatSessionPage = () => {
       setModelMutation.mutate(nextValue)
     },
     [setModelMutation]
+  )
+  const handleEffortChange = useCallback(
+    (
+      provider: EffortProviderId,
+      level: AnthropicEffortLevel | OpenAiEffortLevel
+    ) => {
+      setEffortMutation.mutate({ ...modelEffort, [provider]: level })
+    },
+    [modelEffort, setEffortMutation]
   )
 
   const handleOpenSettings = useCallback(() => {
@@ -2501,8 +2584,10 @@ const ChatSessionPage = () => {
           isProjectDiffLoading={gitDiffQuery.isFetching}
           mentionItems={mentionItems}
           mentionSkillItems={mentionSkillItems}
+          modelEffort={modelEffort}
           modelGroups={modelGroups}
           onChatFinish={handleChatFinish}
+          onEffortChange={handleEffortChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenArtifact={handleOpenArtifact}
@@ -2543,7 +2628,9 @@ const ChatSessionPage = () => {
           isLoadingSkillItems={isLoadingSkillItems}
           isProjectContextOpen={isProjectContextOpen}
           isProjectDiffLoading={gitDiffQuery.isFetching}
+          modelEffort={modelEffort}
           modelGroups={modelGroups}
+          onEffortChange={handleEffortChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}

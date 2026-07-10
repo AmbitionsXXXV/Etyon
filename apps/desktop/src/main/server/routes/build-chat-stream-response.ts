@@ -27,7 +27,10 @@ import {
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
 import { logger } from "@/main/logger"
-import { resolveModel } from "@/main/server/lib/providers"
+import {
+  resolveEffortProviderOptionsForSelection,
+  resolveModel
+} from "@/main/server/lib/providers"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
@@ -500,6 +503,8 @@ export const buildChatStreamResponse = ({
         writeRequestPhase(writer, "model-start")
 
         if (!settings.agents.enabled) {
+          const effortProviderOptions =
+            resolveEffortProviderOptionsForSelection(settings.ai, modelId)
           const { runWithMoonshotReasoningContext } =
             await import("@/shared/providers/moonshot-reasoning")
           const result = await runWithMoonshotReasoningContext(
@@ -510,6 +515,9 @@ export const buildChatStreamResponse = ({
                   abortSignal,
                   ...(effectiveSystemPrompts.length > 0
                     ? { system: effectiveSystemPrompts.join("\n\n") }
+                    : {}),
+                  ...(effortProviderOptions
+                    ? { providerOptions: effortProviderOptions }
                     : {}),
                   messages: preparedModelMessages,
                   model
@@ -544,6 +552,11 @@ export const buildChatStreamResponse = ({
           profile.preferredModel.length > 0
             ? resolveModel(profile.preferredModel)
             : model
+        const agentEffortProviderOptions =
+          resolveEffortProviderOptionsForSelection(
+            settings.ai,
+            profile.preferredModel.length > 0 ? profile.preferredModel : modelId
+          )
         const agentTools = buildAgentToolset({
           agentRunId: agentRunId ?? null,
           chatSessionId: sessionId,
@@ -568,6 +581,9 @@ export const buildChatStreamResponse = ({
           messages: preparedModelMessages,
           model: agentModel,
           ...(onAgentStep ? { onStepFinish: onAgentStep } : {}),
+          ...(agentEffortProviderOptions
+            ? { providerOptions: agentEffortProviderOptions }
+            : {}),
           system: agentSystem,
           tools: agentTools,
           writer: withFirstChunkLatency(writer, {

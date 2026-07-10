@@ -139,8 +139,19 @@
       "title": "未找到会话"
     },
     "model": {
+      "effort": {
+        "none": "关闭",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "xhigh": "超高",
+        "max": "最大"
+      },
+      "effortLabel": "思考强度",
       "emptyAction": "前往 Settings",
-      "emptyDescription": "当前没有可用模型。"
+      "emptyDescription": "当前没有可用模型。",
+      "searchEmpty": "没有匹配的模型",
+      "searchPlaceholder": "搜索模型…"
     },
     "placeholder": {
       "description": "session 元数据和 sidebar 模式已经接入，下一步会把完整 chat UI 和消息持久化接进来。",

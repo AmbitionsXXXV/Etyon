@@ -10,6 +10,7 @@ import { stepCountIs, streamText } from "ai"
 
 import { CHAT_RUN_LIMIT_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRunLimitData } from "@/shared/chat/stream-data"
+import type { EffortProviderOptions } from "@/shared/providers/model-effort"
 
 /**
  * Self-owned agent loop (replaces the Mastra `handleChatStream` bridge).
@@ -60,6 +61,8 @@ export interface RunAgentLoopOptions {
   model: LanguageModel
   /** Best-effort per-step observer (event store); errors are swallowed. */
   onStepFinish?: (step: AgentLoopStep) => Promise<void> | void
+  /** Reasoning-effort provider options for the resolved agent model. */
+  providerOptions?: EffortProviderOptions
   system?: string
   tools: ToolSet
   writer: UIMessageStreamWriter<UIMessage>
@@ -164,6 +167,7 @@ export const runAgentLoop = async ({
   messages,
   model,
   onStepFinish,
+  providerOptions,
   system,
   tools,
   writer
@@ -210,6 +214,7 @@ export const runAgentLoop = async ({
         messages: history,
         model,
         onError: captureStreamError,
+        ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(1),
         ...(system ? { system } : {}),
         tools
