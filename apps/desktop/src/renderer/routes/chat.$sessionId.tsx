@@ -1229,7 +1229,6 @@ const ChatRuntime = ({
   isLoadingProjectTreeItems,
   isLoadingSkillItems,
   autoCompact,
-  isModelUpdating,
   isProjectContextOpen,
   isProjectDiffLoading,
   mentionItems,
@@ -1268,7 +1267,6 @@ const ChatRuntime = ({
   isLoadingSkillItems: boolean
   isProjectContextOpen: boolean
   isProjectDiffLoading: boolean
-  isModelUpdating: boolean
   initialMessages: ChatUiMessage[]
   mentionItems: ProjectSnapshotItem[]
   mentionSkillItems: PromptSkillMentionItem[]
@@ -1516,7 +1514,6 @@ const ChatRuntime = ({
 
   const isRequestPending = status === "streaming" || status === "submitted"
   const isAgentModeToggleDisabled = getChatAgentModeToggleDisabled({
-    isModelUpdating,
     isRequestPending
   })
   const handleAgentModeChange = useCallback(
@@ -1538,7 +1535,6 @@ const ChatRuntime = ({
   }, [isAgentModeToggleDisabled])
   const isImageModeToggleDisabled = getImageModeToggleDisabled({
     isCapable: isSelectedModelImageCapable,
-    isModelUpdating,
     isRequestPending
   })
   const handleImageModeToggle = useCallback(() => {
@@ -1978,11 +1974,9 @@ const ChatRuntime = ({
               "chat.mentions.commandSkillDescription"
             )}
             commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
-            disabled={isModelUpdating}
             footer={
               <div className="flex items-center gap-3">
                 <ModelSelector
-                  disabled={isModelUpdating}
                   effortLabel={t("chat.model.effortLabel")}
                   effortLevelLabels={effortLevelLabels}
                   emptyActionLabel={t("chat.model.emptyAction")}
@@ -2338,6 +2332,9 @@ const ChatSessionPage = () => {
     [modelGroups, session, settingsQuery.data]
   )
   const modelEffort = settingsQuery.data?.ai.modelEffort ?? DEFAULT_MODEL_EFFORT
+  // Optimistic model switch: the selector stays enabled during the persistence
+  // window, so rapid re-switches are last-write-wins over local IPC (which
+  // serializes in practice). No ordering guards needed.
   const setModelMutation = useMutation({
     mutationFn: async (modelId: string | null) => {
       const nextSession = await rpcClient.chatSessions.setModel({
@@ -2360,6 +2357,59 @@ const ChatSessionPage = () => {
         nextSession,
         nextSettings
       }
+    },
+    onMutate: async (modelId) => {
+      // The sessions list refetches on an interval; cancel in-flight reads so a
+      // refetch of pre-commit DB state can't clobber the optimistic value.
+      await queryClient.cancelQueries({
+        queryKey: chatSessionsQueryOptions.queryKey
+      })
+      await queryClient.cancelQueries({
+        queryKey: settingsQueryOptions.queryKey
+      })
+
+      const previousSessions = queryClient.getQueryData<
+        ChatSessionSummary[] | undefined
+      >(chatSessionsQueryOptions.queryKey)
+      const previousSettings = queryClient.getQueryData(
+        settingsQueryOptions.queryKey
+      )
+
+      if (session) {
+        queryClient.setQueryData(
+          chatSessionsQueryOptions.queryKey,
+          upsertChatSession({
+            nextSession: { ...session, modelId },
+            sessions: previousSessions
+          })
+        )
+      }
+
+      const shouldPersistDefaultModel =
+        Boolean(modelId) && previousSettings?.ai.defaultModel !== modelId
+
+      if (modelId && shouldPersistDefaultModel && previousSettings) {
+        queryClient.setQueryData(settingsQueryOptions.queryKey, {
+          ...previousSettings,
+          ai: buildAiSettingsWithDefaultModel(previousSettings.ai, modelId)
+        })
+      }
+
+      return { previousSessions, previousSettings }
+    },
+    onError: (_error, _modelId, context) => {
+      if (!context) {
+        return
+      }
+
+      queryClient.setQueryData(
+        chatSessionsQueryOptions.queryKey,
+        context.previousSessions
+      )
+      queryClient.setQueryData(
+        settingsQueryOptions.queryKey,
+        context.previousSettings
+      )
     },
     onSuccess: ({ nextSession, nextSettings }) => {
       queryClient.setQueryData<ChatSessionSummary[] | undefined>(
@@ -2579,7 +2629,6 @@ const ChatSessionPage = () => {
           isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
           isLoadingSkillItems={isLoadingSkillItems}
-          isModelUpdating={setModelMutation.isPending}
           isProjectContextOpen={isProjectContextOpen}
           isProjectDiffLoading={gitDiffQuery.isFetching}
           mentionItems={mentionItems}

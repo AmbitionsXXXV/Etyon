@@ -36,19 +36,11 @@ describe("chat agent mode helpers", () => {
   it("disables mode toggles while the composer cannot switch modes", () => {
     expect(
       getChatAgentModeToggleDisabled({
-        isModelUpdating: false,
         isRequestPending: false
       })
     ).toBe(false)
     expect(
       getChatAgentModeToggleDisabled({
-        isModelUpdating: true,
-        isRequestPending: false
-      })
-    ).toBe(true)
-    expect(
-      getChatAgentModeToggleDisabled({
-        isModelUpdating: false,
         isRequestPending: true
       })
     ).toBe(true)

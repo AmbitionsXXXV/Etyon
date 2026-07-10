@@ -7,13 +7,11 @@
 
 export const getImageModeToggleDisabled = ({
   isCapable,
-  isModelUpdating,
   isRequestPending
 }: {
   isCapable: boolean
-  isModelUpdating: boolean
   isRequestPending: boolean
-}): boolean => !isCapable || isModelUpdating || isRequestPending
+}): boolean => !isCapable || isRequestPending
 
 /**
  * On a model change: a newly-selected capable model defaults ON (pure image

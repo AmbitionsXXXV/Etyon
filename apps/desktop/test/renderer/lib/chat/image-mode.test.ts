@@ -72,7 +72,6 @@ describe("getImageModeToggleDisabled", () => {
     expect(
       getImageModeToggleDisabled({
         isCapable: false,
-        isModelUpdating: false,
         isRequestPending: false
       })
     ).toBe(true)
@@ -82,7 +81,6 @@ describe("getImageModeToggleDisabled", () => {
     expect(
       getImageModeToggleDisabled({
         isCapable: true,
-        isModelUpdating: false,
         isRequestPending: false
       })
     ).toBe(false)
@@ -92,18 +90,7 @@ describe("getImageModeToggleDisabled", () => {
     expect(
       getImageModeToggleDisabled({
         isCapable: true,
-        isModelUpdating: false,
         isRequestPending: true
-      })
-    ).toBe(true)
-  })
-
-  it("freezes the toggle while the model is updating", () => {
-    expect(
-      getImageModeToggleDisabled({
-        isCapable: true,
-        isModelUpdating: true,
-        isRequestPending: false
       })
     ).toBe(true)
   })

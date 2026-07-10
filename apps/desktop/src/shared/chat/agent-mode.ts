@@ -16,12 +16,10 @@ export const getNextChatAgentMode = (
 }
 
 export const getChatAgentModeToggleDisabled = ({
-  isModelUpdating,
   isRequestPending
 }: {
-  isModelUpdating: boolean
   isRequestPending: boolean
-}): boolean => isModelUpdating || isRequestPending
+}): boolean => isRequestPending
 
 export const isChatAgentMode = (value: unknown): value is ChatAgentMode =>
   value === "agent" || value === "chat" || value === "plan"
