@@ -268,6 +268,7 @@ export {
 export type {
   BuiltInProviderId,
   MoonshotRegion,
+  ProviderApiMode,
   ProviderFetchModelsInput,
   ProviderFetchModelsOutput,
   StoredProviderModel,

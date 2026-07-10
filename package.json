@@ -34,10 +34,10 @@
     "typecheck": "turbo run typecheck && tsc -p tsconfig.root.json"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.0",
+    "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
     "cz-git": "^1.13.1",
-    "sherif": "^1.11.1",
+    "sherif": "^1.13.0",
     "turbo": "^2.10.4",
     "typescript": "catalog:",
     "ultracite": "7.9.2",
@@ -46,5 +46,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "pnpm@11.10.0"
 }

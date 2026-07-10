@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@etyon/i18n": "workspace:*",
-    "@orpc/server": "^1.13.8",
+    "@orpc/server": "^1.14.7",
     "zod": "catalog:"
   }
 }

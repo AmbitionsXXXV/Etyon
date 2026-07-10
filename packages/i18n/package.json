@@ -15,7 +15,7 @@
     "lint": "vp lint"
   },
   "dependencies": {
-    "i18next": "^26.2.0",
+    "i18next": "^26.3.5",
     "react": "catalog:",
     "react-i18next": "^17.0.8",
     "zod": "catalog:"
