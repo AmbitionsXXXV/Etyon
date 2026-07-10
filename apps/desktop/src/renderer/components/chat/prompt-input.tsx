@@ -724,7 +724,7 @@ const PromptInputContextUsage = ({
             </ProgressCircle>
             <span>{clampedPercent}%</span>
           </Popover.Trigger>
-          <Popover.Content className="w-80" placement="top start">
+          <Popover.Content className="w-80" placement="top end">
             <Popover.Dialog>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-sm font-semibold text-foreground">
@@ -1701,10 +1701,10 @@ export const PromptInput = ({
                 toggleLabel={agentModeToggleLabel}
               />
               {footer}
-              <PromptInputContextUsage contextUsage={contextUsage} />
             </div>
           </HeroPromptInput.ToolbarStart>
           <HeroPromptInput.ToolbarEnd>
+            <PromptInputContextUsage contextUsage={contextUsage} />
             <PromptInputActions
               disabled={disabled}
               hasInput={hasPromptInput}
