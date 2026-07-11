@@ -18,6 +18,11 @@ import {
 } from "@/renderer/lib/settings-page/agents-settings"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 import {
+  PERMISSION_MODES,
+  isAgentPermissionMode
+} from "@/shared/agents/permission-mode"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
+import {
   resolveActiveProfile,
   resolveProfileRoster
 } from "@/shared/agents/profiles"
@@ -59,6 +64,17 @@ const BUILT_IN_PROFILE_LABEL_KEYS: Record<
     description: "settings.agents.profiles.review.description",
     name: "settings.agents.profiles.review.name"
   }
+}
+
+/** Literal option labels for each permission mode (the `t` fn rejects
+ * dynamically-built keys), keyed by mode. */
+const PERMISSION_MODE_OPTION_LABEL_KEYS: Record<
+  AgentPermissionMode,
+  TranslationKey
+> = {
+  acceptEdits: "settings.agents.control.permissionMode.option.acceptEdits",
+  bypass: "settings.agents.control.permissionMode.option.bypass",
+  default: "settings.agents.control.permissionMode.option.default"
 }
 
 const localizedProfileName = (t: Translate, profile: AgentProfile): string => {
@@ -213,9 +229,13 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
     [agents, onChange]
   )
 
-  const handleRequireApprovalChange = useCallback(
-    (requireApprovalForWrites: boolean) => {
-      onChange({ ...agents, requireApprovalForWrites })
+  const handlePermissionModeChange = useCallback(
+    (next: Key | Key[] | null) => {
+      if (!isAgentPermissionMode(next)) {
+        return
+      }
+
+      onChange({ ...agents, defaultPermissionMode: next })
     },
     [agents, onChange]
   )
@@ -380,31 +400,49 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
         {...settingsPageSectionMotion(2)}
         className="space-y-4 rounded-lg border border-border bg-card p-5"
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
           <div className="min-w-0">
             <p className="text-sm font-medium">
-              {t("settings.agents.control.requireApprovalForWrites.label")}
+              {t("settings.agents.control.permissionMode.label")}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {t(
-                "settings.agents.control.requireApprovalForWrites.description"
-              )}
+              {t("settings.agents.control.permissionMode.description")}
             </p>
           </div>
-          <Switch
-            aria-label={t(
-              "settings.agents.control.requireApprovalForWrites.label"
-            )}
+          <Select
+            className="max-w-xl"
+            fullWidth
             isDisabled={!agents.enabled}
-            isSelected={agents.requireApprovalForWrites}
-            onChange={handleRequireApprovalChange}
+            onChange={handlePermissionModeChange}
+            value={agents.defaultPermissionMode}
+            variant="primary"
           >
-            <Switch.Content>
-              <Switch.Control>
-                <Switch.Thumb />
-              </Switch.Control>
-            </Switch.Content>
-          </Switch>
+            <Label className="sr-only">
+              {t("settings.agents.control.permissionMode.label")}
+            </Label>
+            <Select.Trigger className="border border-border bg-background">
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover className="border border-border/80 bg-popover shadow-overlay">
+              <ListBox>
+                {PERMISSION_MODES.map((mode) => (
+                  <ListBox.Item
+                    id={mode}
+                    key={mode}
+                    textValue={t(PERMISSION_MODE_OPTION_LABEL_KEYS[mode])}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {t(PERMISSION_MODE_OPTION_LABEL_KEYS[mode])}
+                      </div>
+                    </div>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
         </div>
 
         <div className="flex items-start justify-between gap-4">

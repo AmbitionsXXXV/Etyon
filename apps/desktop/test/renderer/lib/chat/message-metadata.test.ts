@@ -21,4 +21,24 @@ describe("chat message metadata", () => {
       workTimeMs: 1280
     })
   })
+
+  it("parses the run outcome and thinking durations", () => {
+    expect(
+      parseChatMessageMetadata({
+        exitReason: "aborted",
+        thoughtDurationsMs: [200, -5, "bad", 500],
+        workTimeMs: 900
+      })
+    ).toMatchObject({
+      exitReason: "aborted",
+      thoughtDurationsMs: [200, 500],
+      workTimeMs: 900
+    })
+  })
+
+  it("ignores an unknown exit reason", () => {
+    expect(
+      parseChatMessageMetadata({ exitReason: "explode" })?.exitReason
+    ).toBeUndefined()
+  })
 })

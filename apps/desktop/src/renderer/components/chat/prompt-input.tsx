@@ -27,6 +27,7 @@ import {
   COMPOSITION_SUBMIT_GUARD_MS,
   EMPTY_PROMPT_TEMPLATE_ITEMS,
   EMPTY_QUEUED_PROMPT_MESSAGES,
+  PERMISSION_MODE_OPTIONS,
   PROJECT_MENTION_NODE_TYPE,
   PROMPT_COMMAND_PALETTE_ITEM_LIMIT,
   applyPlanCommandPrefixToPromptEditorJson,
@@ -65,6 +66,8 @@ import type {
   PromptMentionTrigger,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import { getNextPermissionMode } from "@/shared/agents/permission-mode"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { getNextChatAgentMode } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 
@@ -572,6 +575,15 @@ const SELECTED_CLASS_BY_AGENT_MODE: Record<ChatAgentMode, string> = {
   plan: "bg-warning/15! text-warning!"
 }
 
+// Permission mode escalates the tint with looseness: default stays neutral
+// (base selected pill), acceptEdits warns because edits auto-run, and bypass is
+// loud/destructive because nothing is gated.
+const SELECTED_CLASS_BY_PERMISSION_MODE: Record<AgentPermissionMode, string> = {
+  acceptEdits: "bg-warning/15! text-warning!",
+  bypass: "bg-destructive/15! text-destructive!",
+  default: ""
+}
+
 const PromptInputAgentModeControl = ({
   agentLabel,
   chatLabel,
@@ -619,6 +631,64 @@ const PromptInputAgentModeControl = ({
         SELECTED_CLASS_BY_AGENT_MODE[mode]
       )}
       isDisabled={disabled || isToggleDisabled === true}
+      isSelected
+      onPress={handlePress}
+      size="sm"
+    >
+      <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
+      <span>{labelByMode[mode]}</span>
+    </ToggleButton>
+  )
+}
+
+const PromptInputPermissionModeControl = ({
+  acceptEditsLabel,
+  bypassLabel,
+  defaultLabel,
+  disabled,
+  isHidden,
+  mode,
+  onModeChange,
+  toggleLabel
+}: {
+  acceptEditsLabel: string
+  bypassLabel: string
+  defaultLabel: string
+  disabled: boolean
+  isHidden: boolean
+  mode: AgentPermissionMode
+  onModeChange: (mode: AgentPermissionMode) => void
+  toggleLabel: string
+}) => {
+  const labelByMode = useMemo(
+    () => ({
+      acceptEdits: acceptEditsLabel,
+      bypass: bypassLabel,
+      default: defaultLabel
+    }),
+    [acceptEditsLabel, bypassLabel, defaultLabel]
+  )
+  const activeOption = useMemo(
+    () => PERMISSION_MODE_OPTIONS.find((option) => option.id === mode),
+    [mode]
+  )
+  const handlePress = useCallback(() => {
+    onModeChange(getNextPermissionMode(mode))
+  }, [mode, onModeChange])
+
+  // Hidden in chat mode: there are no tools to gate, so the control is noise.
+  if (isHidden || !activeOption) {
+    return null
+  }
+
+  return (
+    <ToggleButton
+      aria-label={toggleLabel}
+      className={cn(
+        "h-8 min-w-0 shrink-0 px-2.5 text-xs",
+        SELECTED_CLASS_BY_PERMISSION_MODE[mode]
+      )}
+      isDisabled={disabled}
       isSelected
       onPress={handlePress}
       size="sm"
@@ -942,11 +1012,17 @@ export const PromptInput = ({
   mentionSkillItems,
   onAgentModeChange,
   onMentionQueryChange,
+  onPermissionModeChange,
   onPromptTemplateQueryChange,
   onQueuedMessagesReorder,
   onRemoveQueuedMessage,
   onStop,
   onSubmit,
+  permissionMode,
+  permissionModeAcceptEditsLabel,
+  permissionModeBypassLabel,
+  permissionModeDefaultLabel,
+  permissionModeToggleLabel,
   placeholder,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
@@ -1008,6 +1084,7 @@ export const PromptInput = ({
     query: string | null,
     trigger: PromptMentionTrigger | null
   ) => void
+  onPermissionModeChange: (mode: AgentPermissionMode) => void
   onPromptTemplateQueryChange?: (query: string | null) => void
   onQueuedMessagesReorder?: (messages: QueuedPromptMessage[]) => void
   onRemoveQueuedMessage?: (id: string) => void
@@ -1016,6 +1093,11 @@ export const PromptInput = ({
     mentions: ChatMention[]
     text: string
   }) => Promise<void>
+  permissionMode: AgentPermissionMode
+  permissionModeAcceptEditsLabel: string
+  permissionModeBypassLabel: string
+  permissionModeDefaultLabel: string
+  permissionModeToggleLabel: string
   placeholder: string
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
@@ -1699,6 +1781,16 @@ export const PromptInput = ({
                 onModeChange={onAgentModeChange}
                 planLabel={agentModePlanLabel}
                 toggleLabel={agentModeToggleLabel}
+              />
+              <PromptInputPermissionModeControl
+                acceptEditsLabel={permissionModeAcceptEditsLabel}
+                bypassLabel={permissionModeBypassLabel}
+                defaultLabel={permissionModeDefaultLabel}
+                disabled={disabled}
+                isHidden={agentMode === "chat"}
+                mode={permissionMode}
+                onModeChange={onPermissionModeChange}
+                toggleLabel={permissionModeToggleLabel}
               />
               {footer}
             </div>

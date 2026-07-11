@@ -1,6 +1,7 @@
-import type { ToolSet } from "ai"
+import type { ToolSet, UIMessage, UIMessageStreamWriter } from "ai"
 
 import { buildArtifactTool } from "@/main/agents/minimal/artifact-tool"
+import { buildBashTool } from "@/main/agents/minimal/bash-tool"
 import { buildDelegateTool } from "@/main/agents/minimal/delegation"
 import {
   buildFileTools,
@@ -11,10 +12,13 @@ import {
   buildSaveMemoryTool,
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
+import { buildWorkflowTool } from "@/main/agents/minimal/workflow/workflow-tool"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { PARENT_WRITE_HOLDER } from "@/main/agents/write-claims"
 import { getDb } from "@/main/db"
 import { isImageGenerationAvailable } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
 
 /**
@@ -23,11 +27,13 @@ import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
  * profile policy (readonly, delegation, memory) is applied here at build time.
  */
 
-export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local file agent. You work directly on the user's project directory with these tools:
+export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You work directly on the user's project directory with these tools:
 
 - read: read a text file (line-numbered, supports offset/limit)
 - ls: list a directory
 - grep: search file contents with ripgrep
+- bash: run a shell command from the project root (each command needs user approval unless previously remembered for this project)
+- workflow: orchestrate many READ-ONLY investigator sub-agents from a small JS script to research, review, or understand across many files at once; the sub-agents cannot modify files
 - edit: apply exact text replacements to a file (requires user approval)
 - write: create or overwrite a file (requires user approval)
 - artifact: publish an .html or .md file from the project as a rendered artifact in the app's preview panel
@@ -39,6 +45,10 @@ Guidelines:
 - Keep edits minimal and targeted. Prefer edit over write for existing files.
 - After changing files, briefly summarize what changed and why.
 - If a tool fails, read the error, adjust, and retry rather than giving up.
+- bash runs from the project root with a 120s default timeout; set timeoutSeconds (max 600) for long builds or tests. Use it for git, builds, tests, and package scripts, and keep using read/grep/edit/write for file content work.
+- Never use bash to print or copy secret files (.env, keys, credentials); the file tools already refuse them.
+- Reach for workflow only when a task genuinely fans out across many files or areas that reward parallel read-only investigation; for a single scoped question investigate directly or use one delegate, and never use it to make changes since its sub-agents are read-only.
+- delegate hands a bounded task to a specialist sub-agent: a read-only specialist investigates and reports, while a writable specialist can edit/write/run commands (you approve each change). When you run writable sub-agents in parallel, give each a DISJOINT set of files or modules — two sub-agents writing the same file conflict, and the tool rejects the second. Keep cross-cutting or shared-file edits for yourself.
 
 Turn discipline:
 - Keep working until the user's request is fully handled; end your turn only when the task is done or you are genuinely blocked on the user.
@@ -66,25 +76,43 @@ export interface BuildAgentToolsetOptions {
   agentRunId: string | null
   chatSessionId: string | null
   modelId: string | null
+  permissionMode: AgentPermissionMode
   profile: ResolvedAgentProfile
   projectPath: string
+  writer?: UIMessageStreamWriter<UIMessage>
 }
 
 export const buildAgentToolset = ({
   agentRunId,
   chatSessionId,
   modelId,
+  permissionMode,
   profile,
-  projectPath
+  projectPath,
+  writer
 }: BuildAgentToolsetOptions): ToolSet => {
   const workspace = getWorkspaceCore(projectPath)
+  // When a run id exists the parent may delegate to writable children that run
+  // concurrently, so the parent claims its own writes under the same top-level
+  // run — a child then cannot silently clobber a file the parent is editing.
   const fileTools = selectFileTools(
-    buildFileTools(workspace),
+    buildFileTools(
+      workspace,
+      permissionMode,
+      agentRunId
+        ? { holder: PARENT_WRITE_HOLDER, topRunId: agentRunId }
+        : undefined
+    ),
     profile.allowedTools
   )
 
   return {
     ...fileTools,
+    // A shell can mutate anything, so it is offered to writable profiles only;
+    // every call is approval-gated unless the exact command was remembered.
+    ...(profile.readonly
+      ? {}
+      : { bash: buildBashTool(workspace, permissionMode) }),
     // Publishing is read-only on the filesystem, but the write-then-publish
     // flow only makes sense for profiles that can create the file.
     ...(profile.readonly ? {} : { artifact: buildArtifactTool(workspace) }),
@@ -102,7 +130,18 @@ export const buildAgentToolset = ({
             parentModelId: modelId,
             parentProfile: profile,
             parentRunId: agentRunId,
-            projectPath
+            permissionMode,
+            projectPath,
+            writer
+          }),
+          workflow: buildWorkflowTool({
+            chatSessionId,
+            parentModelId: modelId,
+            parentProfile: profile,
+            parentRunId: agentRunId,
+            permissionMode,
+            projectPath,
+            writer
           })
         }
       : {}),

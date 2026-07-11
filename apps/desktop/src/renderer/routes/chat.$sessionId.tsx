@@ -39,7 +39,7 @@ import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport } from "ai"
-import { isToolUIPart } from "ai"
+import { getToolName, isToolUIPart } from "ai"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
@@ -62,6 +62,7 @@ import type {
   ChatArtifactRef,
   ChatSidePanelView
 } from "@/renderer/lib/chat/artifact-panel"
+import { messageHasWorkSection } from "@/renderer/lib/chat/assistant-message-timeline"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
   getImageModeToggleDisabled,
@@ -76,6 +77,7 @@ import {
   parseChatMessageMetadata
 } from "@/renderer/lib/chat/message-metadata"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+import { getToolInputCommand } from "@/renderer/lib/chat/message-tool-trace"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
   buildAiSettingsWithDefaultModel,
@@ -106,14 +108,29 @@ import type {
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
+import {
+  applySubagentApproval,
+  applySubagentChunk,
+  clearSubagents,
+  setSubagentEnd,
+  setSubagentStart
+} from "@/renderer/lib/chat/subagent-stream-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
-import { respondToAssistantToolApproval } from "@/renderer/lib/chat/tool-ui"
+import {
+  respondToAssistantToolApproval,
+  upsertCommandApprovalRule
+} from "@/renderer/lib/chat/tool-ui"
+import {
+  clearWorkflowProgress,
+  setWorkflowProgress
+} from "@/renderer/lib/chat/workflow-progress-store"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
   getChatSessionTitle,
   sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import {
   getChatAgentModeFromAgentsEnabled,
   getChatAgentModeToggleDisabled,
@@ -125,7 +142,14 @@ import {
   getChatContextUsageSegments
 } from "@/shared/chat/context-usage"
 import type { ChatContextUsageSegment } from "@/shared/chat/context-usage"
-import { isChatRequestPhaseDataPart } from "@/shared/chat/stream-data"
+import {
+  isChatRequestPhaseDataPart,
+  isChatSubagentApprovalDataPart,
+  isChatSubagentChunkDataPart,
+  isChatSubagentEndDataPart,
+  isChatSubagentStartDataPart,
+  isChatWorkflowProgressDataPart
+} from "@/shared/chat/stream-data"
 import type {
   ChatRequestPhase,
   ChatStreamDataTypes
@@ -243,6 +267,9 @@ const MENTION_SEARCH_DEBOUNCE_WAIT_MS = 180
 const MENTION_SKILL_ITEM_LIMIT = 20
 const PROMPT_TEMPLATE_ITEM_LIMIT = 20
 const NOOP_AGENT_MODE_CHANGE = (mode: ChatAgentMode): void => {
+  void mode
+}
+const NOOP_PERMISSION_MODE_CHANGE = (mode: AgentPermissionMode): void => {
   void mode
 }
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
@@ -1051,18 +1078,21 @@ const ChatMessageBubble = ({
     }).some((part) => part.type === "mention")
 
   if (isAssistant) {
+    const isRunActive = isLatestAssistantMessage && isRequestPending
+    // The work section header carries the duration for runs with a timeline;
+    // only plain-text replies keep the standalone work-time line.
+    const hasWorkSection = messageHasWorkSection(message)
+
     return (
       <ChatMessage.Bubble className="w-full min-w-0 bg-transparent px-1 py-1 shadow-none">
         <ChatMessage.Body className="pr-0">
           <ChatMessage.Content className="text-sm leading-6 text-foreground">
-            <AssistantWorkTime
-              liveStartedAt={
-                isLatestAssistantMessage && isRequestPending
-                  ? liveWorkTimeStartedAt
-                  : undefined
-              }
-              workTimeMs={metadata?.workTimeMs}
-            />
+            {hasWorkSection ? null : (
+              <AssistantWorkTime
+                liveStartedAt={isRunActive ? liveWorkTimeStartedAt : undefined}
+                workTimeMs={metadata?.workTimeMs}
+              />
+            )}
 
             {mentions.length > 0 && !hasInlineMentions ? (
               <MessageMentionChips
@@ -1073,10 +1103,10 @@ const ChatMessageBubble = ({
             ) : null}
 
             <AssistantMessageTimeline
-              isStreamdownAnimating={
-                isLatestAssistantMessage && isRequestPending
-              }
               isApprovalActionDisabled={isRequestPending}
+              isRunActive={isRunActive}
+              isStreamdownAnimating={isRunActive}
+              liveWorkTimeStartedAt={liveWorkTimeStartedAt}
               message={message}
               onApprovalResponse={onApprovalResponse}
               onOpenArtifact={onOpenArtifact}
@@ -1223,6 +1253,7 @@ ChatMessageItem.displayName = "ChatMessageItem"
 const ChatRuntime = ({
   activeArtifact,
   agentsEnabled,
+  defaultPermissionMode,
   gitDiff,
   isLoadingFileItems,
   isLoadingPromptTemplateItems,
@@ -1260,6 +1291,7 @@ const ChatRuntime = ({
   activeArtifact: ChatArtifactRef | null
   agentsEnabled: boolean
   autoCompact?: { enabled: boolean; threshold: number }
+  defaultPermissionMode: AgentPermissionMode
   gitDiff?: GitProjectDiffOutput
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
@@ -1322,6 +1354,9 @@ const ChatRuntime = ({
   const [agentMode, setAgentMode] = useState<ChatAgentMode>(() =>
     getChatAgentModeFromAgentsEnabled(agentsEnabled)
   )
+  const [permissionMode, setPermissionMode] = useState<AgentPermissionMode>(
+    defaultPermissionMode
+  )
   const isSelectedModelImageCapable = useMemo(
     () => isSelectedModelImageOutput(modelGroups, selectedModelValue),
     [modelGroups, selectedModelValue]
@@ -1349,10 +1384,22 @@ const ChatRuntime = ({
     onData: (dataPart) => {
       if (isChatRequestPhaseDataPart(dataPart)) {
         setRequestPhase(dataPart.data.phase)
+      } else if (isChatWorkflowProgressDataPart(dataPart)) {
+        setWorkflowProgress(dataPart.id, dataPart.data)
+      } else if (isChatSubagentStartDataPart(dataPart)) {
+        setSubagentStart(dataPart.data)
+      } else if (isChatSubagentChunkDataPart(dataPart)) {
+        applySubagentChunk(dataPart.data.childRunId, dataPart.data.chunk)
+      } else if (isChatSubagentApprovalDataPart(dataPart)) {
+        applySubagentApproval(dataPart.data)
+      } else if (isChatSubagentEndDataPart(dataPart)) {
+        setSubagentEnd(dataPart.data)
       }
     },
     onFinish: () => {
       setRequestPhase(null)
+      clearWorkflowProgress()
+      clearSubagents()
 
       if (agentMode === "agent") {
         void (async () => {
@@ -1432,10 +1479,17 @@ const ChatRuntime = ({
         imageMode: isImageMode || undefined,
         mentions,
         model: selectedModelValue || undefined,
+        permissionMode,
         sessionId: selectedSession.id
       }
     }),
-    [agentMode, isImageMode, selectedModelValue, selectedSession.id]
+    [
+      agentMode,
+      isImageMode,
+      permissionMode,
+      selectedModelValue,
+      selectedSession.id
+    ]
   )
 
   const updateScrollToBottomVisibility = useCallback(
@@ -1598,17 +1652,72 @@ const ChatRuntime = ({
     [messages]
   )
 
+  // Best-effort: persist an exact-command allowlist entry so the main-process
+  // needsApproval gate skips this command next time. A failed write must never
+  // block the approval itself, so it is fire-and-forget with a swallowed error.
+  const rememberCommandApproval = useCallback(
+    async (part: ChatToolPart) => {
+      const command = getToolInputCommand(part.input).trim()
+
+      if (!command) {
+        return
+      }
+
+      const rule = {
+        command,
+        createdAt: new Date().toISOString(),
+        projectPath: selectedSession.projectPath,
+        toolName: getToolName(part as never)
+      }
+
+      try {
+        const settings = await rpcClient.settings.get()
+
+        await rpcClient.settings.update({
+          agents: {
+            ...settings.agents,
+            approvals: {
+              ...settings.agents.approvals,
+              commandAllowlist: upsertCommandApprovalRule(
+                settings.agents.approvals.commandAllowlist,
+                rule
+              )
+            }
+          }
+        })
+      } catch {
+        // Swallow: remembering is a convenience, not a precondition to approve.
+      }
+    },
+    [selectedSession.projectPath]
+  )
+
   const handleToolApprovalResponse = useCallback(
-    (part: ChatToolPart, approved: boolean) => {
+    (
+      part: ChatToolPart,
+      approved: boolean,
+      options?: AssistantToolApprovalResponseOptions
+    ) => {
       respondToAssistantToolApproval({
         addToolApprovalResponse,
         approved,
         buildChatRequestOptions,
         latestUserMentions,
+        onRememberCommand:
+          approved && options?.rememberCommand
+            ? () => {
+                void rememberCommandApproval(part)
+              }
+            : undefined,
         part: part as never
       })
     },
-    [addToolApprovalResponse, buildChatRequestOptions, latestUserMentions]
+    [
+      addToolApprovalResponse,
+      buildChatRequestOptions,
+      latestUserMentions,
+      rememberCommandApproval
+    ]
   )
 
   const sendPromptMessage = useCallback(
@@ -2019,11 +2128,25 @@ const ChatRuntime = ({
             isOutputActive={isRequestPending}
             onAgentModeChange={handleAgentModeChange}
             onMentionQueryChange={onMentionQueryChange}
+            onPermissionModeChange={setPermissionMode}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onQueuedMessagesReorder={handleQueuedMessagesReorder}
             onRemoveQueuedMessage={handleRemoveQueuedMessage}
             onStop={handleStop}
             onSubmit={handleSubmit}
+            permissionMode={permissionMode}
+            permissionModeAcceptEditsLabel={t(
+              "chat.promptInput.permissionMode.acceptEdits"
+            )}
+            permissionModeBypassLabel={t(
+              "chat.promptInput.permissionMode.bypass"
+            )}
+            permissionModeDefaultLabel={t(
+              "chat.promptInput.permissionMode.default"
+            )}
+            permissionModeToggleLabel={t(
+              "chat.promptInput.permissionMode.title"
+            )}
             placeholder={t("chat.composer.placeholder")}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
@@ -2213,8 +2336,22 @@ const ChatPendingState = ({
             )}
             onAgentModeChange={NOOP_AGENT_MODE_CHANGE}
             onMentionQueryChange={onMentionQueryChange}
+            onPermissionModeChange={NOOP_PERMISSION_MODE_CHANGE}
             onPromptTemplateQueryChange={onPromptTemplateQueryChange}
             onSubmit={NOOP_PROMPT_SUBMIT}
+            permissionMode="default"
+            permissionModeAcceptEditsLabel={t(
+              "chat.promptInput.permissionMode.acceptEdits"
+            )}
+            permissionModeBypassLabel={t(
+              "chat.promptInput.permissionMode.bypass"
+            )}
+            permissionModeDefaultLabel={t(
+              "chat.promptInput.permissionMode.default"
+            )}
+            permissionModeToggleLabel={t(
+              "chat.promptInput.permissionMode.title"
+            )}
             placeholder={t("chat.composer.placeholder")}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
@@ -2623,6 +2760,9 @@ const ChatSessionPage = () => {
           activeArtifact={activeArtifact}
           agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
           autoCompact={settingsQuery.data?.chat.autoCompact}
+          defaultPermissionMode={
+            settingsQuery.data?.agents.defaultPermissionMode ?? "default"
+          }
           gitDiff={gitDiffQuery.data}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}

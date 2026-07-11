@@ -9,10 +9,42 @@ export interface ChatMessageAgentProjectionMetadata {
   source: "agent_events"
 }
 
+/** Mirrors the agent loop's `AgentLoopExitReason`, stamped at run finish. */
+export type ChatMessageExitReason =
+  | "aborted"
+  | "completed"
+  | "max-steps"
+  | "model-error"
+  | "suspended"
+
 export interface ChatMessageMetadata {
   agentProjection?: ChatMessageAgentProjectionMetadata
+  exitReason?: ChatMessageExitReason
   mentions?: ChatMention[]
+  thoughtDurationsMs?: number[]
   workTimeMs?: number
+}
+
+const EXIT_REASONS: readonly ChatMessageExitReason[] = [
+  "aborted",
+  "completed",
+  "max-steps",
+  "model-error",
+  "suspended"
+]
+
+const parseExitReason = (value: unknown): ChatMessageExitReason | undefined =>
+  EXIT_REASONS.find((reason) => reason === value)
+
+const parseThoughtDurationsMs = (value: unknown): number[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  return value.filter(
+    (entry): entry is number =>
+      typeof entry === "number" && Number.isFinite(entry) && entry >= 0
+  )
 }
 
 export const parseChatMessageMetadata = (
@@ -40,9 +72,11 @@ export const parseChatMessageMetadata = (
 
   return {
     agentProjection,
+    exitReason: parseExitReason(metadata.exitReason),
     mentions: Array.isArray(metadata.mentions)
       ? (metadata.mentions as ChatMessageMetadata["mentions"])
       : undefined,
+    thoughtDurationsMs: parseThoughtDurationsMs(metadata.thoughtDurationsMs),
     workTimeMs
   }
 }

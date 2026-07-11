@@ -31,6 +31,26 @@ export const formatDuration = (durationMs: number | undefined): string => {
   return `${(durationMs / 1000).toFixed(1)} s`
 }
 
+/**
+ * Compact elapsed-time label for the work section: `42s` under a minute,
+ * `2m 2s` under an hour, `1h 3m` beyond. Rounds to whole seconds.
+ */
+export const formatElapsedDuration = (durationMs: number): string => {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`
+  }
+
+  if (totalSeconds < 3600) {
+    return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`
+  }
+
+  const hours = Math.floor(totalSeconds / 3600)
+
+  return `${hours}h ${Math.floor((totalSeconds % 3600) / 60)}m`
+}
+
 export const getPathBaseName = (value: string): string => {
   const normalizedPath = value.replaceAll("\\", "/")
   const pathParts = normalizedPath.split("/")

@@ -1,4 +1,4 @@
-import type { ChatMention } from "@etyon/rpc"
+import type { AgentCommandApprovalRule, ChatMention } from "@etyon/rpc"
 import type { ToolPartState } from "@heroui-pro/react"
 import type {
   ChatAddToolApproveResponseFunction,
@@ -22,18 +22,39 @@ interface RespondToAssistantToolApprovalInput {
   approved: boolean
   buildChatRequestOptions: (mentions: ChatMention[]) => ChatRequestOptions
   latestUserMentions: ChatMention[]
+  onRememberCommand?: () => void
   part: ChatToolPart
 }
+
+// Dedupe by (toolName, projectPath, command): drop any prior entry with the
+// same identity, then append the fresh rule so its createdAt resets the TTL.
+export const upsertCommandApprovalRule = (
+  allowlist: readonly AgentCommandApprovalRule[],
+  rule: AgentCommandApprovalRule
+): AgentCommandApprovalRule[] => [
+  ...allowlist.filter(
+    (entry) =>
+      entry.toolName !== rule.toolName ||
+      entry.projectPath !== rule.projectPath ||
+      entry.command !== rule.command
+  ),
+  rule
+]
 
 export const respondToAssistantToolApproval = ({
   addToolApprovalResponse,
   approved,
   buildChatRequestOptions,
   latestUserMentions,
+  onRememberCommand,
   part
 }: RespondToAssistantToolApprovalInput): boolean => {
   if (part.state !== "approval-requested") {
     return false
+  }
+
+  if (approved) {
+    onRememberCommand?.()
   }
 
   void addToolApprovalResponse({

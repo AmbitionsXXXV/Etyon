@@ -76,7 +76,7 @@ export const agentRuns = sqliteTable(
     profileId: text("profile_id").notNull(),
     startedAt: text("started_at").notNull(),
     status: text("status", {
-      enum: ["failed", "running", "succeeded", "suspended"]
+      enum: ["failed", "running", "succeeded", "superseded", "suspended"]
     }).notNull()
   },
   (table) => ({

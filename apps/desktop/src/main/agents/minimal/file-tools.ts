@@ -5,6 +5,12 @@ import type {
   WorkspaceCore,
   WorkspaceFileError
 } from "@/main/agents/minimal/workspace-core"
+import {
+  claimWrite,
+  writeClaimConflictMessage
+} from "@/main/agents/write-claims"
+import { needsFileEditApproval } from "@/shared/agents/permission-mode"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 
 const TOOL_OUTPUT_MAX_CHARS = 12_000
 const READ_DEFAULT_LINE_LIMIT = 1000
@@ -83,7 +89,7 @@ const GrepInputSchema = z
   })
   .strict()
 
-const EditInputSchema = z
+export const EditInputSchema = z
   .object({
     edits: z
       .array(
@@ -107,7 +113,7 @@ const EditInputSchema = z
   })
   .strict()
 
-const WriteInputSchema = z
+export const WriteInputSchema = z
   .object({
     content: z.string().describe("Complete file content to write."),
     path: z
@@ -165,50 +171,143 @@ const applyExactEdits = ({
 const truncateForMessage = (text: string): string =>
   text.length > 120 ? `${text.slice(0, 120)}…` : text
 
-export const buildFileTools = (workspace: WorkspaceCore) => ({
+/**
+ * Ownership claim placed by a writable holder (parent = "parent", a child =
+ * `childWriteHolder(...)`) before it writes, so parallel writers never clobber a
+ * file another one owns. Present only when several writers share a top-level run.
+ */
+export interface FileWriteClaim {
+  holder: string
+  topRunId: string
+}
+
+interface WriteConflictResult {
+  error: string
+  path: string
+  status: "conflict"
+}
+
+/** Claims the path for `writeClaim`; returns a structured error on conflict. */
+const claimFileWrite = (
+  writeClaim: FileWriteClaim | undefined,
+  requestedPath: string
+): WriteConflictResult | null => {
+  if (!writeClaim) {
+    return null
+  }
+
+  const claim = claimWrite({
+    holder: writeClaim.holder,
+    path: requestedPath,
+    topRunId: writeClaim.topRunId
+  })
+
+  return claim.ok
+    ? null
+    : {
+        error: writeClaimConflictMessage(requestedPath, claim.holder),
+        path: requestedPath,
+        status: "conflict"
+      }
+}
+
+/**
+ * Applies exact edits and writes the file (throwing the workspace error, exactly
+ * like the tool did inline). Exported so a writable delegated child reuses the
+ * same edit path as the parent instead of re-implementing it.
+ */
+export const runWorkspaceEdit = async ({
+  edits,
+  requestedPath,
+  signal,
+  workspace
+}: {
+  edits: readonly { newText: string; oldText: string }[]
+  requestedPath: string
+  signal?: AbortSignal
+  workspace: WorkspaceCore
+}): Promise<{ appliedEdits: number; bytesWritten: number; path: string }> => {
+  const viewResult = await workspace.view(requestedPath, signal)
+
+  if (!viewResult.ok) {
+    return throwWorkspaceError(viewResult.error)
+  }
+
+  const editedContent = applyExactEdits({
+    content: viewResult.value.content,
+    edits
+  })
+  const writeResult = await workspace.writeFile(requestedPath, editedContent, {
+    expectedMtimeMs: viewResult.value.info.mtimeMs,
+    ...(signal ? { signal } : {})
+  })
+
+  if (!writeResult.ok) {
+    return throwWorkspaceError(writeResult.error)
+  }
+
+  return {
+    appliedEdits: edits.length,
+    bytesWritten: writeResult.value.bytesWritten,
+    path: writeResult.value.info.path
+  }
+}
+
+/** Creates/overwrites a file (throwing on workspace error). Exported for reuse
+ * by a writable delegated child, mirroring {@link runWorkspaceEdit}. */
+export const runWorkspaceWrite = async ({
+  content,
+  requestedPath,
+  signal,
+  workspace
+}: {
+  content: string
+  requestedPath: string
+  signal?: AbortSignal
+  workspace: WorkspaceCore
+}): Promise<{ bytesWritten: number; path: string }> => {
+  const writeResult = await workspace.writeFile(requestedPath, content, {
+    createParentDirectories: true,
+    requireReadSnapshot: true,
+    ...(signal ? { signal } : {})
+  })
+
+  if (!writeResult.ok) {
+    return throwWorkspaceError(writeResult.error)
+  }
+
+  return {
+    bytesWritten: writeResult.value.bytesWritten,
+    path: writeResult.value.info.path
+  }
+}
+
+export const buildFileTools = (
+  workspace: WorkspaceCore,
+  permissionMode: AgentPermissionMode,
+  writeClaim?: FileWriteClaim
+) => ({
   edit: tool({
     description:
       "Apply one or more exact text replacements to a file. Each oldText must appear exactly once. Read the file first to know its current content.",
     execute: async (inputData, context) => {
-      const { edits, path: requestedPath } = inputData
-      const viewResult = await workspace.view(
-        requestedPath,
-        context?.abortSignal
-      )
+      const conflict = claimFileWrite(writeClaim, inputData.path)
 
-      if (!viewResult.ok) {
-        throwWorkspaceError(viewResult.error)
-
-        return
+      if (conflict) {
+        return conflict
       }
 
-      const editedContent = applyExactEdits({
-        content: viewResult.value.content,
-        edits
+      const result = await runWorkspaceEdit({
+        edits: inputData.edits,
+        requestedPath: inputData.path,
+        workspace,
+        ...(context?.abortSignal ? { signal: context.abortSignal } : {})
       })
-      const writeResult = await workspace.writeFile(
-        requestedPath,
-        editedContent,
-        {
-          expectedMtimeMs: viewResult.value.info.mtimeMs,
-          ...(context?.abortSignal ? { signal: context.abortSignal } : {})
-        }
-      )
 
-      if (!writeResult.ok) {
-        throwWorkspaceError(writeResult.error)
-
-        return
-      }
-
-      return {
-        appliedEdits: edits.length,
-        bytesWritten: writeResult.value.bytesWritten,
-        path: writeResult.value.info.path
-      }
+      return result
     },
     inputSchema: EditInputSchema,
-    needsApproval: true
+    needsApproval: needsFileEditApproval(permissionMode)
   }),
   grep: tool({
     description:
@@ -314,29 +413,23 @@ export const buildFileTools = (workspace: WorkspaceCore) => ({
     description:
       "Create or overwrite a file with the given content. Overwriting an existing file requires reading it first.",
     execute: async (inputData, context) => {
-      const writeResult = await workspace.writeFile(
-        inputData.path,
-        inputData.content,
-        {
-          createParentDirectories: true,
-          requireReadSnapshot: true,
-          ...(context?.abortSignal ? { signal: context.abortSignal } : {})
-        }
-      )
+      const conflict = claimFileWrite(writeClaim, inputData.path)
 
-      if (!writeResult.ok) {
-        throwWorkspaceError(writeResult.error)
-
-        return
+      if (conflict) {
+        return conflict
       }
 
-      return {
-        bytesWritten: writeResult.value.bytesWritten,
-        path: writeResult.value.info.path
-      }
+      const result = await runWorkspaceWrite({
+        content: inputData.content,
+        requestedPath: inputData.path,
+        workspace,
+        ...(context?.abortSignal ? { signal: context.abortSignal } : {})
+      })
+
+      return result
     },
     inputSchema: WriteInputSchema,
-    needsApproval: true
+    needsApproval: needsFileEditApproval(permissionMode)
   })
 })
 

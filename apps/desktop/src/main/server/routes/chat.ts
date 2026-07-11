@@ -23,6 +23,7 @@ import {
   getLatestUserMessageText
 } from "@/main/server/routes/build-image-generation-response"
 import { getSettings } from "@/main/settings"
+import { isAgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
   CHAT_IMAGEN_SYSTEM_PROMPT,
@@ -92,6 +93,7 @@ chatRoute.post("/chat", async (c) => {
     mentions = [],
     messages,
     model: requestedModelId,
+    permissionMode: rawPermissionMode,
     sessionId
   } = body as {
     agentMode?: unknown
@@ -99,6 +101,7 @@ chatRoute.post("/chat", async (c) => {
     mentions?: ChatMention[]
     messages: UIMessage[]
     model?: string
+    permissionMode?: unknown
     sessionId: string
   }
   const db = getDb()
@@ -146,6 +149,11 @@ chatRoute.post("/chat", async (c) => {
     agentMode: effectiveAgentMode,
     settings: baseSettings
   })
+  // The composer sends the active permission mode per request; fall back to the
+  // global default when the body omits or malforms it.
+  const permissionMode = isAgentPermissionMode(rawPermissionMode)
+    ? rawPermissionMode
+    : settings.agents.defaultPermissionMode
   const agentContext = await prepareAgentChatContext({
     db,
     mentions,
@@ -237,6 +245,7 @@ chatRoute.post("/chat", async (c) => {
         sessionId
       })
     },
+    permissionMode,
     profileId: activeProfile.id,
     projectPath: session.projectPath,
     promptTemplates: agentContext.promptTemplates,

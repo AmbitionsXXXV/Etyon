@@ -58,11 +58,11 @@ export const getAgentProjectionRunId = (message: {
     : null
 }
 
-export const attachWorkTimeToLatestAssistantMessage = <
+const patchLatestAssistantMetadata = <
   MESSAGE extends { metadata?: unknown; role: string }
 >(
   messages: MESSAGE[],
-  workTimeMs: number
+  patch: Record<string, unknown>
 ): MESSAGE[] => {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
@@ -79,7 +79,7 @@ export const attachWorkTimeToLatestAssistantMessage = <
             ...candidate,
             metadata: {
               ...metadata,
-              workTimeMs
+              ...patch
             }
           }
         : candidate
@@ -88,3 +88,36 @@ export const attachWorkTimeToLatestAssistantMessage = <
 
   return messages
 }
+
+export const attachWorkTimeToLatestAssistantMessage = <
+  MESSAGE extends { metadata?: unknown; role: string }
+>(
+  messages: MESSAGE[],
+  workTimeMs: number
+): MESSAGE[] => patchLatestAssistantMetadata(messages, { workTimeMs })
+
+/**
+ * Stamps the finished agent run's timing and outcome onto the latest assistant
+ * message (alongside `workTimeMs`) so the renderer can settle the work section:
+ * `exitReason` drives the Worked/Stopped/Failed header, and `thoughtDurationsMs`
+ * gives each thinking block its final "Thought for Xs".
+ */
+export const attachRunOutcomeToLatestAssistantMessage = <
+  MESSAGE extends { metadata?: unknown; role: string }
+>(
+  messages: MESSAGE[],
+  {
+    exitReason,
+    thoughtDurationsMs,
+    workTimeMs
+  }: {
+    exitReason?: string | null
+    thoughtDurationsMs: number[]
+    workTimeMs: number
+  }
+): MESSAGE[] =>
+  patchLatestAssistantMetadata(messages, {
+    ...(exitReason ? { exitReason } : {}),
+    ...(thoughtDurationsMs.length > 0 ? { thoughtDurationsMs } : {}),
+    workTimeMs
+  })

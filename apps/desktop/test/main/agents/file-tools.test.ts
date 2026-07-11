@@ -11,7 +11,7 @@ const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "etyon-file-tools-"))
 
 fs.writeFileSync(path.join(projectPath, "notes.md"), "alpha\nbeta\ngamma\n")
 
-const tools = buildFileTools(getWorkspaceCore(projectPath))
+const tools = buildFileTools(getWorkspaceCore(projectPath), "default")
 
 const execute = async <TOutput>(
   tool: unknown,

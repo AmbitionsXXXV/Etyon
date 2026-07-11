@@ -227,4 +227,60 @@ describe("StructuredToolTraceCard", () => {
       cleanup()
     }
   })
+
+  it("routes the approve-and-remember press with the remember option", () => {
+    const handleApprovalResponse = vi.fn()
+    const approvalPart = {
+      approval: {
+        id: "approval-1"
+      },
+      input: {
+        command: "vp check",
+        cwd: "/project"
+      },
+      state: "approval-requested",
+      toolCallId: "tool-approval",
+      toolName: "bash",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const { cleanup, container } = renderElementInDom(
+      renderStructuredToolTraceCards([approvalPart], handleApprovalResponse)
+    )
+
+    try {
+      act(() => {
+        findButtonByText(container, "Approve and remember").click()
+      })
+
+      expect(handleApprovalResponse).toHaveBeenCalledWith(approvalPart, true, {
+        rememberCommand: true
+      })
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("hides approve-and-remember for a destructive command", () => {
+    const handleApprovalResponse = vi.fn()
+    const approvalPart = {
+      approval: {
+        id: "approval-1"
+      },
+      input: {
+        command: "rm -rf build",
+        cwd: "/project"
+      },
+      state: "approval-requested",
+      toolCallId: "tool-approval",
+      toolName: "bash",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+
+    const html = renderToStaticMarkup(
+      renderStructuredToolTraceCards([approvalPart], handleApprovalResponse)
+    )
+
+    expect(html).toContain("Approve")
+    expect(html).not.toContain("Approve and remember")
+  })
 })

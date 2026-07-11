@@ -194,20 +194,30 @@ export const readAgentArtifact = async ({
   }
 }
 
-/** Lists recent runs, newest first, optionally scoped to a chat session. */
+/**
+ * Lists recent runs, newest first, optionally scoped to a chat session and/or a
+ * parent run (the latter powers lazy history lookups of a call's child runs).
+ */
 export const listAgentRuns = async ({
   db,
   limit = DEFAULT_RUN_LIST_LIMIT,
+  parentRunId,
   sessionId
 }: {
   db: AppDatabase
   limit?: number
+  parentRunId?: string
   sessionId?: string
 }): Promise<AgentRunsOutput> => {
   const runs = await db
     .select()
     .from(agentRuns)
-    .where(sessionId ? eq(agentRuns.chatSessionId, sessionId) : undefined)
+    .where(
+      and(
+        sessionId ? eq(agentRuns.chatSessionId, sessionId) : undefined,
+        parentRunId ? eq(agentRuns.parentRunId, parentRunId) : undefined
+      )
+    )
     .orderBy(desc(agentRuns.startedAt))
     .limit(limit)
 

@@ -4,6 +4,7 @@ import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
 import { Button, Disclosure } from "@heroui/react"
 import {
+  BrainIcon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
   ComputerTerminal02Icon
@@ -16,6 +17,7 @@ import type { ReactNode } from "react"
 
 import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
 import {
+  canRememberCommandApproval,
   EMPTY_TOOL_TRACE_META_ITEMS,
   formatToolTraceDetail,
   getCollapsedOutputPreview,
@@ -38,6 +40,7 @@ import {
 import type { ChatToolPart } from "@/renderer/lib/chat/message-tool-trace"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
+import { useWorkflowProgress } from "@/renderer/lib/chat/workflow-progress-store"
 import { formatDuration } from "@/renderer/lib/utils"
 
 interface ToolTracePanelProps {
@@ -279,6 +282,20 @@ const ToolApprovalActions = ({
         <HugeiconsIcon icon={CheckmarkCircle01Icon} size={13} />
         {t("chat.toolTrace.approve")}
       </Button>
+      {canRememberCommandApproval(part) ? (
+        <Button
+          isDisabled={isApprovalActionDisabled}
+          onPress={() =>
+            onApprovalResponse(part, true, { rememberCommand: true })
+          }
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <HugeiconsIcon icon={BrainIcon} size={13} />
+          {t("chat.toolTrace.approveAndRemember")}
+        </Button>
+      ) : null}
       <Button
         isDisabled={isApprovalActionDisabled}
         onPress={() => onApprovalResponse(part, false)}
@@ -333,6 +350,23 @@ export const StructuredToolTraceCard = ({
 }) => {
   const { t } = useI18n()
   const toolName = getToolName(part)
+  const workflowProgress = useWorkflowProgress(part.toolCallId)
+  // The workflow tool streams transient progress while running; surface it as a
+  // live meta line until the tool produces its final output.
+  const workflowProgressMeta =
+    toolName === "workflow" &&
+    workflowProgress &&
+    (part.state === "input-available" || part.state === "input-streaming")
+      ? [
+          workflowProgress.phase,
+          t("chat.toolTrace.workflowAgents", {
+            done: workflowProgress.agentsDone,
+            started: workflowProgress.agentsStarted
+          })
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : ""
   const output =
     part.state === "output-available" ? getToolOutputSummary(part.output) : ""
   const preview = output || getToolTracePreview(part)
@@ -397,7 +431,7 @@ export const StructuredToolTraceCard = ({
         defaultExpanded={part.state === "approval-requested"}
         detail={detailPanels}
         isStreaming={isCommandStreaming && !commandOutputText}
-        metaItems={[...metaItems, repeatedMetaItem]}
+        metaItems={[...metaItems, workflowProgressMeta, repeatedMetaItem]}
         output={commandOutputText}
         state={heroToolState}
         statusClassName={statusClassName}
@@ -423,7 +457,9 @@ export const StructuredToolTraceCard = ({
           {preview}
         </p>
       ) : null}
-      <ToolTraceMeta items={[...metaItems, repeatedMetaItem]} />
+      <ToolTraceMeta
+        items={[...metaItems, workflowProgressMeta, repeatedMetaItem]}
+      />
       <div className="space-y-1.5">{detailPanels}</div>
     </ToolTraceCard>
   )

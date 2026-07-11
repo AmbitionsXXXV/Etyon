@@ -64,6 +64,10 @@ export interface RunAgentLoopOptions {
   /** Reasoning-effort provider options for the resolved agent model. */
   providerOptions?: EffortProviderOptions
   system?: string
+  /** Optional pass-through tap over each merged UI stream (thinking timings). */
+  tapUiStream?: <TChunk>(
+    stream: ReadableStream<TChunk>
+  ) => ReadableStream<TChunk>
   tools: ToolSet
   writer: UIMessageStreamWriter<UIMessage>
 }
@@ -169,6 +173,7 @@ export const runAgentLoop = async ({
   onStepFinish,
   providerOptions,
   system,
+  tapUiStream,
   tools,
   writer
 }: RunAgentLoopOptions): Promise<AgentLoopOutcome> => {
@@ -223,14 +228,13 @@ export const runAgentLoop = async ({
       // Provider errors surface as in-stream error parts (finishReason
       // "error"), so forward the app's error formatter instead of the SDK's
       // masked default.
-      writer.merge(
-        result.toUIMessageStream({
-          onError: describeError,
-          sendFinish: false,
-          sendReasoning: true,
-          sendStart: stepIndex === 0
-        })
-      )
+      const uiStream = result.toUIMessageStream({
+        onError: describeError,
+        sendFinish: false,
+        sendReasoning: true,
+        sendStart: stepIndex === 0
+      })
+      writer.merge(tapUiStream ? tapUiStream(uiStream) : uiStream)
 
       const [content, finishReason, response] = await Promise.all([
         result.content,

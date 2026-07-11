@@ -46,10 +46,6 @@
       "zoomOut": "缩小",
       "zoomReset": "重置缩放"
     },
-    "chainOfThought": {
-      "label": "思考过程",
-      "stepCount": "{count} 步"
-    },
     "composer": {
       "agentModeAgent": "Agent",
       "agentModeChat": "Chat",
@@ -144,7 +140,7 @@
         "low": "低",
         "medium": "中",
         "high": "高",
-        "xhigh": "超高",
+        "xhigh": "xhigh",
         "max": "最大"
       },
       "effortLabel": "思考强度",
@@ -193,6 +189,14 @@
       "title": "项目上下文",
       "truncated": "Diff 已截断",
       "viewsLabel": "项目上下文视图"
+    },
+    "promptInput": {
+      "permissionMode": {
+        "acceptEdits": "自动编辑",
+        "bypass": "放行",
+        "default": "默认",
+        "title": "权限模式"
+      }
     },
     "snapshot": {
       "loading": "正在准备项目快照...",
@@ -260,7 +264,8 @@
       "stdout": "stdout",
       "thinking": "思考过程",
       "title": "工具执行",
-      "truncated": "已截断"
+      "truncated": "已截断",
+      "workflowAgents": "{done}/{started} 个 agent"
     },
     "workbench": {
       "advance": "推进",
@@ -353,8 +358,41 @@
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },
+    "workSection": {
+      "editedFile": "编辑 {name}",
+      "editedFiles": "编辑了 {count} 个文件",
+      "exploredFile": "浏览了 1 个文件",
+      "exploredFiles": "浏览了 {count} 个文件",
+      "failedAfter": "运行失败 · {duration}",
+      "ranCommand": "执行了 1 条命令",
+      "ranCommands": "执行了 {count} 条命令",
+      "readFile": "读取 {name}",
+      "stoppedAfter": "已停止 · {duration}",
+      "thinking": "思考中…",
+      "thought": "思考了 {duration}",
+      "thoughtPlain": "已思考",
+      "usedTool": "使用了 1 个工具",
+      "usedTools": "使用了 {count} 个工具",
+      "waitingApproval": "等待批准…",
+      "worked": "已处理 · {duration}",
+      "working": "处理中…",
+      "delegatedTask": "委派了 1 个任务",
+      "exploredProject": "浏览了项目",
+      "ranWorkflow": "运行了工作流"
+    },
     "workTime": {
       "label": "用时 {duration}"
+    },
+    "subagent": {
+      "aborted": "已停止",
+      "approvalDanger": "该命令具有破坏性，无法记住。",
+      "approvalTitle": "{tool} 需要你的批准",
+      "failed": "失败",
+      "loadFailed": "无法加载轨迹。",
+      "loading": "正在加载轨迹…",
+      "running": "运行中…",
+      "succeeded": "完成",
+      "viewDetails": "查看详情"
     }
   },
   "home": {
@@ -466,6 +504,15 @@
         "enabled": {
           "description": "把 managed agent tools 暴露给 chat routing。关闭后，chat 会继续走普通模型路径。",
           "label": "启用 managed agents"
+        },
+        "permissionMode": {
+          "description": "新会话如何管控 agent 工具：默认会批准编辑与命令，自动编辑会自动执行项目内编辑，放行则不经批准直接执行。可在输入框中按会话切换。",
+          "label": "默认权限模式",
+          "option": {
+            "acceptEdits": "自动编辑 — 自动执行编辑，命令仍需批准",
+            "bypass": "放行 — 不经批准执行全部操作",
+            "default": "默认 — 批准编辑与命令"
+          }
         },
         "requireApprovalForWrites": {
           "description": "即使使用可写 profile，patch 和 command 写操作也必须经过显式确认。",

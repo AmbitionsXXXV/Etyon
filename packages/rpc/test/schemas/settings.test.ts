@@ -189,6 +189,7 @@ describe("AppSettingsSchema", () => {
         approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
+      defaultPermissionMode: "default",
       defaultProfileId: "general-purpose",
       enabled: false,
       lsp: {
@@ -199,6 +200,8 @@ describe("AppSettingsSchema", () => {
       },
       maxConcurrentSubagents: 2,
       maxSteps: 64,
+      maxSubagentSteps: 24,
+      maxWorkflowConcurrency: 8,
       profiles: [],
       requireApprovalForWrites: true,
       retry: {
@@ -229,6 +232,7 @@ describe("AppSettingsSchema", () => {
         approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
+      defaultPermissionMode: "default",
       defaultProfileId: "coder",
       enabled: true,
       lsp: {
@@ -239,6 +243,8 @@ describe("AppSettingsSchema", () => {
       },
       maxConcurrentSubagents: 2,
       maxSteps: 12,
+      maxSubagentSteps: 24,
+      maxWorkflowConcurrency: 8,
       profiles: [],
       requireApprovalForWrites: true,
       retry: {

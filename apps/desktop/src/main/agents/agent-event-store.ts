@@ -443,6 +443,13 @@ export const recordDelegatedRunOutcome = async ({
     let sequence = startSequence
 
     for (const toolCall of toolCalls) {
+      const outputJson = serialize(toolCall.output)
+
+      // Upsert (not insert-only): a writable child's edit/write/bash whose row
+      // was pre-created at approval time (state `approval_requested`,
+      // approvalState `approved`) must be finalized to `finished` with its
+      // output, keeping the recorded approvalState. Read-only children never
+      // conflict, so their rows insert fresh as `not_required`.
       await tx
         .insert(agentToolCalls)
         .values({
@@ -450,13 +457,16 @@ export const recordDelegatedRunOutcome = async ({
           finishedAt: now,
           id: `${runId}:${toolCall.toolCallId}`,
           inputJson: serialize(toolCall.input),
-          outputJson: serialize(toolCall.output),
+          outputJson,
           runId,
           startedAt: now,
           state: "finished",
           toolName: toolCall.toolName
         })
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          set: { finishedAt: now, outputJson, state: "finished" },
+          target: agentToolCalls.id
+        })
       await tx.insert(agentEvents).values({
         createdAt: now,
         id: randomUUID(),
@@ -482,6 +492,157 @@ export const recordDelegatedRunOutcome = async ({
       runId,
       sequence,
       type: status === "succeeded" ? "run.succeeded" : "run.failed"
+    })
+  })
+}
+
+/**
+ * Approval id for a delegated child's gated tool call. Deterministic so the
+ * broker key, the durable row id, and the transient stream part all agree, and
+ * so {@link parseChildApprovalId} can recover the run/tool from an oRPC request.
+ * `runId` is a UUID (no colon), so the first colon is the unambiguous separator.
+ */
+export const buildChildApprovalId = (
+  runId: string,
+  toolCallId: string
+): string => `${runId}:${toolCallId}`
+
+export const parseChildApprovalId = (
+  approvalId: string
+): { runId: string; toolCallId: string } | null => {
+  const separatorIndex = approvalId.indexOf(":")
+
+  if (separatorIndex <= 0 || separatorIndex >= approvalId.length - 1) {
+    return null
+  }
+
+  return {
+    runId: approvalId.slice(0, separatorIndex),
+    toolCallId: approvalId.slice(separatorIndex + 1)
+  }
+}
+
+/**
+ * Opens a durable pending approval for a writable child's gated tool call:
+ * pre-creates the tool-call row (so the approval row's FK resolves and the run
+ * inspector shows the request), inserts the pending `agent_approvals` row, and
+ * appends `approval.requested`. The actual gating is the in-memory broker; this
+ * is the durable trace + the row {@link expireStaleApprovals} later reaps if the
+ * app dies mid-approval. Wrap the call in `runExclusiveDbWrite`.
+ */
+export const recordChildApprovalRequest = async ({
+  db,
+  input,
+  runId,
+  toolCallId,
+  toolName
+}: {
+  db: AppDatabase
+  input: unknown
+  runId: string
+  toolCallId: string
+  toolName: string
+}): Promise<string> => {
+  const approvalId = buildChildApprovalId(runId, toolCallId)
+  const toolCallRowId = `${runId}:${toolCallId}`
+  const now = nowIso()
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(agentToolCalls)
+      .values({
+        approvalState: "pending",
+        id: toolCallRowId,
+        inputJson: serialize(input),
+        runId,
+        startedAt: now,
+        state: "approval_requested",
+        toolName
+      })
+      .onConflictDoNothing()
+    await tx
+      .insert(agentApprovals)
+      .values({
+        createdAt: now,
+        id: approvalId,
+        runId,
+        state: "pending",
+        toolCallId,
+        toolCallRowId
+      })
+      .onConflictDoNothing()
+    await tx.insert(agentEvents).values({
+      createdAt: now,
+      id: randomUUID(),
+      payloadJson: serialize({ approvalId, toolCallId, toolName }),
+      runId,
+      sequence: await countRunEvents(tx, runId),
+      type: "approval.requested"
+    })
+  })
+
+  return approvalId
+}
+
+/**
+ * Settles a child's pending approval. Idempotent (a no-op if the row is no
+ * longer pending) so the abort/expiry path in the child and the oRPC responder
+ * can both call it without double-writing. `reason` distinguishes the durable
+ * event: user/abort → `approval.responded`, TTL → `approval.expired`. Denied
+ * calls also flip the tool-call row to `failed`; an approved call keeps its
+ * `approval_requested`/`approved` row until `recordDelegatedRunOutcome`
+ * finalizes it. Wrap the call in `runExclusiveDbWrite`.
+ */
+export const recordChildApprovalResponse = async ({
+  approved,
+  db,
+  reason,
+  runId,
+  toolCallId
+}: {
+  approved: boolean
+  db: AppDatabase
+  reason: "aborted" | "expired" | "responded"
+  runId: string
+  toolCallId: string
+}): Promise<void> => {
+  const approvalId = buildChildApprovalId(runId, toolCallId)
+  const now = nowIso()
+
+  await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(agentApprovals)
+      .where(eq(agentApprovals.id, approvalId))
+      .limit(1)
+
+    if (!existing || existing.state !== "pending") {
+      return
+    }
+
+    await tx
+      .update(agentApprovals)
+      .set({ respondedAt: now, state: approved ? "approved" : "denied" })
+      .where(eq(agentApprovals.id, approvalId))
+    await tx
+      .update(agentToolCalls)
+      .set({
+        approvalState: approved ? "approved" : "denied",
+        ...(approved ? {} : { finishedAt: now, state: "failed" })
+      })
+      .where(eq(agentToolCalls.id, `${runId}:${toolCallId}`))
+    await tx.insert(agentEvents).values({
+      createdAt: now,
+      id: randomUUID(),
+      payloadJson: serialize({
+        approvalId,
+        reason,
+        state: approved ? "approved" : "denied",
+        toolCallId
+      }),
+      runId,
+      sequence: await countRunEvents(tx, runId),
+      type: reason === "expired" ? "approval.expired" : "approval.responded"
     })
   })
 }
@@ -756,6 +917,40 @@ export const recordAgentRunOutcome = async ({
 
     await resolvePriorApprovals(derived.approvedToolCallIds, "approved")
     await resolvePriorApprovals(derived.deniedToolCallIds, "denied")
+
+    // A prior run left `suspended` on a pending approval never closes on its
+    // own once this later turn resolves that approval: the approval row flips to
+    // approved/denied, but nothing settles the run row. Mark every other
+    // suspended run in this session `superseded` so a session keeps at most one
+    // open suspended run instead of leaking them forever.
+    const priorSuspendedRunIds = sessionRunIds.filter((id) => id !== runId)
+
+    if (priorSuspendedRunIds.length > 0) {
+      const suspendedSiblings = await tx
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            inArray(agentRuns.id, priorSuspendedRunIds),
+            eq(agentRuns.status, "suspended")
+          )
+        )
+
+      for (const sibling of suspendedSiblings) {
+        await tx
+          .update(agentRuns)
+          .set({ finishedAt: now, status: "superseded" })
+          .where(eq(agentRuns.id, sibling.id))
+        await tx.insert(agentEvents).values({
+          createdAt: now,
+          id: randomUUID(),
+          payloadJson: serialize({ supersededByRunId: runId }),
+          runId: sibling.id,
+          sequence: await countRunEvents(tx, sibling.id),
+          type: "run.superseded"
+        })
+      }
+    }
 
     // A terminal settlement finalizes tool calls the stream left unsettled
     // (abort or crash mid-call), so a closed run can never keep a `running`

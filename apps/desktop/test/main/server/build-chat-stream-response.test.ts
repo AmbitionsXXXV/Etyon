@@ -121,6 +121,7 @@ const buildBaseOptions = () => ({
   ] satisfies ModelMessage[],
   moonshotReasoningForAssistantToolCalls: [],
   onFinishPersist: vi.fn(() => Promise.resolve()),
+  permissionMode: "default" as const,
   projectPath: "/tmp/project-a",
   requestStartedAt: Date.now(),
   sessionId: "session-1",
@@ -197,6 +198,62 @@ describe("buildChatStreamResponse", () => {
     expect(persistedOutcome).toEqual(
       expect.objectContaining({ exitReason: "completed" })
     )
+  })
+
+  it("stamps the aborted exit reason even when the loop settles late", async () => {
+    streamTextMock.mockClear()
+    // Mirrors the loop's abort exit: the final `finish` chunk is written
+    // before runAgentLoop resolves, so onFinish races the outcome assignment.
+    runAgentLoopMock.mockImplementation(
+      ({ writer }: { writer: { write: (chunk: unknown) => void } }) => {
+        writer.write({ type: "start" })
+        writer.write({ id: "text-1", type: "text-start" })
+        writer.write({ delta: "partial", id: "text-1", type: "text-delta" })
+        writer.write({ id: "text-1", type: "text-end" })
+        writer.write({ type: "finish" })
+
+        const outcome = Promise.withResolvers()
+        setTimeout(() => {
+          outcome.resolve({
+            errorMessage: null,
+            exitReason: "aborted",
+            finishReason: null,
+            nudged: false,
+            stepCount: 1
+          })
+        }, 20)
+
+        return outcome.promise
+      }
+    )
+
+    const options = buildBaseOptions()
+    const response = buildChatStreamResponse({
+      ...options,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          enabled: true,
+          maxSteps: 5
+        }
+      })
+    })
+
+    await readResponseText(response)
+    await vi.waitFor(() => {
+      expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
+    })
+
+    const persistedMessages = (
+      options.onFinishPersist.mock.calls as unknown as [UIMessage[]][]
+    )[0]?.[0]
+    const assistantMessage = persistedMessages?.findLast(
+      (message) => message.role === "assistant"
+    )
+
+    expect(
+      (assistantMessage?.metadata as { exitReason?: string } | undefined)
+        ?.exitReason
+    ).toBe("aborted")
   })
 
   it("attaches work time metadata to the persisted assistant message", async () => {

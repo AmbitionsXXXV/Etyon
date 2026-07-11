@@ -46,10 +46,6 @@
       "zoomOut": "縮小",
       "zoomReset": "ズームをリセット"
     },
-    "chainOfThought": {
-      "label": "思考",
-      "stepCount": "{count} ステップ"
-    },
     "composer": {
       "agentModeAgent": "Agent",
       "agentModeChat": "Chat",
@@ -144,7 +140,7 @@
         "low": "低",
         "medium": "中",
         "high": "高",
-        "xhigh": "超高",
+        "xhigh": "xhigh",
         "max": "最大"
       },
       "effortLabel": "思考の強さ",
@@ -193,6 +189,14 @@
       "title": "プロジェクトコンテキスト",
       "truncated": "Diff は切り詰められました",
       "viewsLabel": "プロジェクトコンテキストビュー"
+    },
+    "promptInput": {
+      "permissionMode": {
+        "acceptEdits": "自動編集",
+        "bypass": "バイパス",
+        "default": "標準",
+        "title": "権限モード"
+      }
     },
     "snapshot": {
       "loading": "プロジェクト snapshot を準備中...",
@@ -260,7 +264,8 @@
       "stdout": "stdout",
       "thinking": "思考プロセス",
       "title": "ツール実行",
-      "truncated": "切り詰め済み"
+      "truncated": "切り詰め済み",
+      "workflowAgents": "{done}/{started} エージェント"
     },
     "workbench": {
       "advance": "進行",
@@ -353,8 +358,41 @@
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },
+    "workSection": {
+      "editedFile": "{name} を編集",
+      "editedFiles": "ファイルを {count} 件編集",
+      "exploredFile": "ファイルを 1 件参照",
+      "exploredFiles": "ファイルを {count} 件参照",
+      "failedAfter": "失敗 · {duration}",
+      "ranCommand": "コマンドを 1 件実行",
+      "ranCommands": "コマンドを {count} 件実行",
+      "readFile": "{name} を読み取り",
+      "stoppedAfter": "停止 · {duration}",
+      "thinking": "思考中…",
+      "thought": "思考 {duration}",
+      "thoughtPlain": "思考済み",
+      "usedTool": "ツールを 1 件使用",
+      "usedTools": "ツールを {count} 件使用",
+      "waitingApproval": "承認待ち…",
+      "worked": "完了 · {duration}",
+      "working": "処理中…",
+      "delegatedTask": "タスクを委任",
+      "exploredProject": "プロジェクトを確認",
+      "ranWorkflow": "ワークフローを実行"
+    },
     "workTime": {
       "label": "所要時間 {duration}"
+    },
+    "subagent": {
+      "aborted": "停止しました",
+      "approvalDanger": "この操作は破壊的なため、記憶できません。",
+      "approvalTitle": "{tool} の実行を承認してください",
+      "failed": "失敗",
+      "loadFailed": "トレースを読み込めませんでした。",
+      "loading": "トレースを読み込み中…",
+      "running": "実行中…",
+      "succeeded": "完了",
+      "viewDetails": "詳細を表示"
     }
   },
   "home": {
@@ -466,6 +504,15 @@
         "enabled": {
           "description": "managed agent tools を chat routing に公開します。オフの場合、chat は通常のモデル経路を使います。",
           "label": "managed agents を有効化"
+        },
+        "permissionMode": {
+          "description": "新しいセッションで agent ツールをどう制御するか：標準は編集とコマンドを承認、自動編集はプロジェクト内の編集を自動実行、バイパスはすべてを承認なしで実行します。入力欄でセッションごとに切り替えられます。",
+          "label": "既定の権限モード",
+          "option": {
+            "acceptEdits": "自動編集 — 編集を自動実行、コマンドは承認",
+            "bypass": "バイパス — すべてを承認なしで実行",
+            "default": "標準 — 編集とコマンドを承認"
+          }
         },
         "requireApprovalForWrites": {
           "description": "書き込み可能な profile でも、patch と command の書き込みは明示的な承認に通します。",

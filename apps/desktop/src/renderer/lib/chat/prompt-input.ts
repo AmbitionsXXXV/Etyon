@@ -10,6 +10,9 @@ import {
   File01Icon,
   Folder01Icon,
   Message01Icon,
+  PencilEdit01Icon,
+  Rocket01Icon,
+  Shield01Icon,
   Task01Icon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
@@ -985,6 +988,24 @@ export const CHAT_AGENT_MODE_OPTIONS = [
   {
     icon: Task01Icon,
     id: "plan"
+  }
+] as const
+
+// Composer permission-mode cycle order mirrors PERMISSION_MODES
+// (default → acceptEdits → bypass). Icons read left-to-right as increasing
+// looseness: a shield (gated), a pencil (edits auto-run), a rocket (yolo).
+export const PERMISSION_MODE_OPTIONS = [
+  {
+    icon: Shield01Icon,
+    id: "default"
+  },
+  {
+    icon: PencilEdit01Icon,
+    id: "acceptEdits"
+  },
+  {
+    icon: Rocket01Icon,
+    id: "bypass"
   }
 ] as const
 

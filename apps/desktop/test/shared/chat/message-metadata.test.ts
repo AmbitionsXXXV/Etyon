@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   attachAgentProjectionToAssistantMessages,
+  attachRunOutcomeToLatestAssistantMessage,
   attachWorkTimeToLatestAssistantMessage
 } from "@/shared/chat/message-metadata"
 
@@ -37,6 +38,49 @@ describe("attachWorkTimeToLatestAssistantMessage", () => {
         },
         role: "assistant"
       }
+    ])
+  })
+
+  it("stamps run outcome alongside work time on the latest assistant", () => {
+    expect(
+      attachRunOutcomeToLatestAssistantMessage(
+        [
+          { id: "user-1", role: "user" },
+          {
+            id: "assistant-1",
+            metadata: { mentions: [] },
+            role: "assistant"
+          }
+        ],
+        {
+          exitReason: "aborted",
+          thoughtDurationsMs: [200, 500],
+          workTimeMs: 1280
+        }
+      )
+    ).toEqual([
+      { id: "user-1", role: "user" },
+      {
+        id: "assistant-1",
+        metadata: {
+          exitReason: "aborted",
+          mentions: [],
+          thoughtDurationsMs: [200, 500],
+          workTimeMs: 1280
+        },
+        role: "assistant"
+      }
+    ])
+  })
+
+  it("omits an empty exit reason and empty thought durations", () => {
+    expect(
+      attachRunOutcomeToLatestAssistantMessage(
+        [{ id: "assistant-1", role: "assistant" }],
+        { exitReason: null, thoughtDurationsMs: [], workTimeMs: 42 }
+      )
+    ).toEqual([
+      { id: "assistant-1", metadata: { workTimeMs: 42 }, role: "assistant" }
     ])
   })
 

@@ -31,6 +31,7 @@ const STATUS_CLASS_NAME: Record<AgentRunStatus, string> = {
   failed: "bg-destructive/10 text-destructive",
   running: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   succeeded: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  superseded: "bg-muted text-muted-foreground",
   suspended: "bg-amber-500/10 text-amber-700 dark:text-amber-300"
 }
 

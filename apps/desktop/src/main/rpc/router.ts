@@ -31,6 +31,8 @@ import {
   ListProjectSnapshotFilesOutputSchema,
   ReadAgentArtifactInputSchema,
   ReadAgentArtifactOutputSchema,
+  RespondToChildApprovalInputSchema,
+  RespondToChildApprovalOutputSchema,
   ReadProjectBinaryFileInputSchema,
   ReadProjectBinaryFileOutputSchema,
   ReadProjectFileInputSchema,
@@ -73,6 +75,8 @@ import {
   listPendingAgentApprovals,
   readAgentArtifact
 } from "@/main/agents/agent-run-inspection"
+import { respondToChildApproval } from "@/main/agents/child-approval"
+import type { RememberableChildCommand } from "@/main/agents/child-approval"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -165,6 +169,44 @@ const applySettingsUpdate = (
   }
 
   return result
+}
+
+// Persists a remembered bash command for a delegated child, deduped by
+// (toolName, projectPath, command) so a re-remember resets the TTL. Mirrors the
+// renderer's parent-flow remember and broadcasts settings-changed via
+// applySettingsUpdate so the settings UI stays in sync. The dangerous-command
+// guard already ran in respondToChildApproval, which only returns a command here
+// when it is safe to remember.
+const rememberChildBashCommand = ({
+  command,
+  projectPath
+}: RememberableChildCommand): void => {
+  const settings = getSettings()
+  const rule = {
+    command,
+    createdAt: new Date().toISOString(),
+    projectPath,
+    toolName: "bash"
+  }
+  const commandAllowlist = [
+    ...settings.agents.approvals.commandAllowlist.filter(
+      (entry) =>
+        entry.toolName !== rule.toolName ||
+        entry.projectPath !== rule.projectPath ||
+        entry.command !== rule.command
+    ),
+    rule
+  ]
+
+  applySettingsUpdate({
+    agents: {
+      ...settings.agents,
+      approvals: {
+        ...settings.agents.approvals,
+        commandAllowlist
+      }
+    }
+  })
 }
 
 const fontsList = rpc
@@ -553,6 +595,9 @@ const agentsListRuns = rpc
     listAgentRuns({
       db: context.db,
       ...(input.limit === undefined ? {} : { limit: input.limit }),
+      ...(input.parentRunId === undefined
+        ? {}
+        : { parentRunId: input.parentRunId }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId })
     })
   )
@@ -585,12 +630,33 @@ const agentsReadArtifact = rpc
     return result
   })
 
+const agentsRespondToApproval = rpc
+  .input(RespondToChildApprovalInputSchema)
+  .output(RespondToChildApprovalOutputSchema)
+  .handler(async ({ context, input }) => {
+    const result = await respondToChildApproval({
+      approved: input.approved,
+      approvalId: input.approvalId,
+      db: context.db,
+      rememberCommand: input.rememberCommand ?? false
+    })
+
+    if (result.rememberableCommand) {
+      rememberChildBashCommand(result.rememberableCommand)
+    }
+
+    return result.ok
+      ? { ok: true }
+      : { ok: false, reason: "not-pending" as const }
+  })
+
 export const router = {
   agents: {
     inspectRun: agentsInspectRun,
     listPendingApprovals: agentsListPendingApprovals,
     listRuns: agentsListRuns,
-    readArtifact: agentsReadArtifact
+    readArtifact: agentsReadArtifact,
+    respondToApproval: agentsRespondToApproval
   },
   chatSessions: {
     archive: chatSessionsArchive,

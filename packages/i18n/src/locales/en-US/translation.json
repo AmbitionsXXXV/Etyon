@@ -46,10 +46,6 @@
       "zoomOut": "Zoom out",
       "zoomReset": "Reset zoom"
     },
-    "chainOfThought": {
-      "label": "Thinking",
-      "stepCount": "{count} steps"
-    },
     "composer": {
       "agentModeAgent": "Agent",
       "agentModeChat": "Chat",
@@ -144,7 +140,7 @@
         "low": "Low",
         "medium": "Medium",
         "high": "High",
-        "xhigh": "Very high",
+        "xhigh": "xhigh",
         "max": "Max"
       },
       "effortLabel": "Effort",
@@ -193,6 +189,14 @@
       "title": "Project Context",
       "truncated": "Diff truncated",
       "viewsLabel": "Project context views"
+    },
+    "promptInput": {
+      "permissionMode": {
+        "acceptEdits": "Accept edits",
+        "bypass": "Bypass",
+        "default": "Default",
+        "title": "Permission mode"
+      }
     },
     "snapshot": {
       "loading": "Preparing project snapshot...",
@@ -260,7 +264,8 @@
       "stdout": "stdout",
       "thinking": "Thinking",
       "title": "Tool activity",
-      "truncated": "Truncated"
+      "truncated": "Truncated",
+      "workflowAgents": "{done}/{started} agents"
     },
     "workbench": {
       "advance": "Advance",
@@ -353,8 +358,41 @@
       "title": "Agent Workbench",
       "tools": "Tools {count}"
     },
+    "workSection": {
+      "editedFile": "Edited {name}",
+      "editedFiles": "Edited {count} files",
+      "exploredFile": "Explored 1 file",
+      "exploredFiles": "Explored {count} files",
+      "failedAfter": "Failed after {duration}",
+      "ranCommand": "Ran a command",
+      "ranCommands": "Ran {count} commands",
+      "readFile": "Read {name}",
+      "stoppedAfter": "Stopped after {duration}",
+      "thinking": "Thinking…",
+      "thought": "Thought for {duration}",
+      "thoughtPlain": "Thought",
+      "usedTool": "Used 1 tool",
+      "usedTools": "Used {count} tools",
+      "waitingApproval": "Waiting for approval…",
+      "worked": "Worked for {duration}",
+      "working": "Working…",
+      "delegatedTask": "Delegated a task",
+      "exploredProject": "Explored the project",
+      "ranWorkflow": "Ran a workflow"
+    },
     "workTime": {
       "label": "Worked for {duration}"
+    },
+    "subagent": {
+      "aborted": "Stopped",
+      "approvalDanger": "This command is destructive and can't be remembered.",
+      "approvalTitle": "{tool} needs your approval",
+      "failed": "Failed",
+      "loadFailed": "Couldn't load the trace.",
+      "loading": "Loading trace…",
+      "running": "Running…",
+      "succeeded": "Done",
+      "viewDetails": "View details"
     }
   },
   "home": {
@@ -466,6 +504,15 @@
         "enabled": {
           "description": "Expose managed agent tools to chat routing. When off, chat stays on the plain model path.",
           "label": "Enable managed agents"
+        },
+        "permissionMode": {
+          "description": "How new sessions gate agent tools: Default approves edits and commands, Accept edits auto-runs in-project edits, and Bypass runs everything. Switch per session in the composer.",
+          "label": "Default permission mode",
+          "option": {
+            "acceptEdits": "Accept edits — auto-run edits, approve commands",
+            "bypass": "Bypass — run everything without approval",
+            "default": "Default — approve edits and commands"
+          }
         },
         "requireApprovalForWrites": {
           "description": "Keep patch and command writes behind explicit approval even for write-capable profiles.",

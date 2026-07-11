@@ -16,6 +16,7 @@ import {
   getString,
   isRecord
 } from "@/renderer/lib/utils"
+import { isDangerousShellCommand } from "@/shared/agents/permission-mode"
 
 export type ChatToolPart = DynamicToolUIPart | ToolUIPart
 export type ChatToolState = ChatToolPart["state"]
@@ -249,7 +250,7 @@ export const getToolIcon = (toolName: string): IconSvgElement => {
     return SearchCodeIcon
   }
 
-  if (toolName.startsWith("agent")) {
+  if (toolName === "workflow" || toolName.startsWith("agent")) {
     return WorkflowSquare02Icon
   }
 
@@ -423,4 +424,5 @@ export const getToolOutputSummary = (output: unknown): string => {
 export const canRememberCommandApproval = (part: ChatToolPart): boolean =>
   part.state === "approval-requested" &&
   REMEMBERABLE_COMMAND_APPROVAL_TOOLS.has(getToolName(part)) &&
-  getToolInputCommand(part.input).trim().length > 0
+  getToolInputCommand(part.input).trim().length > 0 &&
+  !isDangerousShellCommand(getToolInputCommand(part.input))

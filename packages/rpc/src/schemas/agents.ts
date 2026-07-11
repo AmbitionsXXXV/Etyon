@@ -6,6 +6,7 @@ export const AgentRunStatusSchema = z.enum([
   "failed",
   "running",
   "succeeded",
+  "superseded",
   "suspended"
 ])
 
@@ -175,6 +176,7 @@ export const PendingAgentApprovalsOutputSchema = z.object({
 
 export const ListAgentRunsInputSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
+  parentRunId: z.string().optional(),
   sessionId: z.string().optional()
 })
 
@@ -218,6 +220,20 @@ export const RememberAgentCommandApprovalInputSchema = z.object({
 
 export const RememberAgentCommandApprovalOutputSchema = z.object({
   remembered: z.boolean()
+})
+
+// Decision on a delegated writable child's edit/write/bash approval. Answered
+// live through the in-process broker (not the parent suspend/resume path), so it
+// carries only the approval id, the verdict, and an optional bash remember.
+export const RespondToChildApprovalInputSchema = z.object({
+  approvalId: z.string().trim().min(1),
+  approved: z.boolean(),
+  rememberCommand: z.boolean().optional()
+})
+
+export const RespondToChildApprovalOutputSchema = z.object({
+  ok: z.boolean(),
+  reason: z.enum(["not-pending"]).optional()
 })
 
 export const AgentRunGraphTemplateIdSchema = z.enum([
@@ -649,6 +665,12 @@ export type RememberAgentCommandApprovalInput = z.infer<
 >
 export type RememberAgentCommandApprovalOutput = z.infer<
   typeof RememberAgentCommandApprovalOutputSchema
+>
+export type RespondToChildApprovalInput = z.infer<
+  typeof RespondToChildApprovalInputSchema
+>
+export type RespondToChildApprovalOutput = z.infer<
+  typeof RespondToChildApprovalOutputSchema
 >
 export type QueuedAgentMessagesOutput = z.infer<
   typeof QueuedAgentMessagesOutputSchema

@@ -1,7 +1,10 @@
 import type { AgentProfile } from "@etyon/rpc"
 
 export const coderProfile: AgentProfile = {
-  allowedDelegateProfileIds: ["explore"],
+  // "coder" makes the writable-child path reachable: a coder parent can hand a
+  // bounded implementation task to one writable peer (nesting still capped at 1
+  // by construction — children never receive the delegate tool).
+  allowedDelegateProfileIds: ["coder", "explore"],
   available: true,
   description: "Implements small, bounded changes with validation.",
   executionMode: "coder",

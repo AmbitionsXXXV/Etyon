@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test"
 
 import type { PromptCommandPaletteItem } from "@/renderer/lib/chat/prompt-input"
 import {
+  PERMISSION_MODE_OPTIONS,
   applyMentionSelection,
   applyPlanCommandPrefixToPromptEditorJson,
   buildPromptEditorJsonFromMessage,
@@ -26,6 +27,10 @@ import {
   splitPromptTextByMentions,
   scrollActiveMentionItemIntoView
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  PERMISSION_MODES,
+  getNextPermissionMode
+} from "@/shared/agents/permission-mode"
 
 describe("prompt input helpers", () => {
   it("detects an active mention query at the caret", () => {
@@ -626,5 +631,19 @@ describe("prompt input helpers", () => {
         type: "text"
       }
     ])
+  })
+
+  it("maps every permission mode to a composer option and cycles in order", () => {
+    expect(PERMISSION_MODE_OPTIONS.map((option) => option.id)).toEqual([
+      ...PERMISSION_MODES
+    ])
+
+    for (const option of PERMISSION_MODE_OPTIONS) {
+      expect(option.icon).toBeTruthy()
+    }
+
+    expect(PERMISSION_MODES.map((mode) => getNextPermissionMode(mode))).toEqual(
+      ["acceptEdits", "bypass", "default"]
+    )
   })
 })

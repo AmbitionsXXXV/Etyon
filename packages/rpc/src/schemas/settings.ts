@@ -75,6 +75,15 @@ export const AgentExecutionModeSchema = z.enum([
   "plan"
 ])
 
+// Approval-gating mode for agent tool calls, orthogonal to the chat/agent/plan
+// execution mode. Cycle order (default → acceptEdits → bypass) matches the
+// shared predicate module in the desktop app.
+export const AgentPermissionModeSchema = z.enum([
+  "default",
+  "acceptEdits",
+  "bypass"
+])
+
 export const AgentProfileSchema = z.object({
   allowedDelegateProfileIds: z.array(z.string()).default([]),
   available: z.boolean().default(true),
@@ -261,10 +270,13 @@ const AGENT_SANDBOX_SETTINGS_DEFAULT = {
 const AGENT_SETTINGS_DEFAULT = {
   allowSubagentDelegation: false,
   approvals: AGENT_APPROVAL_SETTINGS_DEFAULT,
+  defaultPermissionMode: "default",
   defaultProfileId: "general-purpose",
   enabled: false,
   lsp: AGENT_LSP_SETTINGS_DEFAULT,
   maxConcurrentSubagents: 2,
+  maxSubagentSteps: 24,
+  maxWorkflowConcurrency: 8,
   maxSteps: 64,
   profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
@@ -396,10 +408,17 @@ export const AgentSettingsSchema = z.object({
   approvals: AgentApprovalSettingsSchema.default(
     AGENT_APPROVAL_SETTINGS_DEFAULT
   ),
+  defaultPermissionMode: AgentPermissionModeSchema.default("default"),
   defaultProfileId: z.string().default("general-purpose"),
   enabled: z.boolean().default(false),
   lsp: AgentLspSettingsSchema.default(AGENT_LSP_SETTINGS_DEFAULT),
   maxConcurrentSubagents: z.number().int().min(1).max(4).default(2),
+  // Per-delegated-child step cap (delegate and workflow investigators alike).
+  // Schema-only, like maxWorkflowConcurrency — no agents-tab control. Writable
+  // children need more headroom than a pure read-only investigator, so the
+  // default sits above the old hard-coded 12 while staying a safety backstop.
+  maxSubagentSteps: z.number().int().min(4).max(100).default(24),
+  maxWorkflowConcurrency: z.number().int().min(1).max(16).default(8),
   // A step cap is a safety backstop, not a task budget: real agent runs
   // routinely take dozens of tool calls, and hitting the cap truncates the
   // run (surfaced in chat as a visible run-limit notice).
@@ -477,6 +496,7 @@ export type AgentCommandApprovalRule = z.infer<
 >
 export type AgentExecutionMode = z.infer<typeof AgentExecutionModeSchema>
 export type AgentLspSettings = z.infer<typeof AgentLspSettingsSchema>
+export type AgentPermissionMode = z.infer<typeof AgentPermissionModeSchema>
 export type AgentProfile = z.infer<typeof AgentProfileSchema>
 export type AgentRetrySettings = z.infer<typeof AgentRetrySettingsSchema>
 export type AgentSandboxSettings = z.infer<typeof AgentSandboxSettingsSchema>

@@ -7,6 +7,7 @@ import type {
 } from "ai"
 import {
   APICallError,
+  consumeStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
   streamText
@@ -21,23 +22,26 @@ import {
   buildAgentSystemPrompt,
   buildAgentToolset
 } from "@/main/agents/minimal/agent-toolset"
+import { createReasoningTimingTap } from "@/main/agents/minimal/reasoning-timing-tap"
 import {
   formatPromptTemplateInvocation,
   parseCommandArgs
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
+import { releaseRun } from "@/main/agents/write-claims"
 import { logger } from "@/main/logger"
 import {
   resolveEffortProviderOptionsForSelection,
   resolveModel
 } from "@/main/server/lib/providers"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
   isChatPlanCommandText,
   stripChatPlanCommand
 } from "@/shared/chat/agent-mode"
-import { attachWorkTimeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
+import { attachRunOutcomeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
 
@@ -454,6 +458,7 @@ export interface BuildChatStreamResponseOptions {
     messages: UIMessage[],
     agentOutcome: AgentLoopOutcome | null
   ) => Promise<void>
+  permissionMode: AgentPermissionMode
   profileId?: string | null
   projectPath: string
   promptTemplates?: readonly PromptTemplate[]
@@ -474,6 +479,7 @@ export const buildChatStreamResponse = ({
   moonshotReasoningForAssistantToolCalls,
   onAgentStep,
   onFinishPersist,
+  permissionMode,
   profileId,
   projectPath,
   promptTemplates = [],
@@ -496,113 +502,157 @@ export const buildChatStreamResponse = ({
     (prompt) => prompt.length > 0
   )
   let agentLoopOutcome: AgentLoopOutcome | null = null
+  // The loop writes its final `finish` chunk before `runAgentLoop` resolves, so
+  // onFinish can fire before `agentLoopOutcome` is assigned (an aborted run
+  // would then persist without its exitReason). onFinish awaits this instead.
+  const { promise: executeSettled, resolve: settleExecute } =
+    Promise.withResolvers<null>()
+  const reasoningTimingTap = createReasoningTimingTap()
 
   return createUIMessageStreamResponse({
+    // A client abort cancels the HTTP branch; consuming a tee'd copy keeps the
+    // source stream (and message assembly) running to the loop's abort exit, so
+    // onFinish still receives the partial assistant message and can stamp
+    // exitReason "aborted" + persist it instead of dropping the exchange.
+    consumeSseStream: consumeStream,
     stream: createUIMessageStream({
       execute: async ({ writer }) => {
-        writeRequestPhase(writer, "model-start")
-
-        if (!settings.agents.enabled) {
-          const effortProviderOptions =
-            resolveEffortProviderOptionsForSelection(settings.ai, modelId)
-          const { runWithMoonshotReasoningContext } =
-            await import("@/shared/providers/moonshot-reasoning")
-          const result = await runWithMoonshotReasoningContext(
-            moonshotReasoningForAssistantToolCalls,
-            () =>
-              Promise.resolve(
-                streamText({
-                  abortSignal,
-                  ...(effectiveSystemPrompts.length > 0
-                    ? { system: effectiveSystemPrompts.join("\n\n") }
-                    : {}),
-                  ...(effortProviderOptions
-                    ? { providerOptions: effortProviderOptions }
-                    : {}),
-                  messages: preparedModelMessages,
-                  model
-                })
-              )
-          )
-
-          writer.merge(
-            tapFirstChunkLatency(
-              result.toUIMessageStream({
-                originalMessages: messages,
-                sendReasoning: true
-              }),
-              "chat_first_chunk",
-              { agent_mode: false, session_id: sessionId }
-            )
-          )
-
-          return
+        try {
+          await executeChatStream(writer)
+        } finally {
+          settleExecute(null)
         }
-
-        writeRequestPhase(writer, "agent-turn")
-
-        const agentStreamSetupLog = logger.startEvent(
-          "chat_agent_stream_setup",
-          { agent_run_id: agentRunId, session_id: sessionId }
-        )
-        const profile = resolveActiveProfile(settings.agents, profileId ?? null)
-        // A profile's preferred model overrides the session model, matching
-        // the model resolution the Mastra agent previously did per request.
-        const agentModel =
-          profile.preferredModel.length > 0
-            ? resolveModel(profile.preferredModel)
-            : model
-        const agentEffortProviderOptions =
-          resolveEffortProviderOptionsForSelection(
-            settings.ai,
-            profile.preferredModel.length > 0 ? profile.preferredModel : modelId
-          )
-        const agentTools = buildAgentToolset({
-          agentRunId: agentRunId ?? null,
-          chatSessionId: sessionId,
-          modelId,
-          profile,
-          projectPath
-        })
-        const agentSystem = [
-          buildAgentSystemPrompt(profile),
-          ...effectiveSystemPrompts
-        ].join("\n\n")
-
-        agentStreamSetupLog.end()
-
-        // The prepared model messages carry composer command transforms,
-        // dangling-tool-call repair, and pending approval responses — the
-        // AI SDK executes approved tool calls at the start of the next stream.
-        agentLoopOutcome = await runAgentLoop({
-          abortSignal,
-          describeError: describeChatStreamError,
-          maxSteps: settings.agents.maxSteps,
-          messages: preparedModelMessages,
-          model: agentModel,
-          ...(onAgentStep ? { onStepFinish: onAgentStep } : {}),
-          ...(agentEffortProviderOptions
-            ? { providerOptions: agentEffortProviderOptions }
-            : {}),
-          system: agentSystem,
-          tools: agentTools,
-          writer: withFirstChunkLatency(writer, {
-            agent_mode: true,
-            agent_run_id: agentRunId,
-            session_id: sessionId
-          })
-        })
       },
       onError: describeChatStreamError,
-      onFinish: async ({ messages: nextMessages }) => {
+      onFinish: async ({ isAborted, messages: nextMessages }) => {
+        await executeSettled
+
+        // The run (and every delegated child under it) has settled, so drop this
+        // run's file-write ownership claims. Cheap in-memory cleanup done before
+        // persistence so it runs even if persistence throws.
+        if (agentRunId) {
+          releaseRun(agentRunId)
+        }
+
         const workTimeMs = Date.now() - requestStartedAt
+        // Belt and braces: a run torn down before the loop could settle (e.g.
+        // aborted before the first model call) still records why it stopped.
+        const exitReason =
+          agentLoopOutcome?.exitReason ?? (isAborted ? "aborted" : undefined)
 
         await onFinishPersist(
-          attachWorkTimeToLatestAssistantMessage(nextMessages, workTimeMs),
+          attachRunOutcomeToLatestAssistantMessage(nextMessages, {
+            exitReason,
+            thoughtDurationsMs: reasoningTimingTap.getDurationsMs(),
+            workTimeMs
+          }),
           agentLoopOutcome
         )
       },
       originalMessages: messages
     })
   })
+
+  async function executeChatStream(
+    writer: UIMessageStreamWriter<UIMessage>
+  ): Promise<void> {
+    writeRequestPhase(writer, "model-start")
+
+    if (!settings.agents.enabled) {
+      const effortProviderOptions = resolveEffortProviderOptionsForSelection(
+        settings.ai,
+        modelId
+      )
+      const { runWithMoonshotReasoningContext } =
+        await import("@/shared/providers/moonshot-reasoning")
+      const result = await runWithMoonshotReasoningContext(
+        moonshotReasoningForAssistantToolCalls,
+        () =>
+          Promise.resolve(
+            streamText({
+              abortSignal,
+              ...(effectiveSystemPrompts.length > 0
+                ? { system: effectiveSystemPrompts.join("\n\n") }
+                : {}),
+              ...(effortProviderOptions
+                ? { providerOptions: effortProviderOptions }
+                : {}),
+              messages: preparedModelMessages,
+              model
+            })
+          )
+      )
+
+      writer.merge(
+        tapFirstChunkLatency(
+          reasoningTimingTap.wrap(
+            result.toUIMessageStream({
+              originalMessages: messages,
+              sendReasoning: true
+            })
+          ),
+          "chat_first_chunk",
+          { agent_mode: false, session_id: sessionId }
+        )
+      )
+
+      return
+    }
+
+    writeRequestPhase(writer, "agent-turn")
+
+    const agentStreamSetupLog = logger.startEvent("chat_agent_stream_setup", {
+      agent_run_id: agentRunId,
+      session_id: sessionId
+    })
+    const profile = resolveActiveProfile(settings.agents, profileId ?? null)
+    // A profile's preferred model overrides the session model, matching
+    // the model resolution the Mastra agent previously did per request.
+    const agentModel =
+      profile.preferredModel.length > 0
+        ? resolveModel(profile.preferredModel)
+        : model
+    const agentEffortProviderOptions = resolveEffortProviderOptionsForSelection(
+      settings.ai,
+      profile.preferredModel.length > 0 ? profile.preferredModel : modelId
+    )
+    const agentTools = buildAgentToolset({
+      agentRunId: agentRunId ?? null,
+      chatSessionId: sessionId,
+      modelId,
+      permissionMode,
+      profile,
+      projectPath,
+      writer
+    })
+    const agentSystem = [
+      buildAgentSystemPrompt(profile),
+      ...effectiveSystemPrompts
+    ].join("\n\n")
+
+    agentStreamSetupLog.end()
+
+    // The prepared model messages carry composer command transforms,
+    // dangling-tool-call repair, and pending approval responses — the
+    // AI SDK executes approved tool calls at the start of the next stream.
+    agentLoopOutcome = await runAgentLoop({
+      abortSignal,
+      describeError: describeChatStreamError,
+      maxSteps: settings.agents.maxSteps,
+      messages: preparedModelMessages,
+      model: agentModel,
+      ...(onAgentStep ? { onStepFinish: onAgentStep } : {}),
+      ...(agentEffortProviderOptions
+        ? { providerOptions: agentEffortProviderOptions }
+        : {}),
+      system: agentSystem,
+      tapUiStream: reasoningTimingTap.wrap,
+      tools: agentTools,
+      writer: withFirstChunkLatency(writer, {
+        agent_mode: true,
+        agent_run_id: agentRunId,
+        session_id: sessionId
+      })
+    })
+  }
 }

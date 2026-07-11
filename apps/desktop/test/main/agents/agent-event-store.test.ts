@@ -400,6 +400,109 @@ describe("agent event store", () => {
     expect(approval?.respondedAt).toBeTruthy()
   })
 
+  it("supersedes a prior suspended run when a later run in the session settles", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const otherSession = await createChatSession({ db })
+
+    const suspendedRunId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const suspendedMessages = toMessages([
+      userMessage("write"),
+      assistantMessage([
+        {
+          approval: { id: "ap-superseded" },
+          input: {},
+          state: "approval-requested",
+          toolCallId: "tc-superseded",
+          type: "tool-write"
+        }
+      ])
+    ])
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(suspendedMessages),
+      db,
+      messages: suspendedMessages,
+      runId: suspendedRunId
+    })
+
+    // A suspended run in a different session must stay open.
+    const otherRunId = await startAgentRun({
+      chatSessionId: otherSession.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const otherMessages = toMessages([
+      userMessage("write"),
+      assistantMessage([
+        {
+          approval: { id: "ap-other" },
+          input: {},
+          state: "approval-requested",
+          toolCallId: "tc-other",
+          type: "tool-write"
+        }
+      ])
+    ])
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(otherMessages),
+      db,
+      messages: otherMessages,
+      runId: otherRunId
+    })
+
+    const settledRunId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+    const settledMessages = toMessages([
+      userMessage("write"),
+      assistantMessage([
+        {
+          input: {},
+          output: { ok: true },
+          state: "output-available",
+          toolCallId: "tc-settled",
+          type: "tool-write"
+        }
+      ])
+    ])
+    await recordAgentRunOutcome({
+      assistantStartIndex: getRunAssistantStartIndex(settledMessages),
+      db,
+      messages: settledMessages,
+      runId: settledRunId
+    })
+
+    const [suspendedRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, suspendedRunId))
+    const [settledRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, settledRunId))
+    const [otherRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, otherRunId))
+    const projection = await buildRunProjection({ db, runId: suspendedRunId })
+
+    expect(suspendedRun?.status).toBe("superseded")
+    expect(suspendedRun?.finishedAt).toBeTruthy()
+    expect(settledRun?.status).toBe("succeeded")
+    expect(otherRun?.status).toBe("suspended")
+    expect(projection?.events.at(-1)?.type).toBe("run.superseded")
+  })
+
   it("recovers interrupted runs on startup", async () => {
     await ensureDatabaseReady()
     const db = getDb()

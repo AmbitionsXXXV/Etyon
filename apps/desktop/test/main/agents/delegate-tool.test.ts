@@ -25,15 +25,34 @@ type DelegateFn = (input: DelegateInput, ctx: unknown) => Promise<unknown>
 // Hoisted mocks — must be created before module imports
 // ---------------------------------------------------------------------------
 
-const { generateTextMock, getSettingsMock, mockedHomeDir, resolveModelMock } =
+const { getSettingsMock, mockedHomeDir, resolveModelMock, streamTextMock } =
   vi.hoisted(() => ({
-    generateTextMock: vi.fn(),
     getSettingsMock: vi.fn(),
     mockedHomeDir: `/tmp/etyon-delegate-tool-test-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`,
-    resolveModelMock: vi.fn(() => ({}))
+    resolveModelMock: vi.fn(() => ({})),
+    streamTextMock: vi.fn()
   }))
+
+// A minimal `streamText` result stand-in: `runDelegatedAgent` self-consumes it
+// via `await result.text` (headless path — no writer here), so only `.text`
+// (and, defensively, an empty UI stream) needs to behave.
+const emptyUiStream = (): ReadableStream =>
+  new ReadableStream({
+    start(controller) {
+      controller.close()
+    }
+  })
+
+const streamTextResult = (options: { error?: Error; text?: string }) => ({
+  get text() {
+    return options.error
+      ? Promise.reject(options.error)
+      : Promise.resolve(options.text ?? "")
+  },
+  toUIMessageStream: () => emptyUiStream()
+})
 
 // Electron stubs — copied verbatim from delegation.test.ts
 vi.mock("@electron-toolkit/utils", () => ({
@@ -56,12 +75,12 @@ vi.mock("electron", () => ({
   ipcMain: { on: vi.fn() }
 }))
 
-// Partial-mock `ai` — only override generateText so the real `tool` / `z`
+// Partial-mock `ai` — only override streamText so the real `tool` / `z`
 // helpers stay intact for the delegate tool's inputSchema parsing.
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof Ai>()
 
-  return { ...actual, generateText: generateTextMock }
+  return { ...actual, streamText: streamTextMock }
 })
 
 vi.mock("@/main/server/lib/providers", () => ({
@@ -114,6 +133,7 @@ const buildCtx = async (): Promise<DelegateToolContext> => {
     parentModelId: null,
     parentProfile: fakeParentProfile(),
     parentRunId,
+    permissionMode: "default" as const,
     projectPath: "/tmp"
   }
 }
@@ -139,10 +159,16 @@ describe("buildDelegateTool execute path", () => {
     getSettingsMock.mockReturnValue({ agents: agentSettings(1) })
 
     // Build a deferred before handing it to the mock so resolve is captured
-    // synchronously at the time generateText is invoked.
-    const deferred = Promise.withResolvers<{ text: string }>()
+    // synchronously at the time streamText is invoked. The child holds its slot
+    // while `result.text` stays pending.
+    const deferred = Promise.withResolvers<string>()
 
-    generateTextMock.mockImplementationOnce(() => deferred.promise)
+    streamTextMock.mockImplementationOnce(() => ({
+      get text() {
+        return deferred.promise
+      },
+      toUIMessageStream: () => emptyUiStream()
+    }))
 
     const ctx = await buildCtx()
     const delegate = buildDelegateTool(ctx)
@@ -167,7 +193,7 @@ describe("buildDelegateTool execute path", () => {
     ).rejects.toThrow(/Concurrent sub-agent limit/u)
 
     // Release the first child and confirm it resolves
-    deferred.resolve({ text: "done" })
+    deferred.resolve("done")
     const result = await firstCall
 
     expect(result).toMatchObject({
@@ -176,16 +202,18 @@ describe("buildDelegateTool execute path", () => {
     })
 
     // After the first call resolved, the slot should be free — third call accepted
-    generateTextMock.mockResolvedValueOnce({ text: "third done" })
+    streamTextMock.mockReturnValueOnce(streamTextResult({ text: "third done" }))
 
     await expect(
       callDelegate(delegate, { profileId: "explore", task: "third task" })
     ).resolves.toMatchObject({ summary: expect.any(String) })
   })
 
-  it("records a failed child run and rethrows 'Delegation failed' on generateText error", async () => {
+  it("records a failed child run and rethrows 'Delegation failed' on streamText error", async () => {
     getSettingsMock.mockReturnValue({ agents: agentSettings(2) })
-    generateTextMock.mockRejectedValueOnce(new Error("boom"))
+    streamTextMock.mockReturnValueOnce(
+      streamTextResult({ error: new Error("boom") })
+    )
 
     const ctx = await buildCtx()
     const delegate = buildDelegateTool(ctx)
@@ -212,7 +240,9 @@ describe("buildDelegateTool execute path", () => {
 
   it("releases the concurrency slot after a failure so the next call is accepted", async () => {
     getSettingsMock.mockReturnValue({ agents: agentSettings(1) })
-    generateTextMock.mockRejectedValueOnce(new Error("transient"))
+    streamTextMock.mockReturnValueOnce(
+      streamTextResult({ error: new Error("transient") })
+    )
 
     const ctx = await buildCtx()
     const delegate = buildDelegateTool(ctx)
@@ -223,7 +253,7 @@ describe("buildDelegateTool execute path", () => {
     ).rejects.toThrow(/Delegation failed/u)
 
     // Subsequent call should NOT be blocked by the failed slot
-    generateTextMock.mockResolvedValueOnce({ text: "recovery" })
+    streamTextMock.mockReturnValueOnce(streamTextResult({ text: "recovery" }))
 
     await expect(
       callDelegate(delegate, { profileId: "explore", task: "recovery" })
