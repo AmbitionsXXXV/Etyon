@@ -25,7 +25,7 @@ How to apply:
 - Never use Haiku.
 - Mechanics: gpt-5.6 is only reachable through the Codex CLI - 'codex exec' / 'codex review" (my ~/. codex/config.toml defaults to gpt-5.6). Use the codex-implementation, codex-review, and codex-computer-use skills; for work they don't cover (investigation, data analysis), run codex exec -s read-only directly with a self-contained prompt.
 - Claude models (sonnet-5, opus-4.8, fable-5) run via the Agent/Workflow model parameter.
-- gpt-5.6 terra default effort use xhigh; gpt-5.6 sol use medium when do some edit works.
+- Effort per model, esp. for subagent editing: run **terra at xhigh** by default — it's cheap, so high effort is affordable, and it's the workhorse for edits, including much of what opus could do. Use **sol at medium** for lighter edits that still need a bit of thought, and avoid **sol at high/xhigh**.
 
 Using gpt-5.6 inside workflows and subagents (the model parameter only takes Claude models, so use a wrapper):
 

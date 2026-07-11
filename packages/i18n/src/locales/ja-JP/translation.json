@@ -105,6 +105,8 @@
       "commandPromptLabel": "Prompt",
       "commandSkillDescription": "Skill command",
       "commandSkillLabel": "Skill",
+      "commandWorkflowDescription": "マルチエージェントワークフロー",
+      "commandWorkflowLabel": "Workflow",
       "empty": "一致するファイル、フォルダー、または skills がありません。",
       "filesGroup": "ファイル",
       "foldersGroup": "フォルダー",

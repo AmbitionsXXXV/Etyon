@@ -58,6 +58,7 @@
 ### Agent Mode / Composer
 
 - [x] `/plan` 与 `Ctrl+Alt+P` 已能把当前请求临时切换为 read-only plan profile，并把 plan progress 写回 session events。
+- [x] `/workflow`（composer `/` 面板，仿 `/imagen` 的单轮触发）会强制本轮 agent mode 并注入 turn-scoped system prompt：默认让模型用 `workflow` tool 编排只读 investigator fan-out；任务明显过窄时不静默跳过，而是向用户建议是否值得跑 workflow、由用户决定。命令前缀不剥离；workflow tool 可用性门槛为当前 profile 允许 delegation。
 - [x] Chat panel 已通过 `useHotkey("Shift+Tab")` 切换 composer agent mode；切换结果显示在 prompt input 最左侧的 `Chat` / `Agent` segmented control，并在提交时通过 request body `agentMode` 临时覆盖本次 managed agent runtime 开关。
 - [ ] Agent mode indicator 后续还需要更明确地区分 active run steering 与下一次 root run mode；当前实现会在输出中锁定当前 mode，并与 queued follow-up / steering 列表共存。
 

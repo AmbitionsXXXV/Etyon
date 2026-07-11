@@ -105,6 +105,8 @@
       "commandPromptLabel": "Prompt",
       "commandSkillDescription": "Skill command",
       "commandSkillLabel": "Skill",
+      "commandWorkflowDescription": "多智能体工作流",
+      "commandWorkflowLabel": "Workflow",
       "empty": "没有匹配的文件、文件夹或 skills。",
       "filesGroup": "文件",
       "foldersGroup": "文件夹",

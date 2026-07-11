@@ -27,11 +27,13 @@ import { isAgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
 import {
   CHAT_IMAGEN_SYSTEM_PROMPT,
+  CHAT_WORKFLOW_SYSTEM_PROMPT,
   getChatAgentModeAgentsEnabled,
   getChatAgentModeSystemPrompt,
   isChatAgentMode,
   isChatImagenCommandText,
-  isChatPlanCommandText
+  isChatPlanCommandText,
+  isChatWorkflowCommandText
 } from "@/shared/chat/agent-mode"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 import { attachAgentProjectionToAssistantMessages } from "@/shared/chat/message-metadata"
@@ -62,23 +64,25 @@ const applyChatAgentModeToSettings = ({
   }
 }
 
-// A typed `/plan` command forces plan mode for this turn; `/imagen` forces
-// agent mode (tools on) so the imagen tool is reachable. Both override the
-// composer's selected mode.
+// A typed `/plan` command forces plan mode for this turn; `/imagen` and
+// `/workflow` force agent mode (tools on) so their tools are reachable. All
+// override the composer's selected mode.
 const resolveEffectiveAgentMode = ({
   composerMode,
   isImagenCommand,
-  isPlanCommand
+  isPlanCommand,
+  isWorkflowCommand
 }: {
   composerMode: ChatAgentMode | undefined
   isImagenCommand: boolean
   isPlanCommand: boolean
+  isWorkflowCommand: boolean
 }): ChatAgentMode | undefined => {
   if (isPlanCommand) {
     return "plan"
   }
 
-  if (isImagenCommand) {
+  if (isImagenCommand || isWorkflowCommand) {
     return "agent"
   }
 
@@ -140,10 +144,12 @@ chatRoute.post("/chat", async (c) => {
   const agentMode = isChatAgentMode(rawAgentMode) ? rawAgentMode : undefined
   const latestUserMessageText = getLatestUserMessageText(messages)
   const isImagenCommand = isChatImagenCommandText(latestUserMessageText)
+  const isWorkflowCommand = isChatWorkflowCommandText(latestUserMessageText)
   const effectiveAgentMode = resolveEffectiveAgentMode({
     composerMode: agentMode,
     isImagenCommand,
-    isPlanCommand: isChatPlanCommandText(latestUserMessageText)
+    isPlanCommand: isChatPlanCommandText(latestUserMessageText),
+    isWorkflowCommand
   })
   const settings = applyChatAgentModeToSettings({
     agentMode: effectiveAgentMode,
@@ -173,7 +179,8 @@ chatRoute.post("/chat", async (c) => {
   const systemPrompts = [
     ...agentContext.systemPrompts,
     ...(planSystemPrompt ? [planSystemPrompt] : []),
-    ...(isImagenCommand ? [CHAT_IMAGEN_SYSTEM_PROMPT] : [])
+    ...(isImagenCommand ? [CHAT_IMAGEN_SYSTEM_PROMPT] : []),
+    ...(isWorkflowCommand ? [CHAT_WORKFLOW_SYSTEM_PROMPT] : [])
   ]
 
   // Resolve the managed profile for this turn from settings (falls back to the

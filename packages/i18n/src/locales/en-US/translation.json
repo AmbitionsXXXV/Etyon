@@ -105,6 +105,8 @@
       "commandPromptLabel": "Prompt",
       "commandSkillDescription": "Skill command",
       "commandSkillLabel": "Skill",
+      "commandWorkflowDescription": "Multi-agent workflow",
+      "commandWorkflowLabel": "Workflow",
       "empty": "No matching files, folders, or skills.",
       "filesGroup": "Files",
       "foldersGroup": "Folders",

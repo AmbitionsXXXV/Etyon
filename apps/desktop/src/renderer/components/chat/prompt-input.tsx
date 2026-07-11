@@ -912,7 +912,9 @@ const usePromptCommandPaletteItems = ({
   promptDescription,
   promptLabel,
   skillDescription,
-  skillLabel
+  skillLabel,
+  workflowDescription,
+  workflowLabel
 }: {
   activeRange: { query: string } | null
   imagenDescription: string
@@ -923,6 +925,8 @@ const usePromptCommandPaletteItems = ({
   promptLabel: string
   skillDescription: string
   skillLabel: string
+  workflowDescription: string
+  workflowLabel: string
 }): PromptCommandPaletteItem[] => {
   const allItems = useMemo<PromptCommandPaletteItem[]>(
     () => [
@@ -939,6 +943,13 @@ const usePromptCommandPaletteItems = ({
         id: "imagen",
         insertText: "/imagen ",
         label: imagenLabel
+      },
+      {
+        command: "/workflow",
+        description: workflowDescription,
+        id: "workflow",
+        insertText: "/workflow ",
+        label: workflowLabel
       },
       {
         command: "/prompt",
@@ -963,7 +974,9 @@ const usePromptCommandPaletteItems = ({
       promptDescription,
       promptLabel,
       skillDescription,
-      skillLabel
+      skillLabel,
+      workflowDescription,
+      workflowLabel
     ]
   )
 
@@ -994,6 +1007,8 @@ export const PromptInput = ({
   commandPalettePromptLabel,
   commandPaletteSkillDescription,
   commandPaletteSkillLabel,
+  commandPaletteWorkflowDescription,
+  commandPaletteWorkflowLabel,
   contextUsage,
   disabled = false,
   footer,
@@ -1051,6 +1066,8 @@ export const PromptInput = ({
   commandPalettePromptLabel: string
   commandPaletteSkillDescription: string
   commandPaletteSkillLabel: string
+  commandPaletteWorkflowDescription: string
+  commandPaletteWorkflowLabel: string
   contextUsage?: {
     ariaLabel: string
     hintLabel: string
@@ -1150,7 +1167,9 @@ export const PromptInput = ({
     promptDescription: commandPalettePromptDescription,
     promptLabel: commandPalettePromptLabel,
     skillDescription: commandPaletteSkillDescription,
-    skillLabel: commandPaletteSkillLabel
+    skillLabel: commandPaletteSkillLabel,
+    workflowDescription: commandPaletteWorkflowDescription,
+    workflowLabel: commandPaletteWorkflowLabel
   })
   const mentionItemGroups = useMemo<PromptMentionItemGroup[]>(
     () =>

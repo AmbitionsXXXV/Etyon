@@ -45,6 +45,11 @@ export const isChatImagenCommandText = (text: string): boolean =>
 export const stripChatImagenCommand = (text: string): string =>
   text.trimStart().replace(IMAGEN_COMMAND_PATTERN, "").trimStart()
 
+const WORKFLOW_COMMAND_PATTERN = /^\/workflow(?:\s+|$)/iu
+
+export const isChatWorkflowCommandText = (text: string): boolean =>
+  WORKFLOW_COMMAND_PATTERN.test(text.trimStart())
+
 export const CHAT_PLAN_MODE_SYSTEM_PROMPT = `You are operating in PLAN MODE.
 
 Your job is to investigate and produce a clear, actionable implementation plan — not to make changes.
@@ -68,3 +73,14 @@ export const CHAT_IMAGEN_SYSTEM_PROMPT = `The user invoked the /imagen command: 
 - Choose reasonable defaults for size and quality unless the user specified them; only ask if the request is genuinely ambiguous.
 - After the image is generated, describe in one sentence what you created. Do not repeat the full prompt.
 - If the imagen tool is not available, tell the user an OpenAI provider must be configured and that the profile must allow writes.`
+
+// Turn-scoped prompt injected when the user runs the /workflow command. Like
+// imagen it is not a persistent mode — it nudges the current agent turn to
+// orchestrate a multi-agent workflow with the workflow tool.
+export const CHAT_WORKFLOW_SYSTEM_PROMPT = `The user invoked the /workflow command: they explicitly asked for a multi-agent workflow this turn.
+
+- Default to running one: use the workflow tool, treating the message (after "/workflow") as the task to carry out.
+- Author a small deterministic script that fans READ-ONLY investigator sub-agents across the project to research, review, or understand the task in parallel, then synthesize their findings into your answer.
+- If the task looks too narrow to benefit from fanning out (a single focused question or file), do not silently skip the workflow: briefly recommend whether a workflow is worth it here and let the user decide before proceeding.
+- After the workflow finishes, summarize what the investigators found and the synthesized result rather than replaying the raw script output.
+- If the workflow tool is not available, tell the user the active profile must allow delegation.`

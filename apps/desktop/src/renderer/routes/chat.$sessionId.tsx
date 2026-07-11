@@ -2083,6 +2083,12 @@ const ChatRuntime = ({
               "chat.mentions.commandSkillDescription"
             )}
             commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
+            commandPaletteWorkflowDescription={t(
+              "chat.mentions.commandWorkflowDescription"
+            )}
+            commandPaletteWorkflowLabel={t(
+              "chat.mentions.commandWorkflowLabel"
+            )}
             footer={
               <div className="flex items-center gap-3">
                 <ModelSelector
@@ -2292,6 +2298,12 @@ const ChatPendingState = ({
               "chat.mentions.commandSkillDescription"
             )}
             commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
+            commandPaletteWorkflowDescription={t(
+              "chat.mentions.commandWorkflowDescription"
+            )}
+            commandPaletteWorkflowLabel={t(
+              "chat.mentions.commandWorkflowLabel"
+            )}
             disabled
             footer={
               <div className="flex items-center gap-3">

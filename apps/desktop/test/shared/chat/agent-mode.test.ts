@@ -10,6 +10,7 @@ import {
   isChatAgentMode,
   isChatImagenCommandText,
   isChatPlanCommandText,
+  isChatWorkflowCommandText,
   stripChatImagenCommand,
   stripChatPlanCommand
 } from "@/shared/chat/agent-mode"
@@ -70,6 +71,15 @@ describe("chat agent mode helpers", () => {
     expect(stripChatImagenCommand("/imagen a sunset over tokyo")).toBe(
       "a sunset over tokyo"
     )
+  })
+
+  it("detects the /workflow command prefix", () => {
+    expect(isChatWorkflowCommandText("/workflow audit the auth flow")).toBe(
+      true
+    )
+    expect(isChatWorkflowCommandText("  /workflow ")).toBe(true)
+    expect(isChatWorkflowCommandText("/workflows")).toBe(false)
+    expect(isChatWorkflowCommandText("run a workflow")).toBe(false)
   })
 
   it("returns the plan system prompt only for plan mode", () => {
