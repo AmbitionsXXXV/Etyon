@@ -4,10 +4,11 @@ import type {
   MemoryEntry,
   MemorySettings
 } from "@etyon/rpc"
-import { and, count, desc, eq, isNull, max } from "drizzle-orm"
+import { and, count, desc, eq, isNull, like, max, sql } from "drizzle-orm"
 
 import type { AppDatabase } from "@/main/db"
-import { memoryEntries } from "@/main/db/schema"
+import { memoryEmbeddings, memoryEntries } from "@/main/db/schema"
+import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import {
   embedMemoryQuery,
   upsertMemoryEmbedding
@@ -264,16 +265,67 @@ const upsertMemoryEntryEmbedding = async ({
   }
 }
 
-export const listMemoryEntries = (
+const buildMemoryListFilter = (query?: string) => {
+  const trimmedQuery = query?.trim()
+
+  if (!trimmedQuery) {
+    return isNull(memoryEntries.archivedAt)
+  }
+
+  return and(
+    isNull(memoryEntries.archivedAt),
+    like(
+      sql`lower(${memoryEntries.content})`,
+      `%${trimmedQuery.toLowerCase()}%`
+    )
+  )
+}
+
+export const listMemoryEntries = async (
   db: AppDatabase,
-  limit = 50
-): Promise<MemoryEntry[]> =>
-  db
+  options: { limit?: number; offset?: number; query?: string } = {}
+): Promise<{ entries: MemoryEntry[]; total: number }> => {
+  const { limit = 50, offset = 0, query } = options
+  const filter = buildMemoryListFilter(query)
+  const entries = await db
     .select()
     .from(memoryEntries)
-    .where(isNull(memoryEntries.archivedAt))
+    .where(filter)
     .orderBy(desc(memoryEntries.updatedAt))
     .limit(limit)
+    .offset(offset)
+  const [stats] = await db
+    .select({ total: count() })
+    .from(memoryEntries)
+    .where(filter)
+
+  return {
+    entries,
+    total: Number(stats?.total ?? 0)
+  }
+}
+
+/**
+ * Hard-deletes a memory entry. Runs inside `runExclusiveDbWrite` so it never
+ * races another write on the shared libsql connection, and removes the row's
+ * embeddings first inside the same transaction rather than relying on the FK
+ * cascade pragma being enabled.
+ */
+export const deleteMemoryEntry = (
+  db: AppDatabase,
+  id: string
+): Promise<boolean> =>
+  runExclusiveDbWrite(() =>
+    db.transaction(async (tx) => {
+      await tx.delete(memoryEmbeddings).where(eq(memoryEmbeddings.memoryId, id))
+      const deletedRows = await tx
+        .delete(memoryEntries)
+        .where(eq(memoryEntries.id, id))
+        .returning({ id: memoryEntries.id })
+
+      return deletedRows.length > 0
+    })
+  )
 
 export const getMemoryStats = async (
   db: AppDatabase

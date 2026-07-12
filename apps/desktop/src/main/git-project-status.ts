@@ -31,6 +31,7 @@ interface GitProjectDiffOptions {
 }
 
 const execFileAsync = promisify(execFile)
+const gitRepositoryRootByProjectPath = new Map<string, Promise<string | null>>()
 const SECRET_GIT_EXCLUDE_PATHS = [
   ":(exclude).env",
   ":(exclude).env.*",
@@ -200,6 +201,57 @@ const runGit = async ({
   })
 
   return String(stdout)
+}
+
+const resolveGitRepositoryRoot = async (
+  projectPath: string
+): Promise<string | null> => {
+  try {
+    const rootPath = await runGit({
+      args: ["rev-parse", "--show-toplevel"],
+      maxBuffer: GIT_STATUS_MAX_BUFFER,
+      projectPath
+    })
+
+    return path.resolve(rootPath.trim())
+  } catch {
+    return null
+  }
+}
+
+const resolveGitRepositoryRootWithCacheEviction = async (
+  normalizedProjectPath: string
+): Promise<string | null> => {
+  const rootPath = await resolveGitRepositoryRoot(normalizedProjectPath)
+
+  // Non-repo results stay uncached so a later `git init` in the project is
+  // picked up by the next status poll instead of after an app restart.
+  if (rootPath === null) {
+    gitRepositoryRootByProjectPath.delete(normalizedProjectPath)
+  }
+
+  return rootPath
+}
+
+export const getGitRepositoryRoot = (
+  projectPath: string
+): Promise<string | null> => {
+  const normalizedProjectPath = path.resolve(projectPath)
+  const cachedRepositoryRoot = gitRepositoryRootByProjectPath.get(
+    normalizedProjectPath
+  )
+
+  if (cachedRepositoryRoot) {
+    return cachedRepositoryRoot
+  }
+
+  const repositoryRoot = resolveGitRepositoryRootWithCacheEviction(
+    normalizedProjectPath
+  )
+
+  gitRepositoryRootByProjectPath.set(normalizedProjectPath, repositoryRoot)
+
+  return repositoryRoot
 }
 
 const readGitBlob = ({
@@ -482,19 +534,8 @@ export const parseGitStatusPorcelain = ({
   }
 }
 
-const isGitRepository = async (projectPath: string): Promise<boolean> => {
-  try {
-    const output = await runGit({
-      args: ["rev-parse", "--is-inside-work-tree"],
-      maxBuffer: GIT_STATUS_MAX_BUFFER,
-      projectPath
-    })
-
-    return output.trim() === "true"
-  } catch {
-    return false
-  }
-}
+const isGitRepository = async (projectPath: string): Promise<boolean> =>
+  Boolean(await getGitRepositoryRoot(projectPath))
 
 export const getGitProjectStatus = async (
   projectPath: string

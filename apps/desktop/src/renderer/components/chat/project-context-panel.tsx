@@ -7,7 +7,16 @@ import type {
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { Resizable } from "@heroui-pro/react"
-import { Button, Chip, Spinner, Tabs, TextArea, Tooltip } from "@heroui/react"
+import {
+  Button,
+  Chip,
+  Spinner,
+  Tabs,
+  TextArea,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip
+} from "@heroui/react"
 import {
   ArrowReloadHorizontalIcon,
   FolderMinusIcon
@@ -35,8 +44,11 @@ import {
   formatProjectDiffCount,
   getProjectDiffFileStats,
   getProjectDiffSummary,
+  isProjectChangesScope,
   isProjectContextPanelView,
   parseProjectDiffFiles,
+  PROJECT_CHANGES_SCOPE_AGENT,
+  PROJECT_CHANGES_SCOPE_ALL,
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
   PROJECT_CONTEXT_FILES_TAB_ID,
@@ -44,7 +56,10 @@ import {
   PROJECT_FILE_TREE_MAX_SIZE,
   PROJECT_FILE_TREE_MIN_SIZE
 } from "@/renderer/lib/chat/project-context-panel"
-import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
+import type {
+  ProjectChangesScope,
+  ProjectContextPanelView
+} from "@/renderer/lib/chat/project-context-panel"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 // HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
@@ -702,28 +717,65 @@ const ProjectChangesPanel = ({
   diffFiles,
   emptyDiffMessage,
   gitDiff,
+  gitDiffScope,
+  hasAgentEditedPaths,
   isDiffLoading,
+  onGitDiffScopeChange,
   renderDiffHeaderMetadata
 }: {
   diffFiles: FileDiffMetadata[]
   emptyDiffMessage: string
   gitDiff?: GitProjectDiffOutput
+  gitDiffScope: ProjectChangesScope
+  hasAgentEditedPaths: boolean
   isDiffLoading: boolean
+  onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   renderDiffHeaderMetadata: (fileDiff: FileDiffMetadata) => ReactNode
 }) => {
   const { t } = useI18n()
+  const isEmptyAgentScope =
+    gitDiffScope === PROJECT_CHANGES_SCOPE_AGENT && !hasAgentEditedPaths
+  const handleGitDiffScopeChange = useCallback(
+    (keys: Set<Key>) => {
+      for (const key of keys) {
+        if (isProjectChangesScope(key)) {
+          onGitDiffScopeChange(key)
+          return
+        }
+      }
+    },
+    [onGitDiffScopeChange]
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <span className="text-xs font-semibold text-muted-foreground">
           {t("chat.projectPanel.diffTitle")}
         </span>
-        {gitDiff?.truncated ? (
-          <span className="text-[11px] text-warning">
-            {t("chat.projectPanel.truncated")}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <ToggleButtonGroup
+            aria-label={t("chat.projectPanel.changesScopeLabel")}
+            disallowEmptySelection
+            onSelectionChange={handleGitDiffScopeChange}
+            selectedKeys={new Set([gitDiffScope])}
+            selectionMode="single"
+            size="sm"
+          >
+            <ToggleButton id={PROJECT_CHANGES_SCOPE_AGENT}>
+              {t("chat.projectPanel.agentChanges")}
+            </ToggleButton>
+            <ToggleButton id={PROJECT_CHANGES_SCOPE_ALL}>
+              <ToggleButtonGroup.Separator />
+              {t("chat.projectPanel.allChanges")}
+            </ToggleButton>
+          </ToggleButtonGroup>
+          {gitDiff?.truncated ? (
+            <span className="text-[11px] text-warning">
+              {t("chat.projectPanel.truncated")}
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {diffFiles.length > 0 ? (
@@ -736,6 +788,18 @@ const ProjectChangesPanel = ({
                 renderDiffHeaderMetadata={renderDiffHeaderMetadata}
               />
             ))}
+          </div>
+        ) : isEmptyAgentScope ? (
+          <div className="flex h-full min-h-36 flex-col items-center justify-center gap-3 px-4 text-center text-xs leading-5 text-muted-foreground">
+            <p>{t("chat.projectPanel.emptyAgentDiff")}</p>
+            <Button
+              onPress={() => onGitDiffScopeChange(PROJECT_CHANGES_SCOPE_ALL)}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              {t("chat.projectPanel.showAllChanges")}
+            </Button>
           </div>
         ) : (
           <div
@@ -870,8 +934,10 @@ const ProjectCommitPanel = ({
 
 export const ProjectContextPanel = ({
   gitDiff,
+  gitDiffScope,
   isDiffLoading,
   isTreeLoading,
+  onGitDiffScopeChange,
   onRefresh,
   onViewChange,
   projectItems,
@@ -879,8 +945,10 @@ export const ProjectContextPanel = ({
   selectedView
 }: {
   gitDiff?: GitProjectDiffOutput
+  gitDiffScope: ProjectChangesScope
   isDiffLoading: boolean
   isTreeLoading: boolean
+  onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onRefresh: () => void
   onViewChange: (view: ProjectContextPanelView) => void
   projectItems: ProjectSnapshotItem[]
@@ -889,6 +957,8 @@ export const ProjectContextPanel = ({
 }) => {
   const { t } = useI18n()
   const { gitStatus } = selectedSession
+  const hasAgentEditedPaths =
+    (selectedSession.agentEditedPaths ?? []).length > 0
   const gitStatusSummaryItems = useMemo(
     () => buildProjectGitStatusSummary(gitStatus),
     [gitStatus]
@@ -1025,7 +1095,10 @@ export const ProjectContextPanel = ({
             diffFiles={diffFiles}
             emptyDiffMessage={emptyDiffMessage}
             gitDiff={gitDiff}
+            gitDiffScope={gitDiffScope}
+            hasAgentEditedPaths={hasAgentEditedPaths}
             isDiffLoading={isDiffLoading}
+            onGitDiffScopeChange={onGitDiffScopeChange}
             renderDiffHeaderMetadata={renderDiffHeaderMetadata}
           />
         </Tabs.Panel>

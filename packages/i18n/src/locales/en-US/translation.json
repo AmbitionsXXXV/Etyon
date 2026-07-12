@@ -157,7 +157,10 @@
       "title": "Chat Placeholder"
     },
     "projectPanel": {
+      "agentChanges": "Agent changes",
+      "allChanges": "All changes",
       "backToFiles": "Back to file tree",
+      "changesScopeLabel": "Change scope",
       "changesView": "Changes",
       "closePanel": "Close Review panel",
       "collapseFolders": "Collapse all folders",
@@ -169,6 +172,7 @@
       "commitTitle": "Commit",
       "commitView": "Commit",
       "diffTitle": "Git Changes",
+      "emptyAgentDiff": "The agent in this session has not saved any edits yet.",
       "emptyDiff": "No Git changes detected.",
       "emptyFiles": "No project file structure is available yet.",
       "emptyTrackedDiff": "Changes were detected, but there is no tracked diff to display.",
@@ -183,6 +187,7 @@
       "refresh": "Refresh project context",
       "resizeHandle": "Resize Review panel",
       "review": "Review",
+      "showAllChanges": "Show all changes",
       "statusAdded": "Added",
       "statusDeleted": "Deleted",
       "statusModified": "Modified",
@@ -873,6 +878,30 @@
         "description": "Let chatbot conversations read from and write to the same long-term memory store.",
         "label": "Connect chatbot memory"
       },
+      "manager": {
+        "cancel": "Cancel",
+        "delete": {
+          "confirm": "Delete permanently",
+          "description": "This memory entry will be permanently deleted and cannot be recovered.",
+          "previewLabel": "Entry to delete",
+          "title": "Delete this memory permanently?",
+          "trigger": "Delete entry"
+        },
+        "description": "Browse, search, and permanently remove stored memory entries.",
+        "empty": "No memory entries yet.",
+        "emptySearch": "No entries match your search.",
+        "meta": {
+          "kind": "Kind",
+          "scope": "Scope",
+          "source": "Source"
+        },
+        "next": "Next",
+        "previous": "Previous",
+        "searchPlaceholder": "Search memory content...",
+        "summary": "{{start}}-{{end}} of {{total}}",
+        "title": "Manage Memory",
+        "updatedAt": "Updated {{date}}"
+      },
       "retrieval": {
         "autoRetrieve": {
           "description": "Automatically search and inject relevant memories before each conversation.",
@@ -905,6 +934,7 @@
       "status": {
         "empty": "No memory entries yet.",
         "lastUpdated": "Last Updated",
+        "manage": "Manage",
         "recent": "Recent Entries",
         "title": "Memory Store",
         "totalEntries": "Total Entries"
@@ -1222,6 +1252,22 @@
         "description": "Top RTK command groups by total tokens saved.",
         "empty": "No command savings are available yet.",
         "title": "Savings by Command"
+      },
+      "control": {
+        "autoRewrite": {
+          "label": "RTK auto rewrite"
+        },
+        "description": "Rewrite supported bash commands immediately before execution while keeping approvals and command history based on the original command.",
+        "ripgrep": {
+          "bundled": "rg: bundled fallback",
+          "missing": "rg: unavailable",
+          "system": "rg: system"
+        },
+        "rtk": {
+          "available": "RTK available",
+          "missing": "RTK not installed"
+        },
+        "title": "RTK Command Handling"
       },
       "daily": {
         "description": "Tokens saved per active day from RTK daily statistics.",

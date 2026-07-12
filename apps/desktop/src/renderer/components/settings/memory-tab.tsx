@@ -24,6 +24,7 @@ import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
 import { useCallback, useMemo, useState } from "react"
 
+import { MemoryManagerModal } from "@/renderer/components/settings/memory-manager-modal"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
   DEFAULT_EMBEDDING_MODEL_ID,
@@ -187,7 +188,6 @@ const MemoryToolModelSelect = ({
 
   return (
     <Select
-      className="mx-0.5 max-w-xl"
       fullWidth
       isDisabled={isDisabled}
       onChange={handleChange}
@@ -520,6 +520,9 @@ export const MemoryTab = ({
       }
     })
   )
+  const [isManagerOpen, setIsManagerOpen] = useState(false)
+
+  const handleManageOpen = useCallback(() => setIsManagerOpen(true), [])
 
   const updateMemory = useCallback(
     (patch: Partial<MemorySettings>) => {
@@ -646,7 +649,7 @@ export const MemoryTab = ({
 
       <motion.section
         {...settingsPageSectionMotion(0.25)}
-        className="space-y-4 rounded-lg border border-border bg-card p-5"
+        className="space-y-5 rounded-lg border border-border bg-card p-5"
       >
         <div className="space-y-1">
           <h2 className="text-sm font-semibold">
@@ -709,70 +712,78 @@ export const MemoryTab = ({
           />
         </div>
 
-        <Slider
-          aria-label={t("settings.memory.retrieval.maxRetrievedMemories.label")}
-          isDisabled={!memory.enabled || !memory.autoRetrieve}
-          maxValue={MEMORY_MAX_RETRIEVED_MEMORIES_MAX}
-          minValue={MEMORY_MAX_RETRIEVED_MEMORIES_MIN}
-          onChange={handleMaxRetrievedMemoriesChange}
-          value={memory.maxRetrievedMemories}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <Label className="text-sm font-medium">
-              {t("settings.memory.retrieval.maxRetrievedMemories.label", {
-                count: memory.maxRetrievedMemories
-              })}
-            </Label>
-            <Slider.Output className="text-xs font-medium text-muted-foreground" />
-          </div>
-          <Slider.Track>
-            <Slider.Fill />
-            <Slider.Thumb />
-          </Slider.Track>
-        </Slider>
+        <div className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3">
+          <Slider
+            aria-label={t(
+              "settings.memory.retrieval.maxRetrievedMemories.label"
+            )}
+            isDisabled={!memory.enabled || !memory.autoRetrieve}
+            maxValue={MEMORY_MAX_RETRIEVED_MEMORIES_MAX}
+            minValue={MEMORY_MAX_RETRIEVED_MEMORIES_MIN}
+            onChange={handleMaxRetrievedMemoriesChange}
+            value={memory.maxRetrievedMemories}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm font-medium">
+                {t("settings.memory.retrieval.maxRetrievedMemories.label", {
+                  count: memory.maxRetrievedMemories
+                })}
+              </Label>
+              <Slider.Output className="text-xs font-medium text-muted-foreground" />
+            </div>
+            <Slider.Track>
+              <Slider.Fill />
+              <Slider.Thumb />
+            </Slider.Track>
+          </Slider>
 
-        <p className="text-xs leading-5 text-muted-foreground">
-          {t("settings.memory.retrieval.maxRetrievedMemories.description")}
-        </p>
-
-        <Slider
-          aria-label={t("settings.memory.retrieval.similarityThreshold.label")}
-          isDisabled={!memory.enabled || !memory.autoRetrieve}
-          maxValue={100}
-          minValue={0}
-          onChange={handleSimilarityThresholdChange}
-          value={similarityThresholdPercent}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <Label className="text-sm font-medium">
-              {t("settings.memory.retrieval.similarityThreshold.label", {
-                value: formatSimilarityThreshold(memory.similarityThreshold)
-              })}
-            </Label>
-            <Slider.Output className="text-xs font-medium text-muted-foreground" />
-          </div>
-          <Slider.Track>
-            <Slider.Fill />
-            <Slider.Thumb />
-          </Slider.Track>
-        </Slider>
-
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>
-            {t("settings.memory.retrieval.similarityThreshold.loose")}
-          </span>
-          <span>
-            {t("settings.memory.retrieval.similarityThreshold.strict")}
-          </span>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("settings.memory.retrieval.maxRetrievedMemories.description")}
+          </p>
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">
-          {t("settings.memory.retrieval.similarityThreshold.description")}
-        </p>
+
+        <div className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3">
+          <Slider
+            aria-label={t(
+              "settings.memory.retrieval.similarityThreshold.label"
+            )}
+            isDisabled={!memory.enabled || !memory.autoRetrieve}
+            maxValue={100}
+            minValue={0}
+            onChange={handleSimilarityThresholdChange}
+            value={similarityThresholdPercent}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm font-medium">
+                {t("settings.memory.retrieval.similarityThreshold.label", {
+                  value: formatSimilarityThreshold(memory.similarityThreshold)
+                })}
+              </Label>
+              <Slider.Output className="text-xs font-medium text-muted-foreground" />
+            </div>
+            <Slider.Track>
+              <Slider.Fill />
+              <Slider.Thumb />
+            </Slider.Track>
+          </Slider>
+
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>
+              {t("settings.memory.retrieval.similarityThreshold.loose")}
+            </span>
+            <span>
+              {t("settings.memory.retrieval.similarityThreshold.strict")}
+            </span>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("settings.memory.retrieval.similarityThreshold.description")}
+          </p>
+        </div>
       </motion.section>
 
       <motion.section
         {...settingsPageSectionMotion(0.45)}
-        className="space-y-4 rounded-lg border border-border bg-card p-5"
+        className="space-y-5 rounded-lg border border-border bg-card p-5"
       >
         <div className="space-y-1">
           <h2 className="text-sm font-semibold">
@@ -792,11 +803,16 @@ export const MemoryTab = ({
 
       <motion.section
         {...settingsPageSectionMotion(0.55)}
-        className="space-y-4 rounded-lg border border-border bg-card p-5"
+        className="space-y-5 rounded-lg border border-border bg-card p-5"
       >
-        <h2 className="text-sm font-semibold">
-          {t("settings.memory.status.title")}
-        </h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-sm font-semibold">
+            {t("settings.memory.status.title")}
+          </h2>
+          <Button onPress={handleManageOpen} size="sm" variant="secondary">
+            {t("settings.memory.status.manage")}
+          </Button>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-border bg-background/60 px-3 py-2">
@@ -832,6 +848,11 @@ export const MemoryTab = ({
           )}
         </div>
       </motion.section>
+
+      <MemoryManagerModal
+        isOpen={isManagerOpen}
+        onOpenChange={setIsManagerOpen}
+      />
     </div>
   )
 }

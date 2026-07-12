@@ -35,6 +35,8 @@ export const ChatMentionSchema = z.discriminatedUnion("kind", [
 ])
 
 export const ChatSessionSummarySchema = z.object({
+  agentEditedPaths: z.array(z.string()).optional(),
+  agentGitStatus: GitProjectStatusSchema.optional(),
   archivedAt: z.string().nullable(),
   createdAt: z.string(),
   gitStatus: GitProjectStatusSchema.optional(),

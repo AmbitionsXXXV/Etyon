@@ -19,7 +19,7 @@ export default defineConfig({
       formats: ["es"]
     },
     rolldownOptions: {
-      external: ["electron-liquid-glass", "font-list"],
+      external: ["@vscode/ripgrep", "electron-liquid-glass", "font-list"],
       output: {
         banner: ESM_SHIMS
       }

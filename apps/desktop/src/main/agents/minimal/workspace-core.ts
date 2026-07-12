@@ -4,6 +4,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 
+import { resolveRipgrep } from "@/main/agents/minimal/ripgrep-binary"
+import { getShellSpawnEnv } from "@/main/agents/minimal/spawn-env"
+
 export type WorkspaceResult<TValue> =
   | { ok: true; value: TValue }
   | { ok: false; error: WorkspaceFileError }
@@ -332,9 +335,21 @@ const runRipgrep = async ({
   searchRoot: string
   signal?: AbortSignal
 }): Promise<WorkspaceResult<string>> => {
+  const ripgrep = await resolveRipgrep()
+
+  if (!ripgrep.command) {
+    return createFileError({
+      code: "io-error",
+      message:
+        "ripgrep is unavailable: neither the system installation nor the bundled fallback could be found.",
+      requestedPath: searchRoot
+    })
+  }
+
   try {
-    const { stdout } = await execFileAsync("rg", [...args], {
+    const { stdout } = await execFileAsync(ripgrep.command, [...args], {
       cwd,
+      env: getShellSpawnEnv(),
       maxBuffer: SEARCH_OUTPUT_MAX_BYTES,
       signal,
       timeout: SEARCH_COMMAND_TIMEOUT_MS
@@ -356,7 +371,7 @@ const runRipgrep = async ({
     if (execError.code === "ENOENT") {
       return createFileError({
         code: "io-error",
-        message: "ripgrep (rg) is required for file content search.",
+        message: "The selected ripgrep binary could not be executed.",
         requestedPath: searchRoot
       })
     }

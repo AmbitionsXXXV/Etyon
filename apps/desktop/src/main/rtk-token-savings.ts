@@ -6,9 +6,13 @@ import type {
   RtkTokenSavingsDailyEntry,
   RtkTokenSavingsOutput,
   RtkTokenSavingsRecentCommand,
+  RtkTokenSavingsRuntime,
   RtkTokenSavingsSummary
 } from "@etyon/rpc"
 
+import { resolveRipgrep } from "@/main/agents/minimal/ripgrep-binary"
+import { getRtkAvailability } from "@/main/agents/minimal/rtk-rewrite"
+import { getShellSpawnEnv } from "@/main/agents/minimal/spawn-env"
 import { loadRecentCommandsFromHistoryDb } from "@/main/rtk-history-db"
 import {
   getCliNameFromCommand,
@@ -305,6 +309,7 @@ const getErrorMessage = (error: unknown): string =>
 const runRtkGain = async (args: string[]): Promise<string> => {
   const { stdout } = await execFileAsync("rtk", ["gain", ...args], {
     encoding: "utf-8",
+    env: getShellSpawnEnv(),
     maxBuffer: RTK_GAIN_MAX_BUFFER,
     timeout: RTK_GAIN_TIMEOUT_MS,
     windowsHide: true
@@ -314,7 +319,8 @@ const runRtkGain = async (args: string[]): Promise<string> => {
 }
 
 const createUnavailableTokenSavingsOutput = (
-  error: unknown
+  error: unknown,
+  runtime: RtkTokenSavingsRuntime
 ): RtkTokenSavingsOutput => ({
   available: false,
   commands: [],
@@ -322,11 +328,27 @@ const createUnavailableTokenSavingsOutput = (
   error: getErrorMessage(error),
   generatedAt: new Date().toISOString(),
   recentCommands: [],
+  runtime,
   scope: RTK_TOKEN_SCOPE,
   summary: EMPTY_SUMMARY
 })
 
+const getTokenSavingsRuntime = async (): Promise<RtkTokenSavingsRuntime> => {
+  const [ripgrep, rtk] = await Promise.all([
+    resolveRipgrep(),
+    getRtkAvailability()
+  ])
+
+  return {
+    ripgrepSource: ripgrep.source,
+    rtkAvailable: rtk.available,
+    ...(rtk.version ? { rtkVersion: rtk.version } : {})
+  }
+}
+
 export const getRtkTokenSavings = async (): Promise<RtkTokenSavingsOutput> => {
+  const runtime = await getTokenSavingsRuntime()
+
   try {
     const [jsonStdout, historyStdout, recentCommandsFromDb] = await Promise.all(
       [
@@ -348,10 +370,11 @@ export const getRtkTokenSavings = async (): Promise<RtkTokenSavingsOutput> => {
       error: null,
       generatedAt: new Date().toISOString(),
       recentCommands,
+      runtime,
       scope: RTK_TOKEN_SCOPE,
       summary: parsedJson.summary
     }
   } catch (error) {
-    return createUnavailableTokenSavingsOutput(error)
+    return createUnavailableTokenSavingsOutput(error, runtime)
   }
 }

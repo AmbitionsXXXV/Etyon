@@ -101,7 +101,9 @@ const config: ForgeConfig = {
     appBundleId,
     appCategoryType: APP_CATEGORY_TYPE,
     appCopyright: `Copyright © ${currentYear} ${APP_COPYRIGHT_OWNER}`,
-    asar: true,
+    asar: {
+      unpack: "**/node_modules/@vscode/ripgrep-*/bin/**"
+    },
     darwinDarkModeSupport: true,
     executableName,
     extraResource: [

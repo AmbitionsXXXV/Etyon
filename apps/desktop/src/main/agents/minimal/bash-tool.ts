@@ -2,12 +2,16 @@ import { spawn } from "node:child_process"
 import fsSync from "node:fs"
 import path from "node:path"
 
-import type { AgentCommandApprovalRule } from "@etyon/rpc"
+import type { AgentCommandApprovalRule, AgentSettings } from "@etyon/rpc"
 import { tool } from "ai"
 import { z } from "zod"
 
+import {
+  isRtkAvailable,
+  rewriteCommandForRtk
+} from "@/main/agents/minimal/rtk-rewrite"
+import { getShellSpawnEnv } from "@/main/agents/minimal/spawn-env"
 import type { WorkspaceCore } from "@/main/agents/minimal/workspace-core"
-import { getSettings } from "@/main/settings"
 import { needsShellApproval } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 
@@ -16,8 +20,6 @@ export const DEFAULT_TIMEOUT_SECONDS = 120
 const MAX_TIMEOUT_SECONDS = 600
 const STDOUT_TAIL_MAX_CHARS = 9000
 const STDERR_TAIL_MAX_CHARS = 3000
-const HOMEBREW_PATH_ENTRIES = ["/opt/homebrew/bin", "/usr/local/bin"]
-
 // Prefer bash for consistent `-c` semantics; fall back to POSIX sh when a
 // packaged runtime ships without /bin/bash.
 const shell = fsSync.existsSync("/bin/bash") ? "/bin/bash" : "sh"
@@ -47,6 +49,14 @@ export interface BashCommandResult {
   stderrPreview: string
   stdoutPreview: string
   truncated: boolean
+}
+
+export interface BashToolResult extends BashCommandResult {
+  details: {
+    command: string
+    executedCommand: string
+    rtkApplied: boolean
+  }
 }
 
 /**
@@ -94,23 +104,6 @@ export const matchesCommandAllowlist = ({
 
     return createdAtMs + approvalTtlMs > nowMs
   })
-}
-
-// Packaged Electron apps launched from the Dock inherit a bare PATH, so
-// Homebrew-installed tools (git, node, rg) go missing. Dev launches already
-// inherit the terminal env; prepend only the entries that are absent.
-const getShellSpawnEnv = (): NodeJS.ProcessEnv => {
-  const env = { ...process.env }
-  const pathSegments = env.PATH ? env.PATH.split(path.delimiter) : []
-  const missingEntries = HOMEBREW_PATH_ENTRIES.filter(
-    (entry) => !pathSegments.includes(entry)
-  )
-
-  if (missingEntries.length > 0) {
-    env.PATH = [...missingEntries, ...pathSegments].join(path.delimiter)
-  }
-
-  return env
 }
 
 const appendTail = ({
@@ -275,24 +268,38 @@ export const runShellCommand = ({
  */
 export const buildBashTool = (
   workspace: WorkspaceCore,
-  permissionMode: AgentPermissionMode
+  permissionMode: AgentPermissionMode,
+  settings: Pick<AgentSettings, "approvals" | "rtk">
 ) =>
   tool({
     description:
       "Run a shell command from the project root. Returns stdout and stderr tails, the exit code, and duration. Each command requires user approval unless the exact command was previously remembered for this project. Prefer read/ls/grep/edit/write for file content work.",
-    execute: (inputData, context) =>
-      runShellCommand({
-        command: inputData.command,
+    execute: async (inputData, context): Promise<BashToolResult> => {
+      const rewrite =
+        settings.rtk.autoRewrite && (await isRtkAvailable())
+          ? rewriteCommandForRtk(inputData.command)
+          : { executedCommand: inputData.command, rtkApplied: false }
+      const result = await runShellCommand({
+        command: rewrite.executedCommand,
         cwd: workspace.projectPath,
         signal: context?.abortSignal,
         timeoutSeconds: inputData.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS
-      }),
+      })
+
+      return {
+        ...result,
+        details: {
+          command: inputData.command,
+          executedCommand: rewrite.executedCommand,
+          rtkApplied: rewrite.rtkApplied
+        }
+      }
+    },
     inputSchema: BashInputSchema,
     needsApproval: (inputData) => {
-      const { approvals } = getSettings().agents
       const isRemembered = matchesCommandAllowlist({
-        allowlist: approvals.commandAllowlist,
-        approvalTtlMs: approvals.approvalTtlMs,
+        allowlist: settings.approvals.commandAllowlist,
+        approvalTtlMs: settings.approvals.approvalTtlMs,
         command: inputData.command,
         nowMs: Date.now(),
         projectPath: workspace.projectPath,

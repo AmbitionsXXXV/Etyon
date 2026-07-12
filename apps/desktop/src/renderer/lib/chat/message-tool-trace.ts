@@ -311,6 +311,14 @@ export const getCommandOutputContent = (
     .filter(Boolean)
     .join("\n")
 
+export const isRtkApplied = (output: unknown): boolean => {
+  if (!isRecord(output) || !isRecord(output.details)) {
+    return false
+  }
+
+  return getBoolean(output.details, "rtkApplied") === true
+}
+
 export const getCommandExitCodeMeta = ({
   commandOutput,
   label

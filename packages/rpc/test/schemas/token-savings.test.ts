@@ -38,6 +38,11 @@ describe("token savings schemas", () => {
           timestampLabel: "05-19 22:43"
         }
       ],
+      runtime: {
+        ripgrepSource: "system",
+        rtkAvailable: true,
+        rtkVersion: "rtk 1.0.0"
+      },
       scope: "global",
       summary: {
         averageSavingsPercent: 61.6,

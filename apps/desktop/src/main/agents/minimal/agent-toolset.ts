@@ -91,6 +91,7 @@ export const buildAgentToolset = ({
   projectPath,
   writer
 }: BuildAgentToolsetOptions): ToolSet => {
+  const settings = getSettings()
   const workspace = getWorkspaceCore(projectPath)
   // When a run id exists the parent may delegate to writable children that run
   // concurrently, so the parent claims its own writes under the same top-level
@@ -112,7 +113,7 @@ export const buildAgentToolset = ({
     // every call is approval-gated unless the exact command was remembered.
     ...(profile.readonly
       ? {}
-      : { bash: buildBashTool(workspace, permissionMode) }),
+      : { bash: buildBashTool(workspace, permissionMode, settings.agents) }),
     // Publishing is read-only on the filesystem, but the write-then-publish
     // flow only makes sense for profiles that can create the file.
     ...(profile.readonly ? {} : { artifact: buildArtifactTool(workspace) }),
@@ -148,7 +149,7 @@ export const buildAgentToolset = ({
     // The project digest (in the system prompt) is the free tier; these cost a
     // network round trip, so they're only offered when memory is on, and only
     // paid when the agent itself calls them.
-    ...(getSettings().memory.enabled
+    ...(settings.memory.enabled
       ? {
           save_memory: buildSaveMemoryTool({ db: getDb(), projectPath }),
           search_memory: buildSearchMemoryTool({ db: getDb(), projectPath })

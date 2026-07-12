@@ -157,7 +157,10 @@
       "title": "Chat Placeholder"
     },
     "projectPanel": {
+      "agentChanges": "Agent の変更",
+      "allChanges": "すべての変更",
       "backToFiles": "ファイルツリーに戻る",
+      "changesScopeLabel": "変更範囲",
       "changesView": "変更",
       "closePanel": "Review パネルを閉じる",
       "collapseFolders": "すべてのフォルダーを閉じる",
@@ -169,6 +172,7 @@
       "commitTitle": "Commit",
       "commitView": "Commit",
       "diffTitle": "Git 変更",
+      "emptyAgentDiff": "このセッションの Agent はまだ保存済みの編集を行っていません。",
       "emptyDiff": "現在 Git 変更は検出されていません。",
       "emptyFiles": "表示できるプロジェクトファイル構造がまだありません。",
       "emptyTrackedDiff": "変更は検出されましたが、表示できる tracked diff はありません。",
@@ -183,6 +187,7 @@
       "refresh": "プロジェクトコンテキストを更新",
       "resizeHandle": "Review パネルの幅を調整",
       "review": "Review",
+      "showAllChanges": "すべての変更を表示",
       "statusAdded": "追加",
       "statusDeleted": "削除",
       "statusModified": "変更",
@@ -873,6 +878,30 @@
         "description": "chatbot の会話が同じ長期 memory を読み書きできるようにします。",
         "label": "chatbot memory を接続"
       },
+      "manager": {
+        "cancel": "キャンセル",
+        "delete": {
+          "confirm": "完全に削除",
+          "description": "この memory エントリは完全に削除され、元に戻すことはできません。",
+          "previewLabel": "削除するエントリ",
+          "title": "この memory を完全に削除しますか？",
+          "trigger": "エントリを削除"
+        },
+        "description": "保存された memory エントリを閲覧・検索し、完全に削除します。",
+        "empty": "memory エントリはまだありません。",
+        "emptySearch": "一致する memory エントリがありません。",
+        "meta": {
+          "kind": "種類",
+          "scope": "範囲",
+          "source": "ソース"
+        },
+        "next": "次へ",
+        "previous": "前へ",
+        "searchPlaceholder": "memory 内容を検索...",
+        "summary": "{{total}} 件中 {{start}}-{{end}} 件",
+        "title": "Memory の管理",
+        "updatedAt": "更新日時 {{date}}"
+      },
       "retrieval": {
         "autoRetrieve": {
           "description": "各会話の前に関連 memories を自動検索して注入します。",
@@ -905,6 +934,7 @@
       "status": {
         "empty": "memory エントリはまだありません。",
         "lastUpdated": "最終更新",
+        "manage": "管理",
         "recent": "最近のエントリ",
         "title": "Memory ストア",
         "totalEntries": "エントリ総数"
@@ -1222,6 +1252,22 @@
         "description": "累計 saved tokens が多い RTK command groups。",
         "empty": "command savings はまだありません。",
         "title": "Savings by Command"
+      },
+      "control": {
+        "autoRewrite": {
+          "label": "RTK 自動書き換え"
+        },
+        "description": "対応する bash command を実行直前に書き換えます。approval と command history は常に元の command に基づきます。",
+        "ripgrep": {
+          "bundled": "rg: bundled fallback",
+          "missing": "rg: unavailable",
+          "system": "rg: system"
+        },
+        "rtk": {
+          "available": "RTK available",
+          "missing": "RTK は未インストール"
+        },
+        "title": "RTK Command Handling"
       },
       "daily": {
         "description": "RTK daily statistics からの active day ごとの saved tokens。",

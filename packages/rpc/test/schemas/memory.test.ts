@@ -102,7 +102,8 @@ describe("memory schemas", () => {
           sourceId: "session-1",
           updatedAt: "2026-05-16T00:01:00.000Z"
         }
-      ]
+      ],
+      total: 1
     })
     const stats = MemoryStatsOutputSchema.parse({
       lastUpdatedAt: "2026-05-16T00:01:00.000Z",

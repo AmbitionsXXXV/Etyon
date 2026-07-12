@@ -2,7 +2,7 @@ import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
-import { Button, Disclosure } from "@heroui/react"
+import { Button, Chip, Disclosure } from "@heroui/react"
 import {
   BrainIcon,
   Cancel01Icon,
@@ -26,6 +26,7 @@ import {
   getCommandOutputView,
   getCommandTitleSubject,
   getShellSummary,
+  isRtkApplied,
   getStructuredToolTraceMetaItems,
   getToolIcon,
   getToolInputCommand,
@@ -50,6 +51,7 @@ interface ToolTracePanelProps {
 
 interface ToolTraceCardProps {
   actions?: ReactNode
+  badge?: ReactNode
   children?: ReactNode
   defaultExpanded?: boolean
   description?: string
@@ -112,6 +114,7 @@ const ToolTraceMeta = ({ items }: { items: string[] }) => {
 
 const ToolTraceCard = ({
   actions,
+  badge,
   children,
   defaultExpanded = false,
   description,
@@ -153,6 +156,7 @@ const ToolTraceCard = ({
             ) : null}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            {badge}
             <span
               className={cn(
                 "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
@@ -203,6 +207,7 @@ const CommandToolCallCard = ({
   isStreaming = false,
   metaItems = EMPTY_TOOL_TRACE_META_ITEMS,
   output,
+  rtkApplied = false,
   state,
   statusClassName,
   statusLabel,
@@ -217,6 +222,7 @@ const CommandToolCallCard = ({
   isStreaming?: boolean
   metaItems?: string[]
   output: string
+  rtkApplied?: boolean
   state: ToolPartState
   statusClassName: string
   statusLabel: string
@@ -228,6 +234,13 @@ const CommandToolCallCard = ({
   return (
     <ToolTraceCard
       actions={actions}
+      badge={
+        rtkApplied ? (
+          <Chip className="h-5 px-1.5 text-[0.625rem]" size="sm" variant="soft">
+            rtk
+          </Chip>
+        ) : undefined
+      }
       defaultExpanded={defaultExpanded}
       description={description}
       icon={ComputerTerminal02Icon}
@@ -413,6 +426,7 @@ export const StructuredToolTraceCard = ({
     ) : null
   const outputDetail =
     part.state === "output-available" ? part.output : undefined
+  const rtkApplied = isRtkApplied(outputDetail)
   const detailPanels = (
     <ToolTraceDetailPanels input={part.input} output={outputDetail} />
   )
@@ -433,6 +447,7 @@ export const StructuredToolTraceCard = ({
         isStreaming={isCommandStreaming && !commandOutputText}
         metaItems={[...metaItems, workflowProgressMeta, repeatedMetaItem]}
         output={commandOutputText}
+        rtkApplied={rtkApplied}
         state={heroToolState}
         statusClassName={statusClassName}
         statusLabel={statusLabel}

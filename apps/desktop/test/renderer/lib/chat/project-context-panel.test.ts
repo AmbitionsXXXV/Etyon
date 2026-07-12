@@ -7,7 +7,11 @@ import {
   formatProjectDiffCount,
   getProjectDiffFileStats,
   getProjectDiffSummary,
-  parseProjectDiffFiles
+  getProjectGitDiffInput,
+  parseProjectDiffFiles,
+  PROJECT_CHANGES_SCOPE_AGENT,
+  PROJECT_CHANGES_SCOPE_ALL,
+  shouldFetchProjectGitDiff
 } from "@/renderer/lib/chat/project-context-panel"
 import { resolveProjectFileViewerLanguage } from "@/renderer/lib/chat/project-file-code-viewer"
 
@@ -122,6 +126,38 @@ describe("project context panel helpers", () => {
 
   it("formats diff counts with grouping separators", () => {
     expect(formatProjectDiffCount(2937)).toBe("2,937")
+  })
+
+  it("uses only agent-edited paths by default and skips an empty agent scope", () => {
+    expect(
+      getProjectGitDiffInput({
+        agentEditedPaths: ["src/agent.ts"],
+        scope: PROJECT_CHANGES_SCOPE_AGENT,
+        sessionId: "session-1"
+      })
+    ).toEqual({
+      paths: ["src/agent.ts"],
+      sessionId: "session-1"
+    })
+    expect(
+      shouldFetchProjectGitDiff({
+        agentEditedPaths: [],
+        scope: PROJECT_CHANGES_SCOPE_AGENT
+      })
+    ).toBe(false)
+    expect(
+      getProjectGitDiffInput({
+        agentEditedPaths: [],
+        scope: PROJECT_CHANGES_SCOPE_ALL,
+        sessionId: "session-1"
+      })
+    ).toEqual({ sessionId: "session-1" })
+    expect(
+      shouldFetchProjectGitDiff({
+        agentEditedPaths: [],
+        scope: PROJECT_CHANGES_SCOPE_ALL
+      })
+    ).toBe(true)
   })
 
   it("builds expandable file diffs from full git file snapshots", () => {

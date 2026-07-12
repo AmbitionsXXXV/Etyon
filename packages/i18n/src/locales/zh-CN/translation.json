@@ -157,7 +157,10 @@
       "title": "Chat UI 占位"
     },
     "projectPanel": {
+      "agentChanges": "Agent 改动",
+      "allChanges": "全部改动",
       "backToFiles": "返回文件列表",
+      "changesScopeLabel": "改动范围",
       "changesView": "变更",
       "closePanel": "关闭 Review 面板",
       "collapseFolders": "收起所有文件夹",
@@ -169,6 +172,7 @@
       "commitTitle": "提交",
       "commitView": "提交",
       "diffTitle": "Git 变更",
+      "emptyAgentDiff": "本会话的 Agent 尚未产生任何落盘编辑。",
       "emptyDiff": "当前没有检测到 Git 变更。",
       "emptyFiles": "当前项目还没有可展示的文件结构。",
       "emptyTrackedDiff": "检测到变更，但当前没有可展示的 tracked diff。",
@@ -183,6 +187,7 @@
       "refresh": "刷新项目上下文",
       "resizeHandle": "调整 Review 面板宽度",
       "review": "审查",
+      "showAllChanges": "查看全部改动",
       "statusAdded": "新增",
       "statusDeleted": "删除",
       "statusModified": "修改",
@@ -873,6 +878,30 @@
         "description": "允许 chatbot 对话读取并写入同一套长期记忆。",
         "label": "联通 chatbot memory"
       },
+      "manager": {
+        "cancel": "取消",
+        "delete": {
+          "confirm": "永久删除",
+          "description": "该 memory 条目将被永久删除，且无法恢复。",
+          "previewLabel": "待删除的条目",
+          "title": "永久删除这条 memory？",
+          "trigger": "删除条目"
+        },
+        "description": "浏览、搜索并永久删除已存储的 memory 条目。",
+        "empty": "还没有 memory 条目。",
+        "emptySearch": "没有匹配的 memory 条目。",
+        "meta": {
+          "kind": "类型",
+          "scope": "范围",
+          "source": "来源"
+        },
+        "next": "下一页",
+        "previous": "上一页",
+        "searchPlaceholder": "搜索 memory 内容...",
+        "summary": "第 {{start}}-{{end}} 条，共 {{total}} 条",
+        "title": "管理 Memory",
+        "updatedAt": "更新于 {{date}}"
+      },
       "retrieval": {
         "autoRetrieve": {
           "description": "每次对话前自动搜索并注入相关 memories。",
@@ -905,6 +934,7 @@
       "status": {
         "empty": "还没有 memory 条目。",
         "lastUpdated": "最后更新",
+        "manage": "管理",
         "recent": "最近条目",
         "title": "Memory 存储",
         "totalEntries": "条目总数"
@@ -1222,6 +1252,22 @@
         "description": "按累计节省 tokens 排序的 RTK 命令组。",
         "empty": "还没有命令节省数据。",
         "title": "按命令节省"
+      },
+      "control": {
+        "autoRewrite": {
+          "label": "RTK 自动改写"
+        },
+        "description": "在执行前立即改写受支持的 bash 命令，同时审批和命令历史始终基于原始命令。",
+        "ripgrep": {
+          "bundled": "rg：捆绑兜底",
+          "missing": "rg：不可用",
+          "system": "rg：系统"
+        },
+        "rtk": {
+          "available": "RTK 可用",
+          "missing": "未安装 RTK"
+        },
+        "title": "RTK 命令处理"
       },
       "daily": {
         "description": "来自 RTK daily statistics 的活跃日期 token 节省量。",

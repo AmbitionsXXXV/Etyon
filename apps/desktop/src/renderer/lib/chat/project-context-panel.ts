@@ -1,5 +1,6 @@
 import type {
   GitFileStatus,
+  GitProjectDiffInput,
   GitProjectDiffFileSnapshot,
   GitProjectStatus,
   GitStatusFile,
@@ -13,10 +14,15 @@ import type { Key } from "react"
 export const PROJECT_CONTEXT_FILES_TAB_ID = "files"
 export const PROJECT_CONTEXT_CHANGES_TAB_ID = "changes"
 export const PROJECT_CONTEXT_COMMIT_TAB_ID = "commit"
+export const PROJECT_CHANGES_SCOPE_AGENT = "agent"
+export const PROJECT_CHANGES_SCOPE_ALL = "all"
 export type ProjectContextPanelView =
   | typeof PROJECT_CONTEXT_FILES_TAB_ID
   | typeof PROJECT_CONTEXT_CHANGES_TAB_ID
   | typeof PROJECT_CONTEXT_COMMIT_TAB_ID
+export type ProjectChangesScope =
+  | typeof PROJECT_CHANGES_SCOPE_AGENT
+  | typeof PROJECT_CHANGES_SCOPE_ALL
 export const COMMIT_MESSAGE_MAX_LENGTH = 500
 export const PROJECT_FILE_TREE_DEFAULT_SIZE = 30
 export const PROJECT_FILE_TREE_MAX_SIZE = 55
@@ -28,6 +34,33 @@ export const isProjectContextPanelView = (
   view === PROJECT_CONTEXT_FILES_TAB_ID ||
   view === PROJECT_CONTEXT_CHANGES_TAB_ID ||
   view === PROJECT_CONTEXT_COMMIT_TAB_ID
+
+export const isProjectChangesScope = (
+  scope: Key
+): scope is ProjectChangesScope =>
+  scope === PROJECT_CHANGES_SCOPE_AGENT || scope === PROJECT_CHANGES_SCOPE_ALL
+
+export const getProjectGitDiffInput = ({
+  agentEditedPaths,
+  scope,
+  sessionId
+}: {
+  agentEditedPaths: string[]
+  scope: ProjectChangesScope
+  sessionId: string
+}): GitProjectDiffInput =>
+  scope === PROJECT_CHANGES_SCOPE_AGENT
+    ? { paths: agentEditedPaths, sessionId }
+    : { sessionId }
+
+export const shouldFetchProjectGitDiff = ({
+  agentEditedPaths,
+  scope
+}: {
+  agentEditedPaths: string[]
+  scope: ProjectChangesScope
+}): boolean =>
+  scope === PROJECT_CHANGES_SCOPE_ALL || agentEditedPaths.length > 0
 
 export interface ProjectDiffFileStats {
   additions: number

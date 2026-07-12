@@ -37,6 +37,12 @@ export const RtkTokenSavingsRecentCommandSchema = z.object({
   timestampLabel: z.string()
 })
 
+export const RtkTokenSavingsRuntimeSchema = z.object({
+  ripgrepSource: z.enum(["bundled", "missing", "system"]),
+  rtkAvailable: z.boolean(),
+  rtkVersion: z.string().optional()
+})
+
 export const RtkTokenSavingsOutputSchema = z.object({
   available: z.boolean(),
   commands: z.array(RtkTokenSavingsCommandEntrySchema),
@@ -44,6 +50,7 @@ export const RtkTokenSavingsOutputSchema = z.object({
   error: z.string().nullable(),
   generatedAt: z.string(),
   recentCommands: z.array(RtkTokenSavingsRecentCommandSchema),
+  runtime: RtkTokenSavingsRuntimeSchema,
   scope: z.enum(["global", "project"]),
   summary: RtkTokenSavingsSummarySchema
 })
@@ -57,6 +64,9 @@ export type RtkTokenSavingsDailyEntry = z.infer<
 export type RtkTokenSavingsOutput = z.infer<typeof RtkTokenSavingsOutputSchema>
 export type RtkTokenSavingsRecentCommand = z.infer<
   typeof RtkTokenSavingsRecentCommandSchema
+>
+export type RtkTokenSavingsRuntime = z.infer<
+  typeof RtkTokenSavingsRuntimeSchema
 >
 export type RtkTokenSavingsSummary = z.infer<
   typeof RtkTokenSavingsSummarySchema

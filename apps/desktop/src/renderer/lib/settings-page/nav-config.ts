@@ -1,14 +1,16 @@
 import type { TranslationKey } from "@etyon/i18n"
 import {
   BrainIcon,
-  ChatBotIcon,
+  BubbleChatIcon,
   ChartLineData02Icon,
+  CloudServerIcon,
   ComputerIcon,
   InternetIcon,
-  NoteEditIcon,
   PackageOpenIcon,
   PaintBrush01Icon,
   PuzzleIcon,
+  RobotIcon,
+  SentIcon,
   Settings02Icon
 } from "@hugeicons/core-free-icons"
 
@@ -50,19 +52,19 @@ export const SETTINGS_NAV_ENTRIES: readonly {
     id: "general"
   },
   {
-    icon: NoteEditIcon,
+    icon: CloudServerIcon,
     id: "providers"
   },
   {
-    icon: BrainIcon,
+    icon: RobotIcon,
     id: "agents"
   },
   {
-    icon: ChatBotIcon,
+    icon: BubbleChatIcon,
     id: "chat"
   },
   {
-    icon: ChatBotIcon,
+    icon: SentIcon,
     id: "channels"
   },
   {

@@ -1,9 +1,16 @@
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 
 import { eq } from "drizzle-orm"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
+import {
+  recordDelegatedRunOutcome,
+  startAgentRun
+} from "@/main/agents/agent-event-store"
 import {
   archiveChatSession,
   archiveProjectChatSessions,
@@ -26,6 +33,10 @@ const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
     .toString(36)
     .slice(2)}`
 }))
+
+const runGit = (cwd: string, args: string[]): void => {
+  execFileSync("git", args, { cwd, stdio: "ignore" })
+}
 
 vi.mock("@electron-toolkit/utils", () => ({
   is: {
@@ -227,5 +238,90 @@ describe("chat sessions", () => {
     expect(session.modelId).toBeNull()
     expect(updatedSession.modelId).toBe("moonshot/kimi-k2.5")
     expect(listedSession?.modelId).toBe("moonshot/kimi-k2.5")
+  })
+
+  it("limits agent Git status to edited files within a repository subdirectory", async () => {
+    await ensureDatabaseReady()
+
+    const repositoryPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "etyon-chat-sessions-git-")
+    )
+    const projectPath = path.join(repositoryPath, "packages", "desktop")
+
+    try {
+      fs.mkdirSync(projectPath, { recursive: true })
+      fs.writeFileSync(path.join(projectPath, "old-name.ts"), "export {}\n")
+      runGit(repositoryPath, ["init"])
+      runGit(repositoryPath, ["config", "user.email", "test@example.com"])
+      runGit(repositoryPath, ["config", "user.name", "Etyon Test"])
+      runGit(repositoryPath, ["add", "."])
+      runGit(repositoryPath, ["commit", "-m", "initial"])
+      runGit(repositoryPath, [
+        "mv",
+        "packages/desktop/old-name.ts",
+        "packages/desktop/new-name.ts"
+      ])
+      fs.writeFileSync(path.join(projectPath, "not-agent.ts"), "export {}\n")
+
+      const db = getDb()
+      const session = await createChatSession({ db, projectPath })
+      const runId = await startAgentRun({
+        chatSessionId: session.id,
+        db,
+        modelId: null,
+        profileId: "file-agent"
+      })
+
+      await recordDelegatedRunOutcome({
+        db,
+        runId,
+        status: "succeeded",
+        toolCalls: [
+          {
+            input: { path: "new-name.ts" },
+            output: { path: "new-name.ts" },
+            toolCallId: "rename-target",
+            toolName: "edit"
+          }
+        ]
+      })
+
+      const listedSessions = await listChatSessions(db)
+      const listedSession = listedSessions.find(
+        (item) => item.id === session.id
+      )
+
+      expect(listedSession?.agentEditedPaths).toEqual(["new-name.ts"])
+      expect(listedSession?.gitStatus?.changedFileCount).toBe(2)
+      expect(listedSession?.gitStatus?.files).toEqual([
+        {
+          path: "packages/desktop/new-name.ts",
+          status: "renamed"
+        },
+        {
+          path: "packages/desktop/not-agent.ts",
+          status: "untracked"
+        }
+      ])
+      expect(listedSession?.agentGitStatus).toEqual({
+        added: 0,
+        changedFileCount: 1,
+        deleted: 0,
+        error: undefined,
+        files: [
+          {
+            path: "packages/desktop/new-name.ts",
+            status: "renamed"
+          }
+        ],
+        isRepository: true,
+        modified: 0,
+        projectPath,
+        renamed: 1,
+        untracked: 0
+      })
+    } finally {
+      fs.rmSync(repositoryPath, { force: true, recursive: true })
+    }
   })
 })

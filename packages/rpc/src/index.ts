@@ -212,6 +212,8 @@ export type {
 } from "./schemas/git"
 export { LogEventSchema, LogLevelSchema } from "./schemas/logger"
 export {
+  DeleteMemoryEntryInputSchema,
+  DeleteMemoryEntryOutputSchema,
   InstallMemoryEmbeddingModelInputSchema,
   ListMemoryEntriesInputSchema,
   MEMORY_TOOL_MODEL_AUTO_VALUE,
@@ -228,6 +230,7 @@ export {
   MemoryStatsOutputSchema
 } from "./schemas/memory"
 export type {
+  DeleteMemoryEntryInput,
   InstallMemoryEmbeddingModelInput,
   ListMemoryEntriesInput,
   MemoryEmbeddingModel,
@@ -434,6 +437,7 @@ export {
   RtkTokenSavingsDailyEntrySchema,
   RtkTokenSavingsOutputSchema,
   RtkTokenSavingsRecentCommandSchema,
+  RtkTokenSavingsRuntimeSchema,
   RtkTokenSavingsSummarySchema
 } from "./schemas/token-savings"
 export type {
@@ -441,5 +445,6 @@ export type {
   RtkTokenSavingsDailyEntry,
   RtkTokenSavingsOutput,
   RtkTokenSavingsRecentCommand,
+  RtkTokenSavingsRuntime,
   RtkTokenSavingsSummary
 } from "./schemas/token-savings"

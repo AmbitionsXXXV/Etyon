@@ -2,7 +2,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { AgentCommandApprovalRule } from "@etyon/rpc"
+import { AgentSettingsSchema } from "@etyon/rpc"
+import type { AgentCommandApprovalRule, AgentSettings } from "@etyon/rpc"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { buildAgentToolset } from "@/main/agents/minimal/agent-toolset"
@@ -11,6 +12,7 @@ import {
   matchesCommandAllowlist
 } from "@/main/agents/minimal/bash-tool"
 import { buildFileTools } from "@/main/agents/minimal/file-tools"
+import { resetRtkAvailabilityCacheForTests } from "@/main/agents/minimal/rtk-rewrite"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
@@ -21,7 +23,8 @@ const { getSettingsMock } = vi.hoisted(() => ({
       approvals: {
         approvalTtlMs: 3_600_000,
         commandAllowlist: [] as AgentCommandApprovalRule[]
-      }
+      },
+      rtk: { autoRewrite: false }
     },
     memory: { enabled: false }
   }))
@@ -56,7 +59,14 @@ const ALLOWLIST_TTL_MS = 3_600_000
 const ALLOWLIST_NOW_MS = Date.parse("2026-07-11T12:00:00.000Z")
 
 const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "etyon-bash-tool-"))
-const bashTool = buildBashTool(getWorkspaceCore(projectPath), "default")
+const makeAgentSettings = (
+  overrides: Partial<AgentSettings> = {}
+): AgentSettings => AgentSettingsSchema.parse(overrides)
+const bashTool = buildBashTool(
+  getWorkspaceCore(projectPath),
+  "default",
+  makeAgentSettings({ rtk: { autoRewrite: false } })
+)
 
 const execute = async <TOutput>(
   tool: unknown,
@@ -92,6 +102,7 @@ const makeProfile = (
 
 afterAll(() => {
   fs.rmSync(projectPath, { force: true, recursive: true })
+  resetRtkAvailabilityCacheForTests()
 })
 
 describe("bash tool", () => {
@@ -195,11 +206,72 @@ describe("bash tool", () => {
     expect(output.status).toBe("aborted")
     expect(output.durationMs).toBe(0)
   })
+
+  it("rewrites an allowlisted command only for execution", async () => {
+    const fakeBinPath = fs.mkdtempSync(path.join(os.tmpdir(), "etyon-rtk-bin-"))
+    const fakeRtkPath = path.join(fakeBinPath, "rtk")
+    const originalPath = process.env.PATH
+
+    fs.writeFileSync(
+      fakeRtkPath,
+      `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf 'rtk test'
+  exit 0
+fi
+printf '%s' "$*"
+`
+    )
+    fs.chmodSync(fakeRtkPath, 0o755)
+    process.env.PATH = [
+      fakeBinPath,
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      originalPath
+    ]
+      .filter(Boolean)
+      .join(path.delimiter)
+    resetRtkAvailabilityCacheForTests()
+
+    try {
+      const rtkTool = buildBashTool(
+        getWorkspaceCore(projectPath),
+        "default",
+        makeAgentSettings({ rtk: { autoRewrite: true } })
+      )
+      const output = await execute<{
+        details: {
+          command: string
+          executedCommand: string
+          rtkApplied: boolean
+        }
+        stdoutPreview: string
+      }>(rtkTool, { command: "git status" })
+
+      expect(output.details).toEqual({
+        command: "git status",
+        executedCommand: "rtk git status",
+        rtkApplied: true
+      })
+      expect(output.stdoutPreview).toBe("git status")
+    } finally {
+      process.env.PATH = originalPath
+      fs.rmSync(fakeBinPath, { force: true, recursive: true })
+      resetRtkAvailabilityCacheForTests()
+    }
+  })
 })
 
 describe("bash tool needsApproval", () => {
-  const callNeedsApproval = (command: string): boolean | Promise<boolean> => {
-    const { needsApproval } = bashTool as unknown as {
+  const callNeedsApproval = (
+    command: string,
+    settings = makeAgentSettings({ rtk: { autoRewrite: false } })
+  ): boolean | Promise<boolean> => {
+    const { needsApproval } = buildBashTool(
+      getWorkspaceCore(projectPath),
+      "default",
+      settings
+    ) as unknown as {
       needsApproval: (
         input: unknown,
         options: unknown
@@ -214,24 +286,21 @@ describe("bash tool needsApproval", () => {
   })
 
   it("skips approval for a remembered command in this project", async () => {
-    getSettingsMock.mockReturnValueOnce({
-      agents: {
-        approvals: {
-          approvalTtlMs: ALLOWLIST_TTL_MS,
-          commandAllowlist: [
-            {
-              command: "vp test",
-              createdAt: new Date().toISOString(),
-              projectPath,
-              toolName: "bash"
-            }
-          ]
-        }
-      },
-      memory: { enabled: false }
+    const settings = makeAgentSettings({
+      approvals: {
+        approvalTtlMs: ALLOWLIST_TTL_MS,
+        commandAllowlist: [
+          {
+            command: "vp test",
+            createdAt: new Date().toISOString(),
+            projectPath,
+            toolName: "bash"
+          }
+        ]
+      }
     })
 
-    expect(await callNeedsApproval("vp test")).toBe(false)
+    expect(await callNeedsApproval("vp test", settings)).toBe(false)
   })
 })
 
@@ -242,7 +311,11 @@ describe("permission-mode gating", () => {
     mode: AgentPermissionMode,
     command: string
   ): boolean | Promise<boolean> => {
-    const { needsApproval } = buildBashTool(workspace, mode) as unknown as {
+    const { needsApproval } = buildBashTool(
+      workspace,
+      mode,
+      makeAgentSettings({ rtk: { autoRewrite: false } })
+    ) as unknown as {
       needsApproval: (
         input: unknown,
         options: unknown
@@ -282,8 +355,10 @@ describe("permission-mode gating", () => {
   })
 
   it("does not gate a remembered safe command in default", async () => {
-    getSettingsMock.mockReturnValueOnce({
-      agents: {
+    const { needsApproval } = buildBashTool(
+      workspace,
+      "default",
+      makeAgentSettings({
         approvals: {
           approvalTtlMs: ALLOWLIST_TTL_MS,
           commandAllowlist: [
@@ -295,11 +370,15 @@ describe("permission-mode gating", () => {
             }
           ]
         }
-      },
-      memory: { enabled: false }
-    })
+      })
+    ) as unknown as {
+      needsApproval: (
+        input: unknown,
+        options: unknown
+      ) => boolean | Promise<boolean>
+    }
 
-    expect(await bashNeedsApproval("default", "vp test")).toBe(false)
+    expect(await needsApproval({ command: "vp test" }, {})).toBe(false)
   })
 
   it("gates file edits only in default mode", () => {

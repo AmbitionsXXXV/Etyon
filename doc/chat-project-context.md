@@ -118,6 +118,12 @@ type ChatMention =
 
 右侧 Review 面板的 Files tab 直接展示完整项目文件树，不启用 `@pierre/trees` 内置 search。未选择文件时只展示文件树，不挂载空的 File Preview 区域；选择文件后，文件树和右侧预览区之间使用 `@heroui-pro/react` 的 `Resizable` 分栏，可拖拽调整宽度。点击文件时通过 `projectSnapshots.readFile` 读取项目内文本文件，并使用 `shiki/bundle/web` 渲染带行号的只读代码视图，文件树本身不被替换。文件树顶部提供“收起所有文件夹”按钮，用于快速恢复到初始折叠层级。
 
+## Agent 编辑范围的 Git 对比
+
+会话列表在每次 Git 状态轮询时，通过一条 `agent_tool_calls` 与 `agent_runs` 的 joined query 汇总当前 session 中已完成 `edit` / `write` 工具调用的项目相对路径。sidebar 徽章只展示这批路径与当前 Git 状态的交集；完整 `gitStatus` 仍保留给项目文件树和提交视图。
+
+Git porcelain 路径以仓库根目录为基准，因此当 session 的 `projectPath` 位于仓库子目录时，主进程会先将 agent 路径和 Git 路径都转为绝对路径再求交。重命名状态以 Git 返回的新路径匹配。Changes tab 默认将这批项目相对路径传给 `git.diff`，并可切换到完整 Git 改动；还没有任何落盘 edit/write 记录时，面板会显示空状态并提供切换入口。
+
 Chat 组件文件保持只负责 React 渲染和 hook glue：`prompt-input.tsx`、`project-file-code-viewer.tsx` 等 `tsx` 文件不直接定义可复用常量或 helper function；分组、格式化、Shiki token、语言映射等非组件逻辑放在 `apps/desktop/src/renderer/lib/chat/` 下对应 feature 文件中。
 
 `Files` 内部有独立 `Resizable` 分栏，因此 Review 面板的 `Tabs.Panel` 必须通过 `data-[inert=true]:hidden` 隔离 inactive tab，避免 React Aria 保留退出中的 panel 时继续占用 `Changes` / `Commit` 的内容高度。

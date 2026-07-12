@@ -249,31 +249,31 @@ const getSessionTitleContainerLayoutClassName = (
   showProjectDiffLine ? "flex-col justify-center gap-1 py-1.5" : "items-center"
 
 const SidebarGitStatusSummary = ({
-  gitStatus
+  agentGitStatus
 }: {
-  gitStatus: ChatSessionSummary["gitStatus"]
+  agentGitStatus: ChatSessionSummary["agentGitStatus"]
 }) => {
-  if (!gitStatus?.isRepository || gitStatus.changedFileCount === 0) {
+  if (!agentGitStatus?.isRepository || agentGitStatus.changedFileCount === 0) {
     return null
   }
 
   const items = [
-    gitStatus.added > 0
-      ? { className: "text-success", label: `+${gitStatus.added}` }
+    agentGitStatus.added > 0
+      ? { className: "text-success", label: `+${agentGitStatus.added}` }
       : null,
-    gitStatus.modified > 0
-      ? { className: "text-warning", label: `~${gitStatus.modified}` }
+    agentGitStatus.modified > 0
+      ? { className: "text-warning", label: `~${agentGitStatus.modified}` }
       : null,
-    gitStatus.deleted > 0
-      ? { className: "text-danger", label: `-${gitStatus.deleted}` }
+    agentGitStatus.deleted > 0
+      ? { className: "text-danger", label: `-${agentGitStatus.deleted}` }
       : null,
-    gitStatus.renamed > 0
-      ? { className: "text-accent", label: `R${gitStatus.renamed}` }
+    agentGitStatus.renamed > 0
+      ? { className: "text-accent", label: `R${agentGitStatus.renamed}` }
       : null,
-    gitStatus.untracked > 0
+    agentGitStatus.untracked > 0
       ? {
           className: "text-sidebar-foreground/55",
-          label: `?${gitStatus.untracked}`
+          label: `?${agentGitStatus.untracked}`
         }
       : null
   ].filter(
@@ -646,7 +646,9 @@ const ChatSessionItem = ({
             </div>
             <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-5">
               {diffMetaItem?.label ? (
-                <SidebarGitStatusSummary gitStatus={session.gitStatus} />
+                <SidebarGitStatusSummary
+                  agentGitStatus={session.agentGitStatus}
+                />
               ) : null}
               <span
                 className={cn(

@@ -208,6 +208,9 @@ describe("AppSettingsSchema", () => {
         maxAutomaticRetries: 1,
         retryTransientFailures: true
       },
+      rtk: {
+        autoRewrite: true
+      },
       sandbox: {
         allowNetwork: false,
         autoAllowSandboxedShell: false,
@@ -250,6 +253,9 @@ describe("AppSettingsSchema", () => {
       retry: {
         maxAutomaticRetries: 1,
         retryTransientFailures: true
+      },
+      rtk: {
+        autoRewrite: true
       },
       sandbox: {
         allowNetwork: false,

@@ -21,11 +21,11 @@ Etyon workspace 层暴露 `view`、`search_content`、`find_files`、`file_stat`
 | Tool | 自动执行 | 输入 | 结果 | 说明 |
 | --- | --- | --- | --- | --- |
 | `read` | 是 | `path`, `offset?`, `limit?` | `content: [{ type: "text", text }]`, `details?` | 读取 workspace 内文件；大文件用 `offset` / `limit` 分段读取。 |
-| `grep` | 是 | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?` | `content`, `details?` | 底层使用 BurntSushi `ripgrep` (`rg --json`) 搜索文件内容，返回 `path:line:text` 形态。 |
+| `grep` | 是 | `pattern`, `path?`, `glob?`, `ignoreCase?`, `literal?`, `context?`, `limit?` | `content`, `details?` | 底层使用 BurntSushi `ripgrep` 搜索文件内容（系统 `rg` 优先，缺失时回退捆绑的 `@vscode/ripgrep`），返回 `path:line:text` 形态。 |
 | `find` | 是 | `pattern`, `path?`, `limit?` | `content`, `details?` | 底层使用 `fd` 按 glob 查找文件路径，例如 `*.ts`、`**/*.json`、`src/**/*.spec.ts`。 |
 | `ls` | 是 | `path?`, `limit?` | `content`, `details?` | 列目录，目录名带 `/` 后缀。 |
 | `stat` | 是 | `path` | `content`, `details?` | 读取单个 project path 的 kind、size、mtime、language、symlink metadata，不跟随 symlink。 |
-| `bash` | 条件允许 | `command`, `timeout?`, `background?` | `content`, `details?` | 执行本地命令；`timeout` 使用秒，`background=true` 返回 Etyon processId，泛用命令需要 approval。 |
+| `bash` | 条件允许 | `command`, `timeout?`, `background?` | `content`, `details?` | 执行本地命令；`timeout` 使用秒，`background=true` 返回 Etyon processId，泛用命令需要 approval。`settings.agents.rtk.autoRewrite` 开启且检测到 rtk CLI 时，执行一刻自动做 rtk 前缀改写（白名单首 token + 简单命令/`&&` 链），`details` 携带原始命令、实际执行命令与 `rtkApplied` 标记。 |
 | `processOutput` | 是 | `processId` | `content`, `details.process` | 读取 Etyon-managed background process 的 bounded stdout / stderr。 |
 | `stopProcess` | 是 | `processId` | `content`, `details.process` | 停止 Etyon-managed background process。 |
 | `mkdir` | 否 | `path`, `recursive?` | `content`, `details?` | 创建目录，默认递归创建父目录；写入类 filesystem op，必须 approval。 |
@@ -45,7 +45,7 @@ Etyon workspace 层暴露 `view`、`search_content`、`find_files`、`file_stat`
 | Etyon alias | Etyon workspace op | 当前 Etyon 实现边界 |
 | --- | --- | --- |
 | `read` | `view` | 通过 `AgentWorkspace.operations.fileStat` / `readTextFile` 读取 bounded text；编辑类工具可复用 `view`。 |
-| `grep` | `search_content` | 使用 `rg --json`，保留 secret-like path 排除和输出截断；底层 spawn 通过 `AgentWorkspace.operations.searchContent`。 |
+| `grep` | `search_content` | 使用 ripgrep（`ripgrep-binary.ts` 解析：系统 `rg` 优先、`@vscode/ripgrep` 捆绑兜底，spawn env 经 `spawn-env.ts` 补齐 Homebrew PATH），保留 secret-like path 排除和输出截断；底层 spawn 通过 `AgentWorkspace.operations.searchContent`。 |
 | `find` | `find_files` | 使用 `fd --glob` 做路径查找；底层 spawn 通过 `AgentWorkspace.operations.findFiles`，后续可继续收敛到 workspace index。 |
 | `ls` | `find_files` / list | 通过 `AgentWorkspace.operations.listDir` 做目录列举别名，输出紧凑 entries。 |
 | `stat` | `file_stat` | 通过 `AgentWorkspace.operations.fileStat` 读取 metadata，不跟随 symlink，保留 secret-like path 边界。 |
@@ -77,7 +77,7 @@ Etyon workspace 层暴露 `view`、`search_content`、`find_files`、`file_stat`
 
 - `read`、`grep`、`find`、`ls`、`stat` 是只读工具，默认可自动执行，但仍受 workspace 边界、secret-like path、symlink 规则限制。
 - `mkdir`、`delete`、`edit`、`smartEdit`、`write` 永远需要 approval，`requireApprovalForWrites=false` 这类旧设置不会绕过写入确认。
-- `bash` 默认需要 approval；`vp check`、`vp test run`、`vp run ...` 等 bounded verification command 可以自动允许。
+- `bash` 默认需要 approval；`vp check`、`vp test run`、`vp run ...` 等 bounded verification command 可以自动允许。rtk 自动改写发生在审批之后的执行一刻，`needsApproval`、危险命令判定与 remembered-command allowlist 匹配始终基于原始命令，改写不改变任何审批边界。
 - `bash background=true` 即使命令本身像 bounded check，也需要 approval；`processOutput` / `stopProcess` 只能访问 Etyon 当前 workspace 内已登记的 processId。
 - 禁止破坏性命令、非 `vp` 包管理器命令、越界 cwd、secret-like path。
 - `webSearch` / `webExtract` 永远需要 approval；即使来自 `network` skill capability，也不能自动执行。`webExtract` 还会在 workspace 层拒绝输入 URL、每个 redirect `Location` 或最终响应 URL 指向 localhost、回环地址、私网地址、链路本地地址和本地域名，approval 不能绕过网络隔离边界。

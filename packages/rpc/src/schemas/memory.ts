@@ -50,11 +50,22 @@ export const MemoryEntrySchema = z.object({
 })
 
 export const ListMemoryEntriesInputSchema = z.object({
-  limit: z.number().int().min(1).max(100).default(50)
+  limit: z.number().int().min(1).max(100).default(50),
+  offset: z.number().int().min(0).default(0),
+  query: z.string().optional()
 })
 
 export const MemoryEntriesOutputSchema = z.object({
-  entries: z.array(MemoryEntrySchema)
+  entries: z.array(MemoryEntrySchema),
+  total: z.number().int().nonnegative()
+})
+
+export const DeleteMemoryEntryInputSchema = z.object({
+  id: z.string()
+})
+
+export const DeleteMemoryEntryOutputSchema = z.object({
+  deleted: z.boolean()
 })
 
 export const MemoryStatsOutputSchema = z.object({
@@ -87,6 +98,9 @@ export const InstallMemoryEmbeddingModelInputSchema = z.object({
   modelId: z.string()
 })
 
+export type DeleteMemoryEntryInput = z.infer<
+  typeof DeleteMemoryEntryInputSchema
+>
 export type ListMemoryEntriesInput = z.infer<
   typeof ListMemoryEntriesInputSchema
 >

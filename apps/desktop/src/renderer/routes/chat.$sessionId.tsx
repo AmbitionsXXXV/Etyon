@@ -87,13 +87,19 @@ import {
 import {
   formatProjectDiffCount,
   getProjectDiffSummary,
+  getProjectGitDiffInput,
+  PROJECT_CHANGES_SCOPE_AGENT,
   isProjectContextPanelView,
   parseProjectDiffFiles,
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
-  PROJECT_CONTEXT_FILES_TAB_ID
+  PROJECT_CONTEXT_FILES_TAB_ID,
+  shouldFetchProjectGitDiff
 } from "@/renderer/lib/chat/project-context-panel"
-import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
+import type {
+  ProjectChangesScope,
+  ProjectContextPanelView
+} from "@/renderer/lib/chat/project-context-panel"
 import {
   filterPromptSkillMentionItems,
   filterPromptTemplateItems,
@@ -130,6 +136,7 @@ import {
   getChatSessionTitle,
   sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
+import { getNextPermissionMode } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import {
   getChatAgentModeFromAgentsEnabled,
@@ -590,10 +597,12 @@ const ChatProjectContextLayout = ({
   activeArtifact = null,
   children,
   gitDiff,
+  gitDiffScope,
   isDiffLoading,
   isOpen,
   isTreeLoading,
   onOpenChange,
+  onGitDiffScopeChange,
   onViewChange,
   onRefresh,
   projectItems,
@@ -603,10 +612,12 @@ const ChatProjectContextLayout = ({
   activeArtifact?: ChatArtifactRef | null
   children: ReactNode
   gitDiff?: GitProjectDiffOutput
+  gitDiffScope: ProjectChangesScope
   isDiffLoading: boolean
   isOpen: boolean
   isTreeLoading: boolean
   onOpenChange: (isOpen: boolean) => void
+  onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onViewChange: (view: ProjectContextPanelView) => void
   onRefresh: () => void
   projectItems: ProjectSnapshotItem[]
@@ -697,8 +708,10 @@ const ChatProjectContextLayout = ({
           ) : (
             <ProjectContextPanel
               gitDiff={gitDiff}
+              gitDiffScope={gitDiffScope}
               isDiffLoading={isDiffLoading}
               isTreeLoading={isTreeLoading}
+              onGitDiffScopeChange={onGitDiffScopeChange}
               onRefresh={onRefresh}
               onViewChange={onViewChange}
               projectItems={projectItems}
@@ -1255,6 +1268,7 @@ const ChatRuntime = ({
   agentsEnabled,
   defaultPermissionMode,
   gitDiff,
+  gitDiffScope,
   isLoadingFileItems,
   isLoadingPromptTemplateItems,
   isLoadingProjectTreeItems,
@@ -1269,6 +1283,7 @@ const ChatRuntime = ({
   initialMessages,
   onChatFinish,
   onEffortChange,
+  onGitDiffScopeChange,
   onMentionQueryChange,
   onModelChange,
   onOpenArtifact,
@@ -1293,6 +1308,7 @@ const ChatRuntime = ({
   autoCompact?: { enabled: boolean; threshold: number }
   defaultPermissionMode: AgentPermissionMode
   gitDiff?: GitProjectDiffOutput
+  gitDiffScope: ProjectChangesScope
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
   isLoadingProjectTreeItems: boolean
@@ -1309,6 +1325,7 @@ const ChatRuntime = ({
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
+  onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
@@ -1587,6 +1604,15 @@ const ChatRuntime = ({
 
     setAgentMode(getNextChatAgentMode)
   }, [isAgentModeToggleDisabled])
+  // Mirrors PromptInputPermissionModeControl's interactivity: the permission pill
+  // is hidden (and thus non-interactive) only in chat mode, where no tools run.
+  const handlePermissionModeCycle = useCallback(() => {
+    if (agentMode === "chat") {
+      return
+    }
+
+    setPermissionMode(getNextPermissionMode)
+  }, [agentMode])
   const isImageModeToggleDisabled = getImageModeToggleDisabled({
     isCapable: isSelectedModelImageCapable,
     isRequestPending
@@ -1599,7 +1625,11 @@ const ChatRuntime = ({
     setIsImageMode((previous) => !previous)
   }, [isImageModeToggleDisabled])
 
-  useHotkey("Shift+Tab", handleAgentModeToggle, {
+  useHotkey("Shift+Tab", handlePermissionModeCycle, {
+    enabled: agentMode !== "chat",
+    ignoreInputs: false
+  })
+  useHotkey("Mod+Shift+Tab", handleAgentModeToggle, {
     enabled: !isAgentModeToggleDisabled,
     ignoreInputs: false
   })
@@ -1945,10 +1975,12 @@ const ChatRuntime = ({
     <ChatProjectContextLayout
       activeArtifact={activeArtifact}
       gitDiff={gitDiff}
+      gitDiffScope={gitDiffScope}
       isDiffLoading={isProjectDiffLoading}
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
       onOpenChange={onProjectContextOpenChange}
+      onGitDiffScopeChange={onGitDiffScopeChange}
       onRefresh={onRefreshProjectContext}
       onViewChange={onProjectContextViewChange}
       projectItems={projectTreeItems}
@@ -2174,6 +2206,7 @@ const ChatRuntime = ({
 
 const ChatPendingState = ({
   gitDiff,
+  gitDiffScope,
   isLoadingFileItems,
   isLoadingPromptTemplateItems,
   isLoadingProjectTreeItems,
@@ -2183,6 +2216,7 @@ const ChatPendingState = ({
   modelEffort,
   modelGroups,
   onEffortChange,
+  onGitDiffScopeChange,
   onMentionQueryChange,
   onModelChange,
   onOpenSettings,
@@ -2199,6 +2233,7 @@ const ChatPendingState = ({
   sessionTitle
 }: {
   gitDiff?: GitProjectDiffOutput
+  gitDiffScope: ProjectChangesScope
   isLoadingFileItems: boolean
   isLoadingPromptTemplateItems: boolean
   isLoadingProjectTreeItems: boolean
@@ -2211,6 +2246,7 @@ const ChatPendingState = ({
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
+  onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
@@ -2245,10 +2281,12 @@ const ChatPendingState = ({
   return (
     <ChatProjectContextLayout
       gitDiff={gitDiff}
+      gitDiffScope={gitDiffScope}
       isDiffLoading={isProjectDiffLoading}
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
       onOpenChange={onProjectContextOpenChange}
+      onGitDiffScopeChange={onGitDiffScopeChange}
       onRefresh={onRefreshProjectContext}
       onViewChange={onProjectContextViewChange}
       projectItems={projectTreeItems}
@@ -2385,6 +2423,9 @@ const ChatSessionPage = () => {
   const [isProjectContextOpen, setProjectContextOpen] = useState(false)
   const [projectContextView, setProjectContextView] =
     useState<ChatSidePanelView>(PROJECT_CONTEXT_FILES_TAB_ID)
+  const [gitDiffScope, setGitDiffScope] = useState<ProjectChangesScope>(
+    PROJECT_CHANGES_SCOPE_AGENT
+  )
   const [activeArtifact, setActiveArtifact] = useState<ChatArtifactRef | null>(
     null
   )
@@ -2396,15 +2437,6 @@ const ChatSessionPage = () => {
   })
   const chatSessionMessagesQueryOptions = useMemo(
     () => getChatSessionMessagesQueryOptions(sessionId),
-    [sessionId]
-  )
-  const gitDiffQueryOptions = useMemo(
-    () =>
-      orpc.git.diff.queryOptions({
-        input: {
-          sessionId
-        }
-      }),
     [sessionId]
   )
   const projectTreeItemsQueryOptions = useMemo(
@@ -2432,6 +2464,21 @@ const ChatSessionPage = () => {
     () => chatSessionsQuery.data?.find((item) => item.id === sessionId),
     [chatSessionsQuery.data, sessionId]
   )
+  const agentEditedPaths = useMemo(
+    () => session?.agentEditedPaths ?? [],
+    [session]
+  )
+  const gitDiffQueryOptions = useMemo(
+    () =>
+      orpc.git.diff.queryOptions({
+        input: getProjectGitDiffInput({
+          agentEditedPaths,
+          scope: gitDiffScope,
+          sessionId
+        })
+      }),
+    [agentEditedPaths, gitDiffScope, sessionId]
+  )
   const sessionExists = Boolean(session)
   const persistedMessagesQuery = useQuery({
     ...chatSessionMessagesQueryOptions,
@@ -2457,7 +2504,9 @@ const ChatSessionPage = () => {
   })
   const gitDiffQuery = useQuery({
     ...gitDiffQueryOptions,
-    enabled: sessionExists,
+    enabled:
+      sessionExists &&
+      shouldFetchProjectGitDiff({ agentEditedPaths, scope: gitDiffScope }),
     refetchInterval: CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
   })
   const projectTreeItemsQuery = useQuery({
@@ -2687,6 +2736,9 @@ const ChatSessionPage = () => {
   const handleProjectContextOpenChange = useCallback((isOpen: boolean) => {
     setProjectContextOpen(isOpen)
   }, [])
+  const handleGitDiffScopeChange = useCallback((scope: ProjectChangesScope) => {
+    setGitDiffScope(scope)
+  }, [])
   const handleRefreshProjectContext = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: chatSessionsQueryOptions.queryKey
@@ -2776,6 +2828,7 @@ const ChatSessionPage = () => {
             settingsQuery.data?.agents.defaultPermissionMode ?? "default"
           }
           gitDiff={gitDiffQuery.data}
+          gitDiffScope={gitDiffScope}
           initialMessages={persistedMessages}
           isLoadingFileItems={isLoadingFileItems}
           isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
@@ -2789,6 +2842,7 @@ const ChatSessionPage = () => {
           modelGroups={modelGroups}
           onChatFinish={handleChatFinish}
           onEffortChange={handleEffortChange}
+          onGitDiffScopeChange={handleGitDiffScopeChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenArtifact={handleOpenArtifact}
@@ -2823,6 +2877,7 @@ const ChatSessionPage = () => {
       ) : (
         <ChatPendingState
           gitDiff={gitDiffQuery.data}
+          gitDiffScope={gitDiffScope}
           isLoadingFileItems={isLoadingFileItems}
           isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
           isLoadingProjectTreeItems={projectTreeItemsQuery.isFetching}
@@ -2832,6 +2887,7 @@ const ChatSessionPage = () => {
           modelEffort={modelEffort}
           modelGroups={modelGroups}
           onEffortChange={handleEffortChange}
+          onGitDiffScopeChange={handleGitDiffScopeChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenSettings={handleOpenSettings}

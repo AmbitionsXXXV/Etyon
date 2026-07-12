@@ -12,6 +12,7 @@ import {
   Card,
   Chip,
   ProgressCircle,
+  Switch,
   Table,
   Tooltip
 } from "@heroui/react"
@@ -31,11 +32,11 @@ import {
   ZapIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useMemo } from "react"
 
-import { orpc } from "@/renderer/lib/rpc"
+import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 import {
   buildCommandSavingsChartPoints,
@@ -266,6 +267,79 @@ const TokenSavingsOverview = ({
             value={formatRuntime(data.summary.averageTimeMs)}
           />
         </div>
+      </div>
+    </motion.section>
+  )
+}
+
+const TokenSavingsRuntimeControl = ({
+  autoRewrite,
+  isUpdating,
+  onAutoRewriteChange,
+  runtime
+}: {
+  autoRewrite: boolean
+  isUpdating: boolean
+  onAutoRewriteChange: (autoRewrite: boolean) => void
+  runtime?: RtkTokenSavingsOutput["runtime"]
+}) => {
+  const { t } = useI18n()
+  const ripgrepLabel = (() => {
+    switch (runtime?.ripgrepSource) {
+      case "bundled": {
+        return t("settings.tokenSavings.control.ripgrep.bundled")
+      }
+      case "missing": {
+        return t("settings.tokenSavings.control.ripgrep.missing")
+      }
+      case "system": {
+        return t("settings.tokenSavings.control.ripgrep.system")
+      }
+      default: {
+        return t("settings.tokenSavings.status.loading")
+      }
+    }
+  })()
+  const rtkLabel = runtime?.rtkAvailable
+    ? (runtime.rtkVersion ?? t("settings.tokenSavings.control.rtk.available"))
+    : t("settings.tokenSavings.control.rtk.missing")
+
+  return (
+    <motion.section
+      {...settingsPageSectionMotion(0.1)}
+      className="rounded-lg border border-border bg-card p-5"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1">
+          <h2 className="text-sm font-semibold">
+            {t("settings.tokenSavings.control.title")}
+          </h2>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {t("settings.tokenSavings.control.description")}
+          </p>
+        </div>
+
+        <Switch
+          aria-label={t("settings.tokenSavings.control.autoRewrite.label")}
+          isDisabled={isUpdating || !runtime}
+          isSelected={autoRewrite}
+          onChange={onAutoRewriteChange}
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <span className="rounded-md border border-border bg-background/60 px-2 py-1">
+          {rtkLabel}
+        </span>
+        <span className="rounded-md border border-border bg-background/60 px-2 py-1">
+          {ripgrepLabel}
+        </span>
       </div>
     </motion.section>
   )
@@ -548,34 +622,78 @@ const AgentToolDesign = () => {
 
 export const TokenSavingsTab = () => {
   const { t } = useI18n()
+  const settingsQuery = useQuery({
+    ...orpc.settings.get.queryOptions({}),
+    refetchOnWindowFocus: false
+  })
   const tokenSavingsQuery = useQuery({
     ...orpc.tokenSavings.get.queryOptions({}),
     refetchOnWindowFocus: false
   })
   const tokenSavings = tokenSavingsQuery.data
+  const autoRewriteMutation = useMutation({
+    mutationFn: (autoRewrite: boolean) => {
+      const settings = settingsQuery.data
+
+      if (!settings) {
+        throw new Error("Settings are unavailable.")
+      }
+
+      return rpcClient.settings.update({
+        agents: {
+          ...settings.agents,
+          rtk: {
+            ...settings.agents.rtk,
+            autoRewrite
+          }
+        }
+      })
+    },
+    onSuccess: async () => {
+      await settingsQuery.refetch()
+    }
+  })
   const handleRefresh = () => {
     void tokenSavingsQuery.refetch()
   }
+  const handleAutoRewriteChange = (autoRewrite: boolean) => {
+    autoRewriteMutation.mutate(autoRewrite)
+  }
+  const runtimeControl = (
+    <TokenSavingsRuntimeControl
+      autoRewrite={settingsQuery.data?.agents.rtk.autoRewrite ?? true}
+      isUpdating={autoRewriteMutation.isPending || settingsQuery.isLoading}
+      onAutoRewriteChange={handleAutoRewriteChange}
+      runtime={tokenSavings?.runtime}
+    />
+  )
 
   if (tokenSavingsQuery.isLoading && !tokenSavings) {
     return (
-      <div className="rounded-lg border border-border bg-card p-5 text-xs text-muted-foreground">
-        {t("settings.tokenSavings.status.loading")}
+      <div className="space-y-8">
+        {runtimeControl}
+        <div className="rounded-lg border border-border bg-card p-5 text-xs text-muted-foreground">
+          {t("settings.tokenSavings.status.loading")}
+        </div>
       </div>
     )
   }
 
   if (!tokenSavings || !tokenSavings.available) {
     return (
-      <TokenSavingsErrorState
-        error={tokenSavings?.error ?? null}
-        onRefresh={handleRefresh}
-      />
+      <div className="space-y-8">
+        {runtimeControl}
+        <TokenSavingsErrorState
+          error={tokenSavings?.error ?? null}
+          onRefresh={handleRefresh}
+        />
+      </div>
     )
   }
 
   return (
     <div className="space-y-8">
+      {runtimeControl}
       <TokenSavingsOverview
         data={tokenSavings}
         isRefreshing={tokenSavingsQuery.isFetching}

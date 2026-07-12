@@ -6,7 +6,13 @@ import type {
 import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
-import { Popover, ProgressCircle, ToggleButton, Tooltip } from "@heroui/react"
+import {
+  Kbd,
+  Popover,
+  ProgressCircle,
+  ToggleButton,
+  Tooltip
+} from "@heroui/react"
 import {
   CubeIcon,
   PencilEdit02Icon,
@@ -18,6 +24,7 @@ import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
+import { motion } from "motion/react"
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -584,6 +591,17 @@ const SELECTED_CLASS_BY_PERMISSION_MODE: Record<AgentPermissionMode, string> = {
   default: ""
 }
 
+// HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
+const FOCUSABLE_TAB_INDEX = { tabIndex: 0 } as Record<string, unknown>
+
+// A restrained mount pulse: remounting on permission-mode change (via `key`)
+// replays this enter animation, giving the badge a subtle scale/opacity beat.
+const PERMISSION_MODE_PULSE_MOTION = {
+  animate: { opacity: 1, scale: 1 },
+  initial: { opacity: 0.65, scale: 0.9 },
+  transition: { duration: 0.18 }
+}
+
 const PromptInputAgentModeControl = ({
   agentLabel,
   chatLabel,
@@ -682,20 +700,36 @@ const PromptInputPermissionModeControl = ({
   }
 
   return (
-    <ToggleButton
-      aria-label={toggleLabel}
-      className={cn(
-        "h-8 min-w-0 shrink-0 px-2.5 text-xs",
-        SELECTED_CLASS_BY_PERMISSION_MODE[mode]
-      )}
-      isDisabled={disabled}
-      isSelected
-      onPress={handlePress}
-      size="sm"
+    <motion.span
+      className="inline-flex shrink-0"
+      key={mode}
+      {...PERMISSION_MODE_PULSE_MOTION}
     >
-      <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
-      <span>{labelByMode[mode]}</span>
-    </ToggleButton>
+      <Tooltip delay={300}>
+        <ToggleButton
+          aria-label={toggleLabel}
+          className={cn(
+            "h-8 min-w-0 shrink-0 px-2.5 text-xs",
+            SELECTED_CLASS_BY_PERMISSION_MODE[mode]
+          )}
+          isDisabled={disabled}
+          isSelected
+          onPress={handlePress}
+          size="sm"
+          {...FOCUSABLE_TAB_INDEX}
+        >
+          <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
+          <span>{labelByMode[mode]}</span>
+        </ToggleButton>
+        <Tooltip.Content className="flex items-center gap-1.5">
+          <span>{toggleLabel}</span>
+          <Kbd>
+            <Kbd.Abbr keyValue="shift" />
+            <Kbd.Content>Tab</Kbd.Content>
+          </Kbd>
+        </Tooltip.Content>
+      </Tooltip>
+    </motion.span>
   )
 }
 

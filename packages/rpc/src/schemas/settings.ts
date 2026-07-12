@@ -253,6 +253,10 @@ const AGENT_RETRY_SETTINGS_DEFAULT = {
   retryTransientFailures: true
 } as const
 
+const AGENT_RTK_SETTINGS_DEFAULT = {
+  autoRewrite: true
+} as const
+
 const DEFAULT_AGENT_APPROVAL_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 const AGENT_APPROVAL_SETTINGS_DEFAULT = {
@@ -281,6 +285,7 @@ const AGENT_SETTINGS_DEFAULT = {
   profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
   retry: AGENT_RETRY_SETTINGS_DEFAULT,
+  rtk: AGENT_RTK_SETTINGS_DEFAULT,
   sandbox: AGENT_SANDBOX_SETTINGS_DEFAULT
 } as const
 
@@ -386,6 +391,10 @@ export const AgentRetrySettingsSchema = z.object({
   retryTransientFailures: z.boolean().default(true)
 })
 
+export const AgentRtkSettingsSchema = z.object({
+  autoRewrite: z.boolean().default(true)
+})
+
 export const AgentApprovalSettingsSchema = z.object({
   approvalTtlMs: z
     .number()
@@ -426,6 +435,7 @@ export const AgentSettingsSchema = z.object({
   profiles: z.array(AgentProfileSchema).default([]),
   requireApprovalForWrites: z.boolean().default(true),
   retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),
+  rtk: AgentRtkSettingsSchema.default(AGENT_RTK_SETTINGS_DEFAULT),
   sandbox: AgentSandboxSettingsSchema.default(AGENT_SANDBOX_SETTINGS_DEFAULT)
 })
 
@@ -499,6 +509,7 @@ export type AgentLspSettings = z.infer<typeof AgentLspSettingsSchema>
 export type AgentPermissionMode = z.infer<typeof AgentPermissionModeSchema>
 export type AgentProfile = z.infer<typeof AgentProfileSchema>
 export type AgentRetrySettings = z.infer<typeof AgentRetrySettingsSchema>
+export type AgentRtkSettings = z.infer<typeof AgentRtkSettingsSchema>
 export type AgentSandboxSettings = z.infer<typeof AgentSandboxSettingsSchema>
 export type AgentSettings = z.infer<typeof AgentSettingsSchema>
 export type AppIcon = z.infer<typeof AppIconSchema>

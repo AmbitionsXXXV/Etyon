@@ -18,6 +18,8 @@ import {
   CursorAuthStartLoginOutputSchema,
   CursorAuthStatusOutputSchema,
   CursorModelsOutputSchema,
+  DeleteMemoryEntryInputSchema,
+  DeleteMemoryEntryOutputSchema,
   EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
   GitProjectDiffInputSchema,
@@ -101,7 +103,11 @@ import { listSystemFonts } from "@/main/fonts"
 import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
-import { getMemoryStats, listMemoryEntries } from "@/main/memory"
+import {
+  deleteMemoryEntry,
+  getMemoryStats,
+  listMemoryEntries
+} from "@/main/memory"
 import {
   installMemoryEmbeddingModel,
   listMemoryEmbeddingModels
@@ -252,13 +258,24 @@ const gitProjectDiff = rpc
 const memoryList = rpc
   .input(ListMemoryEntriesInputSchema)
   .output(MemoryEntriesOutputSchema)
-  .handler(async ({ context, input }) => ({
-    entries: await listMemoryEntries(context.db, input.limit)
-  }))
+  .handler(({ context, input }) =>
+    listMemoryEntries(context.db, {
+      limit: input.limit,
+      offset: input.offset,
+      query: input.query
+    })
+  )
 
 const memoryStats = rpc
   .output(MemoryStatsOutputSchema)
   .handler(({ context }) => getMemoryStats(context.db))
+
+const memoryDelete = rpc
+  .input(DeleteMemoryEntryInputSchema)
+  .output(DeleteMemoryEntryOutputSchema)
+  .handler(async ({ context, input }) => ({
+    deleted: await deleteMemoryEntry(context.db, input.id)
+  }))
 
 const memoryEmbeddingModelsList = rpc
   .output(MemoryEmbeddingModelsOutputSchema)
@@ -685,6 +702,7 @@ export const router = {
     emit: loggerEmit
   },
   memory: {
+    delete: memoryDelete,
     embeddingModels: {
       install: memoryEmbeddingModelsInstall,
       list: memoryEmbeddingModelsList
