@@ -19,7 +19,12 @@ export default defineConfig({
       formats: ["es"]
     },
     rolldownOptions: {
-      external: ["@vscode/ripgrep", "electron-liquid-glass", "font-list"],
+      external: [
+        "@lydell/node-pty",
+        "@vscode/ripgrep",
+        "electron-liquid-glass",
+        "font-list"
+      ],
       output: {
         banner: ESM_SHIMS
       }

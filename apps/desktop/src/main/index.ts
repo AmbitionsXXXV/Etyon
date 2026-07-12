@@ -21,6 +21,8 @@ import {
   syncStartupSettings
 } from "@/main/startup"
 import { stopTelegramBridge, syncTelegramBridge } from "@/main/telegram/bridge"
+import { registerTerminalIpcHandlers } from "@/main/terminal/ipc"
+import { disposeAllPtys } from "@/main/terminal/pty-manager"
 import { destroyTray, setupTray } from "@/main/tray"
 import {
   createSettingsWindow,
@@ -35,6 +37,7 @@ if (started) {
 }
 
 registerNativeIpcHandlers()
+registerTerminalIpcHandlers()
 
 const handleAppReady = async (): Promise<void> => {
   const appDisplayName = getAppDisplayName()
@@ -117,6 +120,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   setAppQuitting(true)
+  disposeAllPtys()
   stopServer()
   stopTelegramBridge()
   destroyTray()

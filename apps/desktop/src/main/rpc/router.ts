@@ -64,6 +64,11 @@ import {
   PromptTemplatesListOutputSchema,
   TelegramTestConnectionInputSchema,
   TelegramTestConnectionOutputSchema,
+  TerminalDisposeInputSchema,
+  TerminalEnsureInputSchema,
+  TerminalEnsureOutputSchema,
+  TerminalMutationOutputSchema,
+  TerminalResizeInputSchema,
   TestProxyInputSchema,
   TestProxyOutputSchema,
   RtkTokenSavingsOutputSchema,
@@ -142,6 +147,11 @@ import { listSkillPromptTemplates, listSkills } from "@/main/skills"
 import { startupSettingsEqual, syncStartupSettings } from "@/main/startup"
 import { syncTelegramBridge } from "@/main/telegram/bridge"
 import { testTelegramConnection } from "@/main/telegram/test-connection"
+import {
+  disposePty,
+  ensurePtySession,
+  resizePty
+} from "@/main/terminal/pty-manager"
 
 const loggerEmit = rpc.input(LogEventSchema).handler(({ context, input }) => {
   const enriched = enrichLogEvent({
@@ -480,6 +490,40 @@ const telegramTestConnection = rpc
   .output(TelegramTestConnectionOutputSchema)
   .handler(({ input }) => testTelegramConnection(input.botToken))
 
+const terminalDispose = rpc
+  .input(TerminalDisposeInputSchema)
+  .output(TerminalMutationOutputSchema)
+  .handler(({ input }) => {
+    disposePty(input.sessionId)
+    return { ok: true as const }
+  })
+
+const terminalEnsure = rpc
+  .input(TerminalEnsureInputSchema)
+  .output(TerminalEnsureOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return ensurePtySession({
+      cols: input.cols,
+      cwd: session.projectPath,
+      rows: input.rows,
+      sessionId: input.sessionId
+    })
+  })
+
+const terminalResize = rpc
+  .input(TerminalResizeInputSchema)
+  .output(TerminalMutationOutputSchema)
+  .handler(({ input }) => {
+    resizePty(input.sessionId, input.cols, input.rows)
+    return { ok: true as const }
+  })
+
 const proxyTestRpc = rpc
   .input(TestProxyInputSchema)
   .output(TestProxyOutputSchema)
@@ -752,6 +796,11 @@ export const router = {
   },
   telegram: {
     testConnection: telegramTestConnection
+  },
+  terminal: {
+    dispose: terminalDispose,
+    ensure: terminalEnsure,
+    resize: terminalResize
   },
   tokenSavings: {
     get: tokenSavingsGet

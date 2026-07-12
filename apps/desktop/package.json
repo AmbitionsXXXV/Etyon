@@ -38,6 +38,7 @@
     "@hugeicons/core-free-icons": "catalog:",
     "@hugeicons/react": "catalog:",
     "@libsql/client": "^0.17.4",
+    "@lydell/node-pty": "^1.2.0-beta.12",
     "@orpc/client": "^1.14.7",
     "@orpc/server": "^1.14.7",
     "@orpc/tanstack-query": "^1.14.7",

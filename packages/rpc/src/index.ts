@@ -326,6 +326,20 @@ export type {
 export { ServerUrlOutputSchema } from "./schemas/server"
 export type { ServerUrlOutput } from "./schemas/server"
 export {
+  TerminalDisposeInputSchema,
+  TerminalEnsureInputSchema,
+  TerminalEnsureOutputSchema,
+  TerminalMutationOutputSchema,
+  TerminalResizeInputSchema
+} from "./schemas/terminal"
+export type {
+  TerminalDisposeInput,
+  TerminalEnsureInput,
+  TerminalEnsureOutput,
+  TerminalMutationOutput,
+  TerminalResizeInput
+} from "./schemas/terminal"
+export {
   SetCollapsedProjectsInputSchema,
   SetProjectOrderInputSchema,
   SetSidebarWidthInputSchema,
