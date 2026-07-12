@@ -17,7 +17,11 @@ import { parse } from "acorn"
  * remain reachable via `.constructor.constructor`), so this is defense against
  * a buggy/confused script, not a sandbox for hostile code. If workflow scripts
  * ever become untrusted, move to isolated-vm / QuickJS and stop injecting real
- * host constructors. The `runAgent` seam is separately responsible for keeping
+ * host constructors.
+ * Since plan 006, script execution is approval-gated outside bypass mode
+ * (needsWorkflowApproval), so a hostile script additionally requires explicit
+ * user consent — approval is the boundary; the vm is only accident containment.
+ * The `runAgent` seam is separately responsible for keeping
  * every spawned agent within its own permission envelope.
  */
 

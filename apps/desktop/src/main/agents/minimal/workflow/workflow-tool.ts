@@ -17,6 +17,7 @@ import { getDb } from "@/main/db"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
 import { getSettings } from "@/main/settings"
+import { needsWorkflowApproval } from "@/shared/agents/permission-mode"
 import { resolveProfileById } from "@/shared/agents/profiles"
 
 /**
@@ -46,7 +47,7 @@ The script must open with a literal meta export, then orchestrate agents:
 - phase(title), log(message), args (your input args), budget — progress and inputs.
 - return the synthesized result (any JSON-serializable value).
 
-Rules: the script must be deterministic — Date.now(), Math.random(), and new Date() are unavailable. A failed sub-agent resolves to null, so null-check results before synthesizing. Concurrency is bounded automatically; require/fs/network/process are not exposed.`
+Rules: the script must be deterministic — Date.now(), Math.random(), and new Date() are unavailable. A failed sub-agent resolves to null, so null-check results before synthesizing. Concurrency is bounded automatically; require/fs/network/process are not exposed. The script requires user approval before it runs (except in bypass permission mode), like bash.`
 
 const clampJson = (value: unknown): string => {
   try {
@@ -70,6 +71,7 @@ export const buildWorkflowTool = ({
   chatSessionId,
   parentModelId,
   parentRunId,
+  permissionMode,
   projectPath,
   writer
 }: DelegateToolContext) =>
@@ -231,5 +233,6 @@ export const buildWorkflowTool = ({
         args: z.unknown().optional(),
         script: z.string().min(1)
       })
-      .strict()
+      .strict(),
+    needsApproval: () => needsWorkflowApproval(permissionMode)
   })

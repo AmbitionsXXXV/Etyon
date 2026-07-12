@@ -6,7 +6,8 @@ import {
   isAgentPermissionMode,
   isDangerousShellCommand,
   needsFileEditApproval,
-  needsShellApproval
+  needsShellApproval,
+  needsWorkflowApproval
 } from "@/shared/agents/permission-mode"
 
 describe("isAgentPermissionMode", () => {
@@ -80,6 +81,14 @@ describe("needsFileEditApproval", () => {
     expect(needsFileEditApproval("default")).toBe(true)
     expect(needsFileEditApproval("acceptEdits")).toBe(false)
     expect(needsFileEditApproval("bypass")).toBe(false)
+  })
+})
+
+describe("needsWorkflowApproval", () => {
+  it("gates in every mode except bypass", () => {
+    expect(needsWorkflowApproval("default")).toBe(true)
+    expect(needsWorkflowApproval("acceptEdits")).toBe(true)
+    expect(needsWorkflowApproval("bypass")).toBe(false)
   })
 })
 

@@ -126,6 +126,14 @@ export const needsFileEditApproval = (mode: AgentPermissionMode): boolean =>
   mode === "default"
 
 /**
+ * Workflow scripts execute model-authored JS in-process, which is strictly
+ * more powerful than a shell command, so only bypass mode may auto-run them.
+ * Unlike bash there is no remembered-command allowlist: scripts are one-off.
+ */
+export const needsWorkflowApproval = (mode: AgentPermissionMode): boolean =>
+  mode !== "bypass"
+
+/**
  * Whether a `bash` call needs approval. bypass never gates; destructive
  * commands always gate outside bypass and ignore the remembered allowlist;
  * otherwise a remembered exact command auto-runs and everything else is gated.
