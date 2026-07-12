@@ -5,6 +5,7 @@ import { compactChatMessages } from "@/main/chat-auto-compact"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
 import { chatMessages, chatSessions } from "@/main/db/schema"
+import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
 import { upsertChatSessionMemoryEntry } from "@/main/memory"
 import {
@@ -176,33 +177,35 @@ export const replaceChatMessages = async ({
     ? session.title
     : buildChatSessionTitle(messages)
 
-  await db.transaction(async (tx) => {
-    await tx.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId))
+  await runExclusiveDbWrite(() =>
+    db.transaction(async (tx) => {
+      await tx.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId))
 
-    if (normalizedMessages.length > 0) {
-      await tx.insert(chatMessages).values(
-        normalizedMessages.map((message, index) => ({
-          agentProjectionRunId: getAgentProjectionRunId(message.metadata),
-          createdAt: now,
-          messageId: message.id,
-          metadataJson: serializeOptionalJson(message.metadata),
-          partsJson: JSON.stringify(message.parts),
-          role: message.role,
-          sequence: index,
-          sessionId,
+      if (normalizedMessages.length > 0) {
+        await tx.insert(chatMessages).values(
+          normalizedMessages.map((message, index) => ({
+            agentProjectionRunId: getAgentProjectionRunId(message.metadata),
+            createdAt: now,
+            messageId: message.id,
+            metadataJson: serializeOptionalJson(message.metadata),
+            partsJson: JSON.stringify(message.parts),
+            role: message.role,
+            sequence: index,
+            sessionId,
+            updatedAt: now
+          }))
+        )
+      }
+
+      await tx
+        .update(chatSessions)
+        .set({
+          title: nextTitle,
           updatedAt: now
-        }))
-      )
-    }
-
-    await tx
-      .update(chatSessions)
-      .set({
-        title: nextTitle,
-        updatedAt: now
-      })
-      .where(eq(chatSessions.id, sessionId))
-  })
+        })
+        .where(eq(chatSessions.id, sessionId))
+    })
+  )
 
   await upsertChatSessionMemory({
     db,

@@ -12,6 +12,7 @@ import {
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
+import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
 import {
   isImageOutputModelSelection,
@@ -193,12 +194,14 @@ chatRoute.post("/chat", async (c) => {
 
   if (settings.agents.enabled) {
     try {
-      agentRunId = await startAgentRun({
-        chatSessionId: sessionId,
-        db,
-        modelId: effectiveModelId,
-        profileId: activeProfile.id
-      })
+      agentRunId = await runExclusiveDbWrite(() =>
+        startAgentRun({
+          chatSessionId: sessionId,
+          db,
+          modelId: effectiveModelId,
+          profileId: activeProfile.id
+        })
+      )
     } catch (error) {
       logger.error("agent_run_start_failed", { error })
     }
@@ -229,13 +232,15 @@ chatRoute.post("/chat", async (c) => {
 
         // Best-effort: the durable run log must never break chat persistence.
         try {
-          await recordAgentRunOutcome({
-            assistantStartIndex,
-            db,
-            messages: nextMessages,
-            outcome: agentOutcome,
-            runId: agentRunId
-          })
+          await runExclusiveDbWrite(() =>
+            recordAgentRunOutcome({
+              assistantStartIndex,
+              db,
+              messages: nextMessages,
+              outcome: agentOutcome,
+              runId: agentRunId
+            })
+          )
         } catch (error) {
           logger.error("agent_run_record_failed", { error })
         }

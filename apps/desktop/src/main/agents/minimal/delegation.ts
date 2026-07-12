@@ -840,13 +840,15 @@ export const buildDelegateTool = ({
       let childRunId: string | null = null
 
       try {
-        childRunId = await startAgentRun({
-          chatSessionId,
-          db,
-          modelId,
-          parentRunId,
-          profileId: childProfile.id
-        })
+        childRunId = await runExclusiveDbWrite(() =>
+          startAgentRun({
+            chatSessionId,
+            db,
+            modelId,
+            parentRunId,
+            profileId: childProfile.id
+          })
+        )
         const run = await runDelegatedAgent({
           childProfile,
           childRunId,

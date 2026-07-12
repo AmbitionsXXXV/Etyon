@@ -24,6 +24,7 @@ import {
   agentRuns,
   agentToolCalls
 } from "@/main/db/schema"
+import { runExclusiveDbWrite } from "@/main/db/write-lock"
 
 const { mockedAppPath, mockedHomeDir } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -792,6 +793,45 @@ describe("agent event store", () => {
     expect(toolCall?.state).toBe("finished")
     expect(toolCall?.approvalState).toBe("not_required")
     expect(run?.status).toBe("succeeded")
+  })
+
+  it("serializes two concurrent startAgentRun calls through the write lock", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+
+    const [firstRunId, secondRunId] = await Promise.all([
+      runExclusiveDbWrite(() =>
+        startAgentRun({
+          chatSessionId: session.id,
+          db,
+          modelId: null,
+          profileId
+        })
+      ),
+      runExclusiveDbWrite(() =>
+        startAgentRun({
+          chatSessionId: session.id,
+          db,
+          modelId: null,
+          profileId
+        })
+      )
+    ])
+
+    expect(firstRunId).not.toBe(secondRunId)
+
+    const [firstRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, firstRunId))
+    const [secondRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, secondRunId))
+
+    expect(firstRun?.status).toBe("running")
+    expect(secondRun?.status).toBe("running")
   })
 
   describe("redactSecretsFromJson", () => {
