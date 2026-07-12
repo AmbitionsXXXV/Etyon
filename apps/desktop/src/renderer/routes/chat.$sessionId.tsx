@@ -1438,6 +1438,16 @@ const ChatRuntime = ({
     setAgentMode(getChatAgentModeFromAgentsEnabled(agentsEnabled))
   }, [agentsEnabled, selectedSession.id])
 
+  // Adopt the configured default when settings resolve after mount, and drop
+  // any per-session escalation (e.g. bypass), queued follow-ups, and message
+  // edits when switching sessions.
+  useEffect(() => {
+    setPermissionMode(defaultPermissionMode)
+    setQueuedMessages([])
+    setEditingMessageId(null)
+    setEditingMessageText("")
+  }, [defaultPermissionMode, selectedSession.id])
+
   // Re-derive the image toggle whenever the selected model changes: a newly
   // capable model defaults ON, a non-capable model forces OFF, and an unchanged
   // capability preserves the user's choice.
@@ -1771,9 +1781,10 @@ const ChatRuntime = ({
       mentions: ChatMention[]
       text: string
     }): Promise<void> => {
-      // While a run is in flight, hold the message in the queue instead of
-      // sending; it drains automatically once the turn settles.
-      if (isRequestPending) {
+      // While a run is in flight — or parked on a pending tool approval, which
+      // reports status "ready" — hold the message in the queue instead of
+      // sending; it drains automatically once the turn fully settles.
+      if (isRequestPending || isAwaitingToolApproval) {
         setQueuedMessages((currentMessages) => [
           ...currentMessages,
           { id: crypto.randomUUID(), mentions, text }
@@ -1786,7 +1797,7 @@ const ChatRuntime = ({
 
       return Promise.resolve()
     },
-    [isRequestPending, sendPromptMessage]
+    [isAwaitingToolApproval, isRequestPending, sendPromptMessage]
   )
 
   const handleQueuedMessagesReorder = useCallback(
