@@ -9,10 +9,15 @@ import {
   describeChatStreamError
 } from "@/main/server/routes/build-chat-stream-response"
 
-const { runAgentLoopMock, streamTextMock } = vi.hoisted(() => ({
-  runAgentLoopMock: vi.fn(),
-  streamTextMock: vi.fn()
-}))
+const { readWorkspaceRulesMock, runAgentLoopMock, streamTextMock } = vi.hoisted(
+  () => ({
+    readWorkspaceRulesMock: vi.fn<
+      () => Promise<{ content: string; relativePath: string } | null>
+    >(() => Promise.resolve(null)),
+    runAgentLoopMock: vi.fn(),
+    streamTextMock: vi.fn()
+  })
+)
 
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof Ai>()
@@ -30,6 +35,12 @@ vi.mock("@/main/agents/minimal/agent-loop", () => ({
 vi.mock("@/main/agents/minimal/agent-toolset", () => ({
   buildAgentSystemPrompt: () => "agent instructions",
   buildAgentToolset: () => ({})
+}))
+
+vi.mock("@/main/agents/minimal/workspace-core", () => ({
+  getWorkspaceCore: () => ({
+    readWorkspaceRules: readWorkspaceRulesMock
+  })
 }))
 
 vi.mock("@/main/server/lib/providers", () => ({
@@ -131,6 +142,7 @@ const buildBaseOptions = () => ({
 describe("buildChatStreamResponse", () => {
   it("streams plain chat through streamText when agents are disabled", async () => {
     streamTextMock.mockReturnValue(createStreamTextResult())
+    readWorkspaceRulesMock.mockClear()
 
     const options = buildBaseOptions()
     const response = buildChatStreamResponse({
@@ -147,11 +159,16 @@ describe("buildChatStreamResponse", () => {
 
     expect(streamOptions?.system).toBe("base system")
     expect(streamOptions?.messages).toEqual(options.modelMessages)
+    expect(readWorkspaceRulesMock).not.toHaveBeenCalled()
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
   })
 
   it("routes agent-enabled requests through the self-owned loop", async () => {
     streamTextMock.mockClear()
+    readWorkspaceRulesMock.mockResolvedValueOnce({
+      content: "Use workspace conventions.",
+      relativePath: "AGENTS.md"
+    })
     runAgentLoopMock.mockImplementation(
       ({ writer }: { writer: { write: (chunk: unknown) => void } }) => {
         writer.write({ type: "start" })
@@ -188,6 +205,9 @@ describe("buildChatStreamResponse", () => {
     expect(loopOptions?.maxSteps).toBe(5)
     expect(loopOptions?.messages).toEqual(options.modelMessages)
     expect(loopOptions?.system).toContain("agent instructions")
+    expect(loopOptions?.system).toContain(
+      "## Workspace rules (from AGENTS.md)\n\nUse workspace conventions."
+    )
     expect(loopOptions?.system).toContain("base system")
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)
 
@@ -198,6 +218,29 @@ describe("buildChatStreamResponse", () => {
     expect(persistedOutcome).toEqual(
       expect.objectContaining({ exitReason: "completed" })
     )
+  })
+
+  it("omits workspace rules when automatic loading is disabled", async () => {
+    readWorkspaceRulesMock.mockClear()
+
+    const options = buildBaseOptions()
+    const response = buildChatStreamResponse({
+      ...options,
+      settings: AppSettingsSchema.parse({
+        agents: {
+          autoLoadWorkspaceRules: false,
+          enabled: true
+        }
+      })
+    })
+
+    await readResponseText(response)
+
+    expect(readWorkspaceRulesMock).not.toHaveBeenCalled()
+
+    const loopOptions = runAgentLoopMock.mock.calls.at(-1)?.[0]
+
+    expect(loopOptions?.system).not.toContain("## Workspace rules")
   })
 
   it("stamps the aborted exit reason even when the loop settles late", async () => {

@@ -23,6 +23,7 @@ import {
   buildAgentToolset
 } from "@/main/agents/minimal/agent-toolset"
 import { createReasoningTimingTap } from "@/main/agents/minimal/reasoning-timing-tap"
+import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import {
   formatPromptTemplateInvocation,
   parseCommandArgs
@@ -625,8 +626,16 @@ export const buildChatStreamResponse = ({
       projectPath,
       writer
     })
+    const workspaceRules = settings.agents.autoLoadWorkspaceRules
+      ? await getWorkspaceCore(projectPath).readWorkspaceRules()
+      : null
     const agentSystem = [
       buildAgentSystemPrompt(profile),
+      ...(workspaceRules
+        ? [
+            `## Workspace rules (from ${workspaceRules.relativePath})\n\n${workspaceRules.content}`
+          ]
+        : []),
       ...effectiveSystemPrompts
     ].join("\n\n")
 

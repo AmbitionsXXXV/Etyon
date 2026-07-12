@@ -503,6 +503,10 @@
         "refresh": "刷新",
         "title": "Approval Inbox"
       },
+      "autoLoadWorkspaceRules": {
+        "description": "每轮 agent 运行时读取项目根目录的 AGENTS.md，缺失时回退到 CLAUDE.md。",
+        "label": "自动加载 workspace rules"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "把当前 roster 注入 specialist prompt，让 subagent 可以把任务转给更合适的角色。",

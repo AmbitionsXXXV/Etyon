@@ -176,6 +176,13 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
     [agents, onChange]
   )
 
+  const handleAutoLoadWorkspaceRulesChange = useCallback(
+    (autoLoadWorkspaceRules: boolean) => {
+      onChange({ ...agents, autoLoadWorkspaceRules })
+    },
+    [agents, onChange]
+  )
+
   const handleMaxStepsChange = useCallback(
     (value: number) => {
       if (Number.isNaN(value)) {
@@ -268,6 +275,29 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
             aria-label={t("settings.agents.control.enabled.label")}
             isSelected={agents.enabled}
             onChange={handleEnabledChange}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">
+              {t("settings.agents.autoLoadWorkspaceRules.label")}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t("settings.agents.autoLoadWorkspaceRules.description")}
+            </p>
+          </div>
+          <Switch
+            aria-label={t("settings.agents.autoLoadWorkspaceRules.label")}
+            isDisabled={!agents.enabled}
+            isSelected={agents.autoLoadWorkspaceRules}
+            onChange={handleAutoLoadWorkspaceRulesChange}
           >
             <Switch.Content>
               <Switch.Control>

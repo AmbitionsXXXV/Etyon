@@ -274,6 +274,7 @@ const AGENT_SANDBOX_SETTINGS_DEFAULT = {
 const AGENT_SETTINGS_DEFAULT = {
   allowSubagentDelegation: false,
   approvals: AGENT_APPROVAL_SETTINGS_DEFAULT,
+  autoLoadWorkspaceRules: true,
   defaultPermissionMode: "default",
   defaultProfileId: "general-purpose",
   enabled: false,
@@ -417,6 +418,7 @@ export const AgentSettingsSchema = z.object({
   approvals: AgentApprovalSettingsSchema.default(
     AGENT_APPROVAL_SETTINGS_DEFAULT
   ),
+  autoLoadWorkspaceRules: z.boolean().default(true),
   defaultPermissionMode: AgentPermissionModeSchema.default("default"),
   defaultProfileId: z.string().default("general-purpose"),
   enabled: z.boolean().default(false),

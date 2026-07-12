@@ -189,6 +189,7 @@ describe("AppSettingsSchema", () => {
         approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
+      autoLoadWorkspaceRules: true,
       defaultPermissionMode: "default",
       defaultProfileId: "general-purpose",
       enabled: false,
@@ -235,6 +236,7 @@ describe("AppSettingsSchema", () => {
         approvalTtlMs: 604_800_000,
         commandAllowlist: []
       },
+      autoLoadWorkspaceRules: true,
       defaultPermissionMode: "default",
       defaultProfileId: "coder",
       enabled: true,

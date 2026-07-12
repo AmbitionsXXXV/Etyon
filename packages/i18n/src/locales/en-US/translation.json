@@ -503,6 +503,10 @@
         "refresh": "Refresh",
         "title": "Approval Inbox"
       },
+      "autoLoadWorkspaceRules": {
+        "description": "Read AGENTS.md, or CLAUDE.md as a fallback, from the project root for every agent turn.",
+        "label": "Load workspace rules automatically"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "Let specialist prompts include the active roster so a subagent can hand work to a better fit.",

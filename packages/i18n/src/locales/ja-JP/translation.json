@@ -503,6 +503,10 @@
         "refresh": "更新",
         "title": "Approval Inbox"
       },
+      "autoLoadWorkspaceRules": {
+        "description": "agent の各ターンでプロジェクトルートの AGENTS.md を読み込み、ない場合は CLAUDE.md を使用します。",
+        "label": "workspace rules を自動読み込み"
+      },
       "control": {
         "allowSubagentDelegation": {
           "description": "現在の roster を specialist prompt に含め、subagent がより適した役割へ作業を渡せるようにします。",

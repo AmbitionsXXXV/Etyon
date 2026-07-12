@@ -28,6 +28,43 @@ fs.symlinkSync(
   path.join(projectPath, "escape-link")
 )
 
+const agentsRulesProjectPath = path.join(projectPath, "rules-agents")
+const claudeRulesProjectPath = path.join(projectPath, "rules-claude")
+const emptyRulesProjectPath = path.join(projectPath, "rules-empty")
+const oversizedRulesProjectPath = path.join(projectPath, "rules-oversized")
+const symlinkRulesProjectPath = path.join(projectPath, "rules-symlink")
+
+for (const rulesProjectPath of [
+  agentsRulesProjectPath,
+  claudeRulesProjectPath,
+  emptyRulesProjectPath,
+  oversizedRulesProjectPath,
+  symlinkRulesProjectPath
+]) {
+  fs.mkdirSync(rulesProjectPath)
+}
+
+fs.writeFileSync(
+  path.join(agentsRulesProjectPath, "AGENTS.md"),
+  "agent rules\n"
+)
+fs.writeFileSync(
+  path.join(agentsRulesProjectPath, "CLAUDE.md"),
+  "ignored fallback\n"
+)
+fs.writeFileSync(
+  path.join(claudeRulesProjectPath, "CLAUDE.md"),
+  "claude rules\n"
+)
+fs.writeFileSync(
+  path.join(oversizedRulesProjectPath, "AGENTS.md"),
+  "x".repeat(24 * 1024 + 1)
+)
+fs.symlinkSync(
+  path.join(outsidePath, "secret.txt"),
+  path.join(symlinkRulesProjectPath, "AGENTS.md")
+)
+
 const workspace = getWorkspaceCore(projectPath)
 
 afterAll(() => {
@@ -83,6 +120,55 @@ describe("workspace-core", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("secret-path")
     }
+  })
+
+  it("reads AGENTS.md workspace rules before CLAUDE.md", async () => {
+    const result = await getWorkspaceCore(
+      agentsRulesProjectPath
+    ).readWorkspaceRules()
+
+    expect(result).toEqual({
+      content: "agent rules\n",
+      relativePath: "AGENTS.md"
+    })
+  })
+
+  it("falls back to CLAUDE.md workspace rules", async () => {
+    const result = await getWorkspaceCore(
+      claudeRulesProjectPath
+    ).readWorkspaceRules()
+
+    expect(result).toEqual({
+      content: "claude rules\n",
+      relativePath: "CLAUDE.md"
+    })
+  })
+
+  it("returns null when workspace rules are absent", async () => {
+    const result = await getWorkspaceCore(
+      emptyRulesProjectPath
+    ).readWorkspaceRules()
+
+    expect(result).toBeNull()
+  })
+
+  it("truncates oversized workspace rules with a marker", async () => {
+    const result = await getWorkspaceCore(
+      oversizedRulesProjectPath
+    ).readWorkspaceRules()
+
+    expect(result).not.toBeNull()
+    expect(result?.content).toBe(
+      `${"x".repeat(24 * 1024)}\n\n[workspace rules truncated at 24KB]`
+    )
+  })
+
+  it("rejects workspace rules symlinked outside the project root", async () => {
+    const result = await getWorkspaceCore(
+      symlinkRulesProjectPath
+    ).readWorkspaceRules()
+
+    expect(result).toBeNull()
   })
 
   it("lists directories with entry metadata", async () => {

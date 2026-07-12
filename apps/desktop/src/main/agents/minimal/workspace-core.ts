@@ -41,6 +41,11 @@ export interface WorkspaceFileView {
   info: WorkspaceFileInfo
 }
 
+export interface WorkspaceRules {
+  content: string
+  relativePath: string
+}
+
 export interface WorkspaceWriteFileOptions {
   createParentDirectories?: boolean
   expectedMtimeMs?: number
@@ -74,6 +79,7 @@ export interface WorkspaceCore {
     signal?: AbortSignal
   ) => Promise<WorkspaceResult<WorkspaceFileInfo[]>>
   projectPath: string
+  readWorkspaceRules: () => Promise<WorkspaceRules | null>
   searchContent: (
     options: WorkspaceSearchOptions
   ) => Promise<WorkspaceResult<string>>
@@ -113,6 +119,10 @@ const SECRET_EXTENSIONS = new Set([".key", ".pem", ".p12", ".pfx"])
 const SECRET_SEGMENTS = new Set([".ssh", "secrets"])
 const SEARCH_COMMAND_TIMEOUT_MS = 120_000
 const SEARCH_OUTPUT_MAX_BYTES = 10 * 1024 * 1024
+const WORKSPACE_RULES_CANDIDATES = ["AGENTS.md", "CLAUDE.md"] as const
+const WORKSPACE_RULES_MAX_CHARS = 24 * 1024
+const WORKSPACE_RULES_TRUNCATION_MARKER =
+  "\n\n[workspace rules truncated at 24KB]"
 
 const execFileAsync = promisify(execFile)
 const workspaceWriteQueues = new Map<string, Promise<void>>()
@@ -581,6 +591,62 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
   const getWriteLockKey = (absolutePath: string): string =>
     `${normalizedProjectPath}\0${path.resolve(absolutePath)}`
 
+  const readWorkspaceRules = async (): Promise<WorkspaceRules | null> => {
+    for (const requestedPath of WORKSPACE_RULES_CANDIDATES) {
+      const secretCheck = assertNonSecretPath(requestedPath)
+
+      if (!secretCheck.ok) {
+        return null
+      }
+
+      const resolvedPath = resolveProjectPath(requestedPath)
+
+      if (!resolvedPath.ok) {
+        return null
+      }
+
+      let stats: fsSync.Stats
+
+      try {
+        stats = await fs.lstat(resolvedPath.value.absolutePath)
+      } catch (error) {
+        if (getNodeErrorCode(error) === "ENOENT") {
+          continue
+        }
+
+        return null
+      }
+
+      const containmentCheck = await ensureExistingAncestorInsideProject({
+        absolutePath: resolvedPath.value.absolutePath,
+        requestedPath
+      })
+
+      if (!containmentCheck.ok || !stats.isFile()) {
+        return null
+      }
+
+      try {
+        const content = await fs.readFile(
+          resolvedPath.value.absolutePath,
+          "utf-8"
+        )
+
+        return {
+          content:
+            content.length > WORKSPACE_RULES_MAX_CHARS
+              ? `${content.slice(0, WORKSPACE_RULES_MAX_CHARS)}${WORKSPACE_RULES_TRUNCATION_MARKER}`
+              : content,
+          relativePath: resolvedPath.value.relativePath
+        }
+      } catch {
+        return null
+      }
+    }
+
+    return null
+  }
+
   return {
     fileStat,
     listDir: async (requestedPath, signal) => {
@@ -640,6 +706,7 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
       }
     },
     projectPath: normalizedProjectPath,
+    readWorkspaceRules,
     searchContent: ({
       context,
       glob,
