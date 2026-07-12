@@ -193,6 +193,9 @@
       "statusModified": "修改",
       "statusRenamed": "重命名",
       "statusUntracked": "未跟踪",
+      "terminalLabel": "交互式终端",
+      "terminalUnavailable": "无法为此会话启动终端。",
+      "terminalView": "终端",
       "title": "项目上下文",
       "truncated": "Diff 已截断",
       "viewsLabel": "项目上下文视图"

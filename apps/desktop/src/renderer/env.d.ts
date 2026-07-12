@@ -1,7 +1,9 @@
-import type { ElectronAPI } from "@electron-toolkit/preload"
+import type { EtyonElectronApi } from "@preload/index"
 
 declare global {
   interface Window {
-    electron: ElectronAPI
+    // The preload exposes `@electron-toolkit/preload`'s `ElectronAPI` plus the
+    // terminal data-channel bridge (`onTerminalData` / `sendTerminalInput`).
+    electron: EtyonElectronApi
   }
 }

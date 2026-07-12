@@ -21,6 +21,7 @@ import { queryClient } from "./query-client"
 
 import "@etyon/ui/globals.css"
 import "streamdown/styles.css"
+import "@xterm/xterm/css/xterm.css"
 
 initLogger((event) => {
   rpcClient.logger.emit(event)

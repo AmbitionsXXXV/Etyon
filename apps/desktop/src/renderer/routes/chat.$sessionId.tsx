@@ -31,7 +31,8 @@ import {
   GitCompareIcon,
   Image01Icon,
   PanelRightCloseIcon,
-  PanelRightOpenIcon
+  PanelRightOpenIcon,
+  TerminalIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useHotkey } from "@tanstack/react-hotkeys"
@@ -94,6 +95,7 @@ import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
   PROJECT_CONTEXT_FILES_TAB_ID,
+  PROJECT_CONTEXT_TERMINAL_TAB_ID,
   shouldFetchProjectGitDiff
 } from "@/renderer/lib/chat/project-context-panel"
 import type {
@@ -304,6 +306,11 @@ const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
     icon: GitCommitIcon,
     labelKey: "chat.projectPanel.commitView",
     view: PROJECT_CONTEXT_COMMIT_TAB_ID
+  },
+  {
+    icon: TerminalIcon,
+    labelKey: "chat.projectPanel.terminalView",
+    view: PROJECT_CONTEXT_TERMINAL_TAB_ID
   }
 ] as const
 
@@ -1635,12 +1642,37 @@ const ChatRuntime = ({
     setIsImageMode((previous) => !previous)
   }, [isImageModeToggleDisabled])
 
+  // Mod+J reveals the terminal tab (opening the project panel if closed), and
+  // toggles it closed when the terminal is already the visible tab — a VS Code-
+  // style terminal toggle. The terminal focuses itself once it becomes visible.
+  const handleToggleTerminal = useCallback(() => {
+    if (
+      isProjectContextOpen &&
+      projectContextView === PROJECT_CONTEXT_TERMINAL_TAB_ID
+    ) {
+      onToggleProjectContext()
+      return
+    }
+
+    onProjectContextViewChange(PROJECT_CONTEXT_TERMINAL_TAB_ID)
+    onProjectContextOpenChange(true)
+  }, [
+    isProjectContextOpen,
+    onProjectContextOpenChange,
+    onProjectContextViewChange,
+    onToggleProjectContext,
+    projectContextView
+  ])
+
   useHotkey("Shift+Tab", handlePermissionModeCycle, {
     enabled: agentMode !== "chat",
     ignoreInputs: false
   })
   useHotkey("Mod+Shift+Tab", handleAgentModeToggle, {
     enabled: !isAgentModeToggleDisabled,
+    ignoreInputs: false
+  })
+  useHotkey("Mod+J", handleToggleTerminal, {
     ignoreInputs: false
   })
 

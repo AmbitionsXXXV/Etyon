@@ -193,6 +193,9 @@
       "statusModified": "変更",
       "statusRenamed": "名前変更",
       "statusUntracked": "未追跡",
+      "terminalLabel": "対話型ターミナル",
+      "terminalUnavailable": "このセッションのターミナルを起動できませんでした。",
+      "terminalView": "ターミナル",
       "title": "プロジェクトコンテキスト",
       "truncated": "Diff は切り詰められました",
       "viewsLabel": "プロジェクトコンテキストビュー"

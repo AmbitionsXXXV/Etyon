@@ -193,6 +193,9 @@
       "statusModified": "Modified",
       "statusRenamed": "Renamed",
       "statusUntracked": "Untracked",
+      "terminalLabel": "Interactive terminal",
+      "terminalUnavailable": "Unable to start a terminal for this session.",
+      "terminalView": "Terminal",
       "title": "Project Context",
       "truncated": "Diff truncated",
       "viewsLabel": "Project context views"

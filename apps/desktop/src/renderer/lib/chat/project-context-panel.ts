@@ -14,12 +14,14 @@ import type { Key } from "react"
 export const PROJECT_CONTEXT_FILES_TAB_ID = "files"
 export const PROJECT_CONTEXT_CHANGES_TAB_ID = "changes"
 export const PROJECT_CONTEXT_COMMIT_TAB_ID = "commit"
+export const PROJECT_CONTEXT_TERMINAL_TAB_ID = "terminal"
 export const PROJECT_CHANGES_SCOPE_AGENT = "agent"
 export const PROJECT_CHANGES_SCOPE_ALL = "all"
 export type ProjectContextPanelView =
   | typeof PROJECT_CONTEXT_FILES_TAB_ID
   | typeof PROJECT_CONTEXT_CHANGES_TAB_ID
   | typeof PROJECT_CONTEXT_COMMIT_TAB_ID
+  | typeof PROJECT_CONTEXT_TERMINAL_TAB_ID
 export type ProjectChangesScope =
   | typeof PROJECT_CHANGES_SCOPE_AGENT
   | typeof PROJECT_CHANGES_SCOPE_ALL
@@ -33,7 +35,8 @@ export const isProjectContextPanelView = (
 ): view is ProjectContextPanelView =>
   view === PROJECT_CONTEXT_FILES_TAB_ID ||
   view === PROJECT_CONTEXT_CHANGES_TAB_ID ||
-  view === PROJECT_CONTEXT_COMMIT_TAB_ID
+  view === PROJECT_CONTEXT_COMMIT_TAB_ID ||
+  view === PROJECT_CONTEXT_TERMINAL_TAB_ID
 
 export const isProjectChangesScope = (
   scope: Key

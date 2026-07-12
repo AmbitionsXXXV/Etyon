@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
 
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
+import { TerminalPanel } from "@/renderer/components/chat/terminal-panel"
 import {
   buildProjectGitStatusSummary,
   buildProjectTreeDirectoryPaths,
@@ -52,6 +53,7 @@ import {
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
   PROJECT_CONTEXT_FILES_TAB_ID,
+  PROJECT_CONTEXT_TERMINAL_TAB_ID,
   PROJECT_FILE_TREE_DEFAULT_SIZE,
   PROJECT_FILE_TREE_MAX_SIZE,
   PROJECT_FILE_TREE_MIN_SIZE
@@ -1050,6 +1052,10 @@ export const ProjectContextPanel = ({
                 ) : null}
                 <Tabs.Indicator />
               </Tabs.Tab>
+              <Tabs.Tab id={PROJECT_CONTEXT_TERMINAL_TAB_ID}>
+                {t("chat.projectPanel.terminalView")}
+                <Tabs.Indicator />
+              </Tabs.Tab>
             </Tabs.List>
           </Tabs.ListContainer>
           <Button
@@ -1110,6 +1116,16 @@ export const ProjectContextPanel = ({
           <ProjectCommitPanel
             changedFiles={changedFiles}
             diffSummary={diffSummary}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
+          id={PROJECT_CONTEXT_TERMINAL_TAB_ID}
+        >
+          <TerminalPanel
+            key={selectedSession.id}
+            sessionId={selectedSession.id}
           />
         </Tabs.Panel>
       </Tabs>
