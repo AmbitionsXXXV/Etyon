@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { cn } from "@etyon/ui/lib/utils"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
   PROJECT_FILE_EMPTY_LINE_CONTENT,
@@ -12,9 +13,15 @@ import type { ProjectFileHighlightedToken } from "@/renderer/lib/chat/project-fi
 
 interface ProjectFileCodeViewerProps {
   content: string
+  highlightLine?: number | null
   language: null | string | undefined
   relativePath: string
 }
+
+const HIGHLIGHTED_LINE_BACKGROUND =
+  "bg-[color-mix(in_oklab,var(--warning)_16%,transparent)]"
+const HIGHLIGHTED_GUTTER_BACKGROUND =
+  "bg-[color-mix(in_oklab,var(--warning)_16%,var(--card))]"
 
 const ProjectFileCodeLine = ({
   line,
@@ -44,12 +51,15 @@ const ProjectFileCodeLine = ({
 
 export const ProjectFileCodeViewer = ({
   content,
+  highlightLine,
   language,
   relativePath
 }: ProjectFileCodeViewerProps) => {
   const [highlightedLines, setHighlightedLines] = useState<
     ProjectFileHighlightedToken[][] | null
   >(null)
+  const highlightedRowRef = useRef<HTMLDivElement | null>(null)
+  const activeHighlightLine = highlightLine ?? null
   const resolvedLanguage = useMemo(
     () =>
       resolveProjectFileViewerLanguage({
@@ -99,6 +109,23 @@ export const ProjectFileCodeViewer = ({
     }
   }, [content, resolvedLanguage])
 
+  // Center the requested line once the content has rendered. Line heights are
+  // fixed (min-h-6 / leading-6), so the row position is stable across the async
+  // Shiki highlight pass and a single scroll after paint lands accurately.
+  useEffect(() => {
+    if (activeHighlightLine === null) {
+      return
+    }
+
+    const frame = requestAnimationFrame(() => {
+      highlightedRowRef.current?.scrollIntoView({ block: "center" })
+    })
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [activeHighlightLine, content])
+
   const lines: (ProjectFileHighlightedToken[] | string)[] =
     highlightedLines ?? plainLines
 
@@ -108,19 +135,35 @@ export const ProjectFileCodeViewer = ({
       className="h-full min-h-0 [scrollbar-gutter:stable] overflow-auto bg-card font-mono text-[12px] leading-6 text-foreground"
     >
       <div className="min-w-max py-2 whitespace-pre">
-        {lines.map((line, lineIndex) => (
-          <div
-            className="grid min-h-6 grid-cols-[3.5rem_minmax(max-content,1fr)]"
-            key={`${lineIndex}-${plainLines[lineIndex] ?? ""}`}
-          >
-            <span className="sticky left-0 z-10 border-r border-border/70 bg-card/95 pr-4 text-right text-muted-foreground/70 tabular-nums select-none">
-              {lineIndex + 1}
-            </span>
-            <code className="min-w-0 px-4">
-              <ProjectFileCodeLine line={line} lineIndex={lineIndex} />
-            </code>
-          </div>
-        ))}
+        {lines.map((line, lineIndex) => {
+          const isHighlighted =
+            activeHighlightLine !== null &&
+            lineIndex + 1 === activeHighlightLine
+
+          return (
+            <div
+              className={cn(
+                "grid min-h-6 grid-cols-[3.5rem_minmax(max-content,1fr)]",
+                isHighlighted && HIGHLIGHTED_LINE_BACKGROUND
+              )}
+              data-line-number={lineIndex + 1}
+              key={`${lineIndex}-${plainLines[lineIndex] ?? ""}`}
+              ref={isHighlighted ? highlightedRowRef : undefined}
+            >
+              <span
+                className={cn(
+                  "sticky left-0 z-10 border-r border-border/70 pr-4 text-right text-muted-foreground/70 tabular-nums select-none",
+                  isHighlighted ? HIGHLIGHTED_GUTTER_BACKGROUND : "bg-card/95"
+                )}
+              >
+                {lineIndex + 1}
+              </span>
+              <code className="min-w-0 px-4">
+                <ProjectFileCodeLine line={line} lineIndex={lineIndex} />
+              </code>
+            </div>
+          )
+        })}
       </div>
     </section>
   )

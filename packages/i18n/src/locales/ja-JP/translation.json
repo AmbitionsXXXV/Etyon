@@ -180,6 +180,8 @@
       "filesTitle": "ファイル構造",
       "filesView": "ファイル",
       "loading": "読み込み中...",
+      "openFile": "ファイルを開く",
+      "openFileWithPath": "{path} を開く",
       "openPanel": "Review パネルを開く",
       "previewEmpty": "左側のファイルを選択すると、ここにテキストを表示します。",
       "previewTitle": "ファイルプレビュー",
@@ -198,6 +200,8 @@
       "terminalView": "ターミナル",
       "title": "プロジェクトコンテキスト",
       "truncated": "Diff は切り詰められました",
+      "viewDiff": "Diff を表示",
+      "viewFile": "ファイルを表示",
       "viewsLabel": "プロジェクトコンテキストビュー"
     },
     "promptInput": {

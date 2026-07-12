@@ -19,7 +19,9 @@ import {
 } from "@heroui/react"
 import {
   ArrowReloadHorizontalIcon,
-  FolderMinusIcon
+  FileCodeIcon,
+  FolderMinusIcon,
+  GitCompareIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { FileDiffMetadata } from "@pierre/diffs"
@@ -62,6 +64,8 @@ import type {
   ProjectChangesScope,
   ProjectContextPanelView
 } from "@/renderer/lib/chat/project-context-panel"
+import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-navigation"
+import type { ProjectPanelRevealRequest } from "@/renderer/lib/chat/project-panel-navigation"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 // HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
@@ -240,12 +244,14 @@ const ProjectFileTree = ({
   gitStatusFiles,
   label,
   onFileSelect,
-  paths
+  paths,
+  revealTarget
 }: {
   gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
   label: string
   onFileSelect: (relativePath: string) => void
   paths: string[]
+  revealTarget?: ProjectPanelRevealRequest | null
 }) => {
   const { t } = useI18n()
   const gitStatusEntries = useMemo(
@@ -257,8 +263,16 @@ const ProjectFileTree = ({
     [paths]
   )
   const modelRef = useRef<FileTreeModel | null>(null)
+  // Guards a programmatic reveal selection from re-entering the user-selection
+  // path (which loads the file and clears any highlight line).
+  const suppressSelectionRef = useRef(false)
   const handleSelectionChange = useCallback(
     (selectedPaths: readonly string[]) => {
+      if (suppressSelectionRef.current) {
+        suppressSelectionRef.current = false
+        return
+      }
+
       const lastSelected = selectedPaths.at(-1)
       const selectedItem = lastSelected
         ? modelRef.current?.getItem(lastSelected)
@@ -281,6 +295,46 @@ const ProjectFileTree = ({
     unsafeCSS: PROJECT_TREE_UNSAFE_CSS
   })
   modelRef.current = model
+
+  // Mirror a reveal into the tree's own selection: expand ancestors, select the
+  // node, and scroll it into view. The file content is loaded by the parent, so
+  // this selection is suppressed from re-triggering a load.
+  useEffect(() => {
+    if (!revealTarget) {
+      return
+    }
+
+    const revealPath = revealTarget.path
+    const frame = requestAnimationFrame(() => {
+      const item = model.getItem(revealPath)
+
+      if (!item || item.isDirectory()) {
+        return
+      }
+
+      const segments = revealPath.split("/").filter(Boolean)
+
+      for (let index = 1; index < segments.length; index += 1) {
+        const directoryItem = model.getItem(segments.slice(0, index).join("/"))
+
+        if (isFileTreeDirectoryHandle(directoryItem)) {
+          directoryItem.expand()
+        }
+      }
+
+      suppressSelectionRef.current = true
+      item.select()
+      model.scrollToPath(revealPath, { offset: "center" })
+      queueMicrotask(() => {
+        suppressSelectionRef.current = false
+      })
+    })
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [model, revealTarget])
+
   const handleCollapseFolders = useCallback(() => {
     for (const directoryPath of directoryPaths) {
       const directoryItem = model.getItem(directoryPath)
@@ -393,11 +447,15 @@ const ProjectPanelStatusStrip = ({
 const ProjectFilePreview = ({
   errorMessage,
   fileData,
+  hasChanges,
+  highlightLine,
   isLoading,
   relativePath
 }: {
   errorMessage: string | null
   fileData: ReadProjectFileOutput | undefined
+  hasChanges: boolean
+  highlightLine?: number | null
   isLoading: boolean
   relativePath: string | null
 }) => {
@@ -441,11 +499,43 @@ const ProjectFilePreview = ({
             </span>
           )}
         </div>
-        {fileData?.language ? (
-          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-            {fileData.language}
-          </span>
-        ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {fileData?.language ? (
+            <span className="text-[10px] text-muted-foreground">
+              {fileData.language}
+            </span>
+          ) : null}
+          {hasChanges && relativePath ? (
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Button
+                  aria-label={t("chat.projectPanel.viewDiff")}
+                  className="h-6 min-w-0 px-1.5 text-[11px]"
+                  onPress={() =>
+                    requestProjectPanelReveal({
+                      path: relativePath,
+                      view: "diff"
+                    })
+                  }
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  {...FOCUSABLE_TAB_INDEX}
+                >
+                  <HugeiconsIcon
+                    icon={GitCompareIcon}
+                    size={13}
+                    strokeWidth={2}
+                  />
+                  {t("chat.projectPanel.viewDiff")}
+                </Button>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">
+                {t("chat.projectPanel.viewDiff")}
+              </Tooltip.Content>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
 
       {isLoading && (
@@ -462,6 +552,7 @@ const ProjectFilePreview = ({
         <div className="min-h-0 flex-1 overflow-hidden">
           <ProjectFileCodeViewer
             content={fileData.content}
+            highlightLine={highlightLine}
             language={fileData.language}
             relativePath={relativePath ?? ""}
           />
@@ -481,13 +572,15 @@ const ProjectFilesTreePane = ({
   isTreeLoading,
   label,
   onFileSelect,
-  paths
+  paths,
+  revealTarget
 }: {
   gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
   isTreeLoading: boolean
   label: string
   onFileSelect: (relativePath: string) => void
   paths: string[]
+  revealTarget?: ProjectPanelRevealRequest | null
 }) => {
   const { t } = useI18n()
 
@@ -499,6 +592,7 @@ const ProjectFilesTreePane = ({
           label={label}
           onFileSelect={onFileSelect}
           paths={paths}
+          revealTarget={revealTarget}
         />
       ) : (
         <div className="flex h-full min-h-48 items-center justify-center px-4 text-center text-xs leading-5 text-muted-foreground">
@@ -516,12 +610,14 @@ const ProjectFilesPanel = ({
   isTreeLoading,
   label,
   paths,
+  revealTarget,
   sessionId
 }: {
   gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
   isTreeLoading: boolean
   label: string
   paths: string[]
+  revealTarget?: ProjectPanelRevealRequest | null
   sessionId: string
 }) => {
   const { t } = useI18n()
@@ -529,7 +625,17 @@ const ProjectFilesPanel = ({
   const [fileData, setFileData] = useState<ReadProjectFileOutput | undefined>()
   const [fileErrorMessage, setFileErrorMessage] = useState<string | null>(null)
   const [isFileLoading, setFileLoading] = useState(false)
+  const [highlightLine, setHighlightLine] = useState<number | null>(null)
   const fileRequestIdRef = useRef(0)
+  const handledRevealIdRef = useRef<number | null>(null)
+  const hasChanges = useMemo(
+    () =>
+      selectedFilePath !== null &&
+      gitStatusFiles.some(
+        (file) => file.path === selectedFilePath && file.status !== "ignored"
+      ),
+    [gitStatusFiles, selectedFilePath]
+  )
 
   const handleFileSelect = useCallback(
     async (relativePath: string) => {
@@ -564,12 +670,36 @@ const ProjectFilesPanel = ({
     [sessionId, t]
   )
 
+  // User-driven tree selection clears any reveal highlight; a reveal keeps it.
+  const handleTreeFileSelect = useCallback(
+    (relativePath: string) => {
+      setHighlightLine(null)
+      void handleFileSelect(relativePath)
+    },
+    [handleFileSelect]
+  )
+
+  useEffect(() => {
+    if (
+      !revealTarget ||
+      revealTarget.requestId === handledRevealIdRef.current
+    ) {
+      return
+    }
+
+    handledRevealIdRef.current = revealTarget.requestId
+    setHighlightLine(revealTarget.line ?? null)
+    void handleFileSelect(revealTarget.path)
+  }, [handleFileSelect, revealTarget])
+
   useEffect(() => {
     fileRequestIdRef.current += 1
+    handledRevealIdRef.current = null
     setSelectedFilePath(null)
     setFileData(undefined)
     setFileErrorMessage(null)
     setFileLoading(false)
+    setHighlightLine(null)
   }, [sessionId])
 
   useEffect(() => {
@@ -578,6 +708,7 @@ const ProjectFilesPanel = ({
       setFileData(undefined)
       setFileErrorMessage(null)
       setFileLoading(false)
+      setHighlightLine(null)
     }
   }, [paths, selectedFilePath])
 
@@ -587,8 +718,9 @@ const ProjectFilesPanel = ({
         gitStatusFiles={gitStatusFiles}
         isTreeLoading={isTreeLoading}
         label={label}
-        onFileSelect={handleFileSelect}
+        onFileSelect={handleTreeFileSelect}
         paths={paths}
+        revealTarget={revealTarget}
       />
     )
   }
@@ -610,8 +742,9 @@ const ProjectFilesPanel = ({
           gitStatusFiles={gitStatusFiles}
           isTreeLoading={isTreeLoading}
           label={label}
-          onFileSelect={handleFileSelect}
+          onFileSelect={handleTreeFileSelect}
           paths={paths}
+          revealTarget={revealTarget}
         />
       </Resizable.Panel>
       <Resizable.Handle
@@ -630,6 +763,8 @@ const ProjectFilesPanel = ({
         <ProjectFilePreview
           errorMessage={fileErrorMessage}
           fileData={fileData}
+          hasChanges={hasChanges}
+          highlightLine={highlightLine}
           isLoading={isFileLoading}
           relativePath={selectedFilePath}
         />
@@ -641,17 +776,46 @@ const ProjectFilesPanel = ({
 const CollapsibleFileDiff = ({
   fileDiff,
   index,
-  renderDiffHeaderMetadata
+  renderDiffHeaderMetadata,
+  revealRequestId
 }: {
   fileDiff: FileDiffMetadata
   index: number
   renderDiffHeaderMetadata: (fileDiff: FileDiffMetadata) => ReactNode
+  revealRequestId?: number
 }) => {
+  const { t } = useI18n()
   const [isCollapsed, setCollapsed] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
 
   const handleToggle = useCallback(() => {
     setCollapsed((prev) => !prev)
   }, [])
+
+  const firstChangedLine = fileDiff.hunks[0]?.additionStart
+  const handleViewFile = useCallback(() => {
+    requestProjectPanelReveal({
+      path: fileDiff.name,
+      view: "file",
+      ...(firstChangedLine === undefined ? {} : { line: firstChangedLine })
+    })
+  }, [fileDiff.name, firstChangedLine])
+
+  // A reveal targeting this file expands the card and scrolls it into view.
+  useEffect(() => {
+    if (revealRequestId === undefined) {
+      return
+    }
+
+    setCollapsed(false)
+    const frame = requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({ block: "start" })
+    })
+
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [revealRequestId])
 
   const { baseName, parentPath } = useMemo(() => {
     const lastSlash = fileDiff.name.lastIndexOf("/")
@@ -665,40 +829,66 @@ const CollapsibleFileDiff = ({
   }, [fileDiff.name])
 
   return (
-    <div className="rounded-xl border border-border/70 text-[11px]">
-      <button
+    <div
+      className="rounded-xl border border-border/70 text-[11px]"
+      ref={cardRef}
+    >
+      <div
         className={cn(
-          "sticky top-0 z-20 flex w-full cursor-pointer items-center gap-2 rounded-t-[11px] border-b border-border/50 bg-muted/95 px-3 py-2 text-left shadow-sm backdrop-blur transition-colors hover:bg-muted",
+          "sticky top-0 z-20 flex w-full items-center gap-2 rounded-t-[11px] border-b border-border/50 bg-muted/95 px-3 py-2 shadow-sm backdrop-blur",
           isCollapsed && "rounded-b-[11px] border-b-0"
         )}
-        data-project-diff-file-header=""
-        onClick={handleToggle}
-        type="button"
       >
-        <svg
-          className={cn(
-            "size-3 shrink-0 text-muted-foreground transition-transform",
-            !isCollapsed && "rotate-90"
-          )}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          viewBox="0 0 24 24"
+        <button
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
+          data-project-diff-file-header=""
+          onClick={handleToggle}
+          type="button"
         >
-          <path
-            d="M9 18l6-6-6-6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-          {baseName}
-          {parentPath ? (
-            <span className="ml-1.5 text-muted-foreground">{parentPath}</span>
-          ) : null}
-        </span>
+          <svg
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground transition-transform",
+              !isCollapsed && "rotate-90"
+            )}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M9 18l6-6-6-6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+            {baseName}
+            {parentPath ? (
+              <span className="ml-1.5 text-muted-foreground">{parentPath}</span>
+            ) : null}
+          </span>
+        </button>
         {renderDiffHeaderMetadata(fileDiff)}
-      </button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              aria-label={t("chat.projectPanel.viewFile")}
+              className="size-6 shrink-0"
+              isIconOnly
+              onPress={handleViewFile}
+              size="sm"
+              type="button"
+              variant="ghost"
+              {...FOCUSABLE_TAB_INDEX}
+            >
+              <HugeiconsIcon icon={FileCodeIcon} size={13} strokeWidth={2} />
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="bottom">
+            {t("chat.projectPanel.viewFile")}
+          </Tooltip.Content>
+        </Tooltip>
+      </div>
 
       {isCollapsed ? null : (
         <div className="overflow-hidden rounded-b-[11px]">
@@ -723,7 +913,8 @@ const ProjectChangesPanel = ({
   hasAgentEditedPaths,
   isDiffLoading,
   onGitDiffScopeChange,
-  renderDiffHeaderMetadata
+  renderDiffHeaderMetadata,
+  revealTarget
 }: {
   diffFiles: FileDiffMetadata[]
   emptyDiffMessage: string
@@ -733,6 +924,7 @@ const ProjectChangesPanel = ({
   isDiffLoading: boolean
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   renderDiffHeaderMetadata: (fileDiff: FileDiffMetadata) => ReactNode
+  revealTarget?: ProjectPanelRevealRequest | null
 }) => {
   const { t } = useI18n()
   const isEmptyAgentScope =
@@ -788,6 +980,12 @@ const ProjectChangesPanel = ({
                 index={index}
                 key={`${fileDiff.name}-${fileDiff.prevName ?? ""}-${index}`}
                 renderDiffHeaderMetadata={renderDiffHeaderMetadata}
+                revealRequestId={
+                  revealTarget?.view === "diff" &&
+                  revealTarget.path === fileDiff.name
+                    ? revealTarget.requestId
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -943,6 +1141,7 @@ export const ProjectContextPanel = ({
   onRefresh,
   onViewChange,
   projectItems,
+  revealTarget,
   selectedSession,
   selectedView
 }: {
@@ -954,10 +1153,13 @@ export const ProjectContextPanel = ({
   onRefresh: () => void
   onViewChange: (view: ProjectContextPanelView) => void
   projectItems: ProjectSnapshotItem[]
+  revealTarget?: ProjectPanelRevealRequest | null
   selectedSession: ChatSessionSummary
   selectedView: ProjectContextPanelView
 }) => {
   const { t } = useI18n()
+  const fileRevealTarget = revealTarget?.view === "file" ? revealTarget : null
+  const diffRevealTarget = revealTarget?.view === "diff" ? revealTarget : null
   const { gitStatus } = selectedSession
   const hasAgentEditedPaths =
     (selectedSession.agentEditedPaths ?? []).length > 0
@@ -1089,6 +1291,7 @@ export const ProjectContextPanel = ({
             isTreeLoading={isTreeLoading}
             label={t("chat.projectPanel.filesTitle")}
             paths={paths}
+            revealTarget={fileRevealTarget}
             sessionId={selectedSession.id}
           />
         </Tabs.Panel>
@@ -1106,6 +1309,7 @@ export const ProjectContextPanel = ({
             isDiffLoading={isDiffLoading}
             onGitDiffScopeChange={onGitDiffScopeChange}
             renderDiffHeaderMetadata={renderDiffHeaderMetadata}
+            revealTarget={diffRevealTarget}
           />
         </Tabs.Panel>
 

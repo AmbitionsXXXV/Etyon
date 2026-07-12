@@ -180,6 +180,8 @@
       "filesTitle": "File Structure",
       "filesView": "Files",
       "loading": "Loading...",
+      "openFile": "Open file",
+      "openFileWithPath": "Open {path}",
       "openPanel": "Open Review panel",
       "previewEmpty": "Select a file on the left to preview its text.",
       "previewTitle": "File Preview",
@@ -198,6 +200,8 @@
       "terminalView": "Terminal",
       "title": "Project Context",
       "truncated": "Diff truncated",
+      "viewDiff": "View diff",
+      "viewFile": "View file",
       "viewsLabel": "Project context views"
     },
     "promptInput": {

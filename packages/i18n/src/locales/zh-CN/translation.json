@@ -180,6 +180,8 @@
       "filesTitle": "文件结构",
       "filesView": "文件",
       "loading": "正在加载...",
+      "openFile": "打开文件",
+      "openFileWithPath": "打开 {path}",
       "openPanel": "打开 Review 面板",
       "previewEmpty": "选择左侧文件后在这里查看文本。",
       "previewTitle": "文件预览",
@@ -198,6 +200,8 @@
       "terminalView": "终端",
       "title": "项目上下文",
       "truncated": "Diff 已截断",
+      "viewDiff": "查看 diff",
+      "viewFile": "查看文件",
       "viewsLabel": "项目上下文视图"
     },
     "promptInput": {

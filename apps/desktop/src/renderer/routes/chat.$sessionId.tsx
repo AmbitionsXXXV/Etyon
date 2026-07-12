@@ -103,6 +103,16 @@ import type {
   ProjectContextPanelView
 } from "@/renderer/lib/chat/project-context-panel"
 import {
+  clearProjectPanelReveal,
+  requestProjectPanelReveal,
+  resolveProjectRelativePath,
+  useProjectPanelRevealRequest
+} from "@/renderer/lib/chat/project-panel-navigation"
+import type {
+  ProjectPanelRevealRequest,
+  ProjectPanelRevealView
+} from "@/renderer/lib/chat/project-panel-navigation"
+import {
   filterPromptSkillMentionItems,
   filterPromptTemplateItems,
   getMentionDisplayName,
@@ -342,17 +352,51 @@ const toRuntimeChatMessage = (
   }
 }
 
-const InlineMentionToken = ({ mention }: { mention: ChatMention }) => (
-  <span
-    className="mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 align-baseline text-sm font-medium text-foreground ring-1 ring-border/70"
-    title={getMentionTitle(mention)}
-  >
-    <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
-      {getMentionTokenTypeLabel(mention)}
+const InlineMentionToken = ({ mention }: { mention: ChatMention }) => {
+  const { t } = useI18n()
+  const tokenClassName =
+    "mx-0.5 inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 align-baseline text-sm font-medium text-foreground ring-1 ring-border/70"
+  const tokenBody = (
+    <>
+      <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
+        {getMentionTokenTypeLabel(mention)}
+      </span>
+      <span className="max-w-52 truncate group-hover:underline">
+        {getMentionDisplayName(mention)}
+      </span>
+    </>
+  )
+
+  if (mention.kind === "file") {
+    return (
+      <button
+        aria-label={t("chat.projectPanel.openFileWithPath", {
+          path: mention.relativePath
+        })}
+        className={cn(
+          tokenClassName,
+          "group cursor-pointer transition-colors hover:bg-muted hover:ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        )}
+        onClick={() =>
+          requestProjectPanelReveal({
+            path: mention.relativePath,
+            view: "file"
+          })
+        }
+        title={getMentionTitle(mention)}
+        type="button"
+      >
+        {tokenBody}
+      </button>
+    )
+  }
+
+  return (
+    <span className={tokenClassName} title={getMentionTitle(mention)}>
+      {tokenBody}
     </span>
-    <span className="max-w-52 truncate">{getMentionDisplayName(mention)}</span>
-  </span>
-)
+  )
+}
 
 const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
   message.parts.filter((part): part is ChatToolPart =>
@@ -672,6 +716,73 @@ const ChatProjectContextLayout = ({
     [onOpenChange, onViewChange]
   )
 
+  const revealRequest = useProjectPanelRevealRequest()
+  const [revealTarget, setRevealTarget] =
+    useState<ProjectPanelRevealRequest | null>(null)
+  const handledRevealIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setRevealTarget(null)
+    handledRevealIdRef.current = null
+  }, [selectedSession.id])
+
+  // A reveal request from anywhere in the chat flow opens the panel, switches to
+  // the resolved tab, and hands the resolved (project-relative) target down for
+  // the sub-panels to select/scroll. Paths outside the project are ignored.
+  useEffect(() => {
+    if (
+      !revealRequest ||
+      revealRequest.requestId === handledRevealIdRef.current
+    ) {
+      return
+    }
+
+    handledRevealIdRef.current = revealRequest.requestId
+
+    const relativePath = resolveProjectRelativePath({
+      path: revealRequest.path,
+      projectPath: selectedSession.projectPath
+    })
+
+    if (relativePath === null) {
+      clearProjectPanelReveal()
+      return
+    }
+
+    const changedFiles = selectedSession.gitStatus?.files
+    const isChangedFile =
+      changedFiles?.some(
+        (file) => file.path === relativePath && file.status !== "ignored"
+      ) ?? false
+    // Honor a diff request only when the Changes tab can know the file; fall back
+    // to the read-only viewer otherwise (e.g. an edit whose diff is not tracked).
+    const resolvedView: ProjectPanelRevealView =
+      revealRequest.view === "diff" &&
+      (changedFiles === undefined || isChangedFile)
+        ? "diff"
+        : "file"
+
+    onViewChange(
+      resolvedView === "diff"
+        ? PROJECT_CONTEXT_CHANGES_TAB_ID
+        : PROJECT_CONTEXT_FILES_TAB_ID
+    )
+    onOpenChange(true)
+    setRevealTarget({
+      path: relativePath,
+      requestId: revealRequest.requestId,
+      view: resolvedView,
+      ...(revealRequest.line === undefined ? {} : { line: revealRequest.line })
+    })
+    clearProjectPanelReveal()
+  }, [
+    onOpenChange,
+    onViewChange,
+    revealRequest,
+    selectedSession.gitStatus,
+    selectedSession.projectPath
+  ])
+
   return (
     <div className={CHAT_LAYOUT_CLASS_NAME}>
       <Resizable
@@ -722,6 +833,7 @@ const ChatProjectContextLayout = ({
               onRefresh={onRefresh}
               onViewChange={onViewChange}
               projectItems={projectItems}
+              revealTarget={revealTarget}
               selectedSession={selectedSession}
               selectedView={projectPanelView}
             />
@@ -883,25 +995,56 @@ const MessageMentionChips = ({
   mentions: ChatMention[]
   messageId: string
 }) => {
+  const { t } = useI18n()
+
   if (mentions.length === 0) {
     return null
   }
 
   return (
     <div className="mb-2 flex flex-wrap gap-2">
-      {mentions.map((mention) => (
-        <Chip
-          className="max-w-full"
-          color={isAssistant ? "default" : "accent"}
-          key={`${messageId}-${mention.kind}-${mention.path}`}
-          size="sm"
-          variant={isAssistant ? "secondary" : "soft"}
-        >
-          <Chip.Label className="truncate">
-            {getMentionDisplayName(mention)}
-          </Chip.Label>
-        </Chip>
-      ))}
+      {mentions.map((mention) => {
+        const chip = (
+          <Chip
+            className={cn(
+              "max-w-full",
+              mention.kind === "file" && "group-hover:underline"
+            )}
+            color={isAssistant ? "default" : "accent"}
+            size="sm"
+            variant={isAssistant ? "secondary" : "soft"}
+          >
+            <Chip.Label className="truncate">
+              {getMentionDisplayName(mention)}
+            </Chip.Label>
+          </Chip>
+        )
+        const chipKey = `${messageId}-${mention.kind}-${mention.path}`
+
+        if (mention.kind === "file") {
+          return (
+            <button
+              aria-label={t("chat.projectPanel.openFileWithPath", {
+                path: mention.relativePath
+              })}
+              className="group max-w-full cursor-pointer rounded-full transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              key={chipKey}
+              onClick={() =>
+                requestProjectPanelReveal({
+                  path: mention.relativePath,
+                  view: "file"
+                })
+              }
+              title={getMentionTitle(mention)}
+              type="button"
+            >
+              {chip}
+            </button>
+          )
+        }
+
+        return <span key={chipKey}>{chip}</span>
+      })}
     </div>
   )
 }

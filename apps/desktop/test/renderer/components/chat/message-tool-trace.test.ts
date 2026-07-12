@@ -10,7 +10,14 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool-trace"
-import { compactStructuredToolTraceParts } from "@/renderer/lib/chat/message-tool-trace"
+import {
+  compactStructuredToolTraceParts,
+  getToolRevealRequest
+} from "@/renderer/lib/chat/message-tool-trace"
+import {
+  clearProjectPanelReveal,
+  getProjectPanelRevealSnapshot
+} from "@/renderer/lib/chat/project-panel-navigation"
 
 const TestI18nProvider = I18nProvider as unknown as (props: {
   children?: ReactNode
@@ -282,5 +289,76 @@ describe("StructuredToolTraceCard", () => {
 
     expect(html).toContain("Approve")
     expect(html).not.toContain("Approve and remember")
+  })
+
+  it("requests a file reveal when the tool path button is pressed", () => {
+    const handleApprovalResponse = vi.fn()
+    const readPart = {
+      input: {
+        path: "src/value.ts"
+      },
+      output: {
+        content: "export const value = 1"
+      },
+      state: "output-available",
+      toolCallId: "tool-read",
+      toolName: "read",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const { cleanup, container } = renderElementInDom(
+      renderStructuredToolTraceCards([readPart], handleApprovalResponse)
+    )
+
+    try {
+      act(() => {
+        findButtonByText(container, "src/value.ts").click()
+      })
+
+      const request = getProjectPanelRevealSnapshot()
+
+      expect(request?.path).toBe("src/value.ts")
+      expect(request?.view).toBe("file")
+    } finally {
+      clearProjectPanelReveal()
+      cleanup()
+    }
+  })
+})
+
+describe("getToolRevealRequest", () => {
+  it("targets the diff view for edit and write", () => {
+    expect(getToolRevealRequest("edit", { path: "src/a.ts" })).toEqual({
+      path: "src/a.ts",
+      view: "diff"
+    })
+    expect(
+      getToolRevealRequest("write", { content: "x", path: "src/b.ts" })
+    ).toEqual({ path: "src/b.ts", view: "diff" })
+  })
+
+  it("targets the viewer for read and carries the offset as the line", () => {
+    expect(
+      getToolRevealRequest("read", { offset: 42, path: "src/a.ts" })
+    ).toEqual({ line: 42, path: "src/a.ts", view: "file" })
+    expect(getToolRevealRequest("read", { path: "src/a.ts" })).toEqual({
+      path: "src/a.ts",
+      view: "file"
+    })
+  })
+
+  it("offers grep navigation only for a concrete file path", () => {
+    expect(
+      getToolRevealRequest("grep", { path: "src/a.ts", pattern: "x" })
+    ).toEqual({ path: "src/a.ts", view: "file" })
+    expect(
+      getToolRevealRequest("grep", { path: "src", pattern: "x" })
+    ).toBeNull()
+    expect(getToolRevealRequest("grep", { pattern: "x" })).toBeNull()
+  })
+
+  it("returns null for tools without a navigable path", () => {
+    expect(getToolRevealRequest("ls", { path: "src" })).toBeNull()
+    expect(getToolRevealRequest("bash", { command: "ls" })).toBeNull()
+    expect(getToolRevealRequest("read", {})).toBeNull()
   })
 })

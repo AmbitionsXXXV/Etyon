@@ -7,7 +7,8 @@ import {
   BrainIcon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
-  ComputerTerminal02Icon
+  ComputerTerminal02Icon,
+  FileCodeIcon
 } from "@hugeicons/core-free-icons"
 import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -34,11 +35,16 @@ import {
   getToolInputMeta,
   getToolInputPath,
   getToolOutputSummary,
+  getToolRevealRequest,
   getToolTracePreview,
   getToolTraceStateClassName,
   TOOL_TRACE_STATE_LABEL_KEY_BY_STATE
 } from "@/renderer/lib/chat/message-tool-trace"
-import type { ChatToolPart } from "@/renderer/lib/chat/message-tool-trace"
+import type {
+  ChatToolPart,
+  ToolRevealRequest
+} from "@/renderer/lib/chat/message-tool-trace"
+import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-navigation"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { useWorkflowProgress } from "@/renderer/lib/chat/workflow-progress-store"
@@ -55,6 +61,7 @@ interface ToolTraceCardProps {
   children?: ReactNode
   defaultExpanded?: boolean
   description?: string
+  headerAction?: ReactNode
   icon: IconSvgElement
   state: ToolPartState
   statusClassName: string
@@ -112,12 +119,39 @@ const ToolTraceMeta = ({ items }: { items: string[] }) => {
   )
 }
 
+const ToolTraceRevealButton = ({ reveal }: { reveal: ToolRevealRequest }) => {
+  const { t } = useI18n()
+  const label =
+    reveal.line === undefined ? reveal.path : `${reveal.path}:${reveal.line}`
+
+  return (
+    <button
+      aria-label={t("chat.projectPanel.openFileWithPath", { path: label })}
+      className="group/reveal flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[0.6875rem] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      onClick={() => requestProjectPanelReveal(reveal)}
+      title={t("chat.projectPanel.openFile")}
+      type="button"
+    >
+      <HugeiconsIcon
+        className="shrink-0"
+        icon={FileCodeIcon}
+        size={12}
+        strokeWidth={2}
+      />
+      <span className="min-w-0 flex-1 truncate font-mono group-hover/reveal:underline">
+        {label}
+      </span>
+    </button>
+  )
+}
+
 const ToolTraceCard = ({
   actions,
   badge,
   children,
   defaultExpanded = false,
   description,
+  headerAction,
   icon,
   state,
   statusClassName,
@@ -174,6 +208,11 @@ const ToolTraceCard = ({
           {children}
         </div>
       </ChatTool.Content>
+      {headerAction ? (
+        <div className="border-t border-border/60 px-1 py-0.5">
+          {headerAction}
+        </div>
+      ) : null}
     </ChatTool>
   )
 }
@@ -346,6 +385,23 @@ const ToolTraceDetailPanels = ({
   )
 }
 
+// Extracts the reveal-dependent description/header from the tool card body so
+// StructuredToolTraceCard stays under the cognitive-complexity limit.
+const buildGenericToolTraceExtras = (
+  revealRequest: ToolRevealRequest | null,
+  inputLabel: string,
+  preview: string
+): { description: string; headerAction: ReactNode } => {
+  if (revealRequest) {
+    return {
+      description: preview,
+      headerAction: <ToolTraceRevealButton reveal={revealRequest} />
+    }
+  }
+
+  return { description: inputLabel || preview, headerAction: undefined }
+}
+
 export const StructuredToolTraceCard = ({
   isApprovalActionDisabled,
   onApprovalResponse,
@@ -387,6 +443,12 @@ export const StructuredToolTraceCard = ({
   const inputCwd = getToolInputCwd(part.input)
   const inputPath = getToolInputPath(part.input)
   const inputLabel = inputCommand || inputPath
+  const revealRequest = getToolRevealRequest(toolName, part.input)
+  const genericExtras = buildGenericToolTraceExtras(
+    revealRequest,
+    inputLabel,
+    preview
+  )
   const inputMeta = getToolInputMeta(part.input)
   const commandOutput =
     part.state === "output-available" ? getCommandOutputView(part.output) : null
@@ -460,7 +522,8 @@ export const StructuredToolTraceCard = ({
     <ToolTraceCard
       actions={approvalActions}
       defaultExpanded={part.state === "approval-requested"}
-      description={inputLabel || preview}
+      description={genericExtras.description}
+      headerAction={genericExtras.headerAction}
       icon={getToolIcon(toolName)}
       state={heroToolState}
       statusClassName={statusClassName}

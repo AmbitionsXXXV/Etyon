@@ -381,6 +381,62 @@ export const getToolInputPath = (input: unknown): string => {
   return getString(input, "path") ?? ""
 }
 
+export interface ToolRevealRequest {
+  line?: number
+  path: string
+  view: "diff" | "file"
+}
+
+const REVEAL_DIFF_TOOL_NAMES = new Set(["edit", "write"])
+const REVEAL_FILE_TOOL_NAMES = new Set(["read"])
+const READ_DEFAULT_OFFSET = 1
+
+const looksLikeFilePath = (path: string): boolean =>
+  getPathBaseName(path).lastIndexOf(".") > 0
+
+/**
+ * Maps a file-touching tool call to a project-panel reveal request, or `null`
+ * when the tool carries no navigable file path. Edit/write prefer the diff view
+ * (the panel downgrades to the viewer when the Changes tab does not know the
+ * file); read/grep target the read-only viewer, with read's `offset` used as
+ * the highlight line.
+ */
+export const getToolRevealRequest = (
+  toolName: string,
+  input: unknown
+): ToolRevealRequest | null => {
+  if (!isRecord(input)) {
+    return null
+  }
+
+  const path = getString(input, "path")
+
+  if (!path) {
+    return null
+  }
+
+  if (REVEAL_DIFF_TOOL_NAMES.has(toolName)) {
+    return { path, view: "diff" }
+  }
+
+  if (REVEAL_FILE_TOOL_NAMES.has(toolName)) {
+    const offset = getNumber(input, "offset")
+
+    return offset !== undefined && offset > READ_DEFAULT_OFFSET
+      ? { line: offset, path, view: "file" }
+      : { path, view: "file" }
+  }
+
+  // grep exposes an optional search path; only offer navigation when it points
+  // at a concrete file. Its matches carry per-line numbers, but the card renders
+  // them as unstructured text, so no line is attached here.
+  if (toolName === "grep" && looksLikeFilePath(path)) {
+    return { path, view: "file" }
+  }
+
+  return null
+}
+
 export const getToolInputMeta = (input: unknown): string => {
   if (!isRecord(input)) {
     return ""
