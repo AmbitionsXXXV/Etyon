@@ -42,7 +42,7 @@
 - [x] `useChat<ChatUiMessage>()` + `DefaultChatTransport` + Hono `/api/chat` 仍是唯一 chat transport，Agents 关闭时继续走原有 `streamText` 路径。
 - [x] Agents 开启时，主 run 走 Mastra `handleChatStream` 单 `Agent` 路径；AI SDK 仍执行 provider streaming 与 tool schema 暴露，`edit`/`write` 等写入工具由 Mastra/AI-SDK `requireApproval` 把关。（注：早期设计中曾规划 Etyon self-managed loop，该部分**未按原样落地**；参见下文历史设计部分。）
 - [x] 主 provider `fullStream` 会实时转成 AI SDK `UIMessageChunk`，覆盖 `text-*`、`reasoning-*`、`source-*`、`file`、`tool-input-*`、`tool-output-*`、`tool-approval-request`、`start-step` / `finish-step`。
-- [x] Chat timeline 按 `UIMessage.parts` 渲染 provider 文本、reasoning、tool trace、source、document source 与 file part，不再只等最终 assistant 文本结果。
+- [x] Chat timeline 按 `UIMessage.parts` 渲染 provider 文本、reasoning、tool trace、source、document source 与 file part，不再只等最终 assistant 文本结果；运行中的工作轨迹裸呈现，正常结算后折叠为可展开摘要，停止或失败时保留展开。
 - [x] `agent_ui_stream_snapshot_created` 保存可恢复的可见 assistant parts；`start-step` / `finish-step` 保持为 live stream 边界，不写入 snapshot，避免恢复时出现空结构 part。
 - [x] Approval resume 继续使用 AI SDK `originalMessages` / `start.messageId` continuation 语义，把 approve / deny 后的真实 tool result 接回原始 assistant tool-call。
 - [ ] 子 agent / run graph node 的实时输出需要从“父 tool result 摘要 + child trace 懒加载”升级为 AI SDK preliminary tool output / nested `UIMessage` 投影，让父消息可直接显示完整 child progress，同时父模型仍只看到 summary。

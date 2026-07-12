@@ -40,6 +40,7 @@ import {
   groupChainEntries,
   hasPendingApproval,
   isReferencePart,
+  isToolGroupRunning,
   isWorkSectionForcedExpanded,
   isWorkSectionSelfCollapsing,
   openExternalUrl,
@@ -308,18 +309,21 @@ const WorkThinkingEntry = ({
     }
   }, [isStreaming, localDurationMs])
 
-  const resolvedDurationMs = durationMs ?? localDurationMs
-  const getLabel = (): string => {
-    if (isStreaming) {
-      return t("chat.workSection.thinking")
-    }
+  if (isStreaming) {
+    return (
+      <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
+        {text}
+      </p>
+    )
+  }
 
-    return resolvedDurationMs === undefined
+  const resolvedDurationMs = durationMs ?? localDurationMs
+  const label =
+    resolvedDurationMs === undefined
       ? t("chat.workSection.thoughtPlain")
       : t("chat.workSection.thought", {
           duration: formatElapsedDuration(resolvedDurationMs)
         })
-  }
 
   return (
     <Disclosure
@@ -340,9 +344,7 @@ const WorkThinkingEntry = ({
               icon={BrainIcon}
               size={14}
             />
-            <span className={cn("truncate text-xs", isStreaming && "shimmer")}>
-              {getLabel()}
-            </span>
+            <span className="truncate text-xs">{label}</span>
           </span>
           <Disclosure.Indicator />
         </Button>
@@ -375,6 +377,7 @@ const WorkToolGroupEntry = ({
   const [isExpanded, setIsExpanded] = useState(entry.hasApproval)
   const firstTool = entry.tools[0]?.part
   const icon = firstTool ? getToolIcon(getToolName(firstTool)) : getToolIcon("")
+  const isRunning = !entry.hasApproval && isToolGroupRunning(entry.tools)
 
   useEffect(() => {
     if (entry.hasApproval) {
@@ -401,7 +404,7 @@ const WorkToolGroupEntry = ({
               icon={icon}
               size={14}
             />
-            <span className="truncate text-xs">
+            <span className={cn("truncate text-xs", isRunning && "shimmer")}>
               {getToolGroupLabelText(t, entry.label)}
             </span>
           </span>
@@ -1096,14 +1099,25 @@ const AssistantWorkSection = ({
 
   return (
     <ChainOfThought
-      className="rounded-xl border border-border/70 bg-background/60"
+      className={cn(
+        "rounded-xl",
+        isLive
+          ? "border-0 bg-transparent"
+          : "border border-border/70 bg-background/60"
+      )}
       isExpanded={forcedExpanded || isExpanded}
-      isStreaming={isLive}
       onExpandedChange={setIsExpanded}
     >
-      <ChainOfThought.Trigger className="px-3">
+      <ChainOfThought.Trigger
+        className={cn(
+          isLive
+            ? "h-auto min-h-0 cursor-default gap-2 px-0 py-0 hover:bg-transparent data-[hovered=true]:bg-transparent disabled:cursor-default disabled:opacity-100 [&_[data-slot=disclosure-indicator]]:hidden"
+            : "px-3"
+        )}
+        isDisabled={isLive}
+      >
         <span className="flex min-w-0 items-center gap-2">
-          <span className="truncate">
+          <span className={cn("truncate", isLive && "shimmer")}>
             {getWorkSectionLabelText(t, status, durationText)}
           </span>
           {isLive && durationText ? (
@@ -1113,7 +1127,7 @@ const AssistantWorkSection = ({
           ) : null}
         </span>
       </ChainOfThought.Trigger>
-      <ChainOfThought.Content className="px-2 pb-2">
+      <ChainOfThought.Content className={cn(isLive ? "p-0" : "px-2 pb-2")}>
         <div className="flex flex-col gap-1">
           {entries.map((entry) => {
             if (entry.kind === "reasoning") {
@@ -1130,7 +1144,7 @@ const AssistantWorkSection = ({
 
             if (entry.kind === "text") {
               return (
-                <div className="px-2 py-1" key={entry.key}>
+                <div className={cn("py-1", !isLive && "px-2")} key={entry.key}>
                   <WorkTextEntry text={entry.text} />
                 </div>
               )

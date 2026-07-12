@@ -10,6 +10,7 @@ import {
   hasPendingApproval,
   isWorkSectionForcedExpanded,
   isWorkSectionSelfCollapsing,
+  isToolGroupRunning,
   messageHasWorkSection,
   shouldReopenWorkSection
 } from "@/renderer/lib/chat/assistant-message-timeline"
@@ -240,6 +241,23 @@ describe("describeToolGroup", () => {
         groupItem({ input: { pattern: "foo" }, toolName: "grep" })
       ])
     ).toEqual({ kind: "exploredFile" })
+  })
+})
+
+describe("isToolGroupRunning", () => {
+  it("recognizes streaming and available tool input, but not approval requests", () => {
+    expect(isToolGroupRunning([groupItem({ state: "input-streaming" })])).toBe(
+      true
+    )
+    expect(isToolGroupRunning([groupItem({ state: "input-available" })])).toBe(
+      true
+    )
+    expect(
+      isToolGroupRunning([
+        groupItem({ state: "output-available" }),
+        groupItem({ state: "approval-requested" })
+      ])
+    ).toBe(false)
   })
 })
 

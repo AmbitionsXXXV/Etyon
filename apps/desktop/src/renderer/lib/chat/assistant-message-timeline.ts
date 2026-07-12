@@ -423,6 +423,15 @@ export const hasPendingApproval = (
 ): boolean =>
   entries.some((entry) => entry.kind === "tool-group" && entry.hasApproval)
 
+/** Whether a compact tool group still contains a tool receiving or awaiting input. */
+export const isToolGroupRunning = (
+  tools: readonly ChainToolGroupItem[]
+): boolean =>
+  tools.some(
+    ({ part }) =>
+      part.state === "input-available" || part.state === "input-streaming"
+  )
+
 export type WorkSectionStatus =
   | "failed"
   | "stopped"
