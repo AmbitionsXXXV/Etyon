@@ -22,6 +22,8 @@ import {
   DeleteMemoryEntryOutputSchema,
   EnsureProjectSnapshotInputSchema,
   FontListOutputSchema,
+  GitCommitInputSchema,
+  GitCommitOutputSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
   InstallMemoryEmbeddingModelInputSchema,
@@ -105,6 +107,7 @@ import {
   startCursorAuthLogin
 } from "@/main/cursor-auth/service"
 import { listSystemFonts } from "@/main/fonts"
+import { commitFiles } from "@/main/git-commit"
 import { getGitProjectDiff } from "@/main/git-project-status"
 import { getLocalConnectionToken } from "@/main/local-connection"
 import { dispatch, enrichLogEvent } from "@/main/logger"
@@ -262,6 +265,23 @@ const gitProjectDiff = rpc
 
     return getGitProjectDiff(session.projectPath, {
       paths: input.paths
+    })
+  })
+
+const gitCommit = rpc
+  .input(GitCommitInputSchema)
+  .output(GitCommitOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return commitFiles({
+      message: input.message,
+      paths: input.paths,
+      projectPath: session.projectPath
     })
   })
 
@@ -740,6 +760,7 @@ export const router = {
     list: fontsList
   },
   git: {
+    commit: gitCommit,
     diff: gitProjectDiff
   },
   logger: {

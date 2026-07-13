@@ -48,6 +48,39 @@ export const GitProjectDiffOutputSchema = z.object({
   truncated: z.boolean()
 })
 
+export const GitCommitFailureReasonSchema = z.enum([
+  "empty-message",
+  "empty-selection",
+  "git-failed",
+  "identity-missing",
+  "merge-in-progress",
+  "not-a-repo"
+])
+
+export const GitCommitInputSchema = z.object({
+  message: z.string().max(500),
+  paths: z.array(z.string()).max(50),
+  sessionId: z.string().min(1)
+})
+
+export const GitCommitOutputSchema = z.discriminatedUnion("ok", [
+  z.object({
+    committedFileCount: z.number().int().nonnegative(),
+    ok: z.literal(true),
+    shortHash: z.string().min(1)
+  }),
+  z.object({
+    detail: z.string().optional(),
+    ok: z.literal(false),
+    reason: GitCommitFailureReasonSchema
+  })
+])
+
+export type GitCommitFailureReason = z.infer<
+  typeof GitCommitFailureReasonSchema
+>
+export type GitCommitInput = z.infer<typeof GitCommitInputSchema>
+export type GitCommitOutput = z.infer<typeof GitCommitOutputSchema>
 export type GitFileStatus = z.infer<typeof GitFileStatusSchema>
 export type GitProjectDiffFileSnapshot = z.infer<
   typeof GitProjectDiffFileSnapshotSchema

@@ -195,6 +195,9 @@ export type {
   CursorModelsOutput
 } from "./schemas/cursor-auth"
 export {
+  GitCommitFailureReasonSchema,
+  GitCommitInputSchema,
+  GitCommitOutputSchema,
   GitFileStatusSchema,
   GitProjectDiffFileSnapshotSchema,
   GitProjectDiffInputSchema,
@@ -203,6 +206,9 @@ export {
   GitStatusFileSchema
 } from "./schemas/git"
 export type {
+  GitCommitFailureReason,
+  GitCommitInput,
+  GitCommitOutput,
   GitFileStatus,
   GitProjectDiffFileSnapshot,
   GitProjectDiffInput,

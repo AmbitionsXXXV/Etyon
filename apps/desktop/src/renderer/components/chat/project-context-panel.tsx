@@ -1,6 +1,8 @@
+import type { TranslationKey } from "@etyon/i18n"
 import { useI18n } from "@etyon/i18n/react"
 import type {
   ChatSessionSummary,
+  GitCommitFailureReason,
   GitProjectDiffOutput,
   ProjectSnapshotItem,
   ReadProjectFileOutput
@@ -9,7 +11,9 @@ import { cn } from "@etyon/ui/lib/utils"
 import { Resizable } from "@heroui-pro/react"
 import {
   Button,
+  Checkbox,
   Chip,
+  Label,
   Spinner,
   Tabs,
   TextArea,
@@ -33,7 +37,7 @@ import type {
   FileTreeItemHandle
 } from "@pierre/trees"
 import { FileTree, useFileTree } from "@pierre/trees/react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
 
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
@@ -222,6 +226,14 @@ const PROJECT_STATUS_TEXT_CLASS_NAMES = {
   renamed: "text-accent",
   untracked: "text-muted-foreground"
 } as const
+const COMMIT_FAILURE_MESSAGE_KEYS = {
+  "empty-message": "chat.projectPanel.commitErrorEmptyMessage",
+  "empty-selection": "chat.projectPanel.commitErrorEmptySelection",
+  "git-failed": "chat.projectPanel.commitErrorGitFailed",
+  "identity-missing": "chat.projectPanel.commitErrorIdentityMissing",
+  "merge-in-progress": "chat.projectPanel.commitErrorMergeInProgress",
+  "not-a-repo": "chat.projectPanel.commitErrorNotRepo"
+} as const satisfies Record<GitCommitFailureReason, TranslationKey>
 const PROJECT_STATUS_LABEL_KEYS = {
   added: "chat.projectPanel.statusAdded",
   deleted: "chat.projectPanel.statusDeleted",
@@ -1226,14 +1238,121 @@ const ProjectChangesPanel = ({
 
 const ProjectCommitPanel = ({
   changedFiles,
-  diffSummary
+  diffSummary,
+  onRefresh,
+  sessionId
 }: {
   changedFiles: ReturnType<typeof buildVisibleGitStatusFiles>
   diffSummary: ReturnType<typeof getProjectDiffSummary>
+  onRefresh: () => void
+  sessionId: string
 }) => {
   const { t } = useI18n()
+  const checkboxIdPrefix = useId()
+  const changedFilePaths = useMemo(
+    () => changedFiles.map((file) => file.path),
+    [changedFiles]
+  )
+  const previousChangedFilePathsRef = useRef(new Set(changedFilePaths))
   const [commitMessage, setCommitMessage] = useState("")
+  const [commitFailure, setCommitFailure] = useState<{
+    detail?: string
+    reason: GitCommitFailureReason
+  } | null>(null)
+  const [commitSuccessHash, setCommitSuccessHash] = useState<string | null>(
+    null
+  )
+  const [isCommitPending, setIsCommitPending] = useState(false)
+  const [selectedPaths, setSelectedPaths] = useState(
+    () => new Set(changedFilePaths)
+  )
   const hasChangedFiles = changedFiles.length > 0
+  const isCommitDisabled =
+    commitMessage.trim().length === 0 ||
+    selectedPaths.size === 0 ||
+    isCommitPending
+
+  useEffect(() => {
+    const previousChangedFilePaths = previousChangedFilePathsRef.current
+    const nextChangedFilePaths = new Set(changedFilePaths)
+
+    setSelectedPaths((currentPaths) => {
+      const nextSelectedPaths = new Set<string>()
+
+      for (const filePath of changedFilePaths) {
+        if (
+          currentPaths.has(filePath) ||
+          !previousChangedFilePaths.has(filePath)
+        ) {
+          nextSelectedPaths.add(filePath)
+        }
+      }
+
+      return nextSelectedPaths
+    })
+    previousChangedFilePathsRef.current = nextChangedFilePaths
+  }, [changedFilePaths])
+
+  const clearCommitFeedback = useCallback(() => {
+    setCommitFailure(null)
+    setCommitSuccessHash(null)
+  }, [])
+  const handleCommitMessageChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setCommitMessage(event.target.value)
+      clearCommitFeedback()
+    },
+    [clearCommitFeedback]
+  )
+  const handleFileSelectionChange = useCallback(
+    (filePath: string, isSelected: boolean) => {
+      setSelectedPaths((currentPaths) => {
+        const nextPaths = new Set(currentPaths)
+
+        if (isSelected) {
+          nextPaths.add(filePath)
+        } else {
+          nextPaths.delete(filePath)
+        }
+
+        return nextPaths
+      })
+      clearCommitFeedback()
+    },
+    [clearCommitFeedback]
+  )
+  const handleCommit = useCallback(async () => {
+    clearCommitFeedback()
+    setIsCommitPending(true)
+
+    try {
+      const result = await rpcClient.git.commit({
+        message: commitMessage,
+        paths: [...selectedPaths],
+        sessionId
+      })
+
+      if (result.ok) {
+        setCommitMessage("")
+        setCommitSuccessHash(result.shortHash)
+        setSelectedPaths(new Set())
+        onRefresh()
+        return
+      }
+
+      setCommitFailure({
+        ...(result.detail === undefined ? {} : { detail: result.detail }),
+        reason: result.reason
+      })
+    } catch (error) {
+      setCommitFailure({
+        detail: error instanceof Error ? error.message : String(error),
+        reason: "git-failed"
+      })
+    } finally {
+      setIsCommitPending(false)
+    }
+  }, [clearCommitFeedback, commitMessage, onRefresh, selectedPaths, sessionId])
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
@@ -1263,42 +1382,62 @@ const ProjectCommitPanel = ({
           </p>
           {hasChangedFiles ? (
             <ul className="mt-2 divide-y divide-border/70">
-              {changedFiles.map((file) => (
-                <li
-                  className="grid min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 py-2 text-xs"
-                  key={`${file.status}-${file.path}`}
-                >
-                  <span
-                    className={cn(
-                      "min-w-0 whitespace-normal leading-5 [overflow-wrap:anywhere]",
-                      PROJECT_STATUS_TEXT_CLASS_NAMES[
-                        file.status as keyof typeof PROJECT_STATUS_TEXT_CLASS_NAMES
-                      ]
-                    )}
-                    title={file.path}
+              {changedFiles.map((file, index) => {
+                const checkboxId = `${checkboxIdPrefix}-${index}`
+
+                return (
+                  <li
+                    className="grid min-h-9 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 py-2 text-xs"
+                    key={`${file.status}-${file.path}`}
                   >
-                    {file.path}
-                  </span>
-                  <Chip
-                    className="shrink-0"
-                    color={
-                      PROJECT_STATUS_CHIP_COLORS[
-                        file.status as keyof typeof PROJECT_STATUS_CHIP_COLORS
-                      ]
-                    }
-                    size="sm"
-                    variant="soft"
-                  >
-                    <Chip.Label className="whitespace-nowrap">
-                      {t(
-                        PROJECT_STATUS_LABEL_KEYS[
-                          file.status as keyof typeof PROJECT_STATUS_LABEL_KEYS
+                    <Checkbox
+                      className="min-w-0 items-start gap-2"
+                      id={checkboxId}
+                      isSelected={selectedPaths.has(file.path)}
+                      onChange={(isSelected) =>
+                        handleFileSelectionChange(file.path, isSelected)
+                      }
+                      variant="secondary"
+                    >
+                      <Checkbox.Control className="mt-0.5 shrink-0">
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                      <Checkbox.Content className="min-w-0">
+                        <Label
+                          className={cn(
+                            "min-w-0 whitespace-normal leading-5 [overflow-wrap:anywhere]",
+                            PROJECT_STATUS_TEXT_CLASS_NAMES[
+                              file.status as keyof typeof PROJECT_STATUS_TEXT_CLASS_NAMES
+                            ]
+                          )}
+                          htmlFor={checkboxId}
+                          title={file.path}
+                        >
+                          {file.path}
+                        </Label>
+                      </Checkbox.Content>
+                    </Checkbox>
+                    <Chip
+                      className="shrink-0"
+                      color={
+                        PROJECT_STATUS_CHIP_COLORS[
+                          file.status as keyof typeof PROJECT_STATUS_CHIP_COLORS
                         ]
-                      )}
-                    </Chip.Label>
-                  </Chip>
-                </li>
-              ))}
+                      }
+                      size="sm"
+                      variant="soft"
+                    >
+                      <Chip.Label className="whitespace-nowrap">
+                        {t(
+                          PROJECT_STATUS_LABEL_KEYS[
+                            file.status as keyof typeof PROJECT_STATUS_LABEL_KEYS
+                          ]
+                        )}
+                      </Chip.Label>
+                    </Chip>
+                  </li>
+                )
+              })}
             </ul>
           ) : (
             <p className="mt-3 text-xs text-muted-foreground">
@@ -1321,7 +1460,7 @@ const ProjectCommitPanel = ({
           fullWidth
           id="project-commit-message"
           maxLength={COMMIT_MESSAGE_MAX_LENGTH}
-          onChange={(event) => setCommitMessage(event.target.value)}
+          onChange={handleCommitMessageChange}
           placeholder={t("chat.projectPanel.commitMessagePlaceholder")}
           rows={5}
           value={commitMessage}
@@ -1331,10 +1470,44 @@ const ProjectCommitPanel = ({
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {commitMessage.length} / {COMMIT_MESSAGE_MAX_LENGTH}
           </span>
-          <Button className="shrink-0" isDisabled size="sm" type="button">
-            {t("chat.projectPanel.commitAction")}
+          <Button
+            className="shrink-0"
+            isDisabled={isCommitDisabled}
+            isPending={isCommitPending}
+            onPress={handleCommit}
+            size="sm"
+            type="button"
+          >
+            {({ isPending }) => (
+              <>
+                {isPending ? <Spinner color="current" size="sm" /> : null}
+                {t("chat.projectPanel.commitAction")}
+              </>
+            )}
           </Button>
         </div>
+        {commitFailure ? (
+          <div className="mt-2 text-xs leading-5 text-danger" role="alert">
+            <p>{t(COMMIT_FAILURE_MESSAGE_KEYS[commitFailure.reason])}</p>
+            {commitFailure.reason === "git-failed" && commitFailure.detail ? (
+              <details className="mt-1 text-[11px] text-muted-foreground">
+                <summary className="cursor-pointer select-none">
+                  {t("chat.projectPanel.commitErrorDetail")}
+                </summary>
+                <pre className="mt-1 max-h-24 overflow-auto rounded bg-muted/50 p-2 font-mono [overflow-wrap:anywhere] whitespace-pre-wrap">
+                  {commitFailure.detail}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+        {commitSuccessHash ? (
+          <output className="mt-2 block text-xs leading-5 text-success">
+            {t("chat.projectPanel.commitSuccess", {
+              hash: commitSuccessHash
+            })}
+          </output>
+        ) : null}
       </div>
     </div>
   )
@@ -1528,6 +1701,8 @@ export const ProjectContextPanel = ({
           <ProjectCommitPanel
             changedFiles={changedFiles}
             diffSummary={diffSummary}
+            onRefresh={onRefresh}
+            sessionId={selectedSession.id}
           />
         </Tabs.Panel>
 

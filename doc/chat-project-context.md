@@ -124,6 +124,8 @@ type ChatMention =
 
 Git porcelain 路径以仓库根目录为基准，因此当 session 的 `projectPath` 位于仓库子目录时，主进程会先将 agent 路径和 Git 路径都转为绝对路径再求交。重命名状态以 Git 返回的新路径匹配。Changes tab 默认将这批项目相对路径传给 `git.diff`，并可切换到完整 Git 改动；还没有任何落盘 edit/write 记录时，面板会显示空状态并提供切换入口。
 
+Commit tab 默认选中当前可见的 Git 变更文件，并通过 `git.commit` 仅把所选 pathspec 加入 index。主进程从 `sessionId` 解析项目路径，依次检查仓库、Git identity 与 merge/rebase 状态，再执行 `git add -- <paths>`、`git commit -m <message>` 和 short hash 查询。所有由该入口触发的 Git 写操作共用独立的 module-level tail queue；提交成功后面板复用 Review 刷新入口，使 sidebar Git badge、diff、文件树与 snapshot 查询一起失效重取。
+
 Chat 组件文件保持只负责 React 渲染和 hook glue：`prompt-input.tsx`、`project-file-code-viewer.tsx` 等 `tsx` 文件不直接定义可复用常量或 helper function；分组、格式化、Shiki token、语言映射等非组件逻辑放在 `apps/desktop/src/renderer/lib/chat/` 下对应 feature 文件中。
 
 `Files` 内部有独立 `Resizable` 分栏，因此 Review 面板的 `Tabs.Panel` 必须通过 `data-[inert=true]:hidden` 隔离 inactive tab，避免 React Aria 保留退出中的 panel 时继续占用 `Changes` / `Commit` 的内容高度。
