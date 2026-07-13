@@ -455,6 +455,13 @@ const ProjectPanelStatusStrip = ({
 }) => {
   const { t } = useI18n()
 
+  if (
+    diffSummary.changedFileCount === 0 &&
+    gitStatusSummaryItems.length === 0
+  ) {
+    return null
+  }
+
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-3">
       {diffSummary.changedFileCount > 0 ? (
@@ -930,7 +937,7 @@ const ProjectFilesPanel = ({
 
   return (
     <Resizable
-      className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
+      className="h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden"
       id="project-files-layout"
       orientation="horizontal"
     >
@@ -1162,7 +1169,7 @@ const ProjectChangesPanel = ({
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <span className="text-xs font-semibold text-muted-foreground">
           {t("chat.projectPanel.diffTitle")}
@@ -1355,7 +1362,7 @@ const ProjectCommitPanel = ({
   }, [clearCommitFeedback, commitMessage, onRefresh, selectedPaths, sessionId])
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-2">
         <span className="min-w-0 text-xs font-semibold text-muted-foreground">
           {t("chat.projectPanel.commitTitle")}
