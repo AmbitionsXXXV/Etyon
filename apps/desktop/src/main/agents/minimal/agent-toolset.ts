@@ -102,7 +102,8 @@ export const buildAgentToolset = ({
       permissionMode,
       agentRunId
         ? { holder: PARENT_WRITE_HOLDER, topRunId: agentRunId }
-        : undefined
+        : undefined,
+      agentRunId ?? undefined
     ),
     profile.allowedTools
   )
@@ -113,7 +114,14 @@ export const buildAgentToolset = ({
     // every call is approval-gated unless the exact command was remembered.
     ...(profile.readonly
       ? {}
-      : { bash: buildBashTool(workspace, permissionMode, settings.agents) }),
+      : {
+          bash: buildBashTool(
+            workspace,
+            permissionMode,
+            settings.agents,
+            agentRunId ?? undefined
+          )
+        }),
     // Publishing is read-only on the filesystem, but the write-then-publish
     // flow only makes sense for profiles that can create the file.
     ...(profile.readonly ? {} : { artifact: buildArtifactTool(workspace) }),

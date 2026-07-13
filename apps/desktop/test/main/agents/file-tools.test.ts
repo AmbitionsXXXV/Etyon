@@ -2,10 +2,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { afterAll, describe, expect, it } from "vite-plus/test"
+import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
 import { buildFileTools } from "@/main/agents/minimal/file-tools"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+
+vi.mock("@/main/agents/checkpoints", () => ({
+  captureFileCheckpoint: vi.fn()
+}))
 
 const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "etyon-file-tools-"))
 

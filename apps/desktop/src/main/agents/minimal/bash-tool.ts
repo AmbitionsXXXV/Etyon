@@ -6,6 +6,7 @@ import type { AgentCommandApprovalRule, AgentSettings } from "@etyon/rpc"
 import { tool } from "ai"
 import { z } from "zod"
 
+import { captureBashCheckpoint } from "@/main/agents/checkpoints"
 import {
   isRtkAvailable,
   rewriteCommandForRtk
@@ -269,7 +270,8 @@ export const runShellCommand = ({
 export const buildBashTool = (
   workspace: WorkspaceCore,
   permissionMode: AgentPermissionMode,
-  settings: Pick<AgentSettings, "approvals" | "rtk">
+  settings: Pick<AgentSettings, "approvals" | "rtk">,
+  checkpointRunId?: string
 ) =>
   tool({
     description:
@@ -279,6 +281,15 @@ export const buildBashTool = (
         settings.rtk.autoRewrite && (await isRtkAvailable())
           ? rewriteCommandForRtk(inputData.command)
           : { executedCommand: inputData.command, rtkApplied: false }
+
+      if (checkpointRunId && context?.toolCallId) {
+        await captureBashCheckpoint({
+          projectPath: workspace.projectPath,
+          runId: checkpointRunId,
+          toolCallId: context.toolCallId
+        })
+      }
+
       const result = await runShellCommand({
         command: rewrite.executedCommand,
         cwd: workspace.projectPath,

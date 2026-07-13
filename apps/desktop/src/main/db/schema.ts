@@ -197,6 +197,33 @@ export const agentArtifacts = sqliteTable(
   })
 )
 
+export const agentCheckpoints = sqliteTable(
+  "agent_checkpoints",
+  {
+    createdAt: text("created_at").notNull(),
+    filesJson: text("files_json").notNull(),
+    gitSnapshotRef: text("git_snapshot_ref"),
+    id: text("id").primaryKey(),
+    origin: text("origin", {
+      enum: ["bash", "edit", "write"]
+    }).notNull(),
+    parentId: text("parent_id"),
+    projectHash: text("project_hash").notNull(),
+    runId: text("run_id").notNull(),
+    toolCallId: text("tool_call_id").notNull()
+  },
+  (table) => ({
+    projectCreatedAtIdx: index("agent_checkpoints_project_created_at_idx").on(
+      table.projectHash,
+      table.createdAt
+    ),
+    runToolIdx: index("agent_checkpoints_run_tool_idx").on(
+      table.runId,
+      table.toolCallId
+    )
+  })
+)
+
 export const chatSessionMemories = sqliteTable("chat_session_memories", {
   content: text("content").notNull(),
   createdAt: text("created_at").notNull(),
@@ -269,6 +296,7 @@ export const memoryEmbeddings = sqliteTable(
 export const schema = {
   agentApprovals,
   agentArtifacts,
+  agentCheckpoints,
   agentEvents,
   agentRuns,
   agentToolCalls,

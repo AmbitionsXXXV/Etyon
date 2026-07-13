@@ -8,11 +8,23 @@ import { buildChildWriteTools } from "@/main/agents/minimal/delegation"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { claimWrite } from "@/main/agents/write-claims"
 
-const { registerApprovalMock, getSettingsMock } = vi.hoisted(() => ({
+const {
+  captureBashCheckpointMock,
+  captureFileCheckpointMock,
+  getSettingsMock,
+  registerApprovalMock
+} = vi.hoisted(() => ({
+  captureBashCheckpointMock: vi.fn(() => Promise.resolve(null)),
+  captureFileCheckpointMock: vi.fn(() => Promise.resolve(null)),
   getSettingsMock: vi.fn(() => ({
     agents: { approvals: { approvalTtlMs: 1000, commandAllowlist: [] } }
   })),
   registerApprovalMock: vi.fn()
+}))
+
+vi.mock("@/main/agents/checkpoints", () => ({
+  captureBashCheckpoint: captureBashCheckpointMock,
+  captureFileCheckpoint: captureFileCheckpointMock
 }))
 
 vi.mock("@/main/agents/approval-broker", () => ({
@@ -83,6 +95,10 @@ const run = <T>(
 }
 
 beforeEach(() => {
+  captureBashCheckpointMock.mockReset()
+  captureBashCheckpointMock.mockResolvedValue(null)
+  captureFileCheckpointMock.mockReset()
+  captureFileCheckpointMock.mockResolvedValue(null)
   registerApprovalMock.mockReset()
   getSettingsMock.mockReturnValue({
     agents: { approvals: { approvalTtlMs: 1000, commandAllowlist: [] } }
@@ -116,6 +132,13 @@ describe("writable child tools — approval path", () => {
     ).toBe("goodbye world")
     expect(toolCalls).toHaveLength(1)
     expect(toolCalls[0]?.toolName).toBe("edit")
+    expect(captureFileCheckpointMock).toHaveBeenCalledWith({
+      origin: "edit",
+      paths: ["approved.ts"],
+      projectPath,
+      runId: "child-run",
+      toolCallId: "tc-edit"
+    })
     // The prompt is surfaced then reconciled to resolved on the parent stream.
     expect(writer.write).toHaveBeenCalledTimes(2)
     expect(writer.write.mock.calls[0]?.[0]).toMatchObject({
@@ -146,6 +169,7 @@ describe("writable child tools — approval path", () => {
     // A denied call is settled by the responder/broker, not recorded as a run
     // tool call here.
     expect(toolCalls).toHaveLength(0)
+    expect(captureFileCheckpointMock).not.toHaveBeenCalled()
   })
 
   it("runs an approved bash command and records its output", async () => {
@@ -163,6 +187,11 @@ describe("writable child tools — approval path", () => {
     expect(output.stdoutPreview).toBe("child-ok")
     expect(toolCalls).toHaveLength(1)
     expect(toolCalls[0]?.toolName).toBe("bash")
+    expect(captureBashCheckpointMock).toHaveBeenCalledWith({
+      projectPath,
+      runId: "child-run",
+      toolCallId: "tc-bash"
+    })
   })
 
   it("rejects a write to a path another holder already claimed", async () => {
@@ -189,5 +218,6 @@ describe("writable child tools — approval path", () => {
     // A conflict is a completed tool call (it returned a result), so it is
     // recorded — unlike a denial.
     expect(toolCalls).toHaveLength(1)
+    expect(captureFileCheckpointMock).not.toHaveBeenCalled()
   })
 })

@@ -17,6 +17,10 @@ import {
 import type { DelegatedToolCallRecord } from "@/main/agents/agent-event-store"
 import { registerApproval } from "@/main/agents/approval-broker"
 import {
+  captureBashCheckpoint,
+  captureFileCheckpoint
+} from "@/main/agents/checkpoints"
+import {
   BASH_TOOL_NAME,
   BashInputSchema,
   DEFAULT_TIMEOUT_SECONDS,
@@ -498,6 +502,11 @@ export const buildChildWriteTools = ({
 
       // bash is exempt from write claims: shell writes cannot be identified from
       // the command statically. The claim system guards edit/write only.
+      await captureBashCheckpoint({
+        projectPath: workspace.projectPath,
+        runId: childRunId,
+        toolCallId
+      })
       const output = await runShellCommand({
         command,
         cwd: workspace.projectPath,
@@ -556,6 +565,13 @@ export const buildChildWriteTools = ({
         return conflict
       }
 
+      await captureFileCheckpoint({
+        origin: "edit",
+        paths: [inputData.path],
+        projectPath: workspace.projectPath,
+        runId: childRunId,
+        toolCallId
+      })
       const output = await runWorkspaceEdit({
         edits: inputData.edits,
         requestedPath: inputData.path,
@@ -614,6 +630,13 @@ export const buildChildWriteTools = ({
         return conflict
       }
 
+      await captureFileCheckpoint({
+        origin: "write",
+        paths: [inputData.path],
+        projectPath: workspace.projectPath,
+        runId: childRunId,
+        toolCallId
+      })
       const output = await runWorkspaceWrite({
         content: inputData.content,
         requestedPath: inputData.path,

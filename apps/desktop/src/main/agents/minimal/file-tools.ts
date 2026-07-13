@@ -1,6 +1,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 
+import { captureFileCheckpoint } from "@/main/agents/checkpoints"
 import type {
   WorkspaceCore,
   WorkspaceFileError
@@ -211,6 +212,32 @@ const claimFileWrite = (
       }
 }
 
+const captureFileToolCheckpoint = async ({
+  origin,
+  requestedPath,
+  runId,
+  toolCallId,
+  workspace
+}: {
+  origin: "edit" | "write"
+  requestedPath: string
+  runId: string | undefined
+  toolCallId: string | undefined
+  workspace: WorkspaceCore
+}): Promise<void> => {
+  if (!(runId && toolCallId)) {
+    return
+  }
+
+  await captureFileCheckpoint({
+    origin,
+    paths: [requestedPath],
+    projectPath: workspace.projectPath,
+    runId,
+    toolCallId
+  })
+}
+
 /**
  * Applies exact edits and writes the file (throwing the workspace error, exactly
  * like the tool did inline). Exported so a writable delegated child reuses the
@@ -285,7 +312,8 @@ export const runWorkspaceWrite = async ({
 export const buildFileTools = (
   workspace: WorkspaceCore,
   permissionMode: AgentPermissionMode,
-  writeClaim?: FileWriteClaim
+  writeClaim?: FileWriteClaim,
+  checkpointRunId?: string
 ) => ({
   edit: tool({
     description:
@@ -297,6 +325,13 @@ export const buildFileTools = (
         return conflict
       }
 
+      await captureFileToolCheckpoint({
+        origin: "edit",
+        requestedPath: inputData.path,
+        runId: checkpointRunId,
+        toolCallId: context?.toolCallId,
+        workspace
+      })
       const result = await runWorkspaceEdit({
         edits: inputData.edits,
         requestedPath: inputData.path,
@@ -419,6 +454,13 @@ export const buildFileTools = (
         return conflict
       }
 
+      await captureFileToolCheckpoint({
+        origin: "write",
+        requestedPath: inputData.path,
+        runId: checkpointRunId,
+        toolCallId: context?.toolCallId,
+        workspace
+      })
       const result = await runWorkspaceWrite({
         content: inputData.content,
         requestedPath: inputData.path,
