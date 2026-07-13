@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai"
 import { and, asc, eq, isNull } from "drizzle-orm"
 
+import { persistDataUrlAttachments } from "@/main/attachments"
 import { compactChatMessages } from "@/main/chat-auto-compact"
 import { upsertChatSessionMemory } from "@/main/chat-session-memory"
 import type { AppDatabase } from "@/main/db"
@@ -166,16 +167,20 @@ export const replaceChatMessages = async ({
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  // Move base64 image `data:` URLs out of the message JSON and onto disk before
+  // anything serializes them, so the SQLite chat log stays small and every
+  // downstream path (compaction, memory, title) sees the compact url refs.
+  const persistableMessages = await persistDataUrlAttachments(messages)
   const settings = getSettings()
   const compactedMessages = await compactChatMessages({
-    messages,
+    messages: persistableMessages,
     settings
   })
   const normalizedMessages = normalizeMessageIds(compactedMessages)
   const now = new Date().toISOString()
   const nextTitle = session.title.trim()
     ? session.title
-    : buildChatSessionTitle(messages)
+    : buildChatSessionTitle(persistableMessages)
 
   await runExclusiveDbWrite(() =>
     db.transaction(async (tx) => {

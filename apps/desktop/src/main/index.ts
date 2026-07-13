@@ -8,6 +8,10 @@ import {
   recoverInterruptedAgentRuns
 } from "@/main/agents/agent-event-store"
 import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import {
+  registerAttachmentProtocol,
+  registerAttachmentProtocolScheme
+} from "@/main/attachments"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
@@ -36,6 +40,9 @@ if (started) {
   app.quit()
 }
 
+// Must run before `app` is ready so the renderer can load attachment images
+// through the custom scheme; the request handler is registered post-ready.
+registerAttachmentProtocolScheme()
 registerNativeIpcHandlers()
 registerTerminalIpcHandlers()
 
@@ -70,6 +77,7 @@ const handleAppReady = async (): Promise<void> => {
     logger.error("agent_run_recovery_failed", { error })
   }
 
+  registerAttachmentProtocol()
   registerRpcHandler()
   await startServer()
   syncTelegramBridge(settings)

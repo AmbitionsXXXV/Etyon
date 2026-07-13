@@ -39,7 +39,7 @@ import { useHotkey } from "@tanstack/react-hotkeys"
 import { useDebouncedValue } from "@tanstack/react-pacer"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import type { DefaultChatTransport } from "ai"
+import type { DefaultChatTransport, FileUIPart } from "ai"
 import { getToolName, isToolUIPart } from "ai"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
@@ -52,6 +52,7 @@ import {
   MessageActions,
   USER_MESSAGE_ACTIONS
 } from "@/renderer/components/chat/message-actions"
+import { MessageAttachmentImages } from "@/renderer/components/chat/message-attachment-images"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
@@ -65,6 +66,7 @@ import type {
   ChatSidePanelView
 } from "@/renderer/lib/chat/artifact-panel"
 import { messageHasWorkSection } from "@/renderer/lib/chat/assistant-message-timeline"
+import { getImageFileParts } from "@/renderer/lib/chat/attachments"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
   getImageModeToggleDisabled,
@@ -176,6 +178,7 @@ import type {
   ChatRequestPhase,
   ChatStreamDataTypes
 } from "@/shared/chat/stream-data"
+import { isImageInputModel } from "@/shared/providers/image-input"
 import { isImageOutputModel } from "@/shared/providers/image-output"
 import { DEFAULT_MODEL_EFFORT } from "@/shared/providers/model-effort"
 import type {
@@ -206,6 +209,22 @@ const isSelectedModelImageOutput = (
 
   return selectedOption
     ? isImageOutputModel({
+        capabilities: selectedOption.capabilities,
+        id: selectedOption.id
+      })
+    : false
+}
+
+const isSelectedModelImageInput = (
+  modelGroups: ChatModelGroup[],
+  selectedModelValue: string
+): boolean => {
+  const selectedOption = modelGroups
+    .flatMap((group) => group.options)
+    .find((option) => option.value === selectedModelValue)
+
+  return selectedOption
+    ? isImageInputModel({
         capabilities: selectedOption.capabilities,
         id: selectedOption.id
       })
@@ -1297,6 +1316,8 @@ const ChatMessageBubble = ({
             />
           ) : null}
 
+          <MessageAttachmentImages files={getImageFileParts(message.parts)} />
+
           <MessageSegmentContent
             mentions={mentions}
             messageId={message.id}
@@ -1529,6 +1550,10 @@ const ChatRuntime = ({
   )
   const isSelectedModelImageCapable = useMemo(
     () => isSelectedModelImageOutput(modelGroups, selectedModelValue),
+    [modelGroups, selectedModelValue]
+  )
+  const isSelectedModelImageInputCapable = useMemo(
+    () => isSelectedModelImageInput(modelGroups, selectedModelValue),
     [modelGroups, selectedModelValue]
   )
   const [isImageMode, setIsImageMode] = useState(isSelectedModelImageCapable)
@@ -1942,39 +1967,63 @@ const ChatRuntime = ({
   )
 
   const sendPromptMessage = useCallback(
-    ({ mentions, text }: { mentions: ChatMention[]; text: string }): void => {
-      void sendMessage(
-        {
-          metadata: mentions.length > 0 ? { mentions } : undefined,
-          text
-        },
-        buildChatRequestOptions(mentions)
-      )
+    ({
+      files = [],
+      mentions,
+      text
+    }: {
+      files?: FileUIPart[]
+      mentions: ChatMention[]
+      text: string
+    }): void => {
+      const metadata = mentions.length > 0 ? { mentions } : undefined
+      const options = buildChatRequestOptions(mentions)
+
+      // `sendMessage`'s shorthand overloads are exclusive: text-only, files+text,
+      // or files-only. Branch so each call matches one overload exactly.
+      if (files.length === 0) {
+        void sendMessage({ metadata, text }, options)
+        return
+      }
+
+      if (text.length > 0) {
+        void sendMessage({ files, metadata, text }, options)
+        return
+      }
+
+      void sendMessage({ files, metadata }, options)
     },
     [buildChatRequestOptions, sendMessage]
   )
 
   const handleSubmit = useCallback(
     ({
+      files,
       mentions,
       text
     }: {
+      files: FileUIPart[]
       mentions: ChatMention[]
       text: string
     }): Promise<void> => {
       // While a run is in flight — or parked on a pending tool approval, which
-      // reports status "ready" — hold the message in the queue instead of
-      // sending; it drains automatically once the turn fully settles.
+      // reports status "ready" — hold the message (with any attachments) in the
+      // queue instead of sending; it drains once the turn fully settles.
       if (isRequestPending || isAwaitingToolApproval) {
         setQueuedMessages((currentMessages) => [
           ...currentMessages,
-          { id: crypto.randomUUID(), mentions, text }
+          {
+            files: files.length > 0 ? files : undefined,
+            id: crypto.randomUUID(),
+            mentions,
+            text
+          }
         ])
 
         return Promise.resolve()
       }
 
-      sendPromptMessage({ mentions, text })
+      sendPromptMessage({ files, mentions, text })
 
       return Promise.resolve()
     },
@@ -2339,6 +2388,14 @@ const ChatRuntime = ({
                 />
               </div>
             }
+            imageInputAttachLabel={t("chat.attachments.attach")}
+            imageInputCountError={t("chat.attachments.countError")}
+            imageInputEnabled={isSelectedModelImageInputCapable}
+            imageInputNonVisionHint={t("chat.attachments.nonVisionHint")}
+            imageInputRemoveLabel={t("chat.attachments.remove")}
+            imageInputSizeError={t("chat.attachments.sizeError")}
+            imageInputTypeError={t("chat.attachments.typeError")}
+            imageInputUnsupportedLabel={t("chat.attachments.unsupported")}
             isAgentModeToggleDisabled={isAgentModeToggleDisabled}
             isLoadingFileItems={isLoadingFileItems}
             isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}

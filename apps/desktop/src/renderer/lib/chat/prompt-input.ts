@@ -16,6 +16,7 @@ import {
   Task01Icon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
+import type { FileUIPart } from "ai"
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react"
 
 export interface ActiveMentionMatch {
@@ -90,6 +91,7 @@ export type PromptTextDisplayPart =
     }
 
 export interface QueuedPromptMessage {
+  files?: FileUIPart[]
   id: string
   mentions: ChatMention[]
   text: string

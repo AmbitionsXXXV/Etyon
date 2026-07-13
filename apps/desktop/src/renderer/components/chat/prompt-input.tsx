@@ -14,6 +14,8 @@ import {
   Tooltip
 } from "@heroui/react"
 import {
+  Attachment01Icon,
+  Cancel01Icon,
   CubeIcon,
   PencilEdit02Icon,
   SentIcon,
@@ -24,10 +26,27 @@ import type { Editor } from "@tiptap/core"
 import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
+import type { FileUIPart } from "ai"
 import { motion } from "motion/react"
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react"
+import type {
+  ChangeEvent,
+  ClipboardEvent,
+  CSSProperties,
+  KeyboardEvent,
+  MouseEvent,
+  ReactNode
+} from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import {
+  ACCEPTED_ATTACHMENT_MEDIA_TYPES,
+  attachmentToFilePart,
+  classifyAttachmentCandidate
+} from "@/renderer/lib/chat/attachments"
+import type {
+  AttachmentRejectionReason,
+  ComposerAttachment
+} from "@/renderer/lib/chat/attachments"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   CHAT_AGENT_MODE_OPTIONS,
@@ -937,6 +956,108 @@ const PromptInputActions = ({
   )
 }
 
+const FILE_INPUT_ACCEPT = ACCEPTED_ATTACHMENT_MEDIA_TYPES.join(",")
+
+const encodeBytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = ""
+
+  for (const byte of bytes) {
+    binary += String.fromCodePoint(byte)
+  }
+
+  return btoa(binary)
+}
+
+// arrayBuffer() + btoa avoids a hand-rolled FileReader promise wrapper; the
+// composer's 8MB per-image cap keeps the synchronous encode cheap.
+const readFileAsDataUrl = async (file: File): Promise<string> => {
+  const buffer = await file.arrayBuffer()
+
+  return `data:${file.type};base64,${encodeBytesToBase64(new Uint8Array(buffer))}`
+}
+
+// Mirrors ComposerImageModeControl's conditional-tooltip recipe: a bare
+// disabled button when the model can't see images, wrapped in the explanatory
+// tooltip only when actionable.
+const PromptInputAttachControl = ({
+  attachLabel,
+  disabledTooltip,
+  isDisabled,
+  onPress
+}: {
+  attachLabel: string
+  disabledTooltip: string
+  isDisabled: boolean
+  onPress: () => void
+}) => {
+  const button = (
+    <button
+      aria-label={isDisabled ? disabledTooltip : attachLabel}
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+        isDisabled
+          ? "cursor-not-allowed opacity-50"
+          : "hover:bg-default hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      )}
+      disabled={isDisabled}
+      onClick={onPress}
+      type="button"
+    >
+      <HugeiconsIcon icon={Attachment01Icon} size={16} strokeWidth={2} />
+    </button>
+  )
+
+  if (isDisabled) {
+    return button
+  }
+
+  return (
+    <Tooltip delay={300}>
+      <Tooltip.Trigger>{button}</Tooltip.Trigger>
+      <Tooltip.Content placement="top">{attachLabel}</Tooltip.Content>
+    </Tooltip>
+  )
+}
+
+const ComposerAttachmentChips = ({
+  attachments,
+  onRemove,
+  removeLabel
+}: {
+  attachments: ComposerAttachment[]
+  onRemove: (id: string) => void
+  removeLabel: string
+}) => {
+  if (attachments.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {attachments.map((attachment) => (
+        <div
+          className="group relative size-16 overflow-hidden rounded-lg border border-border/60 bg-muted/40"
+          key={attachment.id}
+        >
+          <img
+            alt={attachment.name}
+            className="size-full object-cover"
+            src={attachment.dataUrl}
+          />
+          <button
+            aria-label={removeLabel}
+            className="absolute top-0.5 right-0.5 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white/60"
+            onClick={() => onRemove(attachment.id)}
+            type="button"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const usePromptCommandPaletteItems = ({
   activeRange,
   imagenDescription,
@@ -1025,6 +1146,7 @@ const usePromptCommandPaletteItems = ({
   )
 }
 
+// eslint-disable-next-line complexity -- The composer coordinates mentions, slash commands, agent/permission modes, IME guards, and image attachments in one input surface.
 export const PromptInput = ({
   agentMode,
   agentModeAgentLabel,
@@ -1046,6 +1168,14 @@ export const PromptInput = ({
   contextUsage,
   disabled = false,
   footer,
+  imageInputAttachLabel = "",
+  imageInputCountError = "",
+  imageInputEnabled = false,
+  imageInputNonVisionHint = "",
+  imageInputRemoveLabel = "",
+  imageInputSizeError = "",
+  imageInputTypeError = "",
+  imageInputUnsupportedLabel = "",
   isAgentModeToggleDisabled,
   isLoadingFileItems = false,
   isLoadingPromptTemplateItems = false,
@@ -1116,6 +1246,14 @@ export const PromptInput = ({
   }
   disabled?: boolean
   footer?: ReactNode
+  imageInputAttachLabel?: string
+  imageInputCountError?: string
+  imageInputEnabled?: boolean
+  imageInputNonVisionHint?: string
+  imageInputRemoveLabel?: string
+  imageInputSizeError?: string
+  imageInputTypeError?: string
+  imageInputUnsupportedLabel?: string
   isAgentModeToggleDisabled?: boolean
   isLoadingFileItems?: boolean
   isLoadingPromptTemplateItems?: boolean
@@ -1141,6 +1279,7 @@ export const PromptInput = ({
   onRemoveQueuedMessage?: (id: string) => void
   onStop?: () => void
   onSubmit: (payload: {
+    files: FileUIPart[]
     mentions: ChatMention[]
     text: string
   }) => Promise<void>
@@ -1178,6 +1317,9 @@ export const PromptInput = ({
   } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [promptInputValue, setPromptInputValue] = useState("")
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
   )
@@ -1248,6 +1390,113 @@ export const PromptInput = ({
     ? mentionSkillEmptyLabel
     : mentionEmptyLabel
   const hasPromptInput = promptInputValue.trim().length > 0
+
+  const attachmentErrorLabel = useCallback(
+    (reason: AttachmentRejectionReason): string => {
+      if (reason === "type") {
+        return imageInputTypeError
+      }
+
+      if (reason === "size") {
+        return imageInputSizeError
+      }
+
+      return imageInputCountError
+    },
+    [imageInputCountError, imageInputSizeError, imageInputTypeError]
+  )
+
+  // Validate → read accepted files to data URLs → append; the first rejected
+  // file surfaces its reason inline. Ignored entirely when the model can't see
+  // images, so the disabled attach button and paste path stay consistent.
+  const addFiles = useCallback(
+    async (incoming: File[]) => {
+      if (!imageInputEnabled || incoming.length === 0) {
+        return
+      }
+
+      setAttachmentError(null)
+      const accepted: ComposerAttachment[] = []
+      let rejection: AttachmentRejectionReason | null = null
+
+      for (const file of incoming) {
+        const classification = classifyAttachmentCandidate({
+          existingCount: attachments.length + accepted.length,
+          mediaType: file.type,
+          sizeBytes: file.size
+        })
+
+        if (!classification.ok) {
+          rejection ??= classification.reason
+          continue
+        }
+
+        try {
+          accepted.push({
+            dataUrl: await readFileAsDataUrl(file),
+            id: crypto.randomUUID(),
+            mediaType: file.type,
+            name: file.name
+          })
+        } catch {
+          // Skip an unreadable file rather than failing the whole batch.
+        }
+      }
+
+      if (accepted.length > 0) {
+        setAttachments((current) => [...current, ...accepted])
+      }
+
+      if (rejection) {
+        setAttachmentError(attachmentErrorLabel(rejection))
+      }
+    },
+    [attachmentErrorLabel, attachments.length, imageInputEnabled]
+  )
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((current) =>
+      current.filter((attachment) => attachment.id !== id)
+    )
+  }, [])
+
+  const handleAttachClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleFileInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const { files } = event.target
+
+      if (files) {
+        void addFiles([...files])
+      }
+
+      // Reset so selecting the same file again re-triggers change.
+      event.target.value = ""
+    },
+    [addFiles]
+  )
+
+  const handleEditorPaste = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      if (!imageInputEnabled) {
+        return
+      }
+
+      const imageFiles = [...(event.clipboardData?.files ?? [])].filter(
+        (file) => file.type.startsWith("image/")
+      )
+
+      if (imageFiles.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      void addFiles(imageFiles)
+    },
+    [addFiles, imageInputEnabled]
+  )
 
   const clearCompositionSubmitGuard = useCallback(() => {
     if (compositionSubmitGuardTimeoutRef.current) {
@@ -1475,8 +1724,19 @@ export const PromptInput = ({
 
     const { mentions, text } = extractPromptEditorPayload(editor.getJSON())
     const normalizedText = text.trim()
+    const hasAttachments = attachments.length > 0
 
-    if ((normalizedText === "" && mentions.length === 0) || disabled) {
+    if (
+      (normalizedText === "" && mentions.length === 0 && !hasAttachments) ||
+      disabled
+    ) {
+      return
+    }
+
+    // Block sending images to a model that can't see them (e.g. attached on a
+    // vision model, then switched away): the user removes them or switches back.
+    if (hasAttachments && !imageInputEnabled) {
+      setAttachmentError(imageInputNonVisionHint)
       return
     }
 
@@ -1484,11 +1744,14 @@ export const PromptInput = ({
 
     try {
       await onSubmit({
+        files: attachments.map(attachmentToFilePart),
         mentions,
         text: normalizedText
       })
       editor.commands.clearContent()
       setPromptInputValue("")
+      setAttachments([])
+      setAttachmentError(null)
       editor.commands.focus()
       setActiveMentionRange(null)
       setActiveCommandPaletteRange(null)
@@ -1496,7 +1759,14 @@ export const PromptInput = ({
     } finally {
       setIsSubmitting(false)
     }
-  }, [disabled, editor, onSubmit])
+  }, [
+    attachments,
+    disabled,
+    editor,
+    imageInputEnabled,
+    imageInputNonVisionHint,
+    onSubmit
+  ])
 
   const handleEditQueuedMessage = useCallback(
     (message: QueuedPromptMessage) => {
@@ -1510,6 +1780,17 @@ export const PromptInput = ({
         .focus("end")
         .run()
       syncPromptInputValue(editor)
+      // Restore any attached images so editing a queued message is lossless
+      // (queued file urls are still inline data URLs, not yet persisted).
+      setAttachments(
+        (message.files ?? []).map((file) => ({
+          dataUrl: file.url,
+          id: crypto.randomUUID(),
+          mediaType: file.mediaType,
+          name: file.filename ?? "image"
+        }))
+      )
+      setAttachmentError(null)
       onRemoveQueuedMessage?.(message.id)
     },
     [editor, onRemoveQueuedMessage, syncPromptInputValue]
@@ -1801,6 +2082,14 @@ export const PromptInput = ({
 
       <HeroPromptInput.Shell className="block rounded-[1.75rem]! hover:bg-default!">
         <HeroPromptInput.Content className="p-4">
+          <ComposerAttachmentChips
+            attachments={attachments}
+            onRemove={removeAttachment}
+            removeLabel={imageInputRemoveLabel}
+          />
+          {attachmentError ? (
+            <p className="mb-2 text-xs text-destructive">{attachmentError}</p>
+          ) : null}
           <div
             className={cn(
               "min-h-32 cursor-text text-sm",
@@ -1817,6 +2106,7 @@ export const PromptInput = ({
             onCompositionEndCapture={handleEditorCompositionEnd}
             onCompositionStartCapture={handleEditorCompositionStart}
             onKeyDownCapture={handleEditorKeyDown}
+            onPasteCapture={handleEditorPaste}
           >
             <EditorContent editor={editor} />
           </div>
@@ -1846,6 +2136,22 @@ export const PromptInput = ({
                 toggleLabel={permissionModeToggleLabel}
               />
               {footer}
+              <PromptInputAttachControl
+                attachLabel={imageInputAttachLabel}
+                disabledTooltip={imageInputUnsupportedLabel}
+                isDisabled={disabled || !imageInputEnabled}
+                onPress={handleAttachClick}
+              />
+              <input
+                accept={FILE_INPUT_ACCEPT}
+                aria-hidden="true"
+                className="hidden"
+                multiple
+                onChange={handleFileInputChange}
+                ref={fileInputRef}
+                tabIndex={-1}
+                type="file"
+              />
             </div>
           </HeroPromptInput.ToolbarStart>
           <HeroPromptInput.ToolbarEnd>

@@ -28,6 +28,16 @@
       "readError": "アーティファクトファイルを読み取れません。",
       "refresh": "アーティファクトを更新"
     },
+    "attachments": {
+      "attach": "画像を添付",
+      "countError": "添付できる画像は最大 4 枚です。",
+      "image": "添付画像",
+      "nonVisionHint": "選択中のモデルは画像を認識できません。画像を削除するか、視覚対応のモデルに切り替えて送信してください。",
+      "remove": "画像を削除",
+      "sizeError": "画像は 1 枚あたり 8 MB 以下にしてください。",
+      "typeError": "対応していない形式です。PNG・JPEG・WebP・GIF を使用してください。",
+      "unsupported": "選択中のモデルは画像を認識できません"
+    },
     "imageMode": {
       "label": "画像",
       "tooltip": "オンにすると、メッセージから画像を生成します",

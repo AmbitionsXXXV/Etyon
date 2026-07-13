@@ -84,6 +84,14 @@ vi.mock("@/main/skills", () => ({
   listSkillPromptTemplates: listSkillPromptTemplatesMock
 }))
 
+// Attachment resolution (an fs/electron path) is orthogonal here and covered by
+// attachments.test.ts; keep it a passthrough so this suite stays electron-free.
+vi.mock("@/main/attachments", () => ({
+  resolveAttachmentsForModelMessages: vi.fn((messages: unknown) =>
+    Promise.resolve(messages)
+  )
+}))
+
 const createTextMessage = ({
   id,
   role,

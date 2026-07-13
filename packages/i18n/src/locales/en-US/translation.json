@@ -28,6 +28,16 @@
       "readError": "Unable to read the artifact file.",
       "refresh": "Refresh artifact"
     },
+    "attachments": {
+      "attach": "Attach images",
+      "countError": "You can attach up to 4 images.",
+      "image": "Attached image",
+      "nonVisionHint": "The selected model can't see images. Remove them or switch to a vision model to send.",
+      "remove": "Remove image",
+      "sizeError": "Each image must be 8 MB or smaller.",
+      "typeError": "Unsupported type — use PNG, JPEG, WebP, or GIF.",
+      "unsupported": "The selected model can't see images"
+    },
     "imageMode": {
       "label": "Image",
       "tooltip": "Generate an image from your message",

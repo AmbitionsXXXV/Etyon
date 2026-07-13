@@ -28,6 +28,16 @@
       "readError": "无法读取 Artifact 文件。",
       "refresh": "刷新 Artifact"
     },
+    "attachments": {
+      "attach": "添加图片",
+      "countError": "最多可添加 4 张图片。",
+      "image": "附加的图片",
+      "nonVisionHint": "当前模型无法识别图片。请移除图片或切换到支持视觉的模型后再发送。",
+      "remove": "移除图片",
+      "sizeError": "每张图片不得超过 8 MB。",
+      "typeError": "不支持的格式，请使用 PNG、JPEG、WebP 或 GIF。",
+      "unsupported": "当前模型无法识别图片"
+    },
     "imageMode": {
       "label": "图像",
       "tooltip": "开启后，发送的消息将直接生成图片",

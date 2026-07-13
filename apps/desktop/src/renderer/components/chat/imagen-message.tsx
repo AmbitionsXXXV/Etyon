@@ -112,9 +112,10 @@ const copyImageToClipboard = async (image: HTMLImageElement) => {
 /**
  * Full-screen viewer for a generated image: zoom (buttons, click to toggle,
  * drag-to-pan), 90° rotation, copy, and download. Esc, the backdrop, and the
- * close button all dismiss it.
+ * close button all dismiss it. Exported so user-attached images (vision input)
+ * reuse the same portal-to-body lightbox instead of forking it.
  */
-const ImagenLightbox = ({
+export const ImagenLightbox = ({
   alt,
   fileName,
   onClose,

@@ -3,6 +3,7 @@ import type { ModelMessage, UIMessage } from "ai"
 import { convertToModelMessages } from "ai"
 
 import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/minimal/model-message-continuity"
+import { resolveAttachmentsForModelMessages } from "@/main/attachments"
 import {
   buildSessionMemorySystemPrompt,
   getChatSessionMemory
@@ -72,7 +73,10 @@ export const prepareAgentChatContext = async ({
     settings.memory.enabled
       ? getProjectMemoryDigest(db, projectPath)
       : Promise.resolve(""),
-    convertToModelMessages(messages)
+    // Persisted image inputs arrive as `etyon-attachment://` refs; read their
+    // bytes back into inline data URLs so the model receives the images
+    // (fresh `data:` URLs from this turn pass through untouched).
+    resolveAttachmentsForModelMessages(messages).then(convertToModelMessages)
   ])
   const { system } = buildMentionContext({
     mentions,
