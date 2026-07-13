@@ -24,6 +24,25 @@ export const TERMINAL_FONT_FAMILY =
 /** Debounce for ResizeObserver-driven fit + resize RPC (~100ms per the roadmap). */
 export const TERMINAL_RESIZE_DEBOUNCE_MS = 100
 
+/**
+ * Fallback poll while the terminal has not booted yet. ResizeObserver delivers
+ * on the frame lifecycle, which pauses entirely in an occluded window (Electron
+ * background throttling) — layout still computes there, so a plain timer keeps
+ * probing the container until it becomes measurable.
+ */
+export const TERMINAL_MOUNT_POLL_MS = 500
+
+/**
+ * Minimum container size (px) before the xterm instance boots. Below this the
+ * fit addon proposes degenerate cols/rows (the live dead-screen bug spawned a
+ * 2×56 pty from a mid-expansion ~30px sliver, and a hidden panel measures 0×0),
+ * and a pty born at such dimensions wraps its startup output unreadably. Sizes
+ * this small only occur mid-animation or while the panel is hidden; a settled
+ * open panel is always far larger (its minimum width is 22% of the window).
+ */
+export const TERMINAL_MIN_MOUNT_WIDTH_PX = 100
+export const TERMINAL_MIN_MOUNT_HEIGHT_PX = 48
+
 /** Scrollback the renderer xterm retains; the pty keeps its own authoritative buffer. */
 export const TERMINAL_SCROLLBACK = 5000
 
@@ -84,6 +103,24 @@ export const hasTerminalDimensionsChanged = (
   previous === null ||
   previous.cols !== next.cols ||
   previous.rows !== next.rows
+
+export interface TerminalContainerSize {
+  height: number
+  width: number
+}
+
+/**
+ * Whether the terminal's container is laid out large enough to boot xterm and
+ * spawn/size the pty from real measurements. This is the regression guard for
+ * the dead-screen bug: booting while hidden (0×0) or mid-panel-expansion
+ * produced a degenerate pty, and in an occluded (frame-throttled) window no
+ * ResizeObserver tick ever arrived to repair it.
+ */
+export const isTerminalContainerMeasurable = (
+  size: TerminalContainerSize
+): boolean =>
+  size.width >= TERMINAL_MIN_MOUNT_WIDTH_PX &&
+  size.height >= TERMINAL_MIN_MOUNT_HEIGHT_PX
 
 /**
  * xterm theme aligned with the read-only `terminal-output.tsx` look: zinc-950

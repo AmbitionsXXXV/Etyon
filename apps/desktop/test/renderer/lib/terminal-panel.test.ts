@@ -3,8 +3,57 @@ import { describe, expect, it } from "vite-plus/test"
 import {
   createTerminalTheme,
   hasTerminalDimensionsChanged,
-  resolveTerminalDimensions
+  isTerminalContainerMeasurable,
+  resolveTerminalDimensions,
+  TERMINAL_MIN_MOUNT_HEIGHT_PX,
+  TERMINAL_MIN_MOUNT_WIDTH_PX
 } from "@/renderer/lib/chat/terminal-panel"
+
+describe("isTerminalContainerMeasurable", () => {
+  // Regression: the live dead-screen bug booted xterm from a hidden project
+  // panel (0×0) and from a mid-expansion sliver (~30px wide → a 2-col pty). In
+  // an occluded, frame-throttled window no ResizeObserver tick ever repaired
+  // it, so such containers must never boot the terminal in the first place.
+  it("rejects a hidden or collapsed container (0×0)", () => {
+    expect(isTerminalContainerMeasurable({ height: 0, width: 0 })).toBe(false)
+  })
+
+  it("rejects mid-expansion slivers in either axis", () => {
+    expect(isTerminalContainerMeasurable({ height: 849, width: 30 })).toBe(
+      false
+    )
+    expect(isTerminalContainerMeasurable({ height: 20, width: 272 })).toBe(
+      false
+    )
+  })
+
+  it("accepts a settled open panel", () => {
+    expect(isTerminalContainerMeasurable({ height: 849, width: 272 })).toBe(
+      true
+    )
+  })
+
+  it("treats the minimum thresholds as inclusive", () => {
+    expect(
+      isTerminalContainerMeasurable({
+        height: TERMINAL_MIN_MOUNT_HEIGHT_PX,
+        width: TERMINAL_MIN_MOUNT_WIDTH_PX
+      })
+    ).toBe(true)
+    expect(
+      isTerminalContainerMeasurable({
+        height: TERMINAL_MIN_MOUNT_HEIGHT_PX - 1,
+        width: TERMINAL_MIN_MOUNT_WIDTH_PX
+      })
+    ).toBe(false)
+    expect(
+      isTerminalContainerMeasurable({
+        height: TERMINAL_MIN_MOUNT_HEIGHT_PX,
+        width: TERMINAL_MIN_MOUNT_WIDTH_PX - 1
+      })
+    ).toBe(false)
+  })
+})
 
 describe("resolveTerminalDimensions", () => {
   it("returns null when the fit addon cannot measure the container", () => {
