@@ -19,6 +19,7 @@ import {
 } from "@heroui/react"
 import {
   ArrowReloadHorizontalIcon,
+  Cancel01Icon,
   FileCodeIcon,
   FolderMinusIcon,
   GitCompareIcon
@@ -64,6 +65,13 @@ import type {
   ProjectChangesScope,
   ProjectContextPanelView
 } from "@/renderer/lib/chat/project-context-panel"
+import {
+  buildProjectBufferTabLabels,
+  closeProjectFileBuffer,
+  openProjectFileBuffer,
+  retainProjectFileBuffers
+} from "@/renderer/lib/chat/project-file-buffers"
+import type { ProjectFileBuffersState } from "@/renderer/lib/chat/project-file-buffers"
 import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-navigation"
 import type { ProjectPanelRevealRequest } from "@/renderer/lib/chat/project-panel-navigation"
 import { rpcClient } from "@/renderer/lib/rpc"
@@ -245,13 +253,13 @@ const ProjectFileTree = ({
   label,
   onFileSelect,
   paths,
-  revealTarget
+  selectedPath
 }: {
   gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
   label: string
   onFileSelect: (relativePath: string) => void
   paths: string[]
-  revealTarget?: ProjectPanelRevealRequest | null
+  selectedPath: string | null
 }) => {
   const { t } = useI18n()
   const gitStatusEntries = useMemo(
@@ -263,13 +271,15 @@ const ProjectFileTree = ({
     [paths]
   )
   const modelRef = useRef<FileTreeModel | null>(null)
-  // Guards a programmatic reveal selection from re-entering the user-selection
-  // path (which loads the file and clears any highlight line).
+  // Raised while the selectedPath effect programmatically syncs the tree's
+  // selection, so those select/deselect echoes don't re-enter the user-selection
+  // path (which loads the file and clears any reveal highlight). It stays raised
+  // for the whole synchronous batch and is lowered on a microtask; a real user
+  // click lands after the flag is lowered.
   const suppressSelectionRef = useRef(false)
   const handleSelectionChange = useCallback(
     (selectedPaths: readonly string[]) => {
       if (suppressSelectionRef.current) {
-        suppressSelectionRef.current = false
         return
       }
 
@@ -296,23 +306,41 @@ const ProjectFileTree = ({
   })
   modelRef.current = model
 
-  // Mirror a reveal into the tree's own selection: expand ancestors, select the
-  // node, and scroll it into view. The file content is loaded by the parent, so
-  // this selection is suppressed from re-triggering a load.
+  // Mirror the active buffer into the tree's own selection: expand ancestors,
+  // select only that node, and scroll it into view. The file content is loaded
+  // by the parent, so these programmatic selection changes are suppressed from
+  // re-entering the user-selection path (see suppressSelectionRef).
   useEffect(() => {
-    if (!revealTarget) {
+    if (selectedPath === null) {
+      const selectedPaths = model.getSelectedPaths()
+
+      if (selectedPaths.length === 0) {
+        return
+      }
+
+      // No active buffer: drop any lingering selection so the tree does not keep
+      // a row highlighted while the right pane shows its empty state.
+      suppressSelectionRef.current = true
+
+      for (const path of selectedPaths) {
+        model.getItem(path)?.deselect()
+      }
+
+      queueMicrotask(() => {
+        suppressSelectionRef.current = false
+      })
+
       return
     }
 
-    const revealPath = revealTarget.path
     const frame = requestAnimationFrame(() => {
-      const item = model.getItem(revealPath)
+      const item = model.getItem(selectedPath)
 
       if (!item || item.isDirectory()) {
         return
       }
 
-      const segments = revealPath.split("/").filter(Boolean)
+      const segments = selectedPath.split("/").filter(Boolean)
 
       for (let index = 1; index < segments.length; index += 1) {
         const directoryItem = model.getItem(segments.slice(0, index).join("/"))
@@ -322,9 +350,18 @@ const ProjectFileTree = ({
         }
       }
 
+      // item.select() adds to the current selection, so drop any other selected
+      // rows first to keep the tree single-select on the active buffer.
       suppressSelectionRef.current = true
+
+      for (const path of model.getSelectedPaths()) {
+        if (path !== selectedPath) {
+          model.getItem(path)?.deselect()
+        }
+      }
+
       item.select()
-      model.scrollToPath(revealPath, { offset: "center" })
+      model.scrollToPath(selectedPath, { offset: "center" })
       queueMicrotask(() => {
         suppressSelectionRef.current = false
       })
@@ -333,7 +370,7 @@ const ProjectFileTree = ({
     return () => {
       cancelAnimationFrame(frame)
     }
-  }, [model, revealTarget])
+  }, [model, selectedPath])
 
   const handleCollapseFolders = useCallback(() => {
     for (const directoryPath of directoryPaths) {
@@ -573,14 +610,14 @@ const ProjectFilesTreePane = ({
   label,
   onFileSelect,
   paths,
-  revealTarget
+  selectedPath
 }: {
   gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
   isTreeLoading: boolean
   label: string
   onFileSelect: (relativePath: string) => void
   paths: string[]
-  revealTarget?: ProjectPanelRevealRequest | null
+  selectedPath: string | null
 }) => {
   const { t } = useI18n()
 
@@ -592,7 +629,7 @@ const ProjectFilesTreePane = ({
           label={label}
           onFileSelect={onFileSelect}
           paths={paths}
-          revealTarget={revealTarget}
+          selectedPath={selectedPath}
         />
       ) : (
         <div className="flex h-full min-h-48 items-center justify-center px-4 text-center text-xs leading-5 text-muted-foreground">
@@ -602,6 +639,123 @@ const ProjectFilesTreePane = ({
         </div>
       )}
     </div>
+  )
+}
+
+const ProjectFileBufferTabs = ({
+  activePath,
+  gitStatusFiles,
+  onClose,
+  onSelect,
+  openPaths
+}: {
+  activePath: string | null
+  gitStatusFiles: NonNullable<ChatSessionSummary["gitStatus"]>["files"]
+  onClose: (path: string) => void
+  onSelect: (path: string) => void
+  openPaths: string[]
+}) => {
+  const { t } = useI18n()
+  const tabLabels = useMemo(
+    () => buildProjectBufferTabLabels(openPaths),
+    [openPaths]
+  )
+  const statusByPath = useMemo(() => {
+    const statuses = new Map<
+      string,
+      keyof typeof PROJECT_STATUS_TEXT_CLASS_NAMES
+    >()
+
+    for (const file of gitStatusFiles) {
+      if (file.status !== "ignored") {
+        statuses.set(file.path, file.status)
+      }
+    }
+
+    return statuses
+  }, [gitStatusFiles])
+  const activeTabRef = useRef<HTMLButtonElement | null>(null)
+
+  // Keep the active tab visible when it changes (e.g. a reveal from chat opens a
+  // buffer whose tab scrolled out of view).
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest"
+    })
+  }, [activePath])
+
+  return (
+    <ul
+      aria-label={t("chat.projectPanel.openFilesLabel")}
+      className="flex shrink-0 [scrollbar-width:thin] items-center gap-1 overflow-x-auto border-b border-border px-1"
+    >
+      {openPaths.map((path) => {
+        const tabLabel = tabLabels.get(path)
+        const basename = tabLabel?.basename ?? path
+        const disambiguator = tabLabel?.disambiguator ?? null
+        const isActive = path === activePath
+        const status = statusByPath.get(path)
+        // Middle-click anywhere on the row closes the tab (VS Code parity). The
+        // buttons fill the row, so the handler lives on them rather than the li
+        // to keep interactivity on natively focusable elements.
+        const handleAuxClose = (event: React.MouseEvent<HTMLButtonElement>) => {
+          if (event.button === 1) {
+            onClose(path)
+          }
+        }
+
+        return (
+          <li
+            className={cn(
+              "group/tab flex h-8 max-w-40 shrink-0 items-center gap-1 rounded-t-md pr-1 pl-2 text-xs",
+              isActive
+                ? "bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            key={path}
+          >
+            <button
+              aria-current={isActive ? "true" : undefined}
+              className="flex min-w-0 flex-1 items-center gap-1 py-1 text-left"
+              onAuxClick={handleAuxClose}
+              onClick={() => onSelect(path)}
+              ref={isActive ? activeTabRef : undefined}
+              title={path}
+              type="button"
+            >
+              <span
+                className={cn(
+                  "truncate",
+                  status ? PROJECT_STATUS_TEXT_CLASS_NAMES[status] : undefined
+                )}
+              >
+                {basename}
+              </span>
+              {disambiguator ? (
+                <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
+                  {disambiguator}
+                </span>
+              ) : null}
+            </button>
+            <button
+              aria-label={t("chat.projectPanel.closeTab", { name: basename })}
+              className={cn(
+                "flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted hover:text-foreground focus-visible:opacity-100",
+                isActive
+                  ? "opacity-100"
+                  : "opacity-60 group-hover/tab:opacity-100"
+              )}
+              onAuxClick={handleAuxClose}
+              onClick={() => onClose(path)}
+              type="button"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+            </button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -621,64 +775,47 @@ const ProjectFilesPanel = ({
   sessionId: string
 }) => {
   const { t } = useI18n()
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [buffers, setBuffers] = useState<ProjectFileBuffersState>(() => ({
+    activePath: null,
+    openPaths: []
+  }))
   const [fileData, setFileData] = useState<ReadProjectFileOutput | undefined>()
   const [fileErrorMessage, setFileErrorMessage] = useState<string | null>(null)
   const [isFileLoading, setFileLoading] = useState(false)
-  const [highlightLine, setHighlightLine] = useState<number | null>(null)
+  const [highlightReveal, setHighlightReveal] = useState<{
+    line: number
+    path: string
+  } | null>(null)
   const fileRequestIdRef = useRef(0)
   const handledRevealIdRef = useRef<number | null>(null)
+  const contentCacheRef = useRef(new Map<string, ReadProjectFileOutput>())
+  const { activePath, openPaths } = buffers
   const hasChanges = useMemo(
     () =>
-      selectedFilePath !== null &&
+      activePath !== null &&
       gitStatusFiles.some(
-        (file) => file.path === selectedFilePath && file.status !== "ignored"
+        (file) => file.path === activePath && file.status !== "ignored"
       ),
-    [gitStatusFiles, selectedFilePath]
+    [activePath, gitStatusFiles]
   )
+  // A reveal highlight only applies while its file is the active buffer; binding
+  // it to the path lets tab switches / closes drop it without extra bookkeeping.
+  const activeHighlightLine =
+    highlightReveal !== null && highlightReveal.path === activePath
+      ? highlightReveal.line
+      : null
 
-  const handleFileSelect = useCallback(
-    async (relativePath: string) => {
-      const requestId = fileRequestIdRef.current + 1
+  // User navigation (tree click or tab click) drops any reveal highlight.
+  const handleFileActivate = useCallback((relativePath: string) => {
+    setHighlightReveal(null)
+    setBuffers((state) => openProjectFileBuffer(state, relativePath))
+  }, [])
+  const handleTabClose = useCallback((path: string) => {
+    setBuffers((state) => closeProjectFileBuffer(state, path))
+  }, [])
 
-      fileRequestIdRef.current = requestId
-      setSelectedFilePath(relativePath)
-      setFileData(undefined)
-      setFileErrorMessage(null)
-      setFileLoading(true)
-
-      try {
-        const result = await rpcClient.projectSnapshots.readFile({
-          filePath: relativePath,
-          sessionId
-        })
-
-        if (fileRequestIdRef.current === requestId) {
-          setFileData(result)
-        }
-      } catch {
-        if (fileRequestIdRef.current === requestId) {
-          setFileData(undefined)
-          setFileErrorMessage(t("chat.projectPanel.readFileError"))
-        }
-      } finally {
-        if (fileRequestIdRef.current === requestId) {
-          setFileLoading(false)
-        }
-      }
-    },
-    [sessionId, t]
-  )
-
-  // User-driven tree selection clears any reveal highlight; a reveal keeps it.
-  const handleTreeFileSelect = useCallback(
-    (relativePath: string) => {
-      setHighlightLine(null)
-      void handleFileSelect(relativePath)
-    },
-    [handleFileSelect]
-  )
-
+  // A reveal opens/activates the buffer and remembers the line to highlight;
+  // handledRevealIdRef dedupes repeated deliveries of a single request.
   useEffect(() => {
     if (
       !revealTarget ||
@@ -688,42 +825,96 @@ const ProjectFilesPanel = ({
     }
 
     handledRevealIdRef.current = revealTarget.requestId
-    setHighlightLine(revealTarget.line ?? null)
-    void handleFileSelect(revealTarget.path)
-  }, [handleFileSelect, revealTarget])
+    setHighlightReveal(
+      revealTarget.line === undefined
+        ? null
+        : { line: revealTarget.line, path: revealTarget.path }
+    )
+    setBuffers((state) => openProjectFileBuffer(state, revealTarget.path))
+  }, [revealTarget])
 
+  // Load the active buffer's content. Cached content shows immediately and is
+  // revalidated in the background; the requestId guard drops stale responses,
+  // including an in-flight fetch left over from a session switch.
   useEffect(() => {
-    fileRequestIdRef.current += 1
-    handledRevealIdRef.current = null
-    setSelectedFilePath(null)
-    setFileData(undefined)
-    setFileErrorMessage(null)
-    setFileLoading(false)
-    setHighlightLine(null)
-  }, [sessionId])
-
-  useEffect(() => {
-    if (selectedFilePath && !paths.includes(selectedFilePath)) {
-      setSelectedFilePath(null)
+    if (activePath === null) {
+      fileRequestIdRef.current += 1
       setFileData(undefined)
       setFileErrorMessage(null)
       setFileLoading(false)
-      setHighlightLine(null)
-    }
-  }, [paths, selectedFilePath])
 
-  if (!selectedFilePath) {
-    return (
-      <ProjectFilesTreePane
-        gitStatusFiles={gitStatusFiles}
-        isTreeLoading={isTreeLoading}
-        label={label}
-        onFileSelect={handleTreeFileSelect}
-        paths={paths}
-        revealTarget={revealTarget}
-      />
-    )
-  }
+      return
+    }
+
+    const requestId = fileRequestIdRef.current + 1
+
+    fileRequestIdRef.current = requestId
+    const cached = contentCacheRef.current.get(activePath)
+
+    if (cached) {
+      setFileData(cached)
+      setFileErrorMessage(null)
+      setFileLoading(false)
+    } else {
+      setFileData(undefined)
+      setFileErrorMessage(null)
+      setFileLoading(true)
+    }
+
+    const loadActiveFile = async (): Promise<void> => {
+      try {
+        const result = await rpcClient.projectSnapshots.readFile({
+          filePath: activePath,
+          sessionId
+        })
+
+        contentCacheRef.current.set(activePath, result)
+
+        if (fileRequestIdRef.current === requestId) {
+          setFileData(result)
+          setFileErrorMessage(null)
+          setFileLoading(false)
+        }
+      } catch {
+        if (fileRequestIdRef.current !== requestId) {
+          return
+        }
+
+        // Keep already-cached content on a failed background refresh; only
+        // surface an error when there was nothing to display.
+        if (!contentCacheRef.current.has(activePath)) {
+          setFileData(undefined)
+          setFileErrorMessage(t("chat.projectPanel.readFileError"))
+        }
+
+        setFileLoading(false)
+      }
+    }
+
+    void loadActiveFile()
+  }, [activePath, sessionId, t])
+
+  // Reset all buffer + viewer state and the content cache on session change.
+  useEffect(() => {
+    fileRequestIdRef.current += 1
+    contentCacheRef.current = new Map()
+    handledRevealIdRef.current = null
+    setBuffers({ activePath: null, openPaths: [] })
+    setFileData(undefined)
+    setFileErrorMessage(null)
+    setFileLoading(false)
+    setHighlightReveal(null)
+  }, [sessionId])
+
+  // Drop buffers whose file left the snapshot. The length guard avoids nuking
+  // every tab during a transient empty snapshot while a refresh is loading.
+  useEffect(() => {
+    if (paths.length === 0) {
+      return
+    }
+
+    setBuffers((state) => retainProjectFileBuffers(state, paths))
+  }, [paths])
 
   return (
     <Resizable
@@ -742,9 +933,9 @@ const ProjectFilesPanel = ({
           gitStatusFiles={gitStatusFiles}
           isTreeLoading={isTreeLoading}
           label={label}
-          onFileSelect={handleTreeFileSelect}
+          onFileSelect={handleFileActivate}
           paths={paths}
-          revealTarget={revealTarget}
+          selectedPath={activePath}
         />
       </Resizable.Panel>
       <Resizable.Handle
@@ -760,14 +951,31 @@ const ProjectFilesPanel = ({
         id="project-files-preview"
         minSize={100 - PROJECT_FILE_TREE_MAX_SIZE}
       >
-        <ProjectFilePreview
-          errorMessage={fileErrorMessage}
-          fileData={fileData}
-          hasChanges={hasChanges}
-          highlightLine={highlightLine}
-          isLoading={isFileLoading}
-          relativePath={selectedFilePath}
-        />
+        {activePath === null ? (
+          <div className="flex h-full min-h-0 items-center justify-center px-4 text-center text-xs leading-5 text-muted-foreground">
+            {t("chat.projectPanel.previewEmpty")}
+          </div>
+        ) : (
+          <div className="flex h-full min-h-0 flex-col">
+            <ProjectFileBufferTabs
+              activePath={activePath}
+              gitStatusFiles={gitStatusFiles}
+              onClose={handleTabClose}
+              onSelect={handleFileActivate}
+              openPaths={openPaths}
+            />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ProjectFilePreview
+                errorMessage={fileErrorMessage}
+                fileData={fileData}
+                hasChanges={hasChanges}
+                highlightLine={activeHighlightLine}
+                isLoading={isFileLoading}
+                relativePath={activePath}
+              />
+            </div>
+          </div>
+        )}
       </Resizable.Panel>
     </Resizable>
   )
