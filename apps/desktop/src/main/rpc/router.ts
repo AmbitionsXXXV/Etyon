@@ -26,6 +26,10 @@ import {
   GitCommitOutputSchema,
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
+  ListCheckpointsInputSchema,
+  ListCheckpointsOutputSchema,
+  RestoreCheckpointInputSchema,
+  RestoreCheckpointOutputSchema,
   InstallMemoryEmbeddingModelInputSchema,
   ListMemoryEntriesInputSchema,
   MemoryEmbeddingModelsOutputSchema,
@@ -84,6 +88,10 @@ import {
   listPendingAgentApprovals,
   readAgentArtifact
 } from "@/main/agents/agent-run-inspection"
+import {
+  listCheckpoints,
+  restoreFileCheckpoint
+} from "@/main/agents/checkpoints"
 import { respondToChildApproval } from "@/main/agents/child-approval"
 import type { RememberableChildCommand } from "@/main/agents/child-approval"
 import { listChatMessages } from "@/main/chat-messages"
@@ -281,6 +289,40 @@ const gitCommit = rpc
     return commitFiles({
       message: input.message,
       paths: input.paths,
+      projectPath: session.projectPath
+    })
+  })
+
+const checkpointsList = rpc
+  .input(ListCheckpointsInputSchema)
+  .output(ListCheckpointsOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return {
+      checkpoints: await listCheckpoints({
+        projectPath: session.projectPath,
+        ...(input.limit === undefined ? {} : { limit: input.limit })
+      })
+    }
+  })
+
+const checkpointsRestore = rpc
+  .input(RestoreCheckpointInputSchema)
+  .output(RestoreCheckpointOutputSchema)
+  .handler(async ({ context, input }) => {
+    const session = await getChatSessionById(context.db, input.sessionId)
+
+    if (!session) {
+      throw new Error(`Chat session not found: ${input.sessionId}`)
+    }
+
+    return restoreFileCheckpoint({
+      checkpointId: input.checkpointId,
       projectPath: session.projectPath
     })
   })
@@ -748,6 +790,10 @@ export const router = {
     open: chatSessionsOpen,
     setModel: chatSessionsSetModel,
     setPinned: chatSessionsSetPinned
+  },
+  checkpoints: {
+    list: checkpointsList,
+    restore: checkpointsRestore
   },
   cursorAuth: {
     fetchModels: cursorAuthFetchModels,

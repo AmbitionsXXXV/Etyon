@@ -47,6 +47,7 @@ import type { ReactNode, UIEvent } from "react"
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
 import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
+import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
 import {
   MessageActions,
   USER_MESSAGE_ACTIONS
@@ -3005,6 +3006,7 @@ const ChatSessionPage = () => {
 
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden">
+      <CheckpointRestoreHost sessionId={sessionId} />
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
           activeArtifact={activeArtifact}

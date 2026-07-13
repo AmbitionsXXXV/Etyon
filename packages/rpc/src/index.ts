@@ -177,6 +177,24 @@ export type {
   SetChatSessionModelInput,
   SetPinnedChatSessionInput
 } from "./schemas/chat-sessions"
+export {
+  AgentCheckpointSchema,
+  CheckpointFileSchema,
+  CheckpointOriginSchema,
+  ListCheckpointsInputSchema,
+  ListCheckpointsOutputSchema,
+  RestoreCheckpointInputSchema,
+  RestoreCheckpointOutputSchema
+} from "./schemas/checkpoints"
+export type {
+  AgentCheckpoint,
+  CheckpointFile,
+  CheckpointOrigin,
+  ListCheckpointsInput,
+  ListCheckpointsOutput,
+  RestoreCheckpointInput,
+  RestoreCheckpointOutput
+} from "./schemas/checkpoints"
 export { FontListOutputSchema } from "./schemas/fonts"
 export {
   CursorAuthLoginStatusSchema,

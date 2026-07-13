@@ -4,6 +4,7 @@ import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
 import { Button, Chip, Disclosure } from "@heroui/react"
 import {
+  ArrowTurnBackwardIcon,
   BrainIcon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
@@ -17,6 +18,11 @@ import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 
 import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
+import { isRestoreCandidateToolName } from "@/renderer/lib/chat/checkpoint-restore"
+import {
+  requestCheckpointRestore,
+  useRestorableCheckpoint
+} from "@/renderer/lib/chat/checkpoint-restore-store"
 import {
   canRememberCommandApproval,
   EMPTY_TOOL_TRACE_META_ITEMS,
@@ -61,6 +67,7 @@ interface ToolTraceCardProps {
   children?: ReactNode
   defaultExpanded?: boolean
   description?: string
+  footerExtra?: ReactNode
   headerAction?: ReactNode
   icon: IconSvgElement
   state: ToolPartState
@@ -145,12 +152,48 @@ const ToolTraceRevealButton = ({ reveal }: { reveal: ToolRevealRequest }) => {
   )
 }
 
+// Restore affordance for a write/edit row. Reads the published checkpoint index
+// (node-safe store — no rpc import here) and raises a restore request that the
+// route-level CheckpointRestoreHost turns into a confirm dialog. Renders nothing
+// when the row has no captured checkpoint.
+const ToolTraceRestoreButton = ({ part }: { part: ChatToolPart }) => {
+  const { t } = useI18n()
+  const checkpoint = useRestorableCheckpoint(part.toolCallId)
+
+  if (!checkpoint) {
+    return null
+  }
+
+  return (
+    <div className="border-t border-border/60 px-1 py-0.5">
+      <button
+        aria-label={t("chat.checkpoints.restore")}
+        className="group/restore flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[0.6875rem] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        onClick={() => requestCheckpointRestore(checkpoint)}
+        title={t("chat.checkpoints.restore")}
+        type="button"
+      >
+        <HugeiconsIcon
+          className="shrink-0"
+          icon={ArrowTurnBackwardIcon}
+          size={12}
+          strokeWidth={2}
+        />
+        <span className="min-w-0 flex-1 truncate group-hover/restore:underline">
+          {t("chat.checkpoints.restore")}
+        </span>
+      </button>
+    </div>
+  )
+}
+
 const ToolTraceCard = ({
   actions,
   badge,
   children,
   defaultExpanded = false,
   description,
+  footerExtra,
   headerAction,
   icon,
   state,
@@ -213,6 +256,7 @@ const ToolTraceCard = ({
           {headerAction}
         </div>
       ) : null}
+      {footerExtra}
     </ChatTool>
   )
 }
@@ -523,6 +567,11 @@ export const StructuredToolTraceCard = ({
       actions={approvalActions}
       defaultExpanded={part.state === "approval-requested"}
       description={genericExtras.description}
+      footerExtra={
+        isRestoreCandidateToolName(toolName) ? (
+          <ToolTraceRestoreButton part={part} />
+        ) : undefined
+      }
       headerAction={genericExtras.headerAction}
       icon={getToolIcon(toolName)}
       state={heroToolState}
