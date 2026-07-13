@@ -425,7 +425,9 @@
       "working": "処理中…",
       "delegatedTask": "タスクを委任",
       "exploredProject": "プロジェクトを確認",
-      "ranWorkflow": "ワークフローを実行"
+      "ranWorkflow": "ワークフローを実行",
+      "todos": "タスク",
+      "todoProgressLabel": "{total} 件中 {completed} 件完了"
     },
     "workTime": {
       "label": "所要時間 {duration}"

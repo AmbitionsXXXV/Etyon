@@ -134,6 +134,7 @@ import {
   setSubagentEnd,
   setSubagentStart
 } from "@/renderer/lib/chat/subagent-stream-store"
+import { clearTodos, setTodos } from "@/renderer/lib/chat/todo-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import {
   respondToAssistantToolApproval,
@@ -168,6 +169,7 @@ import {
   isChatSubagentChunkDataPart,
   isChatSubagentEndDataPart,
   isChatSubagentStartDataPart,
+  isChatTodoDataPart,
   isChatWorkflowProgressDataPart
 } from "@/shared/chat/stream-data"
 import type {
@@ -1562,12 +1564,15 @@ const ChatRuntime = ({
         applySubagentApproval(dataPart.data)
       } else if (isChatSubagentEndDataPart(dataPart)) {
         setSubagentEnd(dataPart.data)
+      } else if (isChatTodoDataPart(dataPart)) {
+        setTodos(dataPart.data.runId, dataPart.data.todos)
       }
     },
     onFinish: () => {
       setRequestPhase(null)
       clearWorkflowProgress()
       clearSubagents()
+      clearTodos()
 
       if (agentMode === "agent") {
         void (async () => {

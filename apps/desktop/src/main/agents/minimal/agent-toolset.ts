@@ -12,6 +12,7 @@ import {
   buildSaveMemoryTool,
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
+import { buildTodoTool } from "@/main/agents/minimal/todo-tool"
 import { buildWorkflowTool } from "@/main/agents/minimal/workflow/workflow-tool"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { PARENT_WRITE_HOLDER } from "@/main/agents/write-claims"
@@ -32,6 +33,7 @@ export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You
 - read: read a text file (line-numbered, supports offset/limit)
 - ls: list a directory
 - grep: search file contents with ripgrep
+- todo_write: maintain a task checklist for the run — write the plan up front and update statuses as you go (full-replace: send the whole list each call)
 - bash: run a shell command from the project root (each command needs user approval unless previously remembered for this project)
 - workflow: orchestrate many READ-ONLY investigator sub-agents from a small JS script to research, review, or understand across many files at once; the sub-agents cannot modify files
 - edit: apply exact text replacements to a file (requires user approval)
@@ -49,6 +51,7 @@ Guidelines:
 - Never use bash to print or copy secret files (.env, keys, credentials); the file tools already refuse them.
 - Reach for workflow only when a task genuinely fans out across many files or areas that reward parallel read-only investigation; for a single scoped question investigate directly or use one delegate, and never use it to make changes since its sub-agents are read-only.
 - delegate hands a bounded task to a specialist sub-agent: a read-only specialist investigates and reports, while a writable specialist can edit/write/run commands (you approve each change). When you run writable sub-agents in parallel, give each a DISJOINT set of files or modules — two sub-agents writing the same file conflict, and the tool rejects the second. Keep cross-cutting or shared-file edits for yourself.
+- On multi-step work (roughly three or more steps), keep a task list with todo_write: seed it with the plan (one item per step) before you start, keep exactly one item in_progress, and mark items completed as you finish them. When you leave plan mode after the user approves a plan, turning that plan into todos should be your first step.
 
 Turn discipline:
 - Keep working until the user's request is fully handled; end your turn only when the task is done or you are genuinely blocked on the user.
@@ -110,6 +113,10 @@ export const buildAgentToolset = ({
 
   return {
     ...fileTools,
+    // Pure run metadata (a task checklist), never gated — offered on every
+    // profile like read/ls. It emits a transient live part keyed by run id and
+    // its call is replayed from agent_tool_calls, so it needs no write access.
+    todo_write: buildTodoTool({ agentRunId, writer }),
     // A shell can mutate anything, so it is offered to writable profiles only;
     // every call is approval-gated unless the exact command was remembered.
     ...(profile.readonly

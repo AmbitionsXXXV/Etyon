@@ -4,6 +4,7 @@ import {
   buildAssistantChainEntries,
   describeToolGroup,
   getAssistantBodyText,
+  getTodoPartTodos,
   getWorkSectionInitialExpanded,
   getWorkSectionStatus,
   groupChainEntries,
@@ -16,6 +17,7 @@ import {
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import type {
   ChainToolGroupItem,
+  ChatToolPart,
   ChatUiMessage
 } from "@/renderer/lib/chat/assistant-message-timeline"
 
@@ -165,6 +167,80 @@ describe("groupChainEntries", () => {
         .filter((entry) => entry.kind === "subagent-call")
         .map((entry) => (entry as { toolName: string }).toolName)
     ).toEqual(["delegate", "workflow"])
+  })
+
+  it("collapses repeated todo_write calls to a single latest todo entry", () => {
+    const grouped = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({
+            input: { todos: [{ content: "a", status: "pending" }] },
+            toolName: "todo_write"
+          }),
+          toolPart({ input: { path: "a.ts" }, toolName: "read" }),
+          toolPart({
+            input: {
+              todos: [
+                { content: "a", status: "completed" },
+                { content: "b", status: "in_progress" }
+              ]
+            },
+            toolName: "todo_write"
+          })
+        ])
+      )
+    )
+
+    // One todo entry only, positioned after the read group (latest call wins).
+    expect(grouped.map((entry) => entry.kind)).toEqual(["tool-group", "todo"])
+    const todo = grouped.find((entry) => entry.kind === "todo")
+    expect(
+      getTodoPartTodos((todo as { part: ChatToolPart }).part)
+    ).toHaveLength(2)
+  })
+})
+
+describe("getTodoPartTodos", () => {
+  it("extracts a validated todo list from a todo_write part input", () => {
+    const part = toolPart({
+      input: {
+        todos: [
+          { content: "a", status: "completed" },
+          { activeForm: "Doing b", content: "b", status: "in_progress" }
+        ]
+      },
+      toolName: "todo_write"
+    })
+
+    expect(getTodoPartTodos(part as unknown as ChatToolPart)).toEqual([
+      { content: "a", status: "completed" },
+      { activeForm: "Doing b", content: "b", status: "in_progress" }
+    ])
+  })
+
+  it("drops malformed items and returns [] when there is no list", () => {
+    const bad = toolPart({
+      input: {
+        todos: [
+          { content: "a", status: "nope" },
+          { status: "pending" },
+          { content: "ok", status: "pending" }
+        ]
+      },
+      toolName: "todo_write"
+    })
+
+    expect(getTodoPartTodos(bad as unknown as ChatToolPart)).toEqual([
+      { content: "ok", status: "pending" }
+    ])
+    expect(
+      getTodoPartTodos(
+        toolPart({
+          input: {},
+          toolName: "todo_write"
+        }) as unknown as ChatToolPart
+      )
+    ).toEqual([])
   })
 })
 

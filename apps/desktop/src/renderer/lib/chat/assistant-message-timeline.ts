@@ -8,11 +8,13 @@ import {
   compactStructuredToolTraceParts,
   getToolInputPath
 } from "@/renderer/lib/chat/message-tool-trace"
-import { getPathBaseName } from "@/renderer/lib/utils"
+import { getPathBaseName, isRecord } from "@/renderer/lib/utils"
 import { isChatRunLimitDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRunLimitData,
-  ChatStreamDataTypes
+  ChatStreamDataTypes,
+  ChatTodoItem,
+  ChatTodoStatus
 } from "@/shared/chat/stream-data"
 
 export type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
@@ -124,6 +126,11 @@ export type GroupedChainEntry =
       kind: "text"
       text: string
     }
+  | {
+      key: string
+      kind: "todo"
+      part: ChatToolPart
+    }
 
 const COMMAND_TOOL_NAMES = new Set(["bash", "rtkCommand", "runCheck", "shell"])
 const READ_TOOL_NAMES = new Set([
@@ -158,6 +165,34 @@ export const getToolTraceCategory = (toolName: string): ToolTraceCategory => {
   }
 
   return "other"
+}
+
+const TODO_STATUSES = new Set<ChatTodoStatus>([
+  "completed",
+  "in_progress",
+  "pending"
+])
+
+const isChatTodoItem = (value: unknown): value is ChatTodoItem =>
+  isRecord(value) &&
+  typeof value.content === "string" &&
+  typeof value.status === "string" &&
+  TODO_STATUSES.has(value.status as ChatTodoStatus) &&
+  (value.activeForm === undefined || typeof value.activeForm === "string")
+
+/**
+ * Validated todo list from a `todo_write` tool call's input. The work-section
+ * todo entry uses this as the settled-run fallback once the live `data-todo`
+ * store is cleared — the persisted tool-call input is that final snapshot.
+ */
+export const getTodoPartTodos = (part: ChatToolPart): ChatTodoItem[] => {
+  const { input } = part as { input?: unknown }
+
+  if (!isRecord(input) || !Array.isArray(input.todos)) {
+    return []
+  }
+
+  return input.todos.filter(isChatTodoItem)
 }
 
 const isExcludedToolPart = (part: ChatUiMessage["parts"][number]): boolean =>
@@ -401,6 +436,27 @@ export const groupChainEntries = (
           kind: "subagent-call",
           part: entry.part,
           toolName
+        })
+        continue
+      }
+
+      // todo_write maintains one run-wide checklist; collapse repeated updates
+      // to a single entry at the latest call so the fold shows the current list,
+      // not one card per revision.
+      if (toolName === "todo_write") {
+        flushToolRun()
+        const existingIndex = grouped.findIndex(
+          (candidate) => candidate.kind === "todo"
+        )
+
+        if (existingIndex !== -1) {
+          grouped.splice(existingIndex, 1)
+        }
+
+        grouped.push({
+          key: `todo-${entry.part.toolCallId}`,
+          kind: "todo",
+          part: entry.part
         })
         continue
       }

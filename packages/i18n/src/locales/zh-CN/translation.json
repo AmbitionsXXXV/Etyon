@@ -425,7 +425,9 @@
       "working": "处理中…",
       "delegatedTask": "委派了 1 个任务",
       "exploredProject": "浏览了项目",
-      "ranWorkflow": "运行了工作流"
+      "ranWorkflow": "运行了工作流",
+      "todos": "待办",
+      "todoProgressLabel": "已完成 {completed}/{total}"
     },
     "workTime": {
       "label": "用时 {duration}"

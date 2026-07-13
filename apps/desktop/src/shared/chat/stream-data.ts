@@ -88,6 +88,54 @@ export interface ChatSubagentEndData {
   state: ChatSubagentEndState
 }
 
+export const CHAT_TODO_DATA_NAME = "todo" as const
+
+export type ChatTodoStatus = "completed" | "in_progress" | "pending"
+
+export interface ChatTodoItem {
+  /** Present-tense label shown while the item is in progress ("Writing tests"). */
+  activeForm?: string
+  content: string
+  status: ChatTodoStatus
+}
+
+/**
+ * Transient (non-persisted) snapshot of the agent's task checklist, streamed by
+ * the `todo_write` tool on every update. Full-replace: each part carries the
+ * ENTIRE list, so the renderer store — keyed by `runId` — always holds the
+ * latest snapshot. The part `id` is `todo:<runId>`, stable per run.
+ */
+export interface ChatTodoData {
+  runId: string
+  todos: ChatTodoItem[]
+}
+
+export interface ChatTodoCounts {
+  completed: number
+  inProgress: number
+  pending: number
+}
+
+/** Tallies a todo list by status. Shared so the tool output and the work-section
+ * progress line ("2/5") count identically. */
+export const countTodosByStatus = (
+  todos: readonly ChatTodoItem[]
+): ChatTodoCounts => {
+  const counts: ChatTodoCounts = { completed: 0, inProgress: 0, pending: 0 }
+
+  for (const todo of todos) {
+    if (todo.status === "completed") {
+      counts.completed += 1
+    } else if (todo.status === "in_progress") {
+      counts.inProgress += 1
+    } else {
+      counts.pending += 1
+    }
+  }
+
+  return counts
+}
+
 export type ChatStreamDataTypes = Record<
   typeof CHAT_REQUEST_PHASE_DATA_NAME,
   ChatRequestPhaseData
@@ -97,7 +145,8 @@ export type ChatStreamDataTypes = Record<
   Record<typeof CHAT_SUBAGENT_START_DATA_NAME, ChatSubagentStartData> &
   Record<typeof CHAT_SUBAGENT_CHUNK_DATA_NAME, ChatSubagentChunkData> &
   Record<typeof CHAT_SUBAGENT_APPROVAL_DATA_NAME, ChatSubagentApprovalData> &
-  Record<typeof CHAT_SUBAGENT_END_DATA_NAME, ChatSubagentEndData>
+  Record<typeof CHAT_SUBAGENT_END_DATA_NAME, ChatSubagentEndData> &
+  Record<typeof CHAT_TODO_DATA_NAME, ChatTodoData>
 
 export const CHAT_REQUEST_PHASE_DATA_TYPE =
   `data-${CHAT_REQUEST_PHASE_DATA_NAME}` as const
@@ -119,6 +168,8 @@ export const CHAT_SUBAGENT_APPROVAL_DATA_TYPE =
 
 export const CHAT_SUBAGENT_END_DATA_TYPE =
   `data-${CHAT_SUBAGENT_END_DATA_NAME}` as const
+
+export const CHAT_TODO_DATA_TYPE = `data-${CHAT_TODO_DATA_NAME}` as const
 
 export const isChatRequestPhaseDataPart = (part: {
   data: unknown
@@ -193,3 +244,15 @@ export const isChatSubagentEndDataPart = (part: {
   part.type === CHAT_SUBAGENT_END_DATA_TYPE &&
   isRecordValue(part.data) &&
   typeof part.data.childRunId === "string"
+
+export const isChatTodoDataPart = (part: {
+  data: unknown
+  type: string
+}): part is {
+  data: ChatTodoData
+  type: typeof CHAT_TODO_DATA_TYPE
+} =>
+  part.type === CHAT_TODO_DATA_TYPE &&
+  isRecordValue(part.data) &&
+  typeof part.data.runId === "string" &&
+  Array.isArray(part.data.todos)

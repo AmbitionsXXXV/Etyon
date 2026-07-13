@@ -5,10 +5,13 @@ import {
   CHAT_SUBAGENT_CHUNK_DATA_TYPE,
   CHAT_SUBAGENT_END_DATA_TYPE,
   CHAT_SUBAGENT_START_DATA_TYPE,
+  CHAT_TODO_DATA_TYPE,
+  countTodosByStatus,
   isChatRequestPhaseDataPart,
   isChatSubagentChunkDataPart,
   isChatSubagentEndDataPart,
-  isChatSubagentStartDataPart
+  isChatSubagentStartDataPart,
+  isChatTodoDataPart
 } from "@/shared/chat/stream-data"
 
 describe("isChatRequestPhaseDataPart", () => {
@@ -76,5 +79,42 @@ describe("subagent data-part guards", () => {
         type: CHAT_SUBAGENT_END_DATA_TYPE
       })
     ).toBe(false)
+  })
+})
+
+describe("todo data-part guard and counts", () => {
+  it("matches a todo part by type, run id, and a todos array", () => {
+    expect(
+      isChatTodoDataPart({
+        data: { runId: "run-1", todos: [] },
+        type: CHAT_TODO_DATA_TYPE
+      })
+    ).toBe(true)
+  })
+
+  it("rejects a mismatched type or a missing todos array", () => {
+    expect(
+      isChatTodoDataPart({
+        data: { runId: "run-1", todos: [] },
+        type: "data-other"
+      })
+    ).toBe(false)
+    expect(
+      isChatTodoDataPart({
+        data: { runId: "run-1" },
+        type: CHAT_TODO_DATA_TYPE
+      })
+    ).toBe(false)
+  })
+
+  it("tallies todos by status", () => {
+    expect(
+      countTodosByStatus([
+        { content: "a", status: "completed" },
+        { content: "b", status: "in_progress" },
+        { content: "c", status: "pending" },
+        { content: "d", status: "completed" }
+      ])
+    ).toEqual({ completed: 2, inProgress: 1, pending: 1 })
   })
 })

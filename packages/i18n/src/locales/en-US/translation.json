@@ -425,7 +425,9 @@
       "working": "Working…",
       "delegatedTask": "Delegated a task",
       "exploredProject": "Explored the project",
-      "ranWorkflow": "Ran a workflow"
+      "ranWorkflow": "Ran a workflow",
+      "todos": "Todos",
+      "todoProgressLabel": "{completed} of {total} done"
     },
     "workTime": {
       "label": "Worked for {duration}"

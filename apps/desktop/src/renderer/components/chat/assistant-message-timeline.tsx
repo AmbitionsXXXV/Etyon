@@ -11,6 +11,7 @@ import {
   BrainIcon,
   BrowserIcon,
   Cancel01Icon,
+  CheckListIcon,
   CheckmarkCircle01Icon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
@@ -35,6 +36,7 @@ import {
   getAssistantBodyText,
   getRunLimitData,
   getUrlHost,
+  getTodoPartTodos,
   getWorkSectionInitialExpanded,
   getWorkSectionStatus,
   groupChainEntries,
@@ -67,6 +69,7 @@ import {
   useSubagentLive
 } from "@/renderer/lib/chat/subagent-stream-store"
 import type { SubagentLiveStatus } from "@/renderer/lib/chat/subagent-stream-store"
+import { useTodos } from "@/renderer/lib/chat/todo-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { orpc } from "@/renderer/lib/rpc"
 import {
@@ -74,7 +77,12 @@ import {
   getString,
   isRecord
 } from "@/renderer/lib/utils"
-import type { ChatSubagentApprovalData } from "@/shared/chat/stream-data"
+import { countTodosByStatus } from "@/shared/chat/stream-data"
+import type {
+  ChatSubagentApprovalData,
+  ChatTodoItem,
+  ChatTodoStatus
+} from "@/shared/chat/stream-data"
 
 type MarkdownTableProps = ComponentPropsWithoutRef<"table"> & ExtraProps
 
@@ -360,6 +368,131 @@ const WorkThinkingEntry = ({
   )
 }
 
+const TodoStatusIndicator = ({ status }: { status: ChatTodoStatus }) => {
+  let mark: ReactNode
+
+  if (status === "completed") {
+    mark = (
+      <HugeiconsIcon
+        className="text-success"
+        icon={CheckmarkCircle01Icon}
+        size={13}
+      />
+    )
+  } else if (status === "in_progress") {
+    mark = <span className="size-2 animate-pulse rounded-full bg-foreground" />
+  } else {
+    mark = (
+      <span className="size-2.5 rounded-full border border-muted-foreground/50" />
+    )
+  }
+
+  return (
+    <span className="mt-0.5 grid size-3.5 shrink-0 place-items-center">
+      {mark}
+    </span>
+  )
+}
+
+const TodoItemRow = ({ todo }: { todo: ChatTodoItem }) => {
+  const isActive = todo.status === "in_progress"
+  const label = isActive && todo.activeForm ? todo.activeForm : todo.content
+
+  return (
+    <li className="flex items-start gap-2">
+      <TodoStatusIndicator status={todo.status} />
+      <span
+        className={cn(
+          "min-w-0 flex-1 text-xs wrap-break-word",
+          isActive ? "text-foreground" : "text-muted-foreground",
+          isActive && "shimmer"
+        )}
+      >
+        {label}
+      </span>
+    </li>
+  )
+}
+
+// Live task checklist maintained by the `todo_write` tool. Reads the run's live
+// snapshot from the transient store; once the turn settles and that store is
+// cleared, it falls back to the persisted tool-call input so a re-expanded fold
+// still shows the final list. Collapsed to a "completed/total" header line.
+const WorkTodoEntry = ({
+  parentRunId,
+  part
+}: {
+  parentRunId?: string
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+  const liveTodos = useTodos(parentRunId)
+  const todos = liveTodos ?? getTodoPartTodos(part)
+  const total = todos.length
+  const { completed } = countTodosByStatus(todos)
+  const hasInProgress = todos.some((todo) => todo.status === "in_progress")
+  const [isExpanded, setIsExpanded] = useState(hasInProgress)
+
+  useEffect(() => {
+    if (hasInProgress) {
+      setIsExpanded(true)
+    }
+  }, [hasInProgress])
+
+  if (total === 0) {
+    return null
+  }
+
+  return (
+    <Disclosure
+      className="overflow-hidden rounded-lg"
+      isExpanded={isExpanded}
+      onExpandedChange={setIsExpanded}
+    >
+      <Disclosure.Heading className="rounded-lg">
+        <Button
+          aria-label={t("chat.workSection.todoProgressLabel", {
+            completed,
+            total
+          })}
+          className={WORK_DISCLOSURE_TRIGGER_CLASS_NAME}
+          slot="trigger"
+          type="button"
+          variant="ghost"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <HugeiconsIcon
+              className="shrink-0 text-muted-foreground"
+              icon={CheckListIcon}
+              size={14}
+            />
+            <span
+              className={cn("truncate text-xs", hasInProgress && "shimmer")}
+            >
+              {t("chat.workSection.todos")}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            <span className="text-[0.625rem] text-muted-foreground tabular-nums">
+              {completed}/{total}
+            </span>
+            <Disclosure.Indicator />
+          </span>
+        </Button>
+      </Disclosure.Heading>
+      <Disclosure.Content>
+        <Disclosure.Body className="px-2 pt-1 pb-1.5">
+          <ul className="flex flex-col gap-1">
+            {todos.map((todo, index) => (
+              <TodoItemRow key={`${index}-${todo.content}`} todo={todo} />
+            ))}
+          </ul>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  )
+}
+
 const WorkToolGroupEntry = ({
   entry,
   isApprovalActionDisabled,
@@ -572,6 +705,12 @@ const SubagentMiniTimeline = ({
         // A read-only child never nests further sub-agents.
         if (entry.kind === "subagent-call") {
           return null
+        }
+
+        // A child's checklist has no live run id here, so it renders from the
+        // forwarded tool-call input.
+        if (entry.kind === "todo") {
+          return <WorkTodoEntry key={entry.key} part={entry.part} />
         }
 
         return (
@@ -1158,6 +1297,16 @@ const AssistantWorkSection = ({
                   key={entry.key}
                   onApprovalResponse={onApprovalResponse}
                   parentRunId={parentRunId}
+                />
+              )
+            }
+
+            if (entry.kind === "todo") {
+              return (
+                <WorkTodoEntry
+                  key={entry.key}
+                  parentRunId={parentRunId}
+                  part={entry.part}
                 />
               )
             }
