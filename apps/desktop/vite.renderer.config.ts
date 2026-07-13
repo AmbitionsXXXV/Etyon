@@ -39,6 +39,8 @@ const optimizedDependencies = [
   "@tiptap/extension-placeholder",
   "@tiptap/react",
   "@tiptap/starter-kit",
+  "@xterm/addon-fit",
+  "@xterm/xterm",
   "ai",
   "ansi-to-react",
   "class-variance-authority",
