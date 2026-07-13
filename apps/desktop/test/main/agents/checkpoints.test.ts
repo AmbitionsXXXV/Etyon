@@ -14,6 +14,7 @@ import {
   getCheckpoint,
   listCheckpoints,
   pruneCheckpoints,
+  restoreBashCheckpoint,
   restoreFileCheckpoint
 } from "@/main/agents/checkpoints"
 import { getDb } from "@/main/db"
@@ -258,6 +259,179 @@ describe("workspace checkpoints", () => {
     expect(clean?.gitSnapshotRef).toBeNull()
     expect(dirty?.gitSnapshotRef).toMatch(/^[a-f\d]{40,64}$/u)
     expect(nonGit).toMatchObject({ files: [], gitSnapshotRef: null })
+  })
+
+  it("restores a captured dirty bash snapshot and creates a safety checkpoint", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "tracked.txt")
+    execFileSync("git", ["init"], { cwd: projectPath })
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: projectPath
+    })
+    execFileSync("git", ["config", "user.name", "Checkpoint Test"], {
+      cwd: projectPath
+    })
+    fs.writeFileSync(filePath, "clean\n")
+    execFileSync("git", ["add", "tracked.txt"], { cwd: projectPath })
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd: projectPath })
+    fs.writeFileSync(filePath, "captured dirty state\n")
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-restore",
+      toolCallId: "tool-restore"
+    })
+    fs.writeFileSync(filePath, "changed after capture\n")
+
+    const result = await restoreBashCheckpoint({
+      checkpointId: checkpoint?.id ?? "missing",
+      projectPath
+    })
+    const safetyCheckpointId = result.ok ? result.safetyCheckpointId : null
+    const checkpoints = await listCheckpoints({ projectPath })
+    const safetyCheckpoint = checkpoints.find(
+      (candidate) => candidate.id === safetyCheckpointId
+    )
+
+    expect(result.ok).toBe(true)
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("captured dirty state\n")
+    expect(safetyCheckpoint).toMatchObject({
+      origin: "bash",
+      runId: "run-restore",
+      toolCallId: "tool-restore"
+    })
+  })
+
+  it("returns no-snapshot for a bash checkpoint without a git snapshot", async () => {
+    const projectPath = createProject()
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-no-snapshot",
+      toolCallId: "tool-no-snapshot"
+    })
+
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: checkpoint?.id ?? "missing",
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "no-snapshot" })
+  })
+
+  it("rejects non-bash and unknown checkpoint ids", async () => {
+    const projectPath = createProject()
+    const checkpoint = await captureFile({ paths: [], projectPath })
+
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: checkpoint?.id ?? "missing",
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "not-bash" })
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: "unknown-checkpoint",
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "not-found" })
+  })
+
+  it("returns snapshot-missing when the captured git object was pruned", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "tracked.txt")
+    execFileSync("git", ["init"], { cwd: projectPath })
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: projectPath
+    })
+    execFileSync("git", ["config", "user.name", "Checkpoint Test"], {
+      cwd: projectPath
+    })
+    fs.writeFileSync(filePath, "clean\n")
+    execFileSync("git", ["add", "tracked.txt"], { cwd: projectPath })
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd: projectPath })
+    fs.writeFileSync(filePath, "dirty\n")
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-pruned",
+      toolCallId: "tool-pruned"
+    })
+
+    if (!checkpoint?.gitSnapshotRef) {
+      throw new Error("Expected a Git snapshot fixture.")
+    }
+
+    const snapshotObjectPath = path.join(
+      projectPath,
+      ".git",
+      "objects",
+      checkpoint.gitSnapshotRef.slice(0, 2),
+      checkpoint.gitSnapshotRef.slice(2)
+    )
+    fs.rmSync(snapshotObjectPath)
+
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: checkpoint.id,
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "snapshot-missing" })
+  })
+
+  it("returns merge-in-progress when MERGE_HEAD exists", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "tracked.txt")
+    execFileSync("git", ["init"], { cwd: projectPath })
+    execFileSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: projectPath
+    })
+    execFileSync("git", ["config", "user.name", "Checkpoint Test"], {
+      cwd: projectPath
+    })
+    fs.writeFileSync(filePath, "clean\n")
+    execFileSync("git", ["add", "tracked.txt"], { cwd: projectPath })
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd: projectPath })
+    fs.writeFileSync(filePath, "dirty\n")
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-merge",
+      toolCallId: "tool-merge"
+    })
+    fs.writeFileSync(path.join(projectPath, ".git", "MERGE_HEAD"), "")
+
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: checkpoint?.id ?? "missing",
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "merge-in-progress" })
+  })
+
+  it("returns not-a-repo when the checkpoint project has no git repository", async () => {
+    const projectPath = createProject()
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-not-repo",
+      toolCallId: "tool-not-repo"
+    })
+
+    if (!checkpoint) {
+      throw new Error("Expected a bash checkpoint fixture.")
+    }
+
+    await runExclusiveDbWrite(() =>
+      getDb().transaction((tx) =>
+        tx
+          .update(agentCheckpoints)
+          .set({ gitSnapshotRef: "a".repeat(40) })
+          .where(eq(agentCheckpoints.id, checkpoint.id))
+      )
+    )
+
+    await expect(
+      restoreBashCheckpoint({
+        checkpointId: checkpoint.id,
+        projectPath
+      })
+    ).resolves.toEqual({ ok: false, reason: "not-a-repo" })
   })
 
   it("prunes expired manifests, orphaned blobs, and oldest checkpoints over budget", async () => {

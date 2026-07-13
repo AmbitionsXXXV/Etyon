@@ -60,6 +60,21 @@ export interface RestoreFileCheckpointResult {
   skipped: string[]
 }
 
+export type RestoreBashCheckpointResult =
+  | { ok: true; safetyCheckpointId: string | null }
+  | {
+      detail?: string
+      ok: false
+      reason:
+        | "git-failed"
+        | "merge-in-progress"
+        | "no-snapshot"
+        | "not-a-repo"
+        | "not-bash"
+        | "not-found"
+        | "snapshot-missing"
+    }
+
 interface ResolvedProject {
   normalizedPath: string
   projectHash: string
@@ -560,6 +575,194 @@ export const captureBashCheckpoint = async ({
 
     return null
   }
+}
+
+const hasGitRestoreOperationInProgress = async ({
+  gitDir,
+  projectPath
+}: {
+  gitDir: string
+  projectPath: string
+}): Promise<boolean> => {
+  const resolvedGitDir = path.resolve(projectPath, gitDir)
+  const markerPaths = [
+    path.join(resolvedGitDir, "MERGE_HEAD"),
+    path.join(resolvedGitDir, "REBASE_HEAD"),
+    path.join(resolvedGitDir, "rebase-merge")
+  ]
+
+  for (const markerPath of markerPaths) {
+    try {
+      await fs.lstat(markerPath)
+      return true
+    } catch (error) {
+      if (getNodeErrorCode(error) !== "ENOENT") {
+        throw error
+      }
+    }
+  }
+
+  return false
+}
+
+const getGitCommandStderr = (error: unknown): string => {
+  if (typeof error !== "object" || error === null || !("stderr" in error)) {
+    return error instanceof Error ? error.message.trim() : String(error).trim()
+  }
+
+  const { stderr } = error as { stderr?: unknown }
+
+  return typeof stderr === "string"
+    ? stderr.trim()
+    : String(stderr ?? "").trim()
+}
+
+export const restoreBashCheckpoint = async ({
+  checkpointId,
+  projectPath
+}: {
+  checkpointId: string
+  projectPath: string
+}): Promise<RestoreBashCheckpointResult> => {
+  const project = await resolveProject(projectPath)
+
+  return withProjectOperationLock(project.projectHash, async () => {
+    const checkpoint = await getCheckpoint(checkpointId)
+
+    if (!checkpoint || checkpoint.projectHash !== project.projectHash) {
+      return { ok: false, reason: "not-found" }
+    }
+
+    if (checkpoint.origin !== "bash") {
+      return { ok: false, reason: "not-bash" }
+    }
+
+    if (checkpoint.gitSnapshotRef === null) {
+      return { ok: false, reason: "no-snapshot" }
+    }
+
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["rev-parse", "--is-inside-work-tree"],
+        {
+          cwd: project.normalizedPath,
+          encoding: "utf-8",
+          maxBuffer: GIT_COMMAND_MAX_BUFFER,
+          timeout: GIT_COMMAND_TIMEOUT_MS,
+          windowsHide: true
+        }
+      )
+
+      if (String(stdout).trim() !== "true") {
+        return { ok: false, reason: "not-a-repo" }
+      }
+    } catch {
+      return { ok: false, reason: "not-a-repo" }
+    }
+
+    let gitDir: string
+
+    try {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["rev-parse", "--git-dir"],
+        {
+          cwd: project.normalizedPath,
+          encoding: "utf-8",
+          maxBuffer: GIT_COMMAND_MAX_BUFFER,
+          timeout: GIT_COMMAND_TIMEOUT_MS,
+          windowsHide: true
+        }
+      )
+      gitDir = String(stdout).trim()
+
+      if (
+        await hasGitRestoreOperationInProgress({
+          gitDir,
+          projectPath: project.normalizedPath
+        })
+      ) {
+        return { ok: false, reason: "merge-in-progress" }
+      }
+    } catch (error) {
+      return {
+        detail: getGitCommandStderr(error),
+        ok: false,
+        reason: "git-failed"
+      }
+    }
+
+    try {
+      await execFileAsync(
+        "git",
+        ["cat-file", "-e", `${checkpoint.gitSnapshotRef}^{commit}`],
+        {
+          cwd: project.normalizedPath,
+          encoding: "utf-8",
+          maxBuffer: GIT_COMMAND_MAX_BUFFER,
+          timeout: GIT_COMMAND_TIMEOUT_MS,
+          windowsHide: true
+        }
+      )
+    } catch {
+      // Snapshot objects are unreferenced and may be garbage-collected after
+      // roughly two weeks, so callers need a distinct stale-snapshot result.
+      return { ok: false, reason: "snapshot-missing" }
+    }
+
+    let safetyCheckpointId: string | null = null
+
+    try {
+      const gitSnapshotRef = await createGitSnapshot(project.normalizedPath)
+      const safetyCheckpoint = await insertCheckpoint({
+        files: [],
+        gitSnapshotRef,
+        origin: "bash",
+        projectHash: project.projectHash,
+        runId: checkpoint.runId,
+        toolCallId: checkpoint.toolCallId
+      })
+      safetyCheckpointId = safetyCheckpoint.id
+    } catch (error) {
+      // Restore proceeds fail-open; the target snapshot is still applied.
+      logger.error("checkpoint_bash_restore_safety_capture_failed", {
+        checkpoint_id: checkpoint.id,
+        error,
+        project_path: project.normalizedPath
+      })
+    }
+
+    try {
+      // `git stash create` excludes untracked files, so restore only applies
+      // the tracked worktree state represented by the snapshot commit.
+      await execFileAsync(
+        "git",
+        [
+          "restore",
+          `--source=${checkpoint.gitSnapshotRef}`,
+          "--worktree",
+          "--",
+          "."
+        ],
+        {
+          cwd: project.normalizedPath,
+          encoding: "utf-8",
+          maxBuffer: GIT_COMMAND_MAX_BUFFER,
+          timeout: GIT_COMMAND_TIMEOUT_MS,
+          windowsHide: true
+        }
+      )
+    } catch (error) {
+      return {
+        detail: getGitCommandStderr(error),
+        ok: false,
+        reason: "git-failed"
+      }
+    }
+
+    return { ok: true, safetyCheckpointId }
+  })
 }
 
 export const listCheckpoints = async ({
