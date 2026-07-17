@@ -122,13 +122,20 @@ export const isTerminalContainerMeasurable = (
   size.width >= TERMINAL_MIN_MOUNT_WIDTH_PX &&
   size.height >= TERMINAL_MIN_MOUNT_HEIGHT_PX
 
-/**
- * xterm theme aligned with the read-only `terminal-output.tsx` look: zinc-950
- * background (#09090b), zinc-100 foreground (#f4f4f5), plus a conventional dark
- * ANSI palette so interactive programs render sensible colors.
- */
-export const createTerminalTheme = (): ITheme => ({
-  background: "#09090b",
+/** Theme colors the xterm host resolves off the app's CSS variables. */
+export interface TerminalThemeColors {
+  /** Terminal surface — resolved from `--card` to match the panel. */
+  background: string
+  /** Char color under a block cursor — the terminal surface. */
+  cursorAccent: string
+  foreground: string
+  /** Whether the app is in a dark theme, selecting the ANSI palette. */
+  isDark: boolean
+  selectionBackground: string
+}
+
+// Bright ANSI colors for a dark surface.
+const DARK_ANSI_PALETTE = {
   black: "#18181b",
   blue: "#60a5fa",
   brightBlack: "#52525b",
@@ -139,14 +146,47 @@ export const createTerminalTheme = (): ITheme => ({
   brightRed: "#fca5a5",
   brightWhite: "#fafafa",
   brightYellow: "#fde047",
-  cursor: "#f4f4f5",
-  cursorAccent: "#09090b",
   cyan: "#22d3ee",
-  foreground: "#f4f4f5",
   green: "#4ade80",
   magenta: "#c084fc",
   red: "#f87171",
-  selectionBackground: "#3f3f4680",
   white: "#e4e4e7",
   yellow: "#facc15"
+} as const
+
+// Saturated ANSI colors that stay legible on a light surface.
+const LIGHT_ANSI_PALETTE = {
+  black: "#3f3f46",
+  blue: "#2563eb",
+  brightBlack: "#52525b",
+  brightBlue: "#3b82f6",
+  brightCyan: "#06b6d4",
+  brightGreen: "#22c55e",
+  brightMagenta: "#a855f7",
+  brightRed: "#ef4444",
+  brightWhite: "#27272a",
+  brightYellow: "#eab308",
+  cyan: "#0891b2",
+  green: "#16a34a",
+  magenta: "#9333ea",
+  red: "#dc2626",
+  white: "#71717a",
+  yellow: "#ca8a04"
+} as const
+
+/**
+ * Builds an xterm theme from colors the host resolved off the app's CSS
+ * variables (as concrete `rgb()`/`rgba()` — xterm cannot parse the app's oklch).
+ * Background and foreground track the active surface so the terminal follows
+ * light/dark and the custom color schemas (e.g. Tokyo Night), and the ANSI
+ * palette flips to a light-surface-friendly set when the app is light. Pure (no
+ * DOM) so it stays node-testable.
+ */
+export const buildTerminalTheme = (colors: TerminalThemeColors): ITheme => ({
+  background: colors.background,
+  cursor: colors.foreground,
+  cursorAccent: colors.cursorAccent,
+  foreground: colors.foreground,
+  selectionBackground: colors.selectionBackground,
+  ...(colors.isDark ? DARK_ANSI_PALETTE : LIGHT_ANSI_PALETTE)
 })

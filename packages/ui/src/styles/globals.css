@@ -327,3 +327,15 @@
     transform: scaleX(1);
   }
 }
+
+/*
+ * xterm.css hardcodes `.xterm .xterm-viewport { background-color: #000 }` and its
+ * DOM renderer never overrides it, so the terminal renders black whatever theme
+ * is active — it only themes text/cursor/selection. Make the viewport transparent
+ * so the themed `bg-card` wrapper (see terminal-panel.tsx) carries the surface,
+ * keeping the terminal in step with light/dark and the custom color schemas.
+ * `!important` + unlayered beats xterm.css, which is imported after this file.
+ */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}

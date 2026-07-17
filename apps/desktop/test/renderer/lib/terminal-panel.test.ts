@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test"
 
 import {
-  createTerminalTheme,
+  buildTerminalTheme,
   hasTerminalDimensionsChanged,
   isTerminalContainerMeasurable,
   resolveTerminalDimensions,
@@ -138,17 +138,39 @@ describe("hasTerminalDimensionsChanged", () => {
   })
 })
 
-describe("createTerminalTheme", () => {
-  it("matches the read-only terminal look (zinc-950 bg, zinc-100 fg)", () => {
-    const theme = createTerminalTheme()
+describe("buildTerminalTheme", () => {
+  const resolved = {
+    background: "rgb(9, 9, 11)",
+    cursorAccent: "rgb(9, 9, 11)",
+    foreground: "rgb(244, 244, 245)",
+    isDark: true,
+    selectionBackground: "rgba(63, 63, 70, 0.3)"
+  }
 
-    expect(theme.background).toBe("#09090b")
-    expect(theme.foreground).toBe("#f4f4f5")
-    expect(theme.cursor).toBe("#f4f4f5")
+  it("maps the resolved surface onto the terminal background", () => {
+    const theme = buildTerminalTheme(resolved)
+
+    expect(theme.background).toBe("rgb(9, 9, 11)")
+  })
+
+  it("maps the resolved foreground onto text and cursor", () => {
+    const theme = buildTerminalTheme(resolved)
+
+    expect(theme.foreground).toBe("rgb(244, 244, 245)")
+    expect(theme.cursor).toBe("rgb(244, 244, 245)")
+    expect(theme.cursorAccent).toBe("rgb(9, 9, 11)")
+    expect(theme.selectionBackground).toBe("rgba(63, 63, 70, 0.3)")
+  })
+
+  it("flips the ANSI palette between light and dark surfaces", () => {
+    const darkRed = buildTerminalTheme(resolved).red
+    const lightRed = buildTerminalTheme({ ...resolved, isDark: false }).red
+
+    expect(darkRed).not.toBe(lightRed)
   })
 
   it("defines a full 16-color ANSI palette", () => {
-    const theme = createTerminalTheme()
+    const theme = buildTerminalTheme(resolved)
     const ansiColors = [
       theme.black,
       theme.red,

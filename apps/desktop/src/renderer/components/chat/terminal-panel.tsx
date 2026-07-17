@@ -5,7 +5,7 @@ import { Terminal } from "@xterm/xterm"
 import { useEffect, useRef, useState } from "react"
 
 import {
-  createTerminalTheme,
+  buildTerminalTheme,
   hasTerminalDimensionsChanged,
   isTerminalContainerMeasurable,
   resolveTerminalDimensions,
@@ -19,6 +19,78 @@ import type { TerminalDimensions } from "@/renderer/lib/chat/terminal-panel"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 type TerminalPanelStatus = "connecting" | "error" | "ready"
+
+/** Formats an RGBA byte quadruplet as a css string xterm can parse. */
+const formatRgba = (r: number, g: number, b: number, a: number): string =>
+  a >= 255
+    ? `rgb(${r}, ${g}, ${b})`
+    : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`
+
+/** Overrides the alpha of an `rgb()`/`rgba()` string (for the selection tint). */
+const withAlpha = (color: string, alpha: number): string => {
+  const [r, g, b] = color.match(/[\d.]+/gu) ?? []
+
+  return r && g && b ? `rgba(${r}, ${g}, ${b}, ${alpha})` : color
+}
+
+/**
+ * Resolves the xterm theme off the app's live CSS variables. This Electron's
+ * `getComputedStyle` reports colors in their authored space (oklch/oklab), which
+ * xterm cannot parse — so a hidden probe resolves `var(--…)` and a 1×1 canvas
+ * rasterizes the result down to concrete sRGB bytes. Background and foreground
+ * follow `--card`/`--foreground`, keeping the terminal in step with light/dark
+ * and the custom color schemas (Tokyo Night, etc.).
+ */
+const resolveTerminalTheme = () => {
+  const root = document.documentElement
+  const isDark = root.classList.contains("dark")
+  const probe = document.createElement("span")
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;pointer-events:none"
+  document.body.append(probe)
+  const canvas = document.createElement("canvas")
+  canvas.width = 1
+  canvas.height = 1
+  const context = canvas.getContext("2d", { willReadFrequently: true })
+
+  const readColor = (cssVar: string, fallback: string): string => {
+    probe.style.color = `var(${cssVar})`
+    const computed = getComputedStyle(probe).color
+
+    if (!(context && computed)) {
+      return fallback
+    }
+
+    context.clearRect(0, 0, 1, 1)
+    context.fillStyle = computed
+    context.fillRect(0, 0, 1, 1)
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data
+
+    return formatRgba(r, g, b, a)
+  }
+
+  const surface = readColor(
+    "--card",
+    isDark ? "rgb(9, 9, 11)" : "rgb(255, 255, 255)"
+  )
+  const theme = buildTerminalTheme({
+    background: surface,
+    cursorAccent: surface,
+    foreground: readColor(
+      "--foreground",
+      isDark ? "rgb(244, 244, 245)" : "rgb(24, 24, 27)"
+    ),
+    isDark,
+    selectionBackground: withAlpha(
+      readColor("--primary", "rgb(63, 63, 70)"),
+      0.3
+    )
+  })
+
+  probe.remove()
+
+  return theme
+}
 
 /**
  * Interactive terminal bound to a chat session. The pty lives in the main process
@@ -128,12 +200,23 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: TERMINAL_FONT_SIZE,
         scrollback: TERMINAL_SCROLLBACK,
-        theme: createTerminalTheme()
+        theme: resolveTerminalTheme()
       })
       const nextFitAddon = new FitAddon()
 
       nextTerminal.loadAddon(nextFitAddon)
       nextTerminal.open(container)
+
+      // Track the app theme: re-resolve when the light/dark class or color
+      // schema flips on <html> so the terminal never drifts from the UI.
+      const themeObserver = new MutationObserver(() => {
+        nextTerminal.options.theme = resolveTerminalTheme()
+      })
+      themeObserver.observe(document.documentElement, {
+        attributeFilter: ["class", "data-theme"],
+        attributes: true
+      })
+      cleanups.push(() => themeObserver.disconnect())
 
       // Copy the selection on Cmd+C (macOS). Ctrl+C is deliberately left alone so
       // it still sends SIGINT to the shell on every platform. Paste (Cmd/Ctrl+V) is
@@ -267,7 +350,7 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
   }, [sessionId])
 
   return (
-    <div className="relative h-full min-h-0 w-full overflow-hidden bg-zinc-950 p-2">
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-card p-2">
       <div
         aria-label={t("chat.projectPanel.terminalLabel")}
         className={cn("h-full w-full", status === "error" && "invisible")}
@@ -276,7 +359,7 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
       />
       {status === "error" ? (
         <div className="absolute inset-0 flex items-center justify-center p-6">
-          <p className="max-w-xs text-center text-xs text-zinc-400">
+          <p className="max-w-xs text-center text-xs text-muted-foreground">
             {t("chat.projectPanel.terminalUnavailable")}
           </p>
         </div>
