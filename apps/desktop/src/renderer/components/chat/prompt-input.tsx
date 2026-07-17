@@ -748,7 +748,7 @@ const PromptInputPermissionModeControl = ({
         </ToggleButton>
         <Tooltip.Content className="flex items-center gap-1.5">
           <span>{toggleLabel}</span>
-          <Kbd>
+          <Kbd className="text-popover-foreground">
             <Kbd.Abbr keyValue="shift" />
             <Kbd.Content>Tab</Kbd.Content>
           </Kbd>
