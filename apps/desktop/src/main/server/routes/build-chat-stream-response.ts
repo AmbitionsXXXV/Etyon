@@ -13,7 +13,10 @@ import {
   streamText
 } from "ai"
 
-import { runAgentLoop } from "@/main/agents/minimal/agent-loop"
+import {
+  AGENT_LOOP_STEP_FUSE,
+  runAgentLoop
+} from "@/main/agents/minimal/agent-loop"
 import type {
   AgentLoopOutcome,
   AgentLoopStep
@@ -22,6 +25,7 @@ import {
   buildAgentSystemPrompt,
   buildAgentToolset
 } from "@/main/agents/minimal/agent-toolset"
+import { createChatSmoothingTransform } from "@/main/agents/minimal/chat-stream-smoothing"
 import { createReasoningTimingTap } from "@/main/agents/minimal/reasoning-timing-tap"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import {
@@ -42,6 +46,7 @@ import {
   isChatPlanCommandText,
   stripChatPlanCommand
 } from "@/shared/chat/agent-mode"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 import { attachRunOutcomeToLatestAssistantMessage } from "@/shared/chat/message-metadata"
 import { CHAT_REQUEST_PHASE_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRequestPhaseData } from "@/shared/chat/stream-data"
@@ -447,6 +452,8 @@ const withFirstChunkLatency = (
 
 export interface BuildChatStreamResponseOptions {
   abortSignal: AbortSignal
+  /** Effective chat agent mode for the turn; undefined behaves as "agent". */
+  agentMode?: ChatAgentMode
   agentRunId?: string | null
   messages: UIMessage[]
   model: LanguageModel
@@ -472,6 +479,7 @@ export interface BuildChatStreamResponseOptions {
 
 export const buildChatStreamResponse = ({
   abortSignal,
+  agentMode,
   agentRunId,
   messages,
   model,
@@ -572,6 +580,7 @@ export const buildChatStreamResponse = ({
           Promise.resolve(
             streamText({
               abortSignal,
+              experimental_transform: createChatSmoothingTransform(),
               ...(effectiveSystemPrompts.length > 0
                 ? { system: effectiveSystemPrompts.join("\n\n") }
                 : {}),
@@ -618,6 +627,7 @@ export const buildChatStreamResponse = ({
       profile.preferredModel.length > 0 ? profile.preferredModel : modelId
     )
     const agentTools = buildAgentToolset({
+      agentMode: agentMode ?? "agent",
       agentRunId: agentRunId ?? null,
       chatSessionId: sessionId,
       modelId,
@@ -647,7 +657,7 @@ export const buildChatStreamResponse = ({
     agentLoopOutcome = await runAgentLoop({
       abortSignal,
       describeError: describeChatStreamError,
-      maxSteps: settings.agents.maxSteps,
+      maxSteps: AGENT_LOOP_STEP_FUSE,
       messages: preparedModelMessages,
       model: agentModel,
       ...(onAgentStep ? { onStepFinish: onAgentStep } : {}),
@@ -657,6 +667,7 @@ export const buildChatStreamResponse = ({
       system: agentSystem,
       tapUiStream: reasoningTimingTap.wrap,
       tools: agentTools,
+      transform: createChatSmoothingTransform(),
       writer: withFirstChunkLatency(writer, {
         agent_mode: true,
         agent_run_id: agentRunId,

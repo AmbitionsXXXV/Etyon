@@ -200,7 +200,6 @@ describe("AppSettingsSchema", () => {
         requireSandbox: true
       },
       maxConcurrentSubagents: 2,
-      maxSteps: 64,
       maxSubagentSteps: 24,
       maxWorkflowConcurrency: 8,
       profiles: [],
@@ -225,8 +224,7 @@ describe("AppSettingsSchema", () => {
     const update = UpdateSettingsSchema.parse({
       agents: {
         defaultProfileId: "coder",
-        enabled: true,
-        maxSteps: 12
+        enabled: true
       }
     })
 
@@ -247,7 +245,6 @@ describe("AppSettingsSchema", () => {
         requireSandbox: true
       },
       maxConcurrentSubagents: 2,
-      maxSteps: 12,
       maxSubagentSteps: 24,
       maxWorkflowConcurrency: 8,
       profiles: [],

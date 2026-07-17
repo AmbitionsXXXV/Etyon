@@ -9,9 +9,6 @@ import { useCallback, useMemo } from "react"
 import {
   AGENT_CONCURRENT_SUBAGENTS_MAX,
   AGENT_CONCURRENT_SUBAGENTS_MIN,
-  AGENT_MAX_STEPS_MAX,
-  AGENT_MAX_STEPS_MIN,
-  clampAgentMaxSteps,
   clampConcurrentSubagents,
   getAgentProfileMetrics,
   setAgentProfileAvailability
@@ -183,17 +180,6 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
     [agents, onChange]
   )
 
-  const handleMaxStepsChange = useCallback(
-    (value: number) => {
-      if (Number.isNaN(value)) {
-        return
-      }
-
-      onChange({ ...agents, maxSteps: clampAgentMaxSteps(value) })
-    },
-    [agents, onChange]
-  )
-
   const handleDefaultProfileChange = useCallback(
     (next: Key | Key[] | null) => {
       if (typeof next !== "string") {
@@ -305,25 +291,6 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
               </Switch.Control>
             </Switch.Content>
           </Switch>
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <Label className="text-sm font-medium">
-            {t("settings.agents.defaults.maxSteps.label")}
-          </Label>
-          <NumberField
-            aria-label={t("settings.agents.defaults.maxSteps.label")}
-            className="w-28"
-            isDisabled={!agents.enabled}
-            maxValue={AGENT_MAX_STEPS_MAX}
-            minValue={AGENT_MAX_STEPS_MIN}
-            onChange={handleMaxStepsChange}
-            value={agents.maxSteps}
-          >
-            <NumberField.Group>
-              <NumberField.Input />
-            </NumberField.Group>
-          </NumberField>
         </div>
       </motion.section>
 

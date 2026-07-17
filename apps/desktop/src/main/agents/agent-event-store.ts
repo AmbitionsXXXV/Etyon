@@ -12,6 +12,7 @@ import {
   agentToolCalls
 } from "@/main/db/schema"
 import { isRecord } from "@/renderer/lib/utils"
+import { isInputRequiredToolName } from "@/shared/agents/input-tools"
 
 /**
  * Event-sourced agent run log.
@@ -262,6 +263,21 @@ export const getRunAssistantStartIndex = (messages: UIMessage[]): number =>
   messages.findLastIndex((message) => message.role === "user") + 1
 
 /**
+ * Row state override for input-required tools: an unanswered
+ * ask_user/propose_plan call stays pending (`requested`) instead of the generic
+ * running mapping, and marks the run as waiting on the user.
+ */
+const resolveDerivedToolCallState = (
+  tool: { state: string; toolName: string },
+  mappedState: ToolCallState
+): { isPendingInput: boolean; state: ToolCallState } => {
+  const isPendingInput =
+    tool.state === "input-available" && isInputRequiredToolName(tool.toolName)
+
+  return { isPendingInput, state: isPendingInput ? "requested" : mappedState }
+}
+
+/**
  * Pure projection of a turn's assistant messages into run records. Exported for
  * unit tests; defensive so unknown part shapes are ignored rather than thrown.
  */
@@ -296,6 +312,14 @@ export const deriveAgentRunRecords = ({
 
       seenToolCallIds.add(tool.toolCallId)
       const mapped = mapToolPartState(tool.state)
+      // An unanswered ask_user/propose_plan call: the run is waiting on the
+      // user's answer exactly like a pending approval, so it must suspend the
+      // run (not settle it as succeeded) and the row must stay pending (not be
+      // swept to failed by the terminal settlement).
+      const { isPendingInput, state } = resolveDerivedToolCallState(
+        tool,
+        mapped.state
+      )
       toolCalls.push({
         approvalColumnState: mapped.approvalColumnState,
         inputJson: serialize(tool.input),
@@ -303,7 +327,7 @@ export const deriveAgentRunRecords = ({
           tool.output === null || tool.output === undefined
             ? null
             : serialize(tool.output),
-        state: mapped.state,
+        state,
         toolCallId: tool.toolCallId,
         toolName: tool.toolName
       })
@@ -328,6 +352,8 @@ export const deriveAgentRunRecords = ({
             toolCallId: tool.toolCallId
           })
         }
+      } else if (isPendingInput) {
+        suspended = true
       } else if (
         tool.state === "output-available" ||
         tool.state === "approval-responded"
@@ -717,9 +743,10 @@ const resolveRunFinishReason = (
  * run to `succeeded`/`suspended`/`failed`, and reconciles any prior pending
  * approvals that this turn resolved (the approve/deny-after-restart path).
  *
- * A `suspended` projection (pending approval parts) always wins so the durable
- * approval flow stays intact; otherwise a loop-reported `model-error` settles
- * the run as `failed` instead of a silent success.
+ * A `suspended` projection (pending approval parts, or an unanswered
+ * ask_user/propose_plan call) always wins so the durable approval and
+ * question-resume flows stay intact; otherwise a loop-reported `model-error`
+ * settles the run as `failed` instead of a silent success.
  */
 export const recordAgentRunOutcome = async ({
   assistantStartIndex,

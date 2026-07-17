@@ -5,6 +5,9 @@ import {
   ListAgentRunsInputSchema,
   ListPendingAgentApprovalsInputSchema,
   PendingAgentApprovalsOutputSchema,
+  GetSessionPlanInputSchema,
+  SessionPlanOutputSchema,
+  SetSessionPlanStatusInputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
   ChatSessionSummarySchema,
@@ -94,6 +97,10 @@ import {
 } from "@/main/agents/checkpoints"
 import { respondToChildApproval } from "@/main/agents/child-approval"
 import type { RememberableChildCommand } from "@/main/agents/child-approval"
+import {
+  getSessionPlan,
+  setSessionPlanStatus
+} from "@/main/agents/session-plans"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -773,13 +780,33 @@ const agentsRespondToApproval = rpc
       : { ok: false, reason: "not-pending" as const }
   })
 
+const agentsGetSessionPlan = rpc
+  .input(GetSessionPlanInputSchema)
+  .output(SessionPlanOutputSchema)
+  .handler(async ({ context, input }) => ({
+    plan: await getSessionPlan(context.db, input.sessionId)
+  }))
+
+const agentsSetSessionPlanStatus = rpc
+  .input(SetSessionPlanStatusInputSchema)
+  .output(SessionPlanOutputSchema)
+  .handler(async ({ context, input }) => ({
+    plan: await setSessionPlanStatus({
+      db: context.db,
+      sessionId: input.sessionId,
+      status: input.status
+    })
+  }))
+
 export const router = {
   agents: {
+    getSessionPlan: agentsGetSessionPlan,
     inspectRun: agentsInspectRun,
     listPendingApprovals: agentsListPendingApprovals,
     listRuns: agentsListRuns,
     readArtifact: agentsReadArtifact,
-    respondToApproval: agentsRespondToApproval
+    respondToApproval: agentsRespondToApproval,
+    setSessionPlanStatus: agentsSetSessionPlanStatus
   },
   chatSessions: {
     archive: chatSessionsArchive,

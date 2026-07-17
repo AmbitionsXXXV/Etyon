@@ -3,7 +3,6 @@ import type { AgentSettings } from "@etyon/rpc"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
-  clampAgentMaxSteps,
   clampConcurrentSubagents,
   getAgentProfileMetrics,
   isBuiltInProfileId,
@@ -15,12 +14,6 @@ const makeSettings = (overrides: Partial<AgentSettings> = {}): AgentSettings =>
   AgentSettingsSchema.parse({ ...overrides })
 
 describe("agents settings helpers", () => {
-  it("clamps the max steps setting", () => {
-    expect(clampAgentMaxSteps(0)).toBe(1)
-    expect(clampAgentMaxSteps(8.5)).toBe(9)
-    expect(clampAgentMaxSteps(999)).toBe(200)
-  })
-
   it("clamps the concurrent subagents setting", () => {
     expect(clampConcurrentSubagents(0)).toBe(1)
     expect(clampConcurrentSubagents(2)).toBe(2)

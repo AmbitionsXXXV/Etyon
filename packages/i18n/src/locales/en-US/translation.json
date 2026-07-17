@@ -28,6 +28,12 @@
       "readError": "Unable to read the artifact file.",
       "refresh": "Refresh artifact"
     },
+    "askUser": {
+      "confirm": "Confirm",
+      "customPlaceholder": "Type your own answer…",
+      "customSubmit": "Answer",
+      "title": "Question"
+    },
     "attachments": {
       "attach": "Attach images",
       "countError": "You can attach up to 4 images.",
@@ -189,6 +195,26 @@
       "successTitle": "Restore complete",
       "title": "Restore to before this change?"
     },
+    "planHint": {
+      "dismiss": "Dismiss",
+      "switch": "Switch to Plan",
+      "title": "This looks plan-worthy"
+    },
+    "planIndicator": {
+      "dismiss": "Discard plan",
+      "executing": "Executing plan · {title}",
+      "markDone": "Mark done",
+      "more": "Plan options",
+      "progress": "{completed}/{total} steps done",
+      "view": "View plan"
+    },
+    "planProposal": {
+      "decisionImplement": "Implementing",
+      "decisionNotNow": "Saved for later",
+      "implement": "Implement now",
+      "notNow": "Not now",
+      "title": "Proposed plan"
+    },
     "projectPanel": {
       "agentChanges": "Agent changes",
       "allChanges": "All changes",
@@ -277,7 +303,7 @@
       "trigger": "Run details"
     },
     "runLimit": {
-      "notice": "Stopped at the step limit ({{maxSteps}} steps). Reply to continue, or raise the limit in Settings → Agents."
+      "notice": "Stopped a likely runaway loop after {{maxSteps}} steps. Reply to continue."
     },
     "toolTrace": {
       "approve": "Approve",
@@ -593,9 +619,6 @@
         },
         "maxConcurrentSubagents": {
           "label": "Concurrent subagents"
-        },
-        "maxSteps": {
-          "label": "Max tool steps"
         },
         "profile": {
           "label": "Default profile"

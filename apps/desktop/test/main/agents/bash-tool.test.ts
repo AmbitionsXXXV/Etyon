@@ -462,6 +462,7 @@ describe("matchesCommandAllowlist", () => {
 describe("agent toolset wiring", () => {
   const buildToolsetFor = (profile: ResolvedAgentProfile) =>
     buildAgentToolset({
+      agentMode: "agent",
       agentRunId: null,
       chatSessionId: null,
       modelId: null,
@@ -491,6 +492,7 @@ describe("agent toolset wiring", () => {
 
   it("offers workflow and delegate when a delegation-enabled profile has a run", () => {
     const toolset = buildAgentToolset({
+      agentMode: "agent",
       agentRunId: "run-1",
       chatSessionId: "session-1",
       modelId: null,

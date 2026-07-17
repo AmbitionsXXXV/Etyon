@@ -47,6 +47,7 @@ import type { ReactNode, UIEvent } from "react"
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
 import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
+import type { InputToolResultHandler } from "@/renderer/components/chat/assistant-message-timeline"
 import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
 import {
   MessageActions,
@@ -72,6 +73,7 @@ import {
   getImageModeToggleDisabled,
   resolveImageModeForModelChange
 } from "@/renderer/lib/chat/image-mode"
+import { respondToAssistantInputTool } from "@/renderer/lib/chat/input-tools-ui"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
   resolveAssistantLiveStatus
@@ -88,6 +90,7 @@ import {
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
+import { buildPlanIndicatorProps } from "@/renderer/lib/chat/plan-indicator"
 import {
   formatProjectDiffCount,
   getProjectDiffSummary,
@@ -152,6 +155,7 @@ import {
   getChatSessionTitle,
   sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
+import { isInputRequiredToolPartType } from "@/shared/agents/input-tools"
 import { getNextPermissionMode } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import {
@@ -425,8 +429,11 @@ const getMessageToolParts = (message: ChatUiMessage): ChatToolPart[] =>
     isToolUIPart(part as never)
   )
 
-// A run that ends awaiting tool approval reaches "ready" mid-turn; queued
-// follow-ups must not drain until the user has responded to the approval.
+// A run that ends awaiting tool approval — or suspended on an unanswered
+// ask_user / propose_plan tool — reaches "ready" mid-turn; typed follow-ups must
+// queue (not send) until the user responds, or the resume would carry a dangling
+// tool_use the provider rejects. The input-required check mirrors auto-send's
+// trailing-part rule: the suspended call is the message's last part.
 const hasPendingToolApproval = (
   message: ChatUiMessage | undefined
 ): boolean => {
@@ -434,8 +441,21 @@ const hasPendingToolApproval = (
     return false
   }
 
-  return getMessageToolParts(message).some(
-    (part) => part.state === "approval-requested"
+  if (
+    getMessageToolParts(message).some(
+      (part) => part.state === "approval-requested"
+    )
+  ) {
+    return true
+  }
+
+  const trailingPart = message.parts.at(-1)
+
+  return (
+    trailingPart !== undefined &&
+    isToolUIPart(trailingPart as never) &&
+    isInputRequiredToolPartType(trailingPart.type) &&
+    (trailingPart as ChatToolPart).state === "input-available"
   )
 }
 
@@ -1234,6 +1254,7 @@ const ChatMessageBubble = ({
   liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
+  onInputToolResult,
   onOpenArtifact,
   sessionId,
   streamdownAnimation
@@ -1248,6 +1269,7 @@ const ChatMessageBubble = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
+  onInputToolResult: InputToolResultHandler
   onOpenArtifact?: (artifact: ChatArtifactRef) => void
   sessionId: string
   streamdownAnimation: StreamdownAnimation
@@ -1294,6 +1316,7 @@ const ChatMessageBubble = ({
               liveWorkTimeStartedAt={liveWorkTimeStartedAt}
               message={message}
               onApprovalResponse={onApprovalResponse}
+              onInputToolResult={onInputToolResult}
               onOpenArtifact={onOpenArtifact}
               sessionId={sessionId}
               streamdownAnimation={streamdownAnimation}
@@ -1338,6 +1361,7 @@ const ChatMessageItem = memo(
     liveWorkTimeStartedAt,
     message,
     onApprovalResponse,
+    onInputToolResult,
     onCancelEditMessage,
     onEditingMessageTextChange,
     onOpenArtifact,
@@ -1358,6 +1382,7 @@ const ChatMessageItem = memo(
       approved: boolean,
       options?: AssistantToolApprovalResponseOptions
     ) => void
+    onInputToolResult: InputToolResultHandler
     onCancelEditMessage: () => void
     onEditingMessageTextChange: (value: string) => void
     onOpenArtifact?: (artifact: ChatArtifactRef) => void
@@ -1403,6 +1428,7 @@ const ChatMessageItem = memo(
               liveWorkTimeStartedAt={liveWorkTimeStartedAt}
               message={message}
               onApprovalResponse={onApprovalResponse}
+              onInputToolResult={onInputToolResult}
               onOpenArtifact={onOpenArtifact}
               sessionId={sessionId}
               streamdownAnimation={streamdownAnimation}
@@ -1563,8 +1589,20 @@ const ChatRuntime = ({
     []
   )
   const queuedMessagesRef = useRef(queuedMessages)
+  const queryClient = useQueryClient()
+  const sessionPlanQueryOptions = useMemo(
+    () =>
+      orpc.agents.getSessionPlan.queryOptions({
+        input: { sessionId: selectedSession.id }
+      }),
+    [selectedSession.id]
+  )
+  // Run id of the streaming turn's live todo checklist, so the plan indicator can
+  // read `{done}/{total}` from the todo store; cleared between turns.
+  const [planTodoRunId, setPlanTodoRunId] = useState<string | undefined>()
   const {
     addToolApprovalResponse,
+    addToolResult,
     clearError,
     error,
     messages,
@@ -1574,6 +1612,7 @@ const ChatRuntime = ({
     stop,
     status
   } = useChat<ChatUiMessage>({
+    experimental_throttle: 50,
     id: selectedSession.id,
     messages: initialMessages,
     onData: (dataPart) => {
@@ -1591,6 +1630,7 @@ const ChatRuntime = ({
         setSubagentEnd(dataPart.data)
       } else if (isChatTodoDataPart(dataPart)) {
         setTodos(dataPart.data.runId, dataPart.data.todos)
+        setPlanTodoRunId(dataPart.data.runId)
       }
     },
     onFinish: () => {
@@ -1598,6 +1638,12 @@ const ChatRuntime = ({
       clearWorkflowProgress()
       clearSubagents()
       clearTodos()
+      setPlanTodoRunId(undefined)
+      // A finished turn may have flipped the saved plan to `implementing`
+      // (propose_plan → Implement), so refresh the indicator's query.
+      void queryClient.invalidateQueries({
+        queryKey: sessionPlanQueryOptions.queryKey
+      })
 
       if (agentMode === "agent") {
         void (async () => {
@@ -1613,6 +1659,34 @@ const ChatRuntime = ({
     },
     sendAutomaticallyWhen: shouldSendChatAutomatically,
     transport
+  })
+
+  const sessionPlanQuery = useQuery(sessionPlanQueryOptions)
+  const { isPending: isPlanStatusPending, mutate: mutateSessionPlanStatus } =
+    useMutation(
+      orpc.agents.setSessionPlanStatus.mutationOptions({
+        onSuccess: () => {
+          void queryClient.invalidateQueries({
+            queryKey: sessionPlanQueryOptions.queryKey
+          })
+        }
+      })
+    )
+  const handleMarkPlanDone = useCallback(() => {
+    mutateSessionPlanStatus({ sessionId: selectedSession.id, status: "done" })
+  }, [mutateSessionPlanStatus, selectedSession.id])
+  const handleDismissPlan = useCallback(() => {
+    mutateSessionPlanStatus({
+      sessionId: selectedSession.id,
+      status: "dismissed"
+    })
+  }, [mutateSessionPlanStatus, selectedSession.id])
+  const planIndicator = buildPlanIndicatorProps({
+    data: sessionPlanQuery.data,
+    isBusy: isPlanStatusPending,
+    onDismiss: handleDismissPlan,
+    onMarkDone: handleMarkPlanDone,
+    runId: planTodoRunId
   })
 
   useEffect(() => {
@@ -1966,6 +2040,28 @@ const ChatRuntime = ({
     ]
   )
 
+  // Answers a suspended ask_user / propose_plan tool and lets auto-send resume
+  // the run. `switchToAgent` (the plan "Implement" path) flips the composer to
+  // agent mode first and threads that explicit override into the resume options
+  // — the closure's `agentMode` still reads "plan" at click time.
+  const handleInputToolResult = useCallback<InputToolResultHandler>(
+    (part, output, options) => {
+      if (options?.switchToAgent) {
+        setAgentMode("agent")
+      }
+
+      respondToAssistantInputTool({
+        addToolResult,
+        buildChatRequestOptions,
+        latestUserMentions,
+        modeOverride: options?.switchToAgent ? "agent" : undefined,
+        output,
+        part
+      })
+    },
+    [addToolResult, buildChatRequestOptions, latestUserMentions]
+  )
+
   const sendPromptMessage = useCallback(
     ({
       files = [],
@@ -2281,6 +2377,7 @@ const ChatRuntime = ({
                         onApprovalResponse={handleToolApprovalResponse}
                         onCancelEditMessage={handleCancelEditMessage}
                         onEditingMessageTextChange={setEditingMessageText}
+                        onInputToolResult={handleInputToolResult}
                         onOpenArtifact={onOpenArtifact}
                         onRegenerate={handleRegenerate}
                         onStartEditMessage={handleStartEditMessage}
@@ -2397,6 +2494,7 @@ const ChatRuntime = ({
             imageInputTypeError={t("chat.attachments.typeError")}
             imageInputUnsupportedLabel={t("chat.attachments.unsupported")}
             isAgentModeToggleDisabled={isAgentModeToggleDisabled}
+            isImageMode={isImageMode}
             isLoadingFileItems={isLoadingFileItems}
             isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
             isLoadingSkillItems={isLoadingSkillItems}
@@ -2435,6 +2533,10 @@ const ChatRuntime = ({
               "chat.promptInput.permissionMode.title"
             )}
             placeholder={t("chat.composer.placeholder")}
+            planHintDismissLabel={t("chat.planHint.dismiss")}
+            planHintSwitchLabel={t("chat.planHint.switch")}
+            planHintTitle={t("chat.planHint.title")}
+            planIndicator={planIndicator}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}
@@ -2652,6 +2754,9 @@ const ChatPendingState = ({
               "chat.promptInput.permissionMode.title"
             )}
             placeholder={t("chat.composer.placeholder")}
+            planHintDismissLabel={t("chat.planHint.dismiss")}
+            planHintSwitchLabel={t("chat.planHint.switch")}
+            planHintTitle={t("chat.planHint.title")}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}

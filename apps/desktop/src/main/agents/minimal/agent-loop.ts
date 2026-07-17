@@ -2,6 +2,7 @@ import type {
   FinishReason,
   LanguageModel,
   ModelMessage,
+  StreamTextTransform,
   ToolSet,
   UIMessage,
   UIMessageStreamWriter
@@ -20,10 +21,15 @@ import type { EffortProviderOptions } from "@/shared/providers/model-effort"
  * round-trip (`stopWhen: stepCountIs(1)`); the AI SDK executes non-gated tool
  * calls inside the iteration, and the loop decides what happens next:
  *
- * - `tool-calls` finish → continue, until `maxSteps` is reached, which is
- *   surfaced to the user as a `data-run-limit` part instead of ending silently
+ * - `tool-calls` finish → continue, until the step fuse (`maxSteps`, in
+ *   production `AGENT_LOOP_STEP_FUSE`) is reached, which is surfaced to the user
+ *   as a `data-run-limit` part instead of ending silently
  * - approval requested → exit `suspended`; the durable approval resumes the
  *   run in a later request through the persisted message history
+ * - a call to an input-required tool (defined without `execute`, e.g.
+ *   `ask_user`) → exit `suspended` the same way; looping on would send a
+ *   dangling `tool_use` without a result and the provider rejects the history.
+ *   The user's answer lands as the tool result via the persisted messages.
  * - `stop` finish whose final text announces an imminent action the model
  *   never executed → inject one corrective nudge message and continue
  *   (single-shot latch, so a model that keeps announcing cannot loop)
@@ -31,6 +37,13 @@ import type { EffortProviderOptions } from "@/shared/providers/model-effort"
  *   failed instead of a silent "succeeded"
  * - abort → exit `aborted`
  */
+
+/**
+ * Invisible safety fuse, not a user setting: high enough that legitimate work
+ * never trips it, it exists only so an unattended runaway loop cannot burn
+ * tokens indefinitely. Tests inject smaller values through `maxSteps`.
+ */
+export const AGENT_LOOP_STEP_FUSE = 200
 
 export type AgentLoopExitReason =
   | "aborted"
@@ -69,6 +82,12 @@ export interface RunAgentLoopOptions {
     stream: ReadableStream<TChunk>
   ) => ReadableStream<TChunk>
   tools: ToolSet
+  /**
+   * Optional server-side stream transform (e.g. smoothStream re-chunking).
+   * Injected rather than hard-coded so the loop's tests stay free of real
+   * timers; runs unset leave the model stream untouched.
+   */
+  transform?: StreamTextTransform<ToolSet>
   writer: UIMessageStreamWriter<UIMessage>
 }
 
@@ -79,7 +98,7 @@ const CLOSING_IDIOM_PATTERN =
   /(让我知道|告诉我|随时(找|叫|问)我|let me know|feel free|don'?t hesitate)/iu
 const ANNOUNCE_PATTERNS: readonly RegExp[] = [
   new RegExp(
-    `${ADVICE_LOOKBEHIND}(先|我先|我来|我会|让我|接下来|然后我|现在我?)[^。！？!?\\n]{0,40}(确认|检查|查看|读取|扫描|分析|生成|创建|开始|执行|运行|列出|搜索|整理|统计|写入|准备)[^。！？!?\\n]{0,60}[。.…]?\\s*$`,
+    `${ADVICE_LOOKBEHIND}(先|我先|我来|我会|让我|接下来|然后我|现在我?)[^。！？!?\\n]{0,40}(确认|检查|查看|读取|扫描|分析|生成|创建|开始|执行|运行|列出|搜索|整理|统计|写入|准备|调整|修改|更改|替换|删除|移除|新增|添加|实现|应用|重构|修复|优化|校验|验证|构建|配置|迁移|升级|安装|部署)[^。！？!?\\n]{0,60}[。.…]?\\s*$`,
     "u"
   ),
   /\b(let me|i(?:'|’)ll|i will|i am going to|next,? i|first,? i(?:'|’)ll)\b[^.!?\n]{0,80}[.…]?\s*$/iu
@@ -125,10 +144,36 @@ type StepDecision =
   | { kind: "limit" }
   | { kind: "nudge" }
 
+/**
+ * Names of tools the loop cannot execute itself: defined without `execute`
+ * (human-input tools like `ask_user` — the renderer supplies the result).
+ * Provider-defined tools also lack `execute` but run at the provider, so they
+ * are excluded.
+ */
+export const getInputRequiredToolNames = (tools: ToolSet): Set<string> =>
+  new Set(
+    Object.entries(tools)
+      .filter(
+        ([, definition]) =>
+          definition.execute === undefined && definition.type !== "provider"
+      )
+      .map(([name]) => name)
+  )
+
+const getStepToolCallNames = (content: readonly { type: string }[]): string[] =>
+  content
+    .filter(
+      (part): part is { toolName: string; type: "tool-call" } =>
+        part.type === "tool-call" &&
+        typeof (part as { toolName?: unknown }).toolName === "string"
+    )
+    .map((part) => part.toolName)
+
 /** Pure continue-or-stop decision for one completed model round-trip. */
 const evaluateStep = ({
   content,
   finishReason,
+  inputRequiredToolNames,
   maxSteps,
   nudged,
   stepIndex,
@@ -136,12 +181,23 @@ const evaluateStep = ({
 }: {
   content: readonly { type: string }[]
   finishReason: FinishReason
+  inputRequiredToolNames: ReadonlySet<string>
   maxSteps: number
   nudged: boolean
   stepIndex: number
   toolCallCount: number
 }): StepDecision => {
   if (content.some((part) => part.type === "tool-approval-request")) {
+    return { exitReason: "suspended", kind: "exit" }
+  }
+
+  // An input-required call has no result in this step by definition; suspend
+  // and let the renderer's answer resume the run through a later request.
+  if (
+    getStepToolCallNames(content).some((name) =>
+      inputRequiredToolNames.has(name)
+    )
+  ) {
     return { exitReason: "suspended", kind: "exit" }
   }
 
@@ -164,6 +220,26 @@ const evaluateStep = ({
     : { exitReason: "completed", kind: "exit" }
 }
 
+/**
+ * Optional streamText settings, assembled once outside the loop (they never
+ * change across iterations) and kept out of `runAgentLoop` so it stays within
+ * the lint complexity budget.
+ */
+const buildOptionalStreamSettings = ({
+  abortSignal,
+  providerOptions,
+  system,
+  transform
+}: Pick<
+  RunAgentLoopOptions,
+  "abortSignal" | "providerOptions" | "system" | "transform"
+>) => ({
+  ...(abortSignal ? { abortSignal } : {}),
+  ...(transform ? { experimental_transform: transform } : {}),
+  ...(providerOptions ? { providerOptions } : {}),
+  ...(system ? { system } : {})
+})
+
 export const runAgentLoop = async ({
   abortSignal,
   describeError = describeUnknownError,
@@ -175,9 +251,11 @@ export const runAgentLoop = async ({
   system,
   tapUiStream,
   tools,
+  transform,
   writer
 }: RunAgentLoopOptions): Promise<AgentLoopOutcome> => {
   const history: ModelMessage[] = [...messages]
+  const inputRequiredToolNames = getInputRequiredToolNames(tools)
   let stepIndex = 0
   let nudged = false
   let lastFinishReason: FinishReason | null = null
@@ -208,6 +286,13 @@ export const runAgentLoop = async ({
     }
   }
 
+  const optionalStreamSettings = buildOptionalStreamSettings({
+    abortSignal,
+    providerOptions,
+    system,
+    transform
+  })
+
   while (true) {
     if (abortSignal?.aborted) {
       return buildOutcome("aborted")
@@ -215,13 +300,11 @@ export const runAgentLoop = async ({
 
     try {
       const result = streamText({
-        ...(abortSignal ? { abortSignal } : {}),
+        ...optionalStreamSettings,
         messages: history,
         model,
         onError: captureStreamError,
-        ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(1),
-        ...(system ? { system } : {}),
         tools
       })
 
@@ -259,6 +342,7 @@ export const runAgentLoop = async ({
       const decision = evaluateStep({
         content,
         finishReason,
+        inputRequiredToolNames,
         maxSteps,
         nudged,
         stepIndex,

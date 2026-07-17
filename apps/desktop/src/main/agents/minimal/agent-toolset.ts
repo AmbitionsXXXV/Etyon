@@ -1,6 +1,7 @@
 import type { ToolSet, UIMessage, UIMessageStreamWriter } from "ai"
 
 import { buildArtifactTool } from "@/main/agents/minimal/artifact-tool"
+import { buildAskUserTool } from "@/main/agents/minimal/ask-user-tool"
 import { buildBashTool } from "@/main/agents/minimal/bash-tool"
 import { buildDelegateTool } from "@/main/agents/minimal/delegation"
 import {
@@ -12,6 +13,7 @@ import {
   buildSaveMemoryTool,
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
+import { buildProposePlanTool } from "@/main/agents/minimal/propose-plan-tool"
 import { buildTodoTool } from "@/main/agents/minimal/todo-tool"
 import { buildWorkflowTool } from "@/main/agents/minimal/workflow/workflow-tool"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
@@ -20,7 +22,12 @@ import { getDb } from "@/main/db"
 import { isImageGenerationAvailable } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
+import {
+  READONLY_FILE_TOOLS,
+  resolveProfileRoster
+} from "@/shared/agents/profiles"
 import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
+import type { ChatAgentMode } from "@/shared/chat/agent-mode"
 
 /**
  * System prompt and tool set for the self-owned agent loop. This replaces the
@@ -76,6 +83,7 @@ export const buildAgentSystemPrompt = (profile: ResolvedAgentProfile): string =>
     : AGENT_BASE_INSTRUCTIONS
 
 export interface BuildAgentToolsetOptions {
+  agentMode: ChatAgentMode
   agentRunId: string | null
   chatSessionId: string | null
   modelId: string | null
@@ -85,17 +93,59 @@ export interface BuildAgentToolsetOptions {
   writer?: UIMessageStreamWriter<UIMessage>
 }
 
+/**
+ * Plan mode flips the effective profile read-only regardless of the active
+ * profile: file tools shrink to read/ls/grep, the readonly flag drops
+ * bash/artifact/imagen through the existing gates, and delegation is narrowed
+ * to read-only target profiles so a child cannot write what the parent no
+ * longer can. Pure so plan-mode policy is testable without toolset assembly.
+ */
+export const resolveToolsetProfile = ({
+  agentMode,
+  profile,
+  readonlyProfileIds
+}: {
+  agentMode: ChatAgentMode
+  profile: ResolvedAgentProfile
+  readonlyProfileIds: ReadonlySet<string>
+}): ResolvedAgentProfile =>
+  agentMode === "plan"
+    ? {
+        ...profile,
+        allowedDelegateProfileIds: profile.allowedDelegateProfileIds.filter(
+          (id) => readonlyProfileIds.has(id)
+        ),
+        allowedTools: READONLY_FILE_TOOLS,
+        readonly: true
+      }
+    : profile
+
 export const buildAgentToolset = ({
+  agentMode,
   agentRunId,
   chatSessionId,
   modelId,
   permissionMode,
-  profile,
+  profile: requestedProfile,
   projectPath,
   writer
 }: BuildAgentToolsetOptions): ToolSet => {
   const settings = getSettings()
   const workspace = getWorkspaceCore(projectPath)
+  const isPlanMode = agentMode === "plan"
+  // The roster is only consulted for plan mode's delegation narrowing; other
+  // modes use the requested profile as-is.
+  const profile = isPlanMode
+    ? resolveToolsetProfile({
+        agentMode,
+        profile: requestedProfile,
+        readonlyProfileIds: new Set(
+          resolveProfileRoster(settings.agents)
+            .filter((rosterProfile) => rosterProfile.readonly)
+            .map((rosterProfile) => rosterProfile.id)
+        )
+      })
+    : requestedProfile
   // When a run id exists the parent may delegate to writable children that run
   // concurrently, so the parent claims its own writes under the same top-level
   // run — a child then cannot silently clobber a file the parent is editing.
@@ -117,6 +167,15 @@ export const buildAgentToolset = ({
     // profile like read/ls. It emits a transient live part keyed by run id and
     // its call is replayed from agent_tool_calls, so it needs no write access.
     todo_write: buildTodoTool({ agentRunId, writer }),
+    // Input-required tools (defined without execute) exist only in plan mode:
+    // ask_user forks the plan on the user's answer, propose_plan is the plan's
+    // exit gate. A call suspends the run until the chat UI supplies the result.
+    ...(isPlanMode
+      ? {
+          ask_user: buildAskUserTool(),
+          propose_plan: buildProposePlanTool()
+        }
+      : {}),
     // A shell can mutate anything, so it is offered to writable profiles only;
     // every call is approval-gated unless the exact command was remembered.
     ...(profile.readonly

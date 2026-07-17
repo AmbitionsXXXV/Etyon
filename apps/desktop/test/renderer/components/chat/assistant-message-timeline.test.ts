@@ -28,6 +28,7 @@ const renderTimeline = (
         isRunActive: false,
         isStreamdownAnimating: false,
         onApprovalResponse: vi.fn(),
+        onInputToolResult: vi.fn(),
         sessionId: "test-session",
         streamdownAnimation: "none",
         ...props
@@ -203,7 +204,7 @@ describe("AssistantMessageTimeline", () => {
       }
     })
 
-    expect(html).toContain("Stopped at the step limit")
+    expect(html).toContain("Stopped a likely runaway loop")
     expect(html).toContain("64")
   })
 
@@ -226,7 +227,7 @@ describe("AssistantMessageTimeline", () => {
     expect(html).not.toContain("Copy table")
   })
 
-  it("does not add Streamdown animation spans while the assistant response streams", () => {
+  it("adds Streamdown animation spans and a caret while the assistant response streams", () => {
     const html = renderTimeline({
       isRunActive: true,
       isStreamdownAnimating: true,
@@ -243,6 +244,50 @@ describe("AssistantMessageTimeline", () => {
       streamdownAnimation: "typewriter"
     })
 
+    expect(html).toContain('data-sd-animate="true"')
+    expect(html).toContain("--streamdown-caret")
+  })
+
+  it("does not replay Streamdown animation once the response has settled", () => {
+    const html = renderTimeline({
+      isRunActive: false,
+      isStreamdownAnimating: false,
+      message: {
+        id: "assistant-1",
+        parts: [
+          {
+            text: "Streaming response text.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      },
+      streamdownAnimation: "typewriter"
+    })
+
+    expect(html).toContain("Streaming response text.")
+    expect(html).not.toContain("data-sd-animate")
+    expect(html).not.toContain("--streamdown-caret")
+  })
+
+  it("does not add Streamdown animation markup while streaming when the animation setting is none", () => {
+    const html = renderTimeline({
+      isRunActive: true,
+      isStreamdownAnimating: true,
+      message: {
+        id: "assistant-1",
+        parts: [
+          {
+            text: "Streaming response text.",
+            type: "text"
+          }
+        ],
+        role: "assistant"
+      },
+      streamdownAnimation: "none"
+    })
+
+    expect(html).toContain("Streaming response text.")
     expect(html).not.toContain("data-sd-animate")
     expect(html).not.toContain("--streamdown-caret")
   })

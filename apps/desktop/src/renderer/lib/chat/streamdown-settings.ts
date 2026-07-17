@@ -70,11 +70,15 @@ export const getStreamdownAnimateOptions = (
       }
     }
     case "typewriter": {
+      // Per-flush char cascade (stagger × chars-per-flush) must fit within the
+      // useChat throttle window (~50ms), or the next flush snaps in-flight
+      // chars and the typewriter stutters.
       return {
         animation: "fadeIn",
-        duration: 120,
+        duration: 80,
         easing: "ease-out",
-        sep: "char"
+        sep: "char",
+        stagger: 15
       }
     }
     case "none": {

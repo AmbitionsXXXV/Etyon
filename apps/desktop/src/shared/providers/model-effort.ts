@@ -43,7 +43,13 @@ export type EffortProviderId = "anthropic" | "openai"
 
 export type EffortProviderOptions =
   | { anthropic: { effort: AnthropicEffortLevel } }
-  | { openai: { reasoningEffort: OpenAiEffortLevel } }
+  | {
+      openai: {
+        reasoningEffort: OpenAiEffortLevel
+        reasoningSummary?: "auto"
+        store?: boolean
+      }
+    }
 
 export const DEFAULT_MODEL_EFFORT: ModelEffortSettings = {
   anthropic: "high",

@@ -28,6 +28,12 @@
       "readError": "无法读取 Artifact 文件。",
       "refresh": "刷新 Artifact"
     },
+    "askUser": {
+      "confirm": "确认",
+      "customPlaceholder": "输入自定义回答…",
+      "customSubmit": "回答",
+      "title": "问题"
+    },
     "attachments": {
       "attach": "添加图片",
       "countError": "最多可添加 4 张图片。",
@@ -189,6 +195,26 @@
       "successTitle": "恢复完成",
       "title": "恢复到本次改动之前?"
     },
+    "planHint": {
+      "dismiss": "关闭",
+      "switch": "切换到 Plan",
+      "title": "这个任务适合先规划"
+    },
+    "planIndicator": {
+      "dismiss": "放弃计划",
+      "executing": "按计划实施中 · {title}",
+      "markDone": "标记完成",
+      "more": "计划选项",
+      "progress": "已完成 {completed}/{total} 步",
+      "view": "查看计划"
+    },
+    "planProposal": {
+      "decisionImplement": "已开始实施",
+      "decisionNotNow": "已保存，稍后可实施",
+      "implement": "开始实施",
+      "notNow": "暂不",
+      "title": "计划已就绪"
+    },
     "projectPanel": {
       "agentChanges": "Agent 改动",
       "allChanges": "全部改动",
@@ -277,7 +303,7 @@
       "trigger": "运行详情"
     },
     "runLimit": {
-      "notice": "已达到步数上限({{maxSteps}} 步),本次回复被截断。回复即可继续,或在 设置 → Agents 中提高上限。"
+      "notice": "疑似失控循环，已在 {{maxSteps}} 步后熔断。回复即可继续。"
     },
     "toolTrace": {
       "approve": "批准",
@@ -593,9 +619,6 @@
         },
         "maxConcurrentSubagents": {
           "label": "并发 subagents"
-        },
-        "maxSteps": {
-          "label": "最大 tool steps"
         },
         "profile": {
           "label": "默认 profile"

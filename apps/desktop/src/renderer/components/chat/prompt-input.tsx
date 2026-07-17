@@ -39,6 +39,11 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
+  ComposerPlanHint,
+  usePlanModeHint
+} from "@/renderer/components/chat/composer-plan-hint"
+import { ComposerPlanIndicator } from "@/renderer/components/chat/composer-plan-indicator"
+import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
   attachmentToFilePart,
   classifyAttachmentCandidate
@@ -47,6 +52,7 @@ import type {
   AttachmentRejectionReason,
   ComposerAttachment
 } from "@/renderer/lib/chat/attachments"
+import type { ComposerPlanIndicatorProps } from "@/renderer/lib/chat/plan-indicator"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   CHAT_AGENT_MODE_OPTIONS,
@@ -1177,6 +1183,7 @@ export const PromptInput = ({
   imageInputTypeError = "",
   imageInputUnsupportedLabel = "",
   isAgentModeToggleDisabled,
+  isImageMode = false,
   isLoadingFileItems = false,
   isLoadingPromptTemplateItems = false,
   isLoadingSkillItems = false,
@@ -1203,6 +1210,10 @@ export const PromptInput = ({
   permissionModeDefaultLabel,
   permissionModeToggleLabel,
   placeholder,
+  planHintDismissLabel,
+  planHintSwitchLabel,
+  planHintTitle,
+  planIndicator,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
   promptTemplateItems = EMPTY_PROMPT_TEMPLATE_ITEMS,
@@ -1255,6 +1266,7 @@ export const PromptInput = ({
   imageInputTypeError?: string
   imageInputUnsupportedLabel?: string
   isAgentModeToggleDisabled?: boolean
+  isImageMode?: boolean
   isLoadingFileItems?: boolean
   isLoadingPromptTemplateItems?: boolean
   isLoadingSkillItems?: boolean
@@ -1289,6 +1301,10 @@ export const PromptInput = ({
   permissionModeDefaultLabel: string
   permissionModeToggleLabel: string
   placeholder: string
+  planHintDismissLabel: string
+  planHintSwitchLabel: string
+  planHintTitle: string
+  planIndicator?: ComposerPlanIndicatorProps
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
   promptTemplateItems?: PromptTemplate[]
@@ -1645,6 +1661,23 @@ export const PromptInput = ({
       promptTemplateElementByPathRef.current.get(activePromptTemplateItemPath)
     )
   }, [activePromptTemplateItemPath, activePromptTemplateRange])
+
+  // Timed plan-mode hint (Feature D): only offered from chat/agent mode, with no
+  // request in flight and image mode off. Switching keeps the draft and refocuses.
+  const isPlanHintEligible =
+    !disabled && !isOutputActive && !isImageMode && agentMode !== "plan"
+  const {
+    conceal: concealPlanHint,
+    dismiss: dismissPlanHint,
+    isVisible: isPlanHintVisible
+  } = usePlanModeHint({
+    draft: promptInputValue,
+    isEligible: isPlanHintEligible
+  })
+  const handleSwitchToPlan = useCallback(() => {
+    onAgentModeChange("plan")
+    editor?.commands.focus()
+  }, [editor, onAgentModeChange])
 
   const handleSelectMentionItem = useCallback(
     (item: PromptMentionItem) => {
@@ -2011,6 +2044,15 @@ export const PromptInput = ({
       value={promptInputValue}
       variant="secondary"
     >
+      <ComposerPlanHint
+        dismissLabel={planHintDismissLabel}
+        isVisible={isPlanHintVisible}
+        onConceal={concealPlanHint}
+        onDismiss={dismissPlanHint}
+        onSwitch={handleSwitchToPlan}
+        switchLabel={planHintSwitchLabel}
+        title={planHintTitle}
+      />
       <PromptInputSuggestions
         activeCommandPaletteRange={activeCommandPaletteRange}
         activeItemIndex={activeItemIndex}
@@ -2038,6 +2080,8 @@ export const PromptInput = ({
         promptTemplateGroupLabel={promptTemplateGroupLabel}
         promptTemplateItems={promptTemplateItems}
       />
+
+      {planIndicator ? <ComposerPlanIndicator {...planIndicator} /> : null}
 
       {queuedMessages.length > 0 ? (
         <HeroPromptInput.Queue aria-label={queuedMessagesLabel}>

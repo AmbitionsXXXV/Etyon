@@ -502,6 +502,41 @@ export const ReorderQueuedAgentMessagesInputSchema = z.object({
   sessionId: z.string()
 })
 
+// The saved plan for a session (single row, upserted from the latest
+// propose_plan tool call). `done`/`dismissed` are set manually via
+// setSessionPlanStatus; the model only ever produces proposed/implementing.
+export const ChatSessionPlanStatusSchema = z.enum([
+  "dismissed",
+  "done",
+  "implementing",
+  "proposed"
+])
+
+export const ChatSessionPlanSchema = z.object({
+  createdAt: z.string(),
+  decidedAt: z.string().nullable(),
+  planMarkdown: z.string(),
+  sessionId: z.string(),
+  sourceRunId: z.string().nullable(),
+  sourceToolCallId: z.string().nullable(),
+  status: ChatSessionPlanStatusSchema,
+  title: z.string(),
+  updatedAt: z.string()
+})
+
+export const GetSessionPlanInputSchema = z.object({
+  sessionId: z.string()
+})
+
+export const SessionPlanOutputSchema = z.object({
+  plan: ChatSessionPlanSchema.nullable()
+})
+
+export const SetSessionPlanStatusInputSchema = z.object({
+  sessionId: z.string(),
+  status: z.enum(["dismissed", "done"])
+})
+
 export type AgentSessionQueuedMessage = z.infer<
   typeof AgentSessionQueuedMessageSchema
 >
@@ -692,4 +727,11 @@ export type RecoverableAgentRunsOutput = z.infer<
 >
 export type UpdateQueuedAgentMessageInput = z.infer<
   typeof UpdateQueuedAgentMessageInputSchema
+>
+export type ChatSessionPlan = z.infer<typeof ChatSessionPlanSchema>
+export type ChatSessionPlanStatus = z.infer<typeof ChatSessionPlanStatusSchema>
+export type GetSessionPlanInput = z.infer<typeof GetSessionPlanInputSchema>
+export type SessionPlanOutput = z.infer<typeof SessionPlanOutputSchema>
+export type SetSessionPlanStatusInput = z.infer<
+  typeof SetSessionPlanStatusInputSchema
 >

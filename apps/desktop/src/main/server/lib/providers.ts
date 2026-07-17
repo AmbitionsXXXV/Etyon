@@ -19,6 +19,7 @@ import { createMoonshotFetch } from "@/shared/providers/moonshot-reasoning"
 import {
   BUILT_IN_PROVIDER_CATALOG,
   getProviderCatalogEntry,
+  getProviderDefaultBaseURL,
   resolveOpenAiApiMode,
   resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
@@ -217,7 +218,7 @@ const createProviderModel = (
     case "openai": {
       const baseURL = resolveProviderBaseURL(provider, providerConfig)
 
-      return resolveOpenAiApiMode(providerConfig) === "chat-completions"
+      return resolveOpenAiApiMode(providerConfig, model) === "chat-completions"
         ? createOpenAICompatibleChatModel({ baseURL })
         : createOpenAIResponsesModel(baseURL)
     }
@@ -366,9 +367,41 @@ export const resolveEffortProviderOptionsForSelection = (
     ...providerConfig.availableModels
   ].find((candidate) => candidate.id === parsed.model)
 
-  return resolveEffortProviderOptions({
+  const base = resolveEffortProviderOptions({
     model: entry ?? { id: parsed.model },
     modelEffort: aiSettings.modelEffort,
     providerId: parsed.provider
   })
+
+  // Responses-only: `reasoningSummary: "auto"` makes the (long) reasoning phase
+  // visible in the stream. Excluded for Chat Completions / third-party relays
+  // (they reject the parameter) and for effort "none" (a summary with reasoning
+  // disabled risks a provider 400).
+  //
+  // Stateful relays don't persist Responses items, so `store: false` forces the
+  // SDK to replay reasoning by value via encrypted_content instead of
+  // item_reference ids (which 404 on relays); the SDK auto-requests
+  // reasoning.encrypted_content once store is false. The official endpoint does
+  // persist items, so it keeps the SDK's `store` default untouched.
+  if (
+    base &&
+    "openai" in base &&
+    parsed.provider === "openai" &&
+    base.openai.reasoningEffort !== "none" &&
+    resolveOpenAiApiMode(providerConfig, parsed.model) === "responses"
+  ) {
+    const isOfficialEndpoint =
+      resolveProviderBaseURL("openai", providerConfig) ===
+      getProviderDefaultBaseURL("openai")
+
+    return {
+      openai: {
+        ...base.openai,
+        reasoningSummary: "auto",
+        ...(isOfficialEndpoint ? {} : { store: false })
+      }
+    }
+  }
+
+  return base
 }

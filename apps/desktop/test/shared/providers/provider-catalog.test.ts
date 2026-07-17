@@ -136,4 +136,42 @@ describe("provider-catalog", () => {
       })
     ).toBe("chat-completions")
   })
+
+  it("applies an explicit responses mode only to openai-family models on a mixed relay", () => {
+    expect(
+      resolveOpenAiApiMode(
+        { apiMode: "responses", baseURL: "https://api.amux.ai/v1" },
+        "gpt-5.6-terra"
+      )
+    ).toBe("responses")
+    expect(
+      resolveOpenAiApiMode(
+        { apiMode: "responses", baseURL: "https://api.amux.ai/v1" },
+        "claude-sonnet-5"
+      )
+    ).toBe("chat-completions")
+    expect(
+      resolveOpenAiApiMode(
+        { apiMode: "responses", baseURL: "https://api.amux.ai/v1" },
+        "deepseek-v4-flash"
+      )
+    ).toBe("chat-completions")
+  })
+
+  it("never upgrades an explicit chat-completions mode to responses", () => {
+    expect(
+      resolveOpenAiApiMode(
+        { apiMode: "chat-completions", baseURL: "" },
+        "gpt-5.6-terra"
+      )
+    ).toBe("chat-completions")
+  })
+
+  it("keeps the responses default for openai-family ids on the official endpoint", () => {
+    expect(resolveOpenAiApiMode({ baseURL: "" }, "o3")).toBe("responses")
+    expect(resolveOpenAiApiMode({ baseURL: "" }, "chatgpt-4o-latest")).toBe(
+      "responses"
+    )
+    expect(resolveOpenAiApiMode({ baseURL: "" })).toBe("responses")
+  })
 })

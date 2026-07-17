@@ -62,7 +62,6 @@ const {
         defaultProfileId: "general-purpose",
         enabled: false,
         maxConcurrentSubagents: 2,
-        maxSteps: 8,
         profiles: [],
         requireApprovalForWrites: true,
         ...agents

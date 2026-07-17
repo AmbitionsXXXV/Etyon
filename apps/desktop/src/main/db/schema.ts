@@ -234,6 +234,22 @@ export const chatSessionMemories = sqliteTable("chat_session_memories", {
   updatedAt: text("updated_at").notNull()
 })
 
+export const chatSessionPlans = sqliteTable("chat_session_plans", {
+  createdAt: text("created_at").notNull(),
+  decidedAt: text("decided_at"),
+  planMarkdown: text("plan_markdown").notNull(),
+  sessionId: text("session_id")
+    .primaryKey()
+    .references(() => chatSessions.id, { onDelete: "cascade" }),
+  sourceRunId: text("source_run_id"),
+  sourceToolCallId: text("source_tool_call_id"),
+  status: text("status", {
+    enum: ["dismissed", "done", "implementing", "proposed"]
+  }).notNull(),
+  title: text("title").notNull(),
+  updatedAt: text("updated_at").notNull()
+})
+
 export const memoryEntries = sqliteTable(
   "memory_entries",
   {
@@ -302,6 +318,7 @@ export const schema = {
   agentToolCalls,
   chatMessages,
   chatSessionMemories,
+  chatSessionPlans,
   chatSessions,
   memoryEmbeddings,
   memoryEntries

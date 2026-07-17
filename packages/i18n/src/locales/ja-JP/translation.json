@@ -28,6 +28,12 @@
       "readError": "アーティファクトファイルを読み取れません。",
       "refresh": "アーティファクトを更新"
     },
+    "askUser": {
+      "confirm": "確定",
+      "customPlaceholder": "自由回答を入力…",
+      "customSubmit": "回答",
+      "title": "質問"
+    },
     "attachments": {
       "attach": "画像を添付",
       "countError": "添付できる画像は最大 4 枚です。",
@@ -189,6 +195,26 @@
       "successTitle": "復元が完了しました",
       "title": "この変更前に戻しますか?"
     },
+    "planHint": {
+      "dismiss": "閉じる",
+      "switch": "Plan に切替",
+      "title": "まずプランを立てるのがおすすめ"
+    },
+    "planIndicator": {
+      "dismiss": "プランを破棄",
+      "executing": "プラン実行中 · {title}",
+      "markDone": "完了にする",
+      "more": "プランのオプション",
+      "progress": "{completed}/{total} ステップ完了",
+      "view": "プランを表示"
+    },
+    "planProposal": {
+      "decisionImplement": "実装中",
+      "decisionNotNow": "保存済み（後で実装）",
+      "implement": "今すぐ実装",
+      "notNow": "今はしない",
+      "title": "実装プラン"
+    },
     "projectPanel": {
       "agentChanges": "Agent の変更",
       "allChanges": "すべての変更",
@@ -277,7 +303,7 @@
       "trigger": "実行の詳細"
     },
     "runLimit": {
-      "notice": "ステップ上限({{maxSteps}})に達したため停止しました。返信すると続行できます。上限は 設定 → Agents で変更できます。"
+      "notice": "暴走の可能性があるため {{maxSteps}} ステップで停止しました。返信すると続行します。"
     },
     "toolTrace": {
       "approve": "承認",
@@ -593,9 +619,6 @@
         },
         "maxConcurrentSubagents": {
           "label": "同時 subagents"
-        },
-        "maxSteps": {
-          "label": "最大 tool steps"
         },
         "profile": {
           "label": "既定 profile"

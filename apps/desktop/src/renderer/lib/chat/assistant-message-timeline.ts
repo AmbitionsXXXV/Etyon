@@ -9,6 +9,10 @@ import {
   getToolInputPath
 } from "@/renderer/lib/chat/message-tool-trace"
 import { getPathBaseName, isRecord } from "@/renderer/lib/utils"
+import {
+  ASK_USER_TOOL_NAME,
+  PROPOSE_PLAN_TOOL_NAME
+} from "@/shared/agents/input-tools"
 import { isChatRunLimitDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRunLimitData,
@@ -114,6 +118,12 @@ export type GroupedChainEntry =
       kind: "tool-group"
       label: ToolGroupLabel
       tools: ChainToolGroupItem[]
+    }
+  | {
+      key: string
+      kind: "input-tool"
+      part: ChatToolPart
+      pending: boolean
     }
   | {
       key: string
@@ -427,6 +437,22 @@ export const groupChainEntries = (
     if (entry.kind === "tool") {
       const toolName = getToolName(entry.part)
 
+      // ask_user / propose_plan suspend the run for renderer input — pull them
+      // out into dedicated interaction cards (never bucketed as "Used N tools").
+      if (
+        toolName === ASK_USER_TOOL_NAME ||
+        toolName === PROPOSE_PLAN_TOOL_NAME
+      ) {
+        flushToolRun()
+        grouped.push({
+          key: `input-tool-${entry.part.toolCallId}`,
+          kind: "input-tool",
+          part: entry.part,
+          pending: entry.part.state === "input-available"
+        })
+        continue
+      }
+
       // delegate/workflow spawn nested sub-agents — pull them out of the generic
       // Ran/Explored buckets into their own live rows.
       if (toolName === "delegate" || toolName === "workflow") {
@@ -474,10 +500,16 @@ export const groupChainEntries = (
   return grouped
 }
 
+// A pending approval OR a pending input-required tool (ask_user / propose_plan)
+// is unresolved and actionable — both pin the work section open the same way.
 export const hasPendingApproval = (
   entries: readonly GroupedChainEntry[]
 ): boolean =>
-  entries.some((entry) => entry.kind === "tool-group" && entry.hasApproval)
+  entries.some(
+    (entry) =>
+      (entry.kind === "tool-group" && entry.hasApproval) ||
+      (entry.kind === "input-tool" && entry.pending)
+  )
 
 /** Whether a compact tool group still contains a tool receiving or awaiting input. */
 export const isToolGroupRunning = (

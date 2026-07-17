@@ -141,6 +141,61 @@ describe("groupChainEntries", () => {
     expect(hasPendingApproval(grouped)).toBe(true)
   })
 
+  it("pulls ask_user / propose_plan into standalone input-tool entries", () => {
+    const grouped = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({ input: { path: "a.ts" }, toolName: "read" }),
+          toolPart({
+            input: { options: [], question: "Which store?" },
+            state: "input-available",
+            type: "tool-ask_user"
+          }),
+          toolPart({
+            input: { plan: "1. do it", title: "Ship it" },
+            state: "output-available",
+            type: "tool-propose_plan"
+          })
+        ])
+      )
+    )
+
+    expect(grouped.map((entry) => entry.kind)).toEqual([
+      "tool-group",
+      "input-tool",
+      "input-tool"
+    ])
+  })
+
+  it("treats a pending input tool as forcing the section open", () => {
+    const pending = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({
+            input: { options: [], question: "Which store?" },
+            state: "input-available",
+            type: "tool-ask_user"
+          })
+        ])
+      )
+    )
+    expect(hasPendingApproval(pending)).toBe(true)
+
+    const answered = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({
+            input: { options: [], question: "Which store?" },
+            output: { custom: null, selected: ["A"] },
+            state: "output-available",
+            type: "tool-ask_user"
+          })
+        ])
+      )
+    )
+    expect(hasPendingApproval(answered)).toBe(false)
+  })
+
   it("splits delegate and workflow tools into standalone subagent-call entries", () => {
     const grouped = groupChainEntries(
       buildAssistantChainEntries(

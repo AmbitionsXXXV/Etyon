@@ -290,4 +290,40 @@
   .title-bar-no-drag {
     -webkit-app-region: no-drag;
   }
+
+  /* Auto-dismiss countdown for the composer plan-mode hint: a 4s width shrink
+     that drives the timeout via `animationend`. Hover/focus pauses it; reduced
+     motion hides the shrink but keeps the timer so the hint still times out. */
+  .plan-hint-countdown {
+    transform-origin: left;
+    animation: plan-hint-countdown 4000ms linear forwards;
+  }
+  .plan-hint-surface:hover .plan-hint-countdown,
+  .plan-hint-surface:focus-within .plan-hint-countdown {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .plan-hint-countdown {
+      animation-name: plan-hint-hold;
+      opacity: 0;
+    }
+  }
+}
+
+@keyframes plan-hint-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes plan-hint-hold {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }

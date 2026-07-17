@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   isImageGenerationAvailable,
+  resolveEffortProviderOptionsForSelection,
   resolveImageModel,
   resolveModel
 } from "@/main/server/lib/providers"
@@ -406,5 +407,128 @@ describe("resolveModel", () => {
     expect(() => resolveModel("openai/gpt-4o")).toThrow(
       'Provider "openai" is missing an API Key.'
     )
+  })
+})
+
+describe("resolveEffortProviderOptionsForSelection", () => {
+  const buildAiSettings = (overrides?: {
+    anthropicEffort?: AppSettings["ai"]["modelEffort"]["anthropic"]
+    openai?: Partial<AppSettings["ai"]["providers"]["openai"]>
+    openaiEffort?: AppSettings["ai"]["modelEffort"]["openai"]
+  }): AppSettings["ai"] => {
+    const { ai } = createSettings()
+
+    return {
+      ...ai,
+      modelEffort: {
+        anthropic: overrides?.anthropicEffort ?? ai.modelEffort.anthropic,
+        openai: overrides?.openaiEffort ?? ai.modelEffort.openai
+      },
+      providers: {
+        ...ai.providers,
+        openai: { ...ai.providers.openai, ...overrides?.openai }
+      }
+    }
+  }
+
+  it("requests a reasoning summary for openai responses-mode reasoning models", () => {
+    const aiSettings = buildAiSettings({ openaiEffort: "xhigh" })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/gpt-5.6-terra"
+      )
+    ).toEqual({
+      openai: { reasoningEffort: "xhigh", reasoningSummary: "auto" }
+    })
+  })
+
+  it("requests a summary when responses mode is set explicitly on a custom base url", () => {
+    const aiSettings = buildAiSettings({
+      openai: {
+        apiMode: "responses",
+        baseURL: "https://openai.example.com/v1"
+      },
+      openaiEffort: "xhigh"
+    })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/gpt-5.6-terra"
+      )
+    ).toEqual({
+      openai: {
+        reasoningEffort: "xhigh",
+        reasoningSummary: "auto",
+        store: false
+      }
+    })
+  })
+
+  it("keeps the summary off for non-openai-family models on a responses relay", () => {
+    const aiSettings = buildAiSettings({
+      openai: {
+        apiMode: "responses",
+        baseURL: "https://api.amux.ai/v1"
+      },
+      openaiEffort: "xhigh"
+    })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/gpt-5.6-terra"
+      )
+    ).toEqual({
+      openai: {
+        reasoningEffort: "xhigh",
+        reasoningSummary: "auto",
+        store: false
+      }
+    })
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/claude-sonnet-5"
+      )
+    ).toEqual({ openai: { reasoningEffort: "xhigh" } })
+  })
+
+  it("omits the summary for an openai chat-completions relay", () => {
+    const aiSettings = buildAiSettings({
+      openai: { baseURL: "https://openai-gateway.example.com/v1" },
+      openaiEffort: "xhigh"
+    })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/gpt-5.6-terra"
+      )
+    ).toEqual({ openai: { reasoningEffort: "xhigh" } })
+  })
+
+  it("omits the summary when reasoning effort is none", () => {
+    const aiSettings = buildAiSettings({ openaiEffort: "none" })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "openai/gpt-5.6-terra"
+      )
+    ).toEqual({ openai: { reasoningEffort: "none" } })
+  })
+
+  it("leaves an anthropic selection untouched", () => {
+    const aiSettings = buildAiSettings({ anthropicEffort: "max" })
+
+    expect(
+      resolveEffortProviderOptionsForSelection(
+        aiSettings,
+        "anthropic/claude-opus-4-8"
+      )
+    ).toEqual({ anthropic: { effort: "max" } })
   })
 })

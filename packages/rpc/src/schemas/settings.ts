@@ -282,7 +282,6 @@ const AGENT_SETTINGS_DEFAULT = {
   maxConcurrentSubagents: 2,
   maxSubagentSteps: 24,
   maxWorkflowConcurrency: 8,
-  maxSteps: 64,
   profiles: [] as z.infer<typeof AgentProfileSchema>[],
   requireApprovalForWrites: true,
   retry: AGENT_RETRY_SETTINGS_DEFAULT,
@@ -430,10 +429,6 @@ export const AgentSettingsSchema = z.object({
   // default sits above the old hard-coded 12 while staying a safety backstop.
   maxSubagentSteps: z.number().int().min(4).max(100).default(24),
   maxWorkflowConcurrency: z.number().int().min(1).max(16).default(8),
-  // A step cap is a safety backstop, not a task budget: real agent runs
-  // routinely take dozens of tool calls, and hitting the cap truncates the
-  // run (surfaced in chat as a visible run-limit notice).
-  maxSteps: z.number().int().min(1).max(200).default(64),
   profiles: z.array(AgentProfileSchema).default([]),
   requireApprovalForWrites: z.boolean().default(true),
   retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),

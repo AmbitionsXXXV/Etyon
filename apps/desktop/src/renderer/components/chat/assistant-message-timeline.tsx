@@ -6,15 +6,24 @@ import type {
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChainOfThought } from "@heroui-pro/react"
-import { Button, Disclosure } from "@heroui/react"
+import {
+  Button,
+  Disclosure,
+  Input,
+  ScrollShadow,
+  TextField
+} from "@heroui/react"
 import {
   BrainIcon,
   BrowserIcon,
   Cancel01Icon,
   CheckListIcon,
   CheckmarkCircle01Icon,
+  ClipboardIcon,
+  HelpCircleIcon,
   WorkflowSquare02Icon
 } from "@hugeicons/core-free-icons"
+import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { UIMessage } from "ai"
@@ -59,6 +68,14 @@ import type {
   WorkSectionStatus
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import { isImagenToolPart } from "@/renderer/lib/chat/imagen-message"
+import {
+  formatAskUserAnswer,
+  getAskUserCardInput,
+  getAskUserCardOutput,
+  getProposePlanCardDecision,
+  getProposePlanCardInput
+} from "@/renderer/lib/chat/input-tools-ui"
+import type { AskUserCardOutput } from "@/renderer/lib/chat/input-tools-ui"
 import { parseChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import { getToolIcon } from "@/renderer/lib/chat/message-tool-trace"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
@@ -77,6 +94,8 @@ import {
   getString,
   isRecord
 } from "@/renderer/lib/utils"
+import { PROPOSE_PLAN_TOOL_NAME } from "@/shared/agents/input-tools"
+import type { PlanDecision } from "@/shared/agents/input-tools"
 import { countTodosByStatus } from "@/shared/chat/stream-data"
 import type {
   ChatSubagentApprovalData,
@@ -169,16 +188,16 @@ const AssistantMarkdownContent = ({
     return null
   }
 
-  const animated = isAnimating
-    ? false
-    : getStreamdownAnimateOptions(streamdownAnimation)
+  const animated = getStreamdownAnimateOptions(streamdownAnimation)
+  const shouldAnimate = isAnimating && animated !== false
 
   return (
     <Streamdown
       animated={animated}
+      caret={shouldAnimate ? "block" : undefined}
       className={STREAMDOWN_MARKDOWN_CLASS_NAME}
       components={STREAMDOWN_MARKDOWN_COMPONENTS}
-      isAnimating={false}
+      isAnimating={shouldAnimate}
       skipHtml
     >
       {text}
@@ -702,8 +721,8 @@ const SubagentMiniTimeline = ({
           )
         }
 
-        // A read-only child never nests further sub-agents.
-        if (entry.kind === "subagent-call") {
+        // A read-only child never nests further sub-agents nor asks for input.
+        if (entry.kind === "subagent-call" || entry.kind === "input-tool") {
           return null
         }
 
@@ -1158,6 +1177,326 @@ const WorkSubagentEntry = ({
   return <DelegateHistoryRow part={entry.part} />
 }
 
+// Answers a suspended ask_user / propose_plan tool. `switchToAgent` flips the
+// composer to agent mode and resumes there (the plan "Implement" path).
+export type InputToolResultHandler = (
+  part: ChatToolPart,
+  output: AskUserCardOutput | { decision: PlanDecision },
+  options?: { switchToAgent?: boolean }
+) => void
+
+// Answered / historical collapse for both interaction cards: one compact
+// trace-style line echoing the prompt and the chosen answer.
+const InputToolAnsweredLine = ({
+  icon,
+  label,
+  value
+}: {
+  icon: IconSvgElement
+  label: string
+  value: string
+}) => (
+  <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/40 px-2 py-1.5">
+    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+      <HugeiconsIcon icon={icon} size={13} />
+    </span>
+    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+      {label}
+    </span>
+    {value ? (
+      <span className="max-w-[55%] min-w-0 shrink-0 truncate text-xs font-medium text-foreground">
+        {value}
+      </span>
+    ) : null}
+  </div>
+)
+
+const AskUserCard = ({
+  isDisabled,
+  onSubmit,
+  part
+}: {
+  isDisabled: boolean
+  onSubmit: (part: ChatToolPart, output: AskUserCardOutput) => void
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+  const input = getAskUserCardInput(part)
+  const isPending = part.state === "input-available"
+  const [submitted, setSubmitted] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const [customText, setCustomText] = useState("")
+  const isLocked = submitted || isDisabled || !isPending
+
+  if (!isPending) {
+    const output = getAskUserCardOutput(part)
+
+    return (
+      <InputToolAnsweredLine
+        icon={HelpCircleIcon}
+        label={input?.question ?? t("chat.askUser.title")}
+        value={output ? formatAskUserAnswer(output) : ""}
+      />
+    )
+  }
+
+  if (!input) {
+    return null
+  }
+
+  const submit = (output: AskUserCardOutput) => {
+    if (isLocked) {
+      return
+    }
+
+    setSubmitted(true)
+    onSubmit(part, output)
+  }
+
+  const toggleOption = (label: string) => {
+    setSelected((current) =>
+      current.includes(label)
+        ? current.filter((entry) => entry !== label)
+        : [...current, label]
+    )
+  }
+
+  const submitCustom = () => {
+    const custom = customText.trim()
+
+    if (custom.length > 0) {
+      submit({ custom, selected: [] })
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3">
+      <div className="flex min-w-0 items-start gap-2">
+        <HugeiconsIcon
+          className="mt-0.5 shrink-0 text-warning"
+          icon={HelpCircleIcon}
+          size={15}
+        />
+        <p className="min-w-0 flex-1 text-sm leading-5 font-medium text-foreground">
+          {input.question}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {input.options.map((option) => {
+          const isOptionSelected = selected.includes(option.label)
+
+          return (
+            <Button
+              className="h-auto min-h-9 w-full justify-start gap-2 px-3 py-1.5 text-left"
+              isDisabled={isLocked}
+              key={option.label}
+              onPress={() =>
+                input.multiSelect
+                  ? toggleOption(option.label)
+                  : submit({ custom: null, selected: [option.label] })
+              }
+              size="sm"
+              type="button"
+              variant={
+                input.multiSelect && isOptionSelected ? "secondary" : "outline"
+              }
+            >
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-xs font-medium">
+                  {option.label}
+                </span>
+                {option.description ? (
+                  <span className="truncate text-[0.6875rem] font-normal text-muted-foreground">
+                    {option.description}
+                  </span>
+                ) : null}
+              </span>
+              {input.multiSelect && isOptionSelected ? (
+                <HugeiconsIcon
+                  className="shrink-0 text-success"
+                  icon={CheckmarkCircle01Icon}
+                  size={14}
+                />
+              ) : null}
+            </Button>
+          )
+        })}
+      </div>
+      {input.multiSelect ? (
+        <Button
+          isDisabled={isLocked || selected.length === 0}
+          onPress={() => submit({ custom: null, selected })}
+          size="sm"
+          type="button"
+          variant="primary"
+        >
+          {t("chat.askUser.confirm")}
+        </Button>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <TextField
+          aria-label={t("chat.askUser.customPlaceholder")}
+          className="flex-1"
+          isDisabled={isLocked}
+          onChange={setCustomText}
+          value={customText}
+        >
+          <Input
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                submitCustom()
+              }
+            }}
+            placeholder={t("chat.askUser.customPlaceholder")}
+            variant="secondary"
+          />
+        </TextField>
+        <Button
+          isDisabled={isLocked || customText.trim().length === 0}
+          onPress={submitCustom}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          {t("chat.askUser.customSubmit")}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const ProposePlanCard = ({
+  isDisabled,
+  onDecision,
+  part
+}: {
+  isDisabled: boolean
+  onDecision: (part: ChatToolPart, decision: PlanDecision) => void
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+  const input = getProposePlanCardInput(part)
+  const isPending = part.state === "input-available"
+  const [submitted, setSubmitted] = useState(false)
+  const isLocked = submitted || isDisabled || !isPending
+
+  if (!isPending) {
+    const decision = getProposePlanCardDecision(part)
+    let value = ""
+
+    if (decision === "implement") {
+      value = t("chat.planProposal.decisionImplement")
+    } else if (decision === "not_now") {
+      value = t("chat.planProposal.decisionNotNow")
+    }
+
+    return (
+      <InputToolAnsweredLine
+        icon={ClipboardIcon}
+        label={input?.title ?? t("chat.planProposal.title")}
+        value={value}
+      />
+    )
+  }
+
+  if (!input) {
+    return null
+  }
+
+  const decide = (decision: PlanDecision) => {
+    if (isLocked) {
+      return
+    }
+
+    setSubmitted(true)
+    onDecision(part, decision)
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <HugeiconsIcon
+          className="shrink-0 text-warning"
+          icon={ClipboardIcon}
+          size={15}
+        />
+        <span className="text-[0.625rem] font-semibold tracking-wide text-warning uppercase">
+          {t("chat.planProposal.title")}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {input.title}
+        </span>
+      </div>
+      <ScrollShadow className="max-h-[360px] rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+        <Streamdown
+          animated={false}
+          className={STREAMDOWN_MARKDOWN_CLASS_NAME}
+          components={STREAMDOWN_MARKDOWN_COMPONENTS}
+          isAnimating={false}
+          skipHtml
+        >
+          {input.plan}
+        </Streamdown>
+      </ScrollShadow>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          isDisabled={isLocked}
+          onPress={() => decide("implement")}
+          size="sm"
+          type="button"
+          variant="primary"
+        >
+          {t("chat.planProposal.implement")}
+        </Button>
+        <Button
+          isDisabled={isLocked}
+          onPress={() => decide("not_now")}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {t("chat.planProposal.notNow")}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+const AssistantInputToolEntry = ({
+  isDisabled,
+  onInputToolResult,
+  part
+}: {
+  isDisabled: boolean
+  onInputToolResult: InputToolResultHandler
+  part: ChatToolPart
+}) => {
+  if (getToolName(part) === PROPOSE_PLAN_TOOL_NAME) {
+    return (
+      <ProposePlanCard
+        isDisabled={isDisabled}
+        onDecision={(planPart, decision) =>
+          onInputToolResult(
+            planPart,
+            { decision },
+            decision === "implement" ? { switchToAgent: true } : undefined
+          )
+        }
+        part={part}
+      />
+    )
+  }
+
+  return (
+    <AskUserCard
+      isDisabled={isDisabled}
+      onSubmit={(askPart, output) => onInputToolResult(askPart, output)}
+      part={part}
+    />
+  )
+}
+
 const AssistantWorkSection = ({
   entries,
   exitReason,
@@ -1165,6 +1504,7 @@ const AssistantWorkSection = ({
   isRunActive,
   liveWorkTimeStartedAt,
   onApprovalResponse,
+  onInputToolResult,
   parentRunId,
   thoughtDurationsMs,
   workTimeMs
@@ -1179,6 +1519,7 @@ const AssistantWorkSection = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
+  onInputToolResult: InputToolResultHandler
   parentRunId?: string
   thoughtDurationsMs?: number[]
   workTimeMs?: number
@@ -1306,6 +1647,17 @@ const AssistantWorkSection = ({
                 <WorkTodoEntry
                   key={entry.key}
                   parentRunId={parentRunId}
+                  part={entry.part}
+                />
+              )
+            }
+
+            if (entry.kind === "input-tool") {
+              return (
+                <AssistantInputToolEntry
+                  isDisabled={isApprovalActionDisabled}
+                  key={entry.key}
+                  onInputToolResult={onInputToolResult}
                   part={entry.part}
                 />
               )
@@ -1484,6 +1836,7 @@ export const AssistantMessageTimeline = ({
   liveWorkTimeStartedAt,
   message,
   onApprovalResponse,
+  onInputToolResult,
   onOpenArtifact,
   sessionId,
   streamdownAnimation
@@ -1499,6 +1852,7 @@ export const AssistantMessageTimeline = ({
     approved: boolean,
     options?: AssistantToolApprovalResponseOptions
   ) => void
+  onInputToolResult: InputToolResultHandler
   onOpenArtifact?: (artifact: ChatArtifactRef) => void
   sessionId: string
   streamdownAnimation: StreamdownAnimation
@@ -1528,6 +1882,7 @@ export const AssistantMessageTimeline = ({
           isRunActive={isRunActive}
           liveWorkTimeStartedAt={liveWorkTimeStartedAt}
           onApprovalResponse={onApprovalResponse}
+          onInputToolResult={onInputToolResult}
           parentRunId={metadata?.agentProjection?.runId}
           thoughtDurationsMs={metadata?.thoughtDurationsMs}
           workTimeMs={metadata?.workTimeMs}

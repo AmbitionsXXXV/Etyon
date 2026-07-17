@@ -228,24 +228,44 @@ export const resolveProviderBaseURL = (
   return providerConfig.baseURL || getProviderDefaultBaseURL(providerId)
 }
 
+// The Responses API exists only for OpenAI-family model ids; mixed-family
+// relays return a convert error for other families (claude-*, deepseek-*, …)
+// on /v1/responses, so a "responses" mode must be gated to these ids.
+const OPENAI_FAMILY_MODEL_ID_PATTERN = /^(?:gpt|o\d|chatgpt|codex)/iu
+
 /**
  * An explicit apiMode always wins. Without one, only the official OpenAI
  * endpoint defaults to the Responses API: third-party OpenAI-compatible
  * gateways generally implement /chat/completions fully but reject or silently
  * drop the Responses API's HTTP multi-turn tool continuation (item_reference
  * resolution), which strands agent tool loops after the first step.
+ *
+ * The Responses API only exists for OpenAI-family models, so on a mixed-family
+ * gateway an explicit "responses" mode applies per model: OpenAI-family ids use
+ * it while other families stay on chat-completions (relays return convert
+ * errors for them). Called without a modelId, it resolves the base mode alone.
  */
 export const resolveOpenAiApiMode = (
-  providerConfig: Pick<AiProviderConfig, "apiMode" | "baseURL" | "region">
+  providerConfig: Pick<AiProviderConfig, "apiMode" | "baseURL" | "region">,
+  modelId?: string
 ): "chat-completions" | "responses" => {
-  if (providerConfig.apiMode) {
-    return providerConfig.apiMode
+  const isOfficialEndpoint =
+    resolveProviderBaseURL("openai", providerConfig) ===
+    getProviderDefaultBaseURL("openai")
+
+  const baseMode =
+    providerConfig.apiMode ??
+    (isOfficialEndpoint ? "responses" : "chat-completions")
+
+  if (
+    baseMode === "responses" &&
+    modelId !== undefined &&
+    !OPENAI_FAMILY_MODEL_ID_PATTERN.test(modelId)
+  ) {
+    return "chat-completions"
   }
 
-  return resolveProviderBaseURL("openai", providerConfig) ===
-    getProviderDefaultBaseURL("openai")
-    ? "responses"
-    : "chat-completions"
+  return baseMode
 }
 
 export const getSettingsTabProviders = (): SettingsTabProviderCatalogEntry[] =>

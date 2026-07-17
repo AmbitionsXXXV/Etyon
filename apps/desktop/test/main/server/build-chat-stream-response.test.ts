@@ -29,6 +29,7 @@ vi.mock("ai", async (importOriginal) => {
 })
 
 vi.mock("@/main/agents/minimal/agent-loop", () => ({
+  AGENT_LOOP_STEP_FUSE: 200,
   runAgentLoop: runAgentLoopMock
 }))
 
@@ -189,8 +190,7 @@ describe("buildChatStreamResponse", () => {
       ...options,
       settings: AppSettingsSchema.parse({
         agents: {
-          enabled: true,
-          maxSteps: 5
+          enabled: true
         }
       })
     })
@@ -202,7 +202,7 @@ describe("buildChatStreamResponse", () => {
 
     const loopOptions = runAgentLoopMock.mock.calls[0]?.[0]
 
-    expect(loopOptions?.maxSteps).toBe(5)
+    expect(loopOptions?.maxSteps).toBe(200)
     expect(loopOptions?.messages).toEqual(options.modelMessages)
     expect(loopOptions?.system).toContain("agent instructions")
     expect(loopOptions?.system).toContain(
@@ -275,8 +275,7 @@ describe("buildChatStreamResponse", () => {
       ...options,
       settings: AppSettingsSchema.parse({
         agents: {
-          enabled: true,
-          maxSteps: 5
+          enabled: true
         }
       })
     })

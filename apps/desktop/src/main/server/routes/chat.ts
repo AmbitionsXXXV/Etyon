@@ -9,9 +9,15 @@ import {
   recordAgentRunStep,
   startAgentRun
 } from "@/main/agents/agent-event-store"
+import { buildSessionPlanSystemPrompt } from "@/main/agents/session-plan-prompt"
+import {
+  getSessionPlan,
+  upsertSessionPlanFromMessages
+} from "@/main/agents/session-plans"
 import { replaceChatMessages } from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
+import type { AppDatabase } from "@/main/db"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
 import {
@@ -88,6 +94,39 @@ const resolveEffectiveAgentMode = ({
   }
 
   return composerMode
+}
+
+// Reads the session's saved plan and turns it into at most one system-prompt
+// block (empty when there is no plan, the plan is finished, or the mode is
+// chat). Best-effort: a read failure must never break the turn. Kept out of the
+// route handler so the handler stays within its complexity budget.
+const resolveSessionPlanSystemPrompts = async ({
+  agentMode,
+  db,
+  sessionId
+}: {
+  agentMode: ChatAgentMode | undefined
+  db: AppDatabase
+  sessionId: string
+}): Promise<string[]> => {
+  try {
+    const sessionPlan = await getSessionPlan(db, sessionId)
+
+    if (!sessionPlan) {
+      return []
+    }
+
+    const planPrompt = buildSessionPlanSystemPrompt({
+      agentMode,
+      plan: sessionPlan
+    })
+
+    return planPrompt ? [planPrompt] : []
+  } catch (error) {
+    logger.error("session_plan_prompt_injection_failed", { error })
+
+    return []
+  }
 }
 
 chatRoute.post("/chat", async (c) => {
@@ -177,11 +216,20 @@ chatRoute.post("/chat", async (c) => {
     : []
   const requestStartedAt = Date.now()
   const planSystemPrompt = getChatAgentModeSystemPrompt(effectiveAgentMode)
+  // The saved plan rides the system prompt (so a later "implement it" follows it
+  // and plan-mode refinement stays anchored) — one best-effort block, resolved
+  // outside the array to keep the handler simple.
+  const sessionPlanSystemPrompts = await resolveSessionPlanSystemPrompts({
+    agentMode: effectiveAgentMode,
+    db,
+    sessionId
+  })
   const systemPrompts = [
     ...agentContext.systemPrompts,
     ...(planSystemPrompt ? [planSystemPrompt] : []),
     ...(isImagenCommand ? [CHAT_IMAGEN_SYSTEM_PROMPT] : []),
-    ...(isWorkflowCommand ? [CHAT_WORKFLOW_SYSTEM_PROMPT] : [])
+    ...(isWorkflowCommand ? [CHAT_WORKFLOW_SYSTEM_PROMPT] : []),
+    ...sessionPlanSystemPrompts
   ]
 
   // Resolve the managed profile for this turn from settings (falls back to the
@@ -212,6 +260,7 @@ chatRoute.post("/chat", async (c) => {
 
   return buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
+    ...(effectiveAgentMode ? { agentMode: effectiveAgentMode } : {}),
     agentRunId,
     messages,
     model,
@@ -249,6 +298,24 @@ chatRoute.post("/chat", async (c) => {
           nextMessages,
           { runId: agentRunId, startIndex: assistantStartIndex }
         )
+      }
+
+      // Reconcile the session's saved plan from any propose_plan parts. Its own
+      // runExclusiveDbWrite (the mutex is non-reentrant, so never nested inside
+      // the outcome write above) and its own try/catch — plan persistence must
+      // never break chat persistence. Captures the const run id so this closure
+      // does not widen `agentRunId` back to its unnarrowed type above.
+      try {
+        await runExclusiveDbWrite(() =>
+          upsertSessionPlanFromMessages({
+            db,
+            messages: nextMessages,
+            runId: startedRunId,
+            sessionId
+          })
+        )
+      } catch (error) {
+        logger.error("session_plan_upsert_failed", { error })
       }
 
       await replaceChatMessages({

@@ -101,6 +101,56 @@ describe("agent event store", () => {
     expect(derived.approvedToolCallIds).toEqual(["tc1"])
   })
 
+  it("suspends the run on an unanswered ask_user call and keeps its row pending", () => {
+    const messages = toMessages([
+      userMessage("定个方案"),
+      assistantMessage([
+        {
+          input: {
+            options: [{ label: "SQLite" }, { label: "Postgres" }],
+            question: "选哪个存储?"
+          },
+          state: "input-available",
+          toolCallId: "tc-ask",
+          type: "tool-ask_user"
+        }
+      ])
+    ])
+
+    const derived = deriveAgentRunRecords({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      messages
+    })
+
+    expect(derived.runStatus).toBe("suspended")
+    expect(derived.toolCalls[0]?.state).toBe("requested")
+    expect(derived.pendingApprovals).toHaveLength(0)
+  })
+
+  it("settles an answered propose_plan call as finished and the run as succeeded", () => {
+    const messages = toMessages([
+      userMessage("定个方案"),
+      assistantMessage([
+        {
+          input: { plan: "1. do it", title: "小计划" },
+          output: { decision: "not_now" },
+          state: "output-available",
+          toolCallId: "tc-plan",
+          type: "tool-propose_plan"
+        },
+        { text: "已保存。", type: "text" }
+      ])
+    ])
+
+    const derived = deriveAgentRunRecords({
+      assistantStartIndex: getRunAssistantStartIndex(messages),
+      messages
+    })
+
+    expect(derived.runStatus).toBe("succeeded")
+    expect(derived.toolCalls[0]?.state).toBe("finished")
+  })
+
   it("derives artifacts from finished artifact tool calls only", () => {
     const messages = toMessages([
       userMessage("make a report"),

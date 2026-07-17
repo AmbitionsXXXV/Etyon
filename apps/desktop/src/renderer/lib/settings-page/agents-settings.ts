@@ -5,15 +5,6 @@ import {
   resolveProfileRoster
 } from "@/shared/agents/profiles"
 
-export const AGENT_MAX_STEPS_MAX = 200
-export const AGENT_MAX_STEPS_MIN = 1
-
-export const clampAgentMaxSteps = (value: number): number =>
-  Math.min(
-    AGENT_MAX_STEPS_MAX,
-    Math.max(AGENT_MAX_STEPS_MIN, Math.round(value))
-  )
-
 export const AGENT_CONCURRENT_SUBAGENTS_MAX = 4
 export const AGENT_CONCURRENT_SUBAGENTS_MIN = 1
 

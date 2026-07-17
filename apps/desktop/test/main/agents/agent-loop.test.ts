@@ -369,6 +369,92 @@ describe("runAgentLoop", () => {
     expect(outcome.exitReason).toBe("completed")
   })
 
+  it("suspends when the model calls an input-required tool (no execute)", async () => {
+    const harness = buildHarness([
+      toolCallStep(
+        "ask_user",
+        JSON.stringify({
+          options: [{ label: "SQLite" }, { label: "Postgres" }],
+          question: "选哪个存储?"
+        })
+      )
+    ])
+
+    const outcome = await runAgentLoop({
+      maxSteps: 8,
+      messages: userMessages,
+      model: harness.model,
+      tools: {
+        ask_user: tool({
+          description: "ask the user",
+          inputSchema: z.object({
+            options: z.array(z.object({ label: z.string() })),
+            question: z.string()
+          })
+        })
+      },
+      writer: harness.writer
+    })
+
+    await harness.flush()
+    expect(outcome.exitReason).toBe("suspended")
+    expect(outcome.stepCount).toBe(1)
+  })
+
+  it("continues past an input-required call once its result is in history", async () => {
+    const harness = buildHarness([textStep("按 SQLite 出方案。")])
+
+    const outcome = await runAgentLoop({
+      maxSteps: 8,
+      messages: [
+        { content: "定个方案", role: "user" },
+        {
+          content: [
+            {
+              input: {
+                options: [{ label: "SQLite" }, { label: "Postgres" }],
+                question: "选哪个存储?"
+              },
+              toolCallId: "q-1",
+              toolName: "ask_user",
+              type: "tool-call"
+            }
+          ],
+          role: "assistant"
+        },
+        {
+          content: [
+            {
+              output: {
+                type: "json",
+                value: { custom: null, selected: ["SQLite"] }
+              },
+              toolCallId: "q-1",
+              toolName: "ask_user",
+              type: "tool-result"
+            }
+          ],
+          role: "tool"
+        }
+      ],
+      model: harness.model,
+      tools: {
+        ask_user: tool({
+          description: "ask the user",
+          inputSchema: z.object({
+            options: z.array(z.object({ label: z.string() })),
+            question: z.string()
+          })
+        })
+      },
+      writer: harness.writer
+    })
+
+    await harness.flush()
+    expect(outcome.exitReason).toBe("completed")
+    expect(outcome.stepCount).toBe(1)
+  })
+
   it("returns model-error when the stream setup throws", async () => {
     const model = new MockLanguageModelV3({
       doStream: () => Promise.reject(new Error("boom: provider down"))
@@ -430,6 +516,17 @@ describe("announcesImminentAction", () => {
     )
   })
 
+  it("matches edit-intent announcements", () => {
+    expect(
+      announcesImminentAction(
+        "我会将截图中快捷键胶囊内的 “Tab” 文本调整为更清晰、与当前主题一致的前景色；只改对应组件的颜色样式，并做静态校验。"
+      )
+    ).toBe(true)
+    expect(
+      announcesImminentAction("我来修改 composer 的配色，并同步更新测试。")
+    ).toBe(true)
+  })
+
   it("ignores completed answers", () => {
     expect(
       announcesImminentAction("报告已生成,内容保存在 artifacts/report.html。")
@@ -448,6 +545,7 @@ describe("announcesImminentAction", () => {
       announcesImminentAction("如果部署失败,你可以先检查环境变量配置。")
     ).toBe(false)
     expect(announcesImminentAction("建议先运行一次完整测试。")).toBe(false)
+    expect(announcesImminentAction("请先调整主题变量再重启应用。")).toBe(false)
   })
 
   it("ignores empty text", () => {
