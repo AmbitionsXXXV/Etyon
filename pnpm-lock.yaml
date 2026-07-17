@@ -270,6 +270,9 @@ importers:
       '@etyon/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@shadcn/helpers':
+        specifier: ^0.1.0
+        version: 0.1.0(ai@7.0.31(zod@4.4.3))
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(vite@8.0.16)
@@ -3037,6 +3040,20 @@ packages:
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
+
+  '@shadcn/helpers@0.1.0':
+    resolution: {integrity: sha512-A80apw7i2ZcuwgKKW51zmPSaUXfzLeAQ28XmACB/KeIAVA7PQuaON1hyIEHU3yvk9oriCaWuzU20r0CgieYmmA==}
+    peerDependencies:
+      '@tanstack/ai': '>=0.40.0 <0.41.0'
+      '@tanstack/ai-client': '>=0.20.0 <0.21.0'
+      ai: '>=7.0.0 <8'
+    peerDependenciesMeta:
+      '@tanstack/ai':
+        optional: true
+      '@tanstack/ai-client':
+        optional: true
+      ai:
+        optional: true
 
   '@shikijs/core@4.3.1':
     resolution: {integrity: sha512-ANMDxuaPsNMdDC1m4vfvhlDmJweMwkE5XitTwrq2rWHx5jM+dlm4MmHt2PP6t0uejfR77SuhrhJ0zEijIF/uhA==}
@@ -11909,6 +11926,10 @@ snapshots:
   '@rolldown/pluginutils@1.0.1': {}
 
   '@sec-ant/readable-stream@0.4.1': {}
+
+  '@shadcn/helpers@0.1.0(ai@7.0.31(zod@4.4.3))':
+    optionalDependencies:
+      ai: 7.0.31(zod@4.4.3)
 
   '@shikijs/core@4.3.1':
     dependencies:
