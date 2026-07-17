@@ -40,7 +40,7 @@ interface TerminalOutputProps {
 const TerminalStreamingCursor = () => (
   <span
     aria-hidden="true"
-    className="ml-0.5 inline-block animate-pulse text-emerald-400"
+    className="ml-0.5 inline-block animate-pulse text-emerald-500"
   >
     ▋
   </span>
@@ -94,29 +94,31 @@ export const TerminalOutput = ({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950 text-zinc-100 shadow-inner",
+        "overflow-hidden rounded-lg border border-border/60 bg-muted text-foreground shadow-inner",
         className
       )}
     >
       {header === "visible" ? (
-        <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-900/90 px-3 py-2">
+        <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background/30 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2">
             <span
               aria-hidden="true"
               className={cn(
                 "size-2 shrink-0 rounded-full",
-                isStreaming ? "bg-emerald-400 animate-pulse" : "bg-zinc-500"
+                isStreaming
+                  ? "bg-emerald-500 animate-pulse"
+                  : "bg-muted-foreground"
               )}
             />
             <div className="min-w-0">
               {title ? (
-                <p className="truncate text-[0.6875rem] font-medium text-zinc-300">
+                <p className="truncate text-[0.6875rem] font-medium text-muted-foreground">
                   {title}
                 </p>
               ) : null}
               {command ? (
-                <p className="truncate font-mono text-[0.6875rem] text-zinc-100">
-                  <span className="text-zinc-500">$ </span>
+                <p className="truncate font-mono text-[0.6875rem] text-foreground">
+                  <span className="text-muted-foreground">$ </span>
                   {command}
                 </p>
               ) : null}
@@ -125,7 +127,7 @@ export const TerminalOutput = ({
           <div className="flex shrink-0 items-center gap-1">
             {onClear ? (
               <Button
-                className="h-7 min-w-0 px-2 text-[0.6875rem] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                className="h-7 min-w-0 px-2 text-[0.6875rem] text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
                 onPress={onClear}
                 size="sm"
                 type="button"
@@ -141,7 +143,7 @@ export const TerminalOutput = ({
                     ? "chat.toolTrace.copied"
                     : "chat.toolTrace.copyOutput"
                 )}
-                className="size-7 shrink-0 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                className="size-7 shrink-0 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
                 isIconOnly
                 onPress={handleCopy}
                 size="sm"
@@ -168,7 +170,7 @@ export const TerminalOutput = ({
         <div
           className={cn(
             "wrap-break-word whitespace-pre-wrap",
-            hasOutput ? "text-zinc-100" : "text-zinc-500 italic"
+            hasOutput ? "text-foreground" : "text-muted-foreground italic"
           )}
         >
           {hasOutput ? <Ansi>{displayOutput}</Ansi> : displayOutput}

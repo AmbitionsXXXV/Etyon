@@ -1329,7 +1329,7 @@ const ChatMessageBubble = ({
   }
 
   return (
-    <ChatMessage.Bubble className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground">
+    <ChatMessage.Bubble className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground [&_*]:text-primary-foreground!">
       <ChatMessage.Body className="pr-0">
         <ChatMessage.Content>
           {mentions.length > 0 && !hasInlineMentions ? (

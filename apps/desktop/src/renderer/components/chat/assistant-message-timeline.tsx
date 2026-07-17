@@ -580,9 +580,7 @@ const AssistantWorkSection = ({
     <ChainOfThought
       className={cn(
         "rounded-xl",
-        isLive
-          ? "border-0 bg-transparent"
-          : "border border-border/70 bg-background/60"
+        isLive ? "border-0 bg-transparent" : "bg-background/60"
       )}
       isExpanded={forcedExpanded || isExpanded}
       onExpandedChange={setIsExpanded}
@@ -596,7 +594,12 @@ const AssistantWorkSection = ({
         isDisabled={isLive}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className={cn("truncate", isLive && "shimmer")}>
+          <span
+            className={cn(
+              "truncate",
+              isLive && "shimmer [--shimmer-color:var(--primary)]"
+            )}
+          >
             {getWorkSectionLabelText(t, status, durationText)}
           </span>
           {isLive && durationText ? (
