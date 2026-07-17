@@ -18,9 +18,17 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Checkbox, Input, Switch } from "@heroui/react"
-import { Search01Icon } from "@hugeicons/core-free-icons"
+import { Button, Checkbox, Input, Switch, Tooltip } from "@heroui/react"
+import {
+  AiImageIcon,
+  BrainIcon,
+  EyeIcon,
+  Search01Icon,
+  SourceCodeIcon,
+  Wrench01Icon
+} from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import type { IconSvgElement } from "@hugeicons/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import type { ChangeEventHandler } from "react"
@@ -29,6 +37,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ProviderIcon } from "@/renderer/components/providers/provider-icon"
 import { rpcClient } from "@/renderer/lib/rpc"
 import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants"
+import {
+  buildModelCapabilityBadges,
+  buildModelContextBadge
+} from "@/renderer/lib/settings-page/model-capabilities"
+import type { ModelCapabilityBadgeKind } from "@/renderer/lib/settings-page/model-capabilities"
 import type { BaseURLValidationError } from "@/shared/providers/base-url"
 import { validateBaseURL } from "@/shared/providers/base-url"
 import { hasProviderCredential } from "@/shared/providers/credentials"
@@ -86,17 +99,15 @@ const createFetchStateMap = (): Record<
     ])
   ) as Record<SettingsTabProviderId, ProviderFetchState>
 
-const formatContextWindow = (contextWindow?: number) => {
-  if (!contextWindow) {
-    return null
-  }
+const CAPABILITY_ICON_SIZE = 13
 
-  if (contextWindow >= 1000) {
-    return `${Math.round(contextWindow / 1000)}K ctx`
-  }
-
-  return `${contextWindow} ctx`
-}
+const CAPABILITY_ICONS = {
+  functionCalling: Wrench01Icon,
+  imageOutput: AiImageIcon,
+  reasoning: BrainIcon,
+  vision: EyeIcon,
+  xmlFunctionCalling: SourceCodeIcon
+} satisfies Record<ModelCapabilityBadgeKind, IconSvgElement>
 
 const getProviderCredentialStatusKey = (
   hasCredential: boolean,
@@ -118,19 +129,6 @@ const getProviderCredentialStatusKey = (
   }
 
   return "settings.providers.status.needsApiKey"
-}
-
-const buildModelSummary = (model: StoredProviderModel) => {
-  const tags = [
-    model.capabilities?.vision ? "Vision" : null,
-    model.capabilities?.reasoning ? "Reasoning" : null,
-    model.capabilities?.functionCalling ? "Tools" : null,
-    model.capabilities?.jsonMode ? "JSON" : null,
-    model.capabilities?.streaming ? "Streaming" : null,
-    formatContextWindow(model.capabilities?.contextWindow)
-  ].filter(Boolean)
-
-  return tags.join(" · ")
 }
 
 const CursorProviderAuthActions = ({
@@ -306,13 +304,16 @@ const ProviderModelItem = ({
   model: StoredProviderModel
   onCheckedChange: (checked: boolean, model: StoredProviderModel) => void
 }) => {
+  const { t } = useI18n()
   const handleCheckedChange = useCallback(
     (checked: boolean) => {
       onCheckedChange(checked, model)
     },
     [model, onCheckedChange]
   )
-  const summary = buildModelSummary(model)
+  const badges = useMemo(() => buildModelCapabilityBadges(model), [model])
+  const contextBadge = useMemo(() => buildModelContextBadge(model), [model])
+  const hasCapabilityRow = badges.length > 0 || contextBadge !== null
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-border px-3 py-3 transition-colors hover:bg-muted/30">
@@ -334,9 +335,34 @@ const ProviderModelItem = ({
         <div className="truncate pt-1 text-[0.6875rem] text-muted-foreground">
           {model.id}
         </div>
-        {summary && (
-          <div className="pt-1 text-[0.6875rem] text-muted-foreground">
-            {summary}
+        {hasCapabilityRow && (
+          <div className="flex items-center gap-1.5 pt-1 text-muted-foreground">
+            {badges.map((badge) => (
+              <Tooltip key={badge.kind}>
+                <Tooltip.Trigger>
+                  <HugeiconsIcon
+                    icon={CAPABILITY_ICONS[badge.kind]}
+                    size={CAPABILITY_ICON_SIZE}
+                    strokeWidth={1.8}
+                  />
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top">
+                  {t(badge.labelKey)}
+                </Tooltip.Content>
+              </Tooltip>
+            ))}
+            {contextBadge && (
+              <Tooltip>
+                <Tooltip.Trigger className="text-xs leading-none tabular-nums">
+                  {contextBadge.compact}
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top">
+                  {t("settings.providers.models.capabilities.contextWindow", {
+                    tokens: contextBadge.tokens
+                  })}
+                </Tooltip.Content>
+              </Tooltip>
+            )}
           </div>
         )}
       </div>

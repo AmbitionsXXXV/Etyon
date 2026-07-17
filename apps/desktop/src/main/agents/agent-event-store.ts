@@ -393,12 +393,14 @@ export const startAgentRun = async ({
   db,
   modelId,
   parentRunId = null,
+  parentToolCallId = null,
   profileId
 }: {
   chatSessionId: string
   db: AppDatabase
   modelId: string | null
   parentRunId?: string | null
+  parentToolCallId?: string | null
   profileId: string
 }): Promise<string> => {
   const runId = randomUUID()
@@ -410,6 +412,7 @@ export const startAgentRun = async ({
       id: runId,
       modelId,
       parentRunId,
+      parentToolCallId,
       profileId,
       startedAt: now,
       status: "running"
@@ -417,7 +420,7 @@ export const startAgentRun = async ({
     await tx.insert(agentEvents).values({
       createdAt: now,
       id: randomUUID(),
-      payloadJson: serialize({ parentRunId, profileId }),
+      payloadJson: serialize({ parentRunId, parentToolCallId, profileId }),
       runId,
       sequence: RUN_STARTED_SEQUENCE,
       type: "run.started"

@@ -222,7 +222,9 @@ const isNonEmptyReasoningPart = (
  * block. Text before it is intermediate narration (chain); text after it is
  * the trailing summary (body). Returns -1 for a message with no chain parts.
  */
-const getLastChainPartIndex = (message: ChatUiMessage): number => {
+const getLastChainPartIndex = (
+  message: Pick<ChatUiMessage, "parts">
+): number => {
   let lastIndex = -1
 
   for (const [index, part] of message.parts.entries()) {
@@ -239,7 +241,7 @@ export const messageHasWorkSection = (message: ChatUiMessage): boolean =>
   getLastChainPartIndex(message) >= 0
 
 export const buildAssistantChainEntries = (
-  message: ChatUiMessage
+  message: Pick<ChatUiMessage, "parts">
 ): ChainEntry[] => {
   const entries: ChainEntry[] = []
   const lastChainPartIndex = getLastChainPartIndex(message)
@@ -595,7 +597,9 @@ export const shouldReopenWorkSection = (
 ): boolean =>
   status !== previousStatus && (status === "failed" || status === "stopped")
 
-export const getAssistantBodyText = (message: ChatUiMessage): string => {
+export const getAssistantBodyText = (
+  message: Pick<ChatUiMessage, "parts">
+): string => {
   const lastChainPartIndex = getLastChainPartIndex(message)
   const bodyParts: string[] = []
 

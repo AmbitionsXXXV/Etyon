@@ -38,13 +38,13 @@
     "@commitlint/config-conventional": "^21.2.0",
     "cz-git": "^1.13.1",
     "sherif": "^1.13.0",
-    "turbo": "^2.10.4",
+    "turbo": "^2.10.5",
     "typescript": "catalog:",
-    "ultracite": "7.9.2",
+    "ultracite": "7.9.4",
     "vite-plus": "catalog:"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.12.0"
+  "packageManager": "pnpm@11.13.1"
 }

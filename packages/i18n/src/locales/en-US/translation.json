@@ -21,12 +21,19 @@
       "badge": "Artifact",
       "close": "Close artifact preview",
       "codeView": "Show artifact source",
+      "missingError": "This artifact file no longer exists, and no local snapshot has a copy of it.",
+      "missingErrorHint": "It may have been deleted or moved outside the app.",
       "open": "Open artifact: {title}",
+      "outsideProjectError": "This artifact points outside the project folder and cannot be opened.",
       "previewView": "Show artifact preview",
       "publishFailed": "Publish failed",
       "publishing": "Publishing...",
       "readError": "Unable to read the artifact file.",
-      "refresh": "Refresh artifact"
+      "recreatedWorkspaceNotice": "The project folder was missing and has been recreated.",
+      "refresh": "Refresh artifact",
+      "restoredNotice": "This file was restored from a local snapshot and may not include the latest changes.",
+      "retry": "Try again",
+      "tooLargeError": "The artifact file is too large to preview."
     },
     "askUser": {
       "confirm": "Confirm",
@@ -1143,6 +1150,14 @@
         "noEnabledModels": "No models enabled"
       },
       "models": {
+        "capabilities": {
+          "contextWindow": "{{tokens}} token context window",
+          "functionCalling": "Supports function calling",
+          "imageOutput": "Can generate images",
+          "reasoning": "Extended thinking/reasoning",
+          "vision": "Supports image input",
+          "xmlFunctionCalling": "Supports function calling via XML middleware"
+        },
         "description": "Select the models that should participate in runtime resolution.",
         "empty": "No models to display.",
         "search": "Search models...",

@@ -49,6 +49,7 @@ const toTraceRun = (run: typeof agentRuns.$inferSelect): AgentRunTraceRun => ({
   id: run.id,
   modelId: run.modelId,
   parentRunId: run.parentRunId,
+  parentToolCallId: run.parentToolCallId ?? null,
   profileId: run.profileId,
   startedAt: run.startedAt,
   status: run.status
@@ -202,11 +203,13 @@ export const listAgentRuns = async ({
   db,
   limit = DEFAULT_RUN_LIST_LIMIT,
   parentRunId,
+  parentToolCallId,
   sessionId
 }: {
   db: AppDatabase
   limit?: number
   parentRunId?: string
+  parentToolCallId?: string
   sessionId?: string
 }): Promise<AgentRunsOutput> => {
   const runs = await db
@@ -215,7 +218,10 @@ export const listAgentRuns = async ({
     .where(
       and(
         sessionId ? eq(agentRuns.chatSessionId, sessionId) : undefined,
-        parentRunId ? eq(agentRuns.parentRunId, parentRunId) : undefined
+        parentRunId ? eq(agentRuns.parentRunId, parentRunId) : undefined,
+        parentToolCallId
+          ? eq(agentRuns.parentToolCallId, parentToolCallId)
+          : undefined
       )
     )
     .orderBy(desc(agentRuns.startedAt))

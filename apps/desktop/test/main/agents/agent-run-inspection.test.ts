@@ -190,4 +190,62 @@ describe("agent run inspection", () => {
     expect(pending?.runStatus).toBe("suspended")
     expect(pending?.input).toEqual({ content: "x", path: "b.ts" })
   })
+
+  it("surfaces parentToolCallId through inspect and list", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      parentToolCallId: "tc-parent",
+      profileId: "explore"
+    })
+
+    const inspected = await inspectAgentRun({ db, runId })
+    const { runs } = await listAgentRuns({ db, sessionId: session.id })
+    const listed = runs.find((run) => run.id === runId)
+
+    expect(inspected?.run.parentToolCallId).toBe("tc-parent")
+    expect(listed?.parentToolCallId).toBe("tc-parent")
+  })
+
+  it("filters listRuns by parentRunId and parentToolCallId together", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const parentRunId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId: "general-purpose"
+    })
+    const matchingChildId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      parentRunId,
+      parentToolCallId: "tc-a",
+      profileId: "explore"
+    })
+    const siblingChildId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      parentRunId,
+      parentToolCallId: "tc-b",
+      profileId: "explore"
+    })
+
+    const { runs } = await listAgentRuns({
+      db,
+      parentRunId,
+      parentToolCallId: "tc-a"
+    })
+    const ids = runs.map((run) => run.id)
+
+    expect(ids).toContain(matchingChildId)
+    expect(ids).not.toContain(siblingChildId)
+  })
 })

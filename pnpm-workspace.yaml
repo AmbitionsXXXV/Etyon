@@ -6,16 +6,16 @@ catalog:
   "@heroui/react": ^3.2.2
   "@hugeicons/core-free-icons": ^4.2.2
   "@hugeicons/react": ^1.1.9
-  "@tailwindcss/vite": ^4.3.2
+  "@tailwindcss/vite": ^4.3.3
   "@types/node": ^26.1.1
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
   react: ^19.2.7
   react-dom: ^19.2.7
-  tailwindcss: ^4.3.2
+  tailwindcss: ^4.3.3
   typescript: ^7.0.2
   zod: ^4.4.3
-  vite-plus: latest
+  vite-plus: ^0.2.5
 peerDependencyRules:
   allowAny:
     - vite
@@ -113,21 +113,37 @@ minimumReleaseAgeExclude:
   - react-aria-components@1.18.0
   - react-aria@3.49.0
   - react-stately@3.47.0
-  - "@voidzero-dev/vite-plus-core@0.1.23"
-  - "@voidzero-dev/vite-plus-darwin-arm64@0.1.23"
-  - "@voidzero-dev/vite-plus-darwin-x64@0.1.23"
-  - "@voidzero-dev/vite-plus-linux-arm64-gnu@0.1.23"
-  - "@voidzero-dev/vite-plus-linux-arm64-musl@0.1.23"
-  - "@voidzero-dev/vite-plus-linux-x64-gnu@0.1.23"
-  - "@voidzero-dev/vite-plus-linux-x64-musl@0.1.23"
+  - "@voidzero-dev/vite-plus-core@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-darwin-arm64@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-darwin-x64@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-linux-arm64-gnu@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-linux-arm64-musl@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-linux-x64-gnu@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-linux-x64-musl@0.1.23 || 0.2.5"
   - "@voidzero-dev/vite-plus-test@0.1.23"
-  - "@voidzero-dev/vite-plus-win32-arm64-msvc@0.1.23"
-  - "@voidzero-dev/vite-plus-win32-x64-msvc@0.1.23"
-  - vite-plus@0.1.23
-  - "@ai-sdk/gateway@3.0.126"
-  - "@ai-sdk/react@3.0.200"
+  - "@voidzero-dev/vite-plus-win32-arm64-msvc@0.1.23 || 0.2.5"
+  - "@voidzero-dev/vite-plus-win32-x64-msvc@0.1.23 || 0.2.5"
+  - vite-plus@0.1.23 || 0.2.5
+  - "@ai-sdk/gateway@3.0.126 || 3.0.152"
+  - "@ai-sdk/react@3.0.200 || 3.0.231"
   - "@pierre/diffs@1.2.8"
-  - ai@6.0.198
+  - ai@6.0.198 || 6.0.229
   - "@heroui/react@3.2.0 || 3.2.2"
   - "@heroui/styles@3.2.0 || 3.2.2"
   - ultracite@7.9.2
+  - "@tailwindcss/node@4.3.3"
+  - "@tailwindcss/oxide-android-arm64@4.3.3"
+  - "@tailwindcss/oxide-darwin-arm64@4.3.3"
+  - "@tailwindcss/oxide-darwin-x64@4.3.3"
+  - "@tailwindcss/oxide-freebsd-x64@4.3.3"
+  - "@tailwindcss/oxide-linux-arm-gnueabihf@4.3.3"
+  - "@tailwindcss/oxide-linux-arm64-gnu@4.3.3"
+  - "@tailwindcss/oxide-linux-arm64-musl@4.3.3"
+  - "@tailwindcss/oxide-linux-x64-gnu@4.3.3"
+  - "@tailwindcss/oxide-linux-x64-musl@4.3.3"
+  - "@tailwindcss/oxide-wasm32-wasi@4.3.3"
+  - "@tailwindcss/oxide-win32-arm64-msvc@4.3.3"
+  - "@tailwindcss/oxide-win32-x64-msvc@4.3.3"
+  - "@tailwindcss/oxide@4.3.3"
+  - "@tailwindcss/vite@4.3.3"
+  - tailwindcss@4.3.3

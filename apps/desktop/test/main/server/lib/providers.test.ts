@@ -68,6 +68,16 @@ vi.mock("@/main/settings", () => ({
   getSettings: getSettingsMock
 }))
 
+vi.mock("@/main/logger", () => ({
+  logger: {
+    critical: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    startEvent: vi.fn()
+  }
+}))
+
 const createSettings = (): AppSettings =>
   AppSettingsSchema.parse({
     ai: {
@@ -530,5 +540,84 @@ describe("resolveEffortProviderOptionsForSelection", () => {
         "anthropic/claude-opus-4-8"
       )
     ).toEqual({ anthropic: { effort: "max" } })
+  })
+})
+
+describe("resolveModel XML tool middleware activation", () => {
+  // A v3-shaped instance the mocked provider returns so the middleware's v3
+  // guard can fire (plain `{ modelId, transport }` mocks stay unwrapped).
+  const rawV3 = {
+    modelId: "kimi-k2.6",
+    provider: "moonshot",
+    specificationVersion: "v3",
+    transport: "chat-completions"
+  }
+
+  const settingsWithCapability = (
+    functionCalling: boolean | undefined
+  ): AppSettings => {
+    const settings = createSettings()
+
+    return {
+      ...settings,
+      ai: {
+        ...settings.ai,
+        providers: {
+          ...settings.ai.providers,
+          moonshot: {
+            ...settings.ai.providers.moonshot,
+            models: [
+              {
+                capabilities:
+                  functionCalling === undefined
+                    ? undefined
+                    : { functionCalling },
+                id: "kimi-k2.6",
+                isManual: undefined,
+                name: "kimi-k2.6"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("wraps a functionCalling:false model in a different v3 instance", () => {
+    getSettingsMock.mockReturnValue(settingsWithCapability(false))
+    openAIProviderMock.chat.mockReturnValueOnce(rawV3)
+
+    const model = resolveModel("moonshot/kimi-k2.6")
+
+    expect(model).not.toBe(rawV3)
+    expect(typeof model === "object" ? model.specificationVersion : null).toBe(
+      "v3"
+    )
+    expect(typeof model === "object" ? model.modelId : null).toBe("kimi-k2.6")
+  })
+
+  it("returns the raw instance for a functionCalling:true model", () => {
+    getSettingsMock.mockReturnValue(settingsWithCapability(true))
+    openAIProviderMock.chat.mockReturnValueOnce(rawV3)
+
+    expect(resolveModel("moonshot/kimi-k2.6")).toBe(rawV3)
+  })
+
+  it("returns the raw instance when the capability is unset", () => {
+    getSettingsMock.mockReturnValue(settingsWithCapability(undefined))
+    openAIProviderMock.chat.mockReturnValueOnce(rawV3)
+
+    expect(resolveModel("moonshot/kimi-k2.6")).toBe(rawV3)
+  })
+
+  it("returns the raw instance when the model is not stored", () => {
+    getSettingsMock.mockReturnValue(createSettings())
+    openAIProviderMock.chat.mockReturnValueOnce(rawV3)
+
+    expect(resolveModel("moonshot/kimi-k2.6")).toBe(rawV3)
   })
 })

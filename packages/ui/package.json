@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
-    "@turbo/gen": "^2.10.4",
+    "@turbo/gen": "^2.10.5",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

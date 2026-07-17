@@ -914,11 +914,7 @@ const response = await agentRuntime.streamChat({
 
 ```ts
 type AgentRuntimePhase =
-  | "idle"
-  | "turn"
-  | "compaction"
-  | "branch_summary"
-  | "retry"
+  "idle" | "turn" | "compaction" | "branch_summary" | "retry"
 ```
 
 - 结构性操作（`prompt` / `compact` / `navigateTree`）要求 `phase === "idle"`，开始前同步置 phase。

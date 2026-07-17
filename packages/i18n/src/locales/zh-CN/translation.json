@@ -21,12 +21,19 @@
       "badge": "Artifact",
       "close": "关闭 Artifact 预览",
       "codeView": "查看 Artifact 源码",
+      "missingError": "该 Artifact 文件已不存在，本地快照中也没有它的副本。",
+      "missingErrorHint": "它可能在应用之外被删除或移动。",
       "open": "打开 Artifact：{title}",
+      "outsideProjectError": "该 Artifact 指向项目文件夹之外，无法打开。",
       "previewView": "查看 Artifact 预览",
       "publishFailed": "发布失败",
       "publishing": "正在发布…",
       "readError": "无法读取 Artifact 文件。",
-      "refresh": "刷新 Artifact"
+      "recreatedWorkspaceNotice": "项目文件夹缺失，已自动重建。",
+      "refresh": "刷新 Artifact",
+      "restoredNotice": "该文件已从本地快照恢复，可能不包含最新更改。",
+      "retry": "重试",
+      "tooLargeError": "Artifact 文件过大，无法预览。"
     },
     "askUser": {
       "confirm": "确认",
@@ -1143,6 +1150,14 @@
         "noEnabledModels": "未启用模型"
       },
       "models": {
+        "capabilities": {
+          "contextWindow": "{{tokens}} token 上下文窗口",
+          "functionCalling": "支持函数调用",
+          "imageOutput": "可生成图片",
+          "reasoning": "扩展思考 / 推理",
+          "vision": "支持图片输入",
+          "xmlFunctionCalling": "通过 XML 中间件支持函数调用"
+        },
         "description": "勾选需要参与运行时解析的模型",
         "empty": "没有可显示的模型",
         "search": "搜索模型...",

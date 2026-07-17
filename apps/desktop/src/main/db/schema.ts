@@ -73,6 +73,7 @@ export const agentRuns = sqliteTable(
     id: text("id").primaryKey(),
     modelId: text("model_id"),
     parentRunId: text("parent_run_id"),
+    parentToolCallId: text("parent_tool_call_id"),
     profileId: text("profile_id").notNull(),
     startedAt: text("started_at").notNull(),
     status: text("status", {
@@ -84,6 +85,9 @@ export const agentRuns = sqliteTable(
       table.chatSessionId
     ),
     parentRunIdx: index("agent_runs_parent_run_idx").on(table.parentRunId),
+    parentToolCallIdx: index("agent_runs_parent_tool_call_idx").on(
+      table.parentToolCallId
+    ),
     statusIdx: index("agent_runs_status_idx").on(table.status)
   })
 )

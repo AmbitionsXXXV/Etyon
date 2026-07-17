@@ -4,7 +4,9 @@ import type {
   StoredProviderModel
 } from "@etyon/rpc"
 
+import { formatContextWindowCompact } from "@/shared/providers/context-window"
 import { hasProviderCredential } from "@/shared/providers/credentials"
+import { resolveFunctionCallingSupport } from "@/shared/providers/function-calling"
 import { isImageOutputModel } from "@/shared/providers/image-output"
 import {
   BUILT_IN_PROVIDER_CATALOG,
@@ -28,15 +30,23 @@ export interface ChatModelGroup {
 }
 
 const formatContextWindow = (contextWindow?: number): string | null => {
-  if (!contextWindow) {
-    return null
-  }
+  const compact = formatContextWindowCompact(contextWindow)
 
-  if (contextWindow >= 1000) {
-    return `${Math.round(contextWindow / 1000)}K ctx`
-  }
+  return compact === null ? null : `${compact} ctx`
+}
 
-  return `${contextWindow} ctx`
+const resolveToolsSummaryTag = (model: StoredProviderModel): string | null => {
+  switch (resolveFunctionCallingSupport(model)) {
+    case "native": {
+      return "Tools"
+    }
+    case "xml-middleware": {
+      return "Tools (XML)"
+    }
+    default: {
+      return null
+    }
+  }
 }
 
 const buildModelSummary = (model: StoredProviderModel): string =>
@@ -44,7 +54,7 @@ const buildModelSummary = (model: StoredProviderModel): string =>
     isImageOutputModel(model) ? "Image" : null,
     model.capabilities?.vision ? "Vision" : null,
     model.capabilities?.reasoning ? "Reasoning" : null,
-    model.capabilities?.functionCalling ? "Tools" : null,
+    resolveToolsSummaryTag(model),
     model.capabilities?.jsonMode ? "JSON" : null,
     model.capabilities?.streaming ? "Streaming" : null,
     formatContextWindow(model.capabilities?.contextWindow)

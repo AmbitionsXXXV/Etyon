@@ -19,6 +19,7 @@ import { logger } from "@/main/logger"
 import { getSettings } from "@/main/settings"
 import { needsWorkflowApproval } from "@/shared/agents/permission-mode"
 import { resolveProfileById } from "@/shared/agents/profiles"
+import { WORKFLOW_CHILD_PROFILE_ID } from "@/shared/agents/subagent-tools"
 
 /**
  * `workflow` tool: deterministic multi-agent orchestration over READ-ONLY
@@ -29,10 +30,10 @@ import { resolveProfileById } from "@/shared/agents/profiles"
  * parent's own edit/write tools.
  */
 
-// The read-only built-in every workflow agent runs as. Read-only is guaranteed
-// structurally by runDelegatedAgent's read/ls/grep-only tool set regardless of
-// this profile's flag, so it only sets the child's identity and instructions.
-const WORKFLOW_CHILD_PROFILE_ID = "explore"
+// The read-only built-in every workflow agent runs as (WORKFLOW_CHILD_PROFILE_ID
+// is the shared `explore` id). Read-only is guaranteed structurally by
+// runDelegatedAgent's read/ls/grep-only tool set regardless of this profile's
+// flag, so it only sets the child's identity and instructions.
 const WORKFLOW_LOG_LIMIT = 30
 const RESULT_MAX_CHARS = 8000
 const SUMMARY_MAX_CHARS = 8000
@@ -131,7 +132,10 @@ export const buildWorkflowTool = ({
             db,
             modelId: effectiveModelId,
             parentRunId,
-            profileId: childProfile.id
+            profileId: childProfile.id,
+            ...(context?.toolCallId
+              ? { parentToolCallId: context.toolCallId }
+              : {})
           })
         )
 

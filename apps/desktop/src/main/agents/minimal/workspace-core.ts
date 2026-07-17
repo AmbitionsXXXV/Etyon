@@ -1008,3 +1008,20 @@ export const getWorkspaceCore = (projectPath: string): WorkspaceCore => {
 
   return core
 }
+
+/**
+ * Drops the memoized {@link WorkspaceCore} for a project path so the next
+ * {@link getWorkspaceCore} rebuilds it from scratch.
+ *
+ * A core captures the project's realpath once, at construction (see
+ * {@link realpathIfExists}). When it is built while the project directory is
+ * missing, that realpath falls back to the plain resolved path; after the
+ * directory is later recreated its true realpath can differ (on macOS `/tmp`
+ * resolves through to `/private/tmp`), and every containment check then fails
+ * as `outside-project` forever because the pinned root no longer matches the
+ * resolved ancestor. Callers that recreate a deleted project directory must
+ * invalidate the cached core so it is rebuilt against the resolvable realpath.
+ */
+export const invalidateWorkspaceCore = (projectPath: string): void => {
+  workspaceCores.delete(path.resolve(projectPath))
+}

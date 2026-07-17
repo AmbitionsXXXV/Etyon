@@ -871,47 +871,118 @@ export const listProjectSnapshotFiles = ({
 
 const READ_FILE_MAX_SIZE = 5 * 1024 * 1024
 
-export const readProjectFile = ({
+export type ReadProjectFileFailureReason =
+  | "binary-file"
+  | "file-missing"
+  | "io-error"
+  | "not-file"
+  | "outside-project"
+  | "too-large"
+
+export type ReadProjectFileResult =
+  | { ok: true; value: ReadProjectFileOutput }
+  | { message: string; ok: false; reason: ReadProjectFileFailureReason }
+
+/**
+ * Classifies a project file read without throwing so callers (e.g. the artifact
+ * recovery ladder) can branch on the failure reason. {@link readProjectFile} is
+ * the thin throwing wrapper that preserves the exact historic error messages.
+ */
+export const readProjectFileResult = ({
   filePath,
   projectPath
 }: {
   filePath: string
   projectPath: string
-}): ReadProjectFileOutput => {
+}): ReadProjectFileResult => {
   const resolvedPath = path.resolve(projectPath, filePath)
   const normalizedProjectPath = path.resolve(projectPath)
 
   if (!resolvedPath.startsWith(normalizedProjectPath + path.sep)) {
-    throw new Error("File path is outside the project directory.")
+    return {
+      message: "File path is outside the project directory.",
+      ok: false,
+      reason: "outside-project"
+    }
   }
 
   if (!fs.existsSync(resolvedPath)) {
-    throw new Error(`File not found: ${filePath}`)
+    return {
+      message: `File not found: ${filePath}`,
+      ok: false,
+      reason: "file-missing"
+    }
   }
 
-  const stats = fs.statSync(resolvedPath)
+  let stats: fs.Stats
+
+  try {
+    stats = fs.statSync(resolvedPath)
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "Failed to read file.",
+      ok: false,
+      reason: "io-error"
+    }
+  }
 
   if (!stats.isFile()) {
-    throw new Error(`Not a file: ${filePath}`)
+    return {
+      message: `Not a file: ${filePath}`,
+      ok: false,
+      reason: "not-file"
+    }
   }
 
   if (stats.size > READ_FILE_MAX_SIZE) {
-    throw new Error(
-      `File too large (${Math.round(stats.size / 1024)}KB). Maximum supported size is ${READ_FILE_MAX_SIZE / 1024}KB.`
-    )
+    return {
+      message: `File too large (${Math.round(stats.size / 1024)}KB). Maximum supported size is ${READ_FILE_MAX_SIZE / 1024}KB.`,
+      ok: false,
+      reason: "too-large"
+    }
   }
 
-  const buffer = fs.readFileSync(resolvedPath)
+  let buffer: Buffer
+
+  try {
+    buffer = fs.readFileSync(resolvedPath)
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : "Failed to read file.",
+      ok: false,
+      reason: "io-error"
+    }
+  }
 
   if (!isTextFile(resolvedPath, buffer)) {
-    throw new Error("Binary files are not supported.")
+    return {
+      message: "Binary files are not supported.",
+      ok: false,
+      reason: "binary-file"
+    }
   }
 
   return {
-    content: buffer.toString("utf-8"),
-    language: inferLanguage(resolvedPath),
-    relativePath: normalizeRelativePath(resolvedPath, normalizedProjectPath)
+    ok: true,
+    value: {
+      content: buffer.toString("utf-8"),
+      language: inferLanguage(resolvedPath),
+      relativePath: normalizeRelativePath(resolvedPath, normalizedProjectPath)
+    }
   }
+}
+
+export const readProjectFile = (params: {
+  filePath: string
+  projectPath: string
+}): ReadProjectFileOutput => {
+  const result = readProjectFileResult(params)
+
+  if (!result.ok) {
+    throw new Error(result.message)
+  }
+
+  return result.value
 }
 
 const IMAGE_MEDIA_TYPE_BY_EXTENSION: Record<string, string> = {

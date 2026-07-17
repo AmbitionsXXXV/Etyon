@@ -213,6 +213,35 @@ describe("buildWorkflowTool execute path", () => {
     expect(childRuns.every((run) => run.profileId === "explore")).toBe(true)
   })
 
+  it("records the workflow call's toolCallId on each child run", async () => {
+    getSettingsMock.mockReturnValue({ agents: agentSettings(1) })
+    streamTextMock.mockReturnValue(streamTextResult({ text: "child findings" }))
+
+    const ctx = await buildCtx()
+    const workflow = buildWorkflowTool(ctx)
+
+    await callWorkflow(
+      workflow,
+      {
+        script: `${META}\nreturn await parallel([() => agent("a"), () => agent("b")])`
+      },
+      { toolCallId: "workflow-tc" }
+    )
+
+    const db = getDb()
+    const childRuns = await db
+      .select()
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.parentRunId, ctx.parentRunId),
+          eq(agentRuns.parentToolCallId, "workflow-tc")
+        )
+      )
+
+    expect(childRuns).toHaveLength(2)
+  })
+
   it("provides the dedicated workflow concurrency setting", () => {
     const settings = AgentSettingsSchema.parse({})
 

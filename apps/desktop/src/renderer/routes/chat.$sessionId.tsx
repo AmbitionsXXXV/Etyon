@@ -1637,6 +1637,12 @@ const ChatRuntime = ({
       setRequestPhase(null)
       clearWorkflowProgress()
       clearSubagents()
+      void queryClient.invalidateQueries({
+        queryKey: orpc.agents.inspectRun.key()
+      })
+      void queryClient.invalidateQueries({
+        queryKey: orpc.agents.listRuns.key()
+      })
       clearTodos()
       setPlanTodoRunId(undefined)
       // A finished turn may have flipped the saved plan to `implementing`

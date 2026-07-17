@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it } from "vite-plus/test"
 
 import {
   getWorkspaceCore,
+  invalidateWorkspaceCore,
   isSecretWorkspacePath
 } from "@/main/agents/minimal/workspace-core"
 
@@ -75,6 +76,51 @@ afterAll(() => {
 describe("workspace-core", () => {
   it("reuses one workspace instance per project path", () => {
     expect(getWorkspaceCore(projectPath)).toBe(workspace)
+  })
+
+  it("rebuilds a stale core only after its project directory is recreated", async () => {
+    // A sibling symlink makes the realpath divergence deterministic across
+    // platforms (mirrors the macOS /tmp -> /private/tmp pinning hazard): a core
+    // built while the directory is missing pins the unresolved symlink root.
+    const base = fs.mkdtempSync(
+      path.join(os.tmpdir(), "etyon-workspace-recreate-")
+    )
+    const realRoot = path.join(base, "real")
+    const linkRoot = path.join(base, "link")
+    fs.mkdirSync(realRoot)
+    fs.symlinkSync(realRoot, linkRoot)
+
+    const recreatedProjectPath = path.join(linkRoot, "project")
+    const staleCore = getWorkspaceCore(recreatedProjectPath)
+
+    fs.mkdirSync(path.join(realRoot, "project"))
+    fs.writeFileSync(path.join(realRoot, "project", "note.txt"), "hi\n")
+
+    const staleView = await staleCore.view("note.txt")
+
+    expect(staleView.ok).toBe(false)
+
+    if (!staleView.ok) {
+      expect(staleView.error.code).toBe("outside-project")
+    }
+
+    // Still the same cached (broken) instance until it is invalidated.
+    expect(getWorkspaceCore(recreatedProjectPath)).toBe(staleCore)
+
+    invalidateWorkspaceCore(recreatedProjectPath)
+    const freshCore = getWorkspaceCore(recreatedProjectPath)
+
+    expect(freshCore).not.toBe(staleCore)
+
+    const freshView = await freshCore.view("note.txt")
+
+    expect(freshView.ok).toBe(true)
+
+    if (freshView.ok) {
+      expect(freshView.value.content).toBe("hi\n")
+    }
+
+    fs.rmSync(base, { force: true, recursive: true })
   })
 
   it("views files inside the project", async () => {

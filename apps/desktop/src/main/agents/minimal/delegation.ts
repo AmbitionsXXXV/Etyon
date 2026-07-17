@@ -55,6 +55,7 @@ import {
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveProfileById } from "@/shared/agents/profiles"
 import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
+import type { DelegateToolOutput } from "@/shared/agents/subagent-tools"
 import type { ChatSubagentEndState } from "@/shared/chat/stream-data"
 
 /**
@@ -869,7 +870,10 @@ export const buildDelegateTool = ({
             db,
             modelId,
             parentRunId,
-            profileId: childProfile.id
+            profileId: childProfile.id,
+            ...(context?.toolCallId
+              ? { parentToolCallId: context.toolCallId }
+              : {})
           })
         )
         const run = await runDelegatedAgent({
@@ -910,7 +914,7 @@ export const buildDelegateTool = ({
           childRunId,
           filesRead: run.filesRead,
           summary: clampText(run.text, SUMMARY_MAX_CHARS)
-        }
+        } satisfies DelegateToolOutput
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
 

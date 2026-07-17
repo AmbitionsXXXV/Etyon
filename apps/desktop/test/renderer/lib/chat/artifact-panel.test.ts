@@ -1,8 +1,13 @@
+import type {
+  ArtifactReadErrorReason,
+  ReadArtifactFileOutput
+} from "@etyon/rpc"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
   buildArtifactSrcDoc,
   collectPublishedArtifactRefs,
+  deriveArtifactPanelView,
   getPublishedArtifactRef,
   isArtifactToolPart
 } from "@/renderer/lib/chat/artifact-panel"
@@ -134,5 +139,144 @@ describe("buildArtifactSrcDoc", () => {
     expect(srcDoc.indexOf("Content-Security-Policy")).toBeLessThan(
       srcDoc.indexOf("exfil()")
     )
+  })
+})
+
+const okData = (recovery: {
+  restoredFromSnapshot: boolean
+  workspaceRecreated: boolean
+}): ReadArtifactFileOutput => ({
+  content: "<h1>hi</h1>",
+  language: "html",
+  relativePath: "artifacts/report.html",
+  restoredFromSnapshot: recovery.restoredFromSnapshot,
+  status: "ok",
+  workspaceRecreated: recovery.workspaceRecreated
+})
+
+const errorData = (
+  reason: ArtifactReadErrorReason,
+  workspaceRecreated: boolean
+): ReadArtifactFileOutput => ({
+  reason,
+  status: "error",
+  workspaceRecreated
+})
+
+const ERROR_REASONS: ArtifactReadErrorReason[] = [
+  "binary-file",
+  "file-missing",
+  "io-error",
+  "not-file",
+  "outside-project",
+  "too-large"
+]
+
+describe("deriveArtifactPanelView", () => {
+  it("returns loading while the query is loading", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: undefined,
+        isError: false,
+        isLoading: true
+      })
+    ).toEqual({ kind: "loading" })
+  })
+
+  it("maps a thrown request to a transport error", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: undefined,
+        isError: true,
+        isLoading: false
+      })
+    ).toEqual({ kind: "error", reason: "transport", workspaceRecreated: false })
+  })
+
+  it("maps a settled query with no body to a transport error", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: undefined,
+        isError: false,
+        isLoading: false
+      })
+    ).toEqual({ kind: "error", reason: "transport", workspaceRecreated: false })
+  })
+
+  it("maps a plain ok response to ready without a notice", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: okData({
+          restoredFromSnapshot: false,
+          workspaceRecreated: false
+        }),
+        isError: false,
+        isLoading: false
+      })
+    ).toEqual({
+      content: "<h1>hi</h1>",
+      kind: "ready",
+      language: "html",
+      notice: null
+    })
+  })
+
+  it("surfaces a workspace-recreated notice on an ok response", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: okData({ restoredFromSnapshot: false, workspaceRecreated: true }),
+        isError: false,
+        isLoading: false
+      })
+    ).toEqual({
+      content: "<h1>hi</h1>",
+      kind: "ready",
+      language: "html",
+      notice: "workspace-recreated"
+    })
+  })
+
+  it("surfaces a restored-from-snapshot notice on an ok response", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: okData({ restoredFromSnapshot: true, workspaceRecreated: false }),
+        isError: false,
+        isLoading: false
+      })
+    ).toEqual({
+      content: "<h1>hi</h1>",
+      kind: "ready",
+      language: "html",
+      notice: "restored-from-snapshot"
+    })
+  })
+
+  it("prefers the restored notice when a file is restored into a recreated workspace", () => {
+    expect(
+      deriveArtifactPanelView({
+        data: okData({ restoredFromSnapshot: true, workspaceRecreated: true }),
+        isError: false,
+        isLoading: false
+      })
+    ).toEqual({
+      content: "<h1>hi</h1>",
+      kind: "ready",
+      language: "html",
+      notice: "restored-from-snapshot"
+    })
+  })
+
+  it("passes every error reason through with its workspaceRecreated flag", () => {
+    for (const reason of ERROR_REASONS) {
+      for (const workspaceRecreated of [true, false]) {
+        expect(
+          deriveArtifactPanelView({
+            data: errorData(reason, workspaceRecreated),
+            isError: false,
+            isLoading: false
+          })
+        ).toEqual({ kind: "error", reason, workspaceRecreated })
+      }
+    }
   })
 })

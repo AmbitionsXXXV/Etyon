@@ -159,6 +159,16 @@ export type {
   UpdateQueuedAgentMessageInput
 } from "./schemas/agents"
 export {
+  ArtifactReadErrorReasonSchema,
+  ReadArtifactFileInputSchema,
+  ReadArtifactFileOutputSchema
+} from "./schemas/artifacts"
+export type {
+  ArtifactReadErrorReason,
+  ReadArtifactFileInput,
+  ReadArtifactFileOutput
+} from "./schemas/artifacts"
+export {
   ArchiveChatSessionInputSchema,
   ChatMentionSchema,
   ChatSessionMemoryOutputSchema,

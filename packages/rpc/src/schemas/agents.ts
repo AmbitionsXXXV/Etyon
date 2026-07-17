@@ -41,6 +41,7 @@ export const AgentRunTraceRunSchema = z.object({
   id: z.string(),
   modelId: z.string().nullable(),
   parentRunId: z.string().nullable(),
+  parentToolCallId: z.string().nullable(),
   profileId: z.string(),
   startedAt: z.string(),
   status: AgentRunStatusSchema
@@ -177,6 +178,7 @@ export const PendingAgentApprovalsOutputSchema = z.object({
 export const ListAgentRunsInputSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
   parentRunId: z.string().optional(),
+  parentToolCallId: z.string().optional(),
   sessionId: z.string().optional()
 })
 

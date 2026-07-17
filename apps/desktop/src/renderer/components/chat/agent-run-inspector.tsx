@@ -20,12 +20,16 @@ import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { getToolIcon } from "@/renderer/lib/chat/message-tool-trace"
+import { isUnsettledRunStatus } from "@/renderer/lib/chat/subagent-view-model"
 import { orpc } from "@/renderer/lib/rpc"
 import { getString, isRecord } from "@/renderer/lib/utils"
 import { summarizeToolOutput } from "@/shared/agents/tool-output-summary"
 import { getAgentProjectionRunId } from "@/shared/chat/message-metadata"
 
 type Translate = ReturnType<typeof useI18n>["t"]
+
+// Poll a still-in-flight run's trace until it settles.
+const UNSETTLED_RUN_REFETCH_MS = 2000
 
 const STATUS_CLASS_NAME: Record<AgentRunStatus, string> = {
   failed: "bg-destructive/10 text-destructive",
@@ -199,7 +203,14 @@ const AgentRunInspectorControl = ({ runId }: { runId: string }) => {
   const [open, setOpen] = useState(false)
   const query = useQuery({
     ...orpc.agents.inspectRun.queryOptions({ input: { runId } }),
-    enabled: open
+    enabled: open,
+    refetchInterval: (runQuery) => {
+      const status = runQuery.state.data?.run.status
+
+      return status !== undefined && isUnsettledRunStatus(status)
+        ? UNSETTLED_RUN_REFETCH_MS
+        : false
+    }
   })
 
   return (

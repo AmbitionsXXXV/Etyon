@@ -142,4 +142,58 @@ describe("chat model options", () => {
     expect(nextAiSettings.defaultModel).toBe("zai-coding-plan/glm-5")
     expect(nextAiSettings.providers).toBe(aiSettings.providers)
   })
+
+  it("formats a one-million context window as '1M ctx' in the summary", () => {
+    const aiSettings = buildAiSettingsFixture()
+    const groups = buildChatModelGroups({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        moonshot: {
+          ...aiSettings.providers.moonshot,
+          availableModels: [
+            {
+              capabilities: { contextWindow: 1_000_000 },
+              id: "kimi-k2.5",
+              isManual: undefined,
+              name: "kimi-k2.5"
+            }
+          ]
+        }
+      }
+    })
+
+    const moonshotGroup = groups.find(
+      (group) => group.providerId === "moonshot"
+    )
+
+    expect(moonshotGroup?.options[0]?.summary).toBe("1M ctx")
+  })
+
+  it("labels a functionCalling:false model's tools tag as 'Tools (XML)'", () => {
+    const aiSettings = buildAiSettingsFixture()
+    const groups = buildChatModelGroups({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        moonshot: {
+          ...aiSettings.providers.moonshot,
+          availableModels: [
+            {
+              capabilities: { functionCalling: false },
+              id: "kimi-k2.5",
+              isManual: undefined,
+              name: "kimi-k2.5"
+            }
+          ]
+        }
+      }
+    })
+
+    const moonshotGroup = groups.find(
+      (group) => group.providerId === "moonshot"
+    )
+
+    expect(moonshotGroup?.options[0]?.summary).toBe("Tools (XML)")
+  })
 })

@@ -884,6 +884,55 @@ describe("agent event store", () => {
     expect(secondRun?.status).toBe("running")
   })
 
+  it("persists parentToolCallId on the run row and the run.started payload", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      parentRunId: "parent-run",
+      parentToolCallId: "tc-parent",
+      profileId
+    })
+
+    const [run] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+    const projection = await buildRunProjection({ db, runId })
+    const started = projection?.events.find(
+      (event) => event.type === "run.started"
+    )
+
+    expect(run?.parentToolCallId).toBe("tc-parent")
+    expect(started?.payload).toMatchObject({
+      parentRunId: "parent-run",
+      parentToolCallId: "tc-parent",
+      profileId
+    })
+  })
+
+  it("defaults parentToolCallId to NULL when omitted", async () => {
+    await ensureDatabaseReady()
+    const db = getDb()
+    const session = await createChatSession({ db })
+    const runId = await startAgentRun({
+      chatSessionId: session.id,
+      db,
+      modelId: null,
+      profileId
+    })
+
+    const [run] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+
+    expect(run?.parentToolCallId).toBeNull()
+  })
+
   describe("redactSecretsFromJson", () => {
     it("redacts an OpenAI-style sk- key", () => {
       const json = JSON.stringify({ key: "sk-abcdefghijklmnopqrstuvwx" })

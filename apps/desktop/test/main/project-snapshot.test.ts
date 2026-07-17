@@ -8,7 +8,8 @@ import {
   ensureProjectSnapshot,
   listProjectSnapshotFiles,
   readProjectBinaryFile,
-  readProjectFile
+  readProjectFile,
+  readProjectFileResult
 } from "@/main/project-snapshot"
 
 const testProjectPath = `/tmp/etyon-project-snapshot-test-${Date.now()}`
@@ -271,6 +272,60 @@ describe("project snapshot", () => {
     expect(fileData.content).toBe(content)
     expect(fileData.language).toBe("typescript")
     expect(fileData.relativePath).toBe("src/generated.ts")
+  })
+
+  it("classifies read outcomes without throwing", () => {
+    const projectPath = createTestProjectPath("read-classify")
+
+    writeProjectFile("ok.ts", "export const ok = 1\n", projectPath)
+    writeProjectFile("bin.dat", Buffer.from([0, 1, 2, 0]), projectPath)
+    writeProjectFile("sub/dir/keep.txt", "x\n", projectPath)
+    writeProjectFile(
+      "huge.txt",
+      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
+      projectPath
+    )
+
+    expect(readProjectFileResult({ filePath: "ok.ts", projectPath })).toEqual({
+      ok: true,
+      value: {
+        content: "export const ok = 1\n",
+        language: "typescript",
+        relativePath: "ok.ts"
+      }
+    })
+    expect(
+      readProjectFileResult({ filePath: "../escape.ts", projectPath })
+    ).toMatchObject({ ok: false, reason: "outside-project" })
+    expect(
+      readProjectFileResult({ filePath: "missing.ts", projectPath })
+    ).toMatchObject({
+      message: "File not found: missing.ts",
+      ok: false,
+      reason: "file-missing"
+    })
+    expect(
+      readProjectFileResult({ filePath: "sub/dir", projectPath })
+    ).toMatchObject({ ok: false, reason: "not-file" })
+    expect(
+      readProjectFileResult({ filePath: "huge.txt", projectPath })
+    ).toMatchObject({ ok: false, reason: "too-large" })
+    expect(
+      readProjectFileResult({ filePath: "bin.dat", projectPath })
+    ).toMatchObject({ ok: false, reason: "binary-file" })
+  })
+
+  it("throws the historic messages through the thin wrapper", () => {
+    const projectPath = createTestProjectPath("read-throws")
+
+    writeProjectFile("keep.txt", "x\n", projectPath)
+
+    expect(() =>
+      readProjectFile({ filePath: "../escape.ts", projectPath })
+    ).toThrow("File path is outside the project directory.")
+    expect(() =>
+      readProjectFile({ filePath: "missing.ts", projectPath })
+    ).toThrow("File not found: missing.ts")
   })
 
   it("reads binary files as base64 with an inferred image media type", () => {

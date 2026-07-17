@@ -143,8 +143,10 @@ const buildCtx = async (): Promise<DelegateToolContext> => {
 // but buildDelegateTool always provides it, and the tests drive it directly.
 const callDelegate = (
   delegate: ReturnType<typeof buildDelegateTool>,
-  input: DelegateInput
-): Promise<unknown> => (delegate.execute as unknown as DelegateFn)(input, {})
+  input: DelegateInput,
+  context: unknown = {}
+): Promise<unknown> =>
+  (delegate.execute as unknown as DelegateFn)(input, context)
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -236,6 +238,30 @@ describe("buildDelegateTool execute path", () => {
 
     expect(failedRuns.length).toBeGreaterThanOrEqual(1)
     expect(failedRuns[0]?.errorMessage).toBe("boom")
+  })
+
+  it("records the initiating toolCallId on the child run row", async () => {
+    getSettingsMock.mockReturnValue({ agents: agentSettings(2) })
+    streamTextMock.mockReturnValueOnce(streamTextResult({ text: "done" }))
+
+    const ctx = await buildCtx()
+    const delegate = buildDelegateTool(ctx)
+
+    const result = await callDelegate(
+      delegate,
+      { profileId: "explore", task: "investigate" },
+      { toolCallId: "tc-delegate" }
+    )
+    const { childRunId } = result as { childRunId: string }
+
+    const db = getDb()
+    const [childRun] = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, childRunId))
+
+    expect(childRun?.parentToolCallId).toBe("tc-delegate")
+    expect(childRun?.parentRunId).toBe(ctx.parentRunId)
   })
 
   it("releases the concurrency slot after a failure so the next call is accepted", async () => {

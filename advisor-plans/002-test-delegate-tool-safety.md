@@ -43,15 +43,9 @@
     filesRead: Set<string>,
     toolCalls: DelegatedToolCallRecord[]
   ) => ({
-    grep: tool({
-      /* ... clampText(result.value, TOOL_OUTPUT_MAX_CHARS) ... */
-    }),
-    ls: tool({
-      /* ... */
-    }),
-    read: tool({
-      /* ... filesRead.add(result.value.info.path) ... */
-    })
+    grep: tool({/* ... clampText(result.value, TOOL_OUTPUT_MAX_CHARS) ... */}),
+    ls: tool({/* ... */}),
+    read: tool({/* ... filesRead.add(result.value.info.path) ... */})
   })
   ```
 

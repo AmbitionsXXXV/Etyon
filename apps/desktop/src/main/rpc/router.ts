@@ -42,6 +42,8 @@ import {
   ListProjectSnapshotFilesOutputSchema,
   ReadAgentArtifactInputSchema,
   ReadAgentArtifactOutputSchema,
+  ReadArtifactFileInputSchema,
+  ReadArtifactFileOutputSchema,
   RespondToChildApprovalInputSchema,
   RespondToChildApprovalOutputSchema,
   ReadProjectBinaryFileInputSchema,
@@ -91,6 +93,7 @@ import {
   listPendingAgentApprovals,
   readAgentArtifact
 } from "@/main/agents/agent-run-inspection"
+import { readArtifactFileWithRecovery } from "@/main/agents/artifact-recovery"
 import {
   listCheckpoints,
   restoreFileCheckpoint
@@ -728,6 +731,9 @@ const agentsListRuns = rpc
       ...(input.parentRunId === undefined
         ? {}
         : { parentRunId: input.parentRunId }),
+      ...(input.parentToolCallId === undefined
+        ? {}
+        : { parentToolCallId: input.parentToolCallId }),
       ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId })
     })
   )
@@ -798,6 +804,20 @@ const agentsSetSessionPlanStatus = rpc
     })
   }))
 
+const artifactsRead = rpc
+  .input(ReadArtifactFileInputSchema)
+  .output(ReadArtifactFileOutputSchema)
+  .handler(({ context, input }) =>
+    readArtifactFileWithRecovery({
+      db: context.db,
+      filePath: input.filePath,
+      sessionId: input.sessionId,
+      ...(input.toolCallId === undefined
+        ? {}
+        : { toolCallId: input.toolCallId })
+    })
+  )
+
 export const router = {
   agents: {
     getSessionPlan: agentsGetSessionPlan,
@@ -807,6 +827,9 @@ export const router = {
     readArtifact: agentsReadArtifact,
     respondToApproval: agentsRespondToApproval,
     setSessionPlanStatus: agentsSetSessionPlanStatus
+  },
+  artifacts: {
+    read: artifactsRead
   },
   chatSessions: {
     archive: chatSessionsArchive,

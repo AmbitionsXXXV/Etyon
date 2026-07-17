@@ -21,12 +21,19 @@
       "badge": "アーティファクト",
       "close": "アーティファクトプレビューを閉じる",
       "codeView": "アーティファクトのソースを表示",
+      "missingError": "このアーティファクトのファイルは存在せず、ローカルスナップショットにもコピーがありません。",
+      "missingErrorHint": "アプリの外部で削除または移動された可能性があります。",
       "open": "アーティファクトを開く：{title}",
+      "outsideProjectError": "このアーティファクトはプロジェクトフォルダの外を指しているため、開けません。",
       "previewView": "アーティファクトのプレビューを表示",
       "publishFailed": "公開に失敗しました",
       "publishing": "公開中...",
       "readError": "アーティファクトファイルを読み取れません。",
-      "refresh": "アーティファクトを更新"
+      "recreatedWorkspaceNotice": "プロジェクトフォルダが見つからなかったため、再作成しました。",
+      "refresh": "アーティファクトを更新",
+      "restoredNotice": "このファイルはローカルスナップショットから復元されました。最新の変更が含まれていない可能性があります。",
+      "retry": "再試行",
+      "tooLargeError": "アーティファクトファイルが大きすぎるため、プレビューできません。"
     },
     "askUser": {
       "confirm": "確定",
@@ -1143,6 +1150,14 @@
         "noEnabledModels": "有効なモデルはありません"
       },
       "models": {
+        "capabilities": {
+          "contextWindow": "{{tokens}} トークンのコンテキストウィンドウ",
+          "functionCalling": "関数呼び出しに対応",
+          "imageOutput": "画像生成に対応",
+          "reasoning": "拡張思考・推論に対応",
+          "vision": "画像入力に対応",
+          "xmlFunctionCalling": "XML ミドルウェア経由の関数呼び出しに対応"
+        },
         "description": "ランタイム解決に参加させるモデルを選択します。",
         "empty": "表示できるモデルがありません。",
         "search": "モデルを検索...",

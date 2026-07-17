@@ -1,3 +1,8 @@
+import type {
+  ArtifactReadErrorReason,
+  ReadArtifactFileOutput
+} from "@etyon/rpc"
+
 import type { ChatToolPart } from "@/renderer/lib/chat/message-tool-trace"
 import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
 import { getString, isRecord } from "@/renderer/lib/utils"
@@ -163,4 +168,87 @@ export const subscribeToRootThemeChange = (
   })
 
   return () => observer.disconnect()
+}
+
+/**
+ * A subtle amber notice shown above ready artifact content when the recovery
+ * ladder had to intervene. `restored-from-snapshot` outranks
+ * `workspace-recreated` because a restored file is the more consequential
+ * caveat (its bytes may lag the latest edit).
+ */
+export type ArtifactPanelNotice =
+  | "restored-from-snapshot"
+  | "workspace-recreated"
+
+/**
+ * The three states the artifact panel renders, derived from the `artifacts.read`
+ * query. That endpoint returns its recovery outcomes as structured success
+ * responses, so a genuine `error` view only comes from an ok/error status
+ * body — except `transport`, which covers a thrown request (e.g. the session
+ * went missing) that produced no body at all.
+ */
+export type ArtifactPanelView =
+  | { kind: "loading" }
+  | {
+      content: string
+      kind: "ready"
+      language: string | null
+      notice: ArtifactPanelNotice | null
+    }
+  | {
+      kind: "error"
+      reason: ArtifactReadErrorReason | "transport"
+      workspaceRecreated: boolean
+    }
+
+const deriveReadyNotice = (data: {
+  restoredFromSnapshot: boolean
+  workspaceRecreated: boolean
+}): ArtifactPanelNotice | null => {
+  if (data.restoredFromSnapshot) {
+    return "restored-from-snapshot"
+  }
+
+  if (data.workspaceRecreated) {
+    return "workspace-recreated"
+  }
+
+  return null
+}
+
+/**
+ * Collapse the `artifacts.read` react-query result into an `ArtifactPanelView`.
+ * Pure and node-testable: a thrown request (`isError`) or a missing body maps
+ * to a `transport` error, an ok status maps to `ready` (with notice
+ * precedence), and an error status passes its reason through verbatim.
+ */
+export const deriveArtifactPanelView = (query: {
+  data: ReadArtifactFileOutput | undefined
+  isError: boolean
+  isLoading: boolean
+}): ArtifactPanelView => {
+  if (query.isLoading) {
+    return { kind: "loading" }
+  }
+
+  const { data } = query
+
+  if (query.isError || !data) {
+    return { kind: "error", reason: "transport", workspaceRecreated: false }
+  }
+
+  if (data.status === "error") {
+    return {
+      kind: "error",
+      reason: data.reason,
+      workspaceRecreated: data.workspaceRecreated
+    }
+  }
+
+  return {
+    content: data.content,
+    kind: "ready",
+    language: data.language,
+    notice: deriveReadyNotice(data)
+  }
 }

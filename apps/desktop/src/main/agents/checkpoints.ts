@@ -25,6 +25,8 @@ const CHECKPOINT_LIST_DEFAULT_LIMIT = 100
 const CHECKPOINT_LIST_MAX_LIMIT = 1000
 const GIT_COMMAND_MAX_BUFFER = 1024 * 1024
 const GIT_COMMAND_TIMEOUT_MS = 5000
+const RESTORE_CANDIDATE_LIMIT = 200
+const RESTORE_GIT_PROBE_LIMIT = 8
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 const SHA256_PATTERN = /^[a-f\d]{64}$/u
 
@@ -74,6 +76,22 @@ export type RestoreBashCheckpointResult =
         | "not-found"
         | "snapshot-missing"
     }
+
+export type SingleFileRestoreResult =
+  | {
+      checkpointId: string
+      ok: true
+      source: "checkpoint-blob" | "git-snapshot"
+    }
+  | {
+      ok: false
+      reason: "file-exists" | "invalid-path" | "no-source" | "too-large"
+    }
+
+type SingleFileCandidateBytes =
+  | { bytes: Buffer; kind: "bytes" }
+  | { kind: "skip" }
+  | { kind: "too-large" }
 
 interface ResolvedProject {
   normalizedPath: string
@@ -883,6 +901,270 @@ export const restoreFileCheckpoint = async ({
   }
 
   return result
+}
+
+const readBlobCandidateBytes = async ({
+  file,
+  maxBytes,
+  projectHash
+}: {
+  file: CheckpointFile
+  maxBytes: number
+  projectHash: string
+}): Promise<SingleFileCandidateBytes> => {
+  if (
+    file.preSha === null ||
+    file.overCap ||
+    !SHA256_PATTERN.test(file.preSha)
+  ) {
+    return { kind: "skip" }
+  }
+
+  const objectPath = getObjectPath({ projectHash, sha: file.preSha })
+  let compressedContent: Buffer
+
+  try {
+    compressedContent = await fs.readFile(objectPath)
+  } catch (error) {
+    if (getNodeErrorCode(error) === "ENOENT") {
+      return { kind: "skip" }
+    }
+
+    throw error
+  }
+
+  const bytes = await gunzipAsync(compressedContent)
+
+  return bytes.byteLength > maxBytes
+    ? { kind: "too-large" }
+    : { bytes, kind: "bytes" }
+}
+
+const resolveGitShowPrefix = async (cwd: string): Promise<string | null> => {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--show-prefix"],
+      {
+        cwd,
+        encoding: "utf-8",
+        maxBuffer: GIT_COMMAND_MAX_BUFFER,
+        timeout: GIT_COMMAND_TIMEOUT_MS,
+        windowsHide: true
+      }
+    )
+
+    // Empty at the repo root; "sub/dir/" (trailing slash) when cwd is nested.
+    return String(stdout).trim()
+  } catch {
+    return null
+  }
+}
+
+const readGitCandidateBytes = async ({
+  cwd,
+  maxBytes,
+  probeBudget,
+  ref,
+  repoRelPath
+}: {
+  cwd: string
+  maxBytes: number
+  probeBudget: { remaining: number }
+  ref: string
+  repoRelPath: string
+}): Promise<SingleFileCandidateBytes> => {
+  if (probeBudget.remaining <= 0) {
+    return { kind: "skip" }
+  }
+
+  probeBudget.remaining -= 1
+  let sizeText: string
+
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["cat-file", "-s", `${ref}:${repoRelPath}`],
+      {
+        cwd,
+        encoding: "utf-8",
+        maxBuffer: GIT_COMMAND_MAX_BUFFER,
+        timeout: GIT_COMMAND_TIMEOUT_MS,
+        windowsHide: true
+      }
+    )
+    sizeText = String(stdout).trim()
+  } catch {
+    return { kind: "skip" }
+  }
+
+  const size = Number.parseInt(sizeText, 10)
+
+  if (Number.isFinite(size) && size > maxBytes) {
+    return { kind: "too-large" }
+  }
+
+  if (probeBudget.remaining <= 0) {
+    return { kind: "skip" }
+  }
+
+  probeBudget.remaining -= 1
+
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["show", `${ref}:${repoRelPath}`],
+      {
+        cwd,
+        encoding: "buffer",
+        maxBuffer: maxBytes + GIT_COMMAND_MAX_BUFFER,
+        timeout: GIT_COMMAND_TIMEOUT_MS,
+        windowsHide: true
+      }
+    )
+    const bytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)
+
+    return bytes.byteLength > maxBytes
+      ? { kind: "too-large" }
+      : { bytes, kind: "bytes" }
+  } catch {
+    return { kind: "skip" }
+  }
+}
+
+const writeSingleRestoredFile = async ({
+  absolutePath,
+  bytes,
+  checkpointId,
+  source
+}: {
+  absolutePath: string
+  bytes: Buffer
+  checkpointId: string
+  source: "checkpoint-blob" | "git-snapshot"
+}): Promise<SingleFileRestoreResult> => {
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+
+  try {
+    // `wx` never clobbers: an intervening writer (or a racing restore) wins and
+    // this restore reports the file as already present.
+    await fs.writeFile(absolutePath, bytes, { flag: "wx" })
+  } catch (error) {
+    if (getNodeErrorCode(error) === "EEXIST") {
+      return { ok: false, reason: "file-exists" }
+    }
+
+    throw error
+  }
+
+  return { checkpointId, ok: true, source }
+}
+
+/**
+ * Restores the content of a single missing file from the newest checkpoint that
+ * still holds it — a write/edit pre-image blob or a bash git-stash snapshot,
+ * whichever is newer. Only that one path is ever written (never a whole-tree
+ * restore), and an existing target is left untouched for idempotency so the
+ * caller can simply re-read. Unexpected filesystem errors propagate.
+ */
+export const restoreSingleFileFromCheckpoints = async ({
+  maxBytes,
+  projectPath,
+  relativePath
+}: {
+  maxBytes: number
+  projectPath: string
+  relativePath: string
+}): Promise<SingleFileRestoreResult> => {
+  const project = await resolveProject(projectPath)
+
+  return withProjectOperationLock(project.projectHash, async () => {
+    const resolvedPath = await resolveWorkspacePath({
+      project,
+      requestedPath: relativePath
+    })
+
+    if (!resolvedPath) {
+      return { ok: false, reason: "invalid-path" }
+    }
+
+    if (resolvedPath.stats) {
+      return { ok: false, reason: "file-exists" }
+    }
+
+    const targetRelativePath = resolvedPath.relativePath
+    const rows = await getDb()
+      .select()
+      .from(agentCheckpoints)
+      .where(eq(agentCheckpoints.projectHash, project.projectHash))
+      .orderBy(desc(agentCheckpoints.createdAt), sql`rowid desc`)
+      .limit(RESTORE_CANDIDATE_LIMIT)
+    const checkpoints = rows.map(toCheckpoint)
+    const probeBudget = { remaining: RESTORE_GIT_PROBE_LIMIT }
+    let showPrefix: string | null | undefined
+    let sawTooLarge = false
+
+    for (const checkpoint of checkpoints) {
+      let candidate: SingleFileCandidateBytes
+
+      if (checkpoint.origin === "bash") {
+        if (!checkpoint.gitSnapshotRef) {
+          continue
+        }
+
+        if (showPrefix === undefined) {
+          showPrefix = await resolveGitShowPrefix(project.normalizedPath)
+        }
+
+        if (showPrefix === null) {
+          continue
+        }
+
+        candidate = await readGitCandidateBytes({
+          cwd: project.normalizedPath,
+          maxBytes,
+          probeBudget,
+          ref: checkpoint.gitSnapshotRef,
+          repoRelPath: `${showPrefix}${targetRelativePath}`
+        })
+      } else {
+        const file = checkpoint.files.find(
+          (entry) => entry.path === targetRelativePath
+        )
+
+        if (!file) {
+          continue
+        }
+
+        candidate = await readBlobCandidateBytes({
+          file,
+          maxBytes,
+          projectHash: project.projectHash
+        })
+      }
+
+      if (candidate.kind === "too-large") {
+        sawTooLarge = true
+        continue
+      }
+
+      if (candidate.kind === "skip") {
+        continue
+      }
+
+      return await writeSingleRestoredFile({
+        absolutePath: resolvedPath.absolutePath,
+        bytes: candidate.bytes,
+        checkpointId: checkpoint.id,
+        source:
+          checkpoint.origin === "bash" ? "git-snapshot" : "checkpoint-blob"
+      })
+    }
+
+    return sawTooLarge
+      ? { ok: false, reason: "too-large" }
+      : { ok: false, reason: "no-source" }
+  })
 }
 
 const getReferencedShas = (files: readonly CheckpointFile[]): string[] =>

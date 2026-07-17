@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -15,7 +16,8 @@ import {
   listCheckpoints,
   pruneCheckpoints,
   restoreBashCheckpoint,
-  restoreFileCheckpoint
+  restoreFileCheckpoint,
+  restoreSingleFileFromCheckpoints
 } from "@/main/agents/checkpoints"
 import { getDb } from "@/main/db"
 import { getAppConfigDir } from "@/main/db/libsql-paths"
@@ -88,6 +90,18 @@ const captureFile = ({
     runId: "run-1",
     toolCallId
   })
+
+const RESTORE_MAX_BYTES = 2 * 1024 * 1024
+
+const initGitRepo = (projectPath: string): void => {
+  execFileSync("git", ["init"], { cwd: projectPath })
+  execFileSync("git", ["config", "user.email", "test@example.com"], {
+    cwd: projectPath
+  })
+  execFileSync("git", ["config", "user.name", "Checkpoint Test"], {
+    cwd: projectPath
+  })
+}
 
 beforeAll(async () => {
   await ensureDatabaseReady()
@@ -561,5 +575,218 @@ describe("workspace checkpoints", () => {
     } finally {
       fs.chmodSync(filePath, 0o600)
     }
+  })
+})
+
+describe("restoreSingleFileFromCheckpoints", () => {
+  it("restores the newest blob pre-image for a deleted file", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "report.html")
+    fs.writeFileSync(filePath, "v1\n")
+    await captureFile({
+      paths: ["report.html"],
+      projectPath,
+      toolCallId: "tool-v1"
+    })
+    fs.writeFileSync(filePath, "v2\n")
+    const newest = await captureFile({
+      paths: ["report.html"],
+      projectPath,
+      toolCallId: "tool-v2"
+    })
+
+    if (!newest) {
+      throw new Error("expected a newest checkpoint fixture")
+    }
+
+    fs.rmSync(filePath)
+
+    const result = await restoreSingleFileFromCheckpoints({
+      maxBytes: RESTORE_MAX_BYTES,
+      projectPath,
+      relativePath: "report.html"
+    })
+
+    expect(result).toEqual({
+      checkpointId: newest.id,
+      ok: true,
+      source: "checkpoint-blob"
+    })
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("v2\n")
+  })
+
+  it("extracts one file from a git snapshot without touching siblings", async () => {
+    const projectPath = createProject()
+    initGitRepo(projectPath)
+    const fileA = path.join(projectPath, "a.txt")
+    const fileB = path.join(projectPath, "b.txt")
+    fs.writeFileSync(fileA, "committed a\n")
+    fs.writeFileSync(fileB, "committed b\n")
+    execFileSync("git", ["add", "."], { cwd: projectPath })
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd: projectPath })
+    fs.writeFileSync(fileA, "dirty a\n")
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-git",
+      toolCallId: "tool-git"
+    })
+
+    if (!checkpoint?.gitSnapshotRef) {
+      throw new Error("expected a git snapshot fixture")
+    }
+
+    fs.rmSync(fileA)
+    fs.writeFileSync(fileB, "current b\n")
+
+    const result = await restoreSingleFileFromCheckpoints({
+      maxBytes: RESTORE_MAX_BYTES,
+      projectPath,
+      relativePath: "a.txt"
+    })
+
+    expect(result).toEqual({
+      checkpointId: checkpoint.id,
+      ok: true,
+      source: "git-snapshot"
+    })
+    expect(fs.readFileSync(fileA, "utf-8")).toBe("dirty a\n")
+    expect(fs.readFileSync(fileB, "utf-8")).toBe("current b\n")
+  })
+
+  it("prefixes the repo-relative path for a git subdirectory project", async () => {
+    // A bash checkpoint only captures a git snapshot when `.git` sits directly
+    // in its project path, so a subdirectory project never gets one through the
+    // normal flow. Capture at the repo root to obtain a real stash ref, then key
+    // a synthesized checkpoint row to the subdirectory's project hash so the
+    // restore query (scoped by hash) finds it and must apply `--show-prefix`.
+    const repoRoot = createProject()
+    initGitRepo(repoRoot)
+    const pkgDir = path.join(repoRoot, "pkg")
+    fs.mkdirSync(pkgDir)
+    const note = path.join(pkgDir, "note.txt")
+    fs.writeFileSync(note, "committed\n")
+    execFileSync("git", ["add", "."], { cwd: repoRoot })
+    execFileSync("git", ["commit", "-m", "fixture"], { cwd: repoRoot })
+    fs.writeFileSync(note, "dirty\n")
+    const rootCheckpoint = await captureBashCheckpoint({
+      projectPath: repoRoot,
+      runId: "run-sub",
+      toolCallId: "tool-sub"
+    })
+
+    if (!rootCheckpoint?.gitSnapshotRef) {
+      throw new Error("expected a git snapshot fixture")
+    }
+
+    const pkgProjectHash = createHash("sha256")
+      .update(path.normalize(path.resolve(pkgDir)))
+      .digest("hex")
+      .slice(0, 16)
+    const subCheckpointId = "sub-git-checkpoint"
+    await runExclusiveDbWrite(() =>
+      getDb().insert(agentCheckpoints).values({
+        createdAt: new Date().toISOString(),
+        filesJson: "[]",
+        gitSnapshotRef: rootCheckpoint.gitSnapshotRef,
+        id: subCheckpointId,
+        origin: "bash",
+        parentId: null,
+        projectHash: pkgProjectHash,
+        runId: "run-sub",
+        toolCallId: "tool-sub"
+      })
+    )
+
+    fs.rmSync(note)
+
+    const result = await restoreSingleFileFromCheckpoints({
+      maxBytes: RESTORE_MAX_BYTES,
+      projectPath: pkgDir,
+      relativePath: "note.txt"
+    })
+
+    expect(result).toEqual({
+      checkpointId: subCheckpointId,
+      ok: true,
+      source: "git-snapshot"
+    })
+    expect(fs.readFileSync(note, "utf-8")).toBe("dirty\n")
+  })
+
+  it("reports file-exists when the target already exists", async () => {
+    const projectPath = createProject()
+    fs.writeFileSync(path.join(projectPath, "present.html"), "here\n")
+
+    await expect(
+      restoreSingleFileFromCheckpoints({
+        maxBytes: RESTORE_MAX_BYTES,
+        projectPath,
+        relativePath: "present.html"
+      })
+    ).resolves.toEqual({ ok: false, reason: "file-exists" })
+  })
+
+  it("rejects escaping and secret paths as invalid", async () => {
+    const projectPath = createProject()
+
+    await expect(
+      restoreSingleFileFromCheckpoints({
+        maxBytes: RESTORE_MAX_BYTES,
+        projectPath,
+        relativePath: "../escape.html"
+      })
+    ).resolves.toEqual({ ok: false, reason: "invalid-path" })
+    await expect(
+      restoreSingleFileFromCheckpoints({
+        maxBytes: RESTORE_MAX_BYTES,
+        projectPath,
+        relativePath: ".env"
+      })
+    ).resolves.toEqual({ ok: false, reason: "invalid-path" })
+  })
+
+  it("returns no-source when no checkpoint holds the file", async () => {
+    const projectPath = createProject()
+    fs.writeFileSync(path.join(projectPath, "other.txt"), "x\n")
+    await captureFile({
+      paths: ["other.txt"],
+      projectPath,
+      toolCallId: "tool-other"
+    })
+
+    await expect(
+      restoreSingleFileFromCheckpoints({
+        maxBytes: RESTORE_MAX_BYTES,
+        projectPath,
+        relativePath: "never-seen.html"
+      })
+    ).resolves.toEqual({ ok: false, reason: "no-source" })
+  })
+
+  it("skips over-cap candidates to older ones then reports too-large", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "big.html")
+    fs.writeFileSync(filePath, "AAAA\n")
+    await captureFile({
+      paths: ["big.html"],
+      projectPath,
+      toolCallId: "tool-old"
+    })
+    fs.writeFileSync(filePath, "BBBBBB\n")
+    await captureFile({
+      paths: ["big.html"],
+      projectPath,
+      toolCallId: "tool-new"
+    })
+    fs.rmSync(filePath)
+
+    const result = await restoreSingleFileFromCheckpoints({
+      maxBytes: 4,
+      projectPath,
+      relativePath: "big.html"
+    })
+
+    expect(result).toEqual({ ok: false, reason: "too-large" })
+    expect(fs.existsSync(filePath)).toBe(false)
   })
 })

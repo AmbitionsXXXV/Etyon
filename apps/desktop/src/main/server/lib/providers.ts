@@ -5,13 +5,17 @@ import type {
   AiProviderConfig,
   AiSettings,
   BuiltInProviderId,
-  ProxySettings
+  ProxySettings,
+  StoredProviderModel
 } from "@etyon/rpc"
 import type { ImageModel, LanguageModel } from "ai"
+import { wrapLanguageModel } from "ai"
 
 import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
+import { createXmlToolMiddleware } from "@/main/server/lib/xml-tool-middleware"
 import { getSettings } from "@/main/settings"
 import { hasProviderCredential } from "@/shared/providers/credentials"
+import { resolveFunctionCallingSupport } from "@/shared/providers/function-calling"
 import { isImageOutputModel } from "@/shared/providers/image-output"
 import { resolveEffortProviderOptions } from "@/shared/providers/model-effort"
 import type { EffortProviderOptions } from "@/shared/providers/model-effort"
@@ -44,6 +48,22 @@ const getProviderModelId = (
       : providerConfig.availableModels
 
   return models[0]?.id
+}
+
+// Looks up a stored model by id, preferring the user's configured `models` over
+// the provider's discovered `availableModels` (the same precedence the inline
+// lookups below rely on).
+const findStoredModel = (
+  aiSettings: AiSettings,
+  provider: ProviderName,
+  modelId: string
+): StoredProviderModel | undefined => {
+  const providerConfig = aiSettings.providers[provider]
+
+  return (
+    providerConfig.models.find((candidate) => candidate.id === modelId) ??
+    providerConfig.availableModels.find((candidate) => candidate.id === modelId)
+  )
 }
 
 const hasUsableProvider = (
@@ -243,7 +263,27 @@ export const resolveModel = (modelId?: string): LanguageModel => {
     aiSettings.defaultProvider
   )
 
-  return createProviderModel(provider, model, aiSettings, proxy)
+  const instance = createProviderModel(provider, model, aiSettings, proxy)
+  const stored = findStoredModel(aiSettings, provider, model)
+
+  // Wrap only when the stored model is explicitly flagged as lacking a native
+  // tool API. The v3 object guard is required because `LanguageModel` may be a
+  // bare model-id string, and it keeps plain-object test mocks unwrapped.
+  if (
+    stored &&
+    resolveFunctionCallingSupport(stored) === "xml-middleware" &&
+    typeof instance === "object" &&
+    instance !== null &&
+    "specificationVersion" in instance &&
+    instance.specificationVersion === "v3"
+  ) {
+    return wrapLanguageModel({
+      middleware: createXmlToolMiddleware(),
+      model: instance
+    })
+  }
+
+  return instance
 }
 
 // Image generation always runs through the OpenAI provider's Images API
@@ -331,11 +371,7 @@ export const isImageOutputModelSelection = (
     return false
   }
 
-  const providerConfig = aiSettings.providers[parsed.provider]
-  const entry = [
-    ...providerConfig.models,
-    ...providerConfig.availableModels
-  ].find((candidate) => candidate.id === parsed.model)
+  const entry = findStoredModel(aiSettings, parsed.provider, parsed.model)
 
   return isImageOutputModel(entry ?? { id: parsed.model })
 }
@@ -362,10 +398,7 @@ export const resolveEffortProviderOptionsForSelection = (
   }
 
   const providerConfig = aiSettings.providers[parsed.provider]
-  const entry = [
-    ...providerConfig.models,
-    ...providerConfig.availableModels
-  ].find((candidate) => candidate.id === parsed.model)
+  const entry = findStoredModel(aiSettings, parsed.provider, parsed.model)
 
   const base = resolveEffortProviderOptions({
     model: entry ?? { id: parsed.model },
