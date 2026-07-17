@@ -2,7 +2,7 @@
  * Agent permission modes — an axis orthogonal to chat/agent/plan agent-mode.
  *
  * The mode decides whether a tool call is gated behind user approval, expressed
- * as pure predicates the tool factories evaluate at `needsApproval` time. This
+ * as pure predicates the `toolApproval` policies evaluate per call. This
  * replaces the deleted central permission-engine: there is no risk-tiering rule
  * evaluator, only three modes and a small destructive-command classifier.
  *

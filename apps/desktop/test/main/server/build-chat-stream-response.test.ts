@@ -35,6 +35,7 @@ vi.mock("@/main/agents/minimal/agent-loop", () => ({
 
 vi.mock("@/main/agents/minimal/agent-toolset", () => ({
   buildAgentSystemPrompt: () => "agent instructions",
+  buildAgentToolApproval: () => ({}),
   buildAgentToolset: () => ({})
 }))
 

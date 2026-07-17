@@ -5,7 +5,13 @@ import type {
   UIMessageChunk,
   UIMessageStreamWriter
 } from "ai"
-import { jsonSchema, isStepCount, streamText, tool } from "ai"
+import {
+  isStepCount,
+  jsonSchema,
+  streamText,
+  tool,
+  toUIMessageStream
+} from "ai"
 import { z } from "zod"
 
 import {
@@ -443,7 +449,7 @@ const gateChildToolCall = async ({
 
 /**
  * Write/edit/bash for a writable delegated child. Unlike the parent's tools these
- * do NOT use the AI SDK `needsApproval` suspend path (that would tear down
+ * do NOT use the AI SDK `toolApproval` suspend path (that would tear down
  * sibling children): each execute gates approval inline via {@link gateChildToolCall}
  * using the same pure predicates the parent uses, then edit/write place a write
  * claim so parallel children never clobber a shared file. Reuses the parent's
@@ -797,7 +803,7 @@ export const runDelegatedAgent = async ({
   try {
     await forwardSubagentStream({
       childRunId,
-      stream: result.toUIMessageStream({ sendReasoning: true }),
+      stream: toUIMessageStream({ sendReasoning: true, stream: result.stream }),
       writer
     })
     const text = await result.text

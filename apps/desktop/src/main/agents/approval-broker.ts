@@ -1,7 +1,7 @@
 /**
  * In-process approval broker for delegated writable sub-agents.
  *
- * A writable child's edit/write/bash call cannot use the AI SDK `needsApproval`
+ * A writable child's edit/write/bash call cannot use the AI SDK `toolApproval`
  * suspend path the parent uses: the child runs *inside* one of the parent's tool
  * `execute` calls, so suspending the parent stream would tear down every other
  * child running in parallel. Instead the child blocks *inside* its own execute on

@@ -509,7 +509,7 @@ const SessionContextMenu = ({
       style={{ left: state.x, top: state.y }}
     >
       <button
-        className="flex w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-1.5 text-left text-inherit transition-colors outline-none hover:bg-white/8 focus-visible:bg-white/8 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="flex w-full items-center gap-2 rounded-lg border-0 bg-transparent px-2.5 py-1.5 text-left text-inherit transition-colors outline-none hover:bg-white/8 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         onClick={handleCopySessionId}
         type="button"
       >
@@ -667,7 +667,7 @@ const ChatSessionItem = ({
               "pointer-events-none opacity-0",
               "group-hover/menu-item:pointer-events-auto group-hover/menu-item:opacity-100",
               "group-focus-within/menu-item:pointer-events-auto group-focus-within/menu-item:opacity-100",
-              "hover:text-sidebar-accent-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-50"
+              "hover:text-sidebar-accent-foreground focus-visible:pointer-events-auto focus-visible:opacity-100"
             )}
             disabled={isArchiving}
             onClick={handleArchiveClick}
@@ -866,10 +866,7 @@ const ProjectGroupSection = ({
       }}
     >
       <div
-        className={cn(
-          PROJECT_GROUP_ROW_CLASS_NAME,
-          "cursor-grab active:cursor-grabbing"
-        )}
+        className={cn(PROJECT_GROUP_ROW_CLASS_NAME, "active:cursor-grabbing")}
         draggable
         onDragStart={(event) => {
           onProjectDragStart(event, group.projectPath)

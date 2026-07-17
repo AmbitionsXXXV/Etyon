@@ -300,12 +300,12 @@ describe("runAgentLoop", () => {
       maxSteps: 8,
       messages: userMessages,
       model: harness.model,
+      toolApproval: { write: "user-approval" },
       tools: {
         write: tool({
           description: "gated tool",
           execute: write,
-          inputSchema: z.object({ path: z.string() }),
-          needsApproval: true
+          inputSchema: z.object({ path: z.string() })
         })
       },
       writer: harness.writer
@@ -352,12 +352,12 @@ describe("runAgentLoop", () => {
         }
       ],
       model: harness.model,
+      toolApproval: { write: "user-approval" },
       tools: {
         write: tool({
           description: "gated tool",
           execute: write,
-          inputSchema: z.object({ path: z.string() }),
-          needsApproval: true
+          inputSchema: z.object({ path: z.string() })
         })
       },
       writer: harness.writer

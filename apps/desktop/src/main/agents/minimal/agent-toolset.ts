@@ -1,10 +1,19 @@
-import type { ToolSet, UIMessage, UIMessageStreamWriter } from "ai"
+import type {
+  ToolApprovalConfiguration,
+  ToolSet,
+  UIMessage,
+  UIMessageStreamWriter
+} from "ai"
 
 import { buildArtifactTool } from "@/main/agents/minimal/artifact-tool"
 import { buildAskUserTool } from "@/main/agents/minimal/ask-user-tool"
-import { buildBashTool } from "@/main/agents/minimal/bash-tool"
+import {
+  buildBashTool,
+  buildBashToolApproval
+} from "@/main/agents/minimal/bash-tool"
 import { buildDelegateTool } from "@/main/agents/minimal/delegation"
 import {
+  buildFileEditToolApproval,
   buildFileTools,
   selectFileTools
 } from "@/main/agents/minimal/file-tools"
@@ -15,7 +24,10 @@ import {
 } from "@/main/agents/minimal/memory-tools"
 import { buildProposePlanTool } from "@/main/agents/minimal/propose-plan-tool"
 import { buildTodoTool } from "@/main/agents/minimal/todo-tool"
-import { buildWorkflowTool } from "@/main/agents/minimal/workflow/workflow-tool"
+import {
+  buildWorkflowTool,
+  buildWorkflowToolApproval
+} from "@/main/agents/minimal/workflow/workflow-tool"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { PARENT_WRITE_HOLDER } from "@/main/agents/write-claims"
 import { getDb } from "@/main/db"
@@ -229,5 +241,31 @@ export const buildAgentToolset = ({
           search_memory: buildSearchMemoryTool({ db: getDb(), projectPath })
         }
       : {})
+  }
+}
+
+/**
+ * Call-site approval policy for the parent loop's gated tools (v7
+ * `toolApproval`). Built unconditionally for every gated tool name: entries for
+ * tools absent from the assembled set are simply never consulted, so this stays
+ * decoupled from the toolset's conditional assembly above. Delegated child
+ * tools keep their own in-execute approval broker and are not gated here.
+ */
+export const buildAgentToolApproval = ({
+  permissionMode,
+  projectPath
+}: {
+  permissionMode: AgentPermissionMode
+  projectPath: string
+}): ToolApprovalConfiguration<ToolSet, never> => {
+  const settings = getSettings()
+  const workspace = getWorkspaceCore(projectPath)
+  const fileEditApproval = buildFileEditToolApproval(permissionMode)
+
+  return {
+    bash: buildBashToolApproval(workspace, permissionMode, settings.agents),
+    edit: fileEditApproval,
+    workflow: buildWorkflowToolApproval(permissionMode),
+    write: fileEditApproval
   }
 }

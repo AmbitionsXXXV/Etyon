@@ -240,10 +240,11 @@ const stripPendingApprovalRequests = ({
 
 /**
  * True when the conversation already carries a `tool-approval-request` for the
- * given tool call. Used by `needsApproval` implementations to stay `true` for
- * calls that were already surfaced to the user: the AI SDK revalidates approved
- * calls on resume and DENIES any whose `needsApproval` flipped to false (reason
- * "does not require approval"), so an answer-time state change — e.g.
+ * given tool call. Used by `toolApproval` policies to stay gated for calls
+ * that were already surfaced to the user: the AI SDK revalidates approved
+ * calls on resume and DENIES any whose approval decision flipped to
+ * not-applicable (reason "does not require approval"), so an answer-time
+ * state change — e.g.
  * approve-and-remember allowlisting the command, or a permission-mode switch
  * while suspended — must never retroactively change the question.
  */
@@ -268,7 +269,7 @@ export const hasApprovalRequestForToolCall = (
 
 /**
  * Convenience wrapper over {@link hasApprovalRequestForToolCall} taking the
- * options object the AI SDK passes to a tool's `needsApproval`.
+ * options object the AI SDK passes to a `toolApproval` policy function.
  */
 export const keepsExistingApprovalGate = (context?: {
   messages?: readonly ModelMessage[]

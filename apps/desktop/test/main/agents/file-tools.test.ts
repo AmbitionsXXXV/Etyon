@@ -4,7 +4,10 @@ import path from "node:path"
 
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
-import { buildFileTools } from "@/main/agents/minimal/file-tools"
+import {
+  buildFileEditToolApproval,
+  buildFileTools
+} from "@/main/agents/minimal/file-tools"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 
 vi.mock("@/main/agents/checkpoints", () => ({
@@ -36,13 +39,9 @@ afterAll(() => {
   fs.rmSync(projectPath, { force: true, recursive: true })
 })
 
-const callNeedsApproval = (value: unknown): unknown =>
-  (value as (input: unknown, options: unknown) => unknown)({}, {})
-
 describe("file tools", () => {
-  it("marks edit and write as approval-gated and the rest as free", () => {
-    expect(callNeedsApproval(tools.edit.needsApproval)).toBe(true)
-    expect(callNeedsApproval(tools.write.needsApproval)).toBe(true)
+  it("gates edit and write via the call-site approval policy, never read/ls/grep", () => {
+    expect(buildFileEditToolApproval("default")({}, {})).toBe("user-approval")
     expect(tools.read.needsApproval).toBeFalsy()
     expect(tools.ls.needsApproval).toBeFalsy()
     expect(tools.grep.needsApproval).toBeFalsy()

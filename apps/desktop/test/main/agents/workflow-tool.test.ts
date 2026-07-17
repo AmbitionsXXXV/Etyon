@@ -8,7 +8,10 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 import { startAgentRun } from "@/main/agents/agent-event-store"
 import type { DelegateToolContext } from "@/main/agents/minimal/delegation"
 import type * as WorkflowEngine from "@/main/agents/minimal/workflow/engine"
-import { buildWorkflowTool } from "@/main/agents/minimal/workflow/workflow-tool"
+import {
+  buildWorkflowTool,
+  buildWorkflowToolApproval
+} from "@/main/agents/minimal/workflow/workflow-tool"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -372,40 +375,15 @@ describe("buildWorkflowTool execute path", () => {
   })
 })
 
-type NeedsApprovalFn = (
-  input: unknown,
-  options: unknown
-) => boolean | Promise<boolean>
-
 describe("buildWorkflowTool approval gating", () => {
-  // A gate check needs no DB: build a lightweight context and read the tool's
-  // needsApproval directly. buildCtx's chat-session row is irrelevant here, and
-  // the execute-path suite above tears down the shared home dir in afterAll.
-  const gateFor = (
-    permissionMode: DelegateToolContext["permissionMode"]
-  ): NeedsApprovalFn => {
-    const ctx: DelegateToolContext = {
-      chatSessionId: "session",
-      parentModelId: null,
-      parentProfile: fakeParentProfile(),
-      parentRunId: "run",
-      permissionMode,
-      projectPath: "/tmp"
-    }
-
-    return (
-      buildWorkflowTool(ctx) as unknown as { needsApproval: NeedsApprovalFn }
-    ).needsApproval
-  }
-
-  it("gates script execution outside bypass mode", async () => {
-    const needsApproval = gateFor("default")
-
-    expect(typeof needsApproval).toBe("function")
-    expect(await needsApproval({}, {})).toBe(true)
+  // A gate check needs no DB: the call-site approval policy is a pure function
+  // of the permission mode. The execute-path suite above tears down the shared
+  // home dir in afterAll.
+  it("gates script execution outside bypass mode", () => {
+    expect(buildWorkflowToolApproval("default")()).toBe("user-approval")
   })
 
-  it("auto-runs the script without approval in bypass mode", async () => {
-    expect(await gateFor("bypass")({}, {})).toBe(false)
+  it("auto-runs the script without approval in bypass mode", () => {
+    expect(buildWorkflowToolApproval("bypass")()).toBe(undefined)
   })
 })

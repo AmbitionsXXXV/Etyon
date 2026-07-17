@@ -1,3 +1,4 @@
+import type { ToolApprovalStatus } from "ai"
 import { tool } from "ai"
 import { z } from "zod"
 
@@ -18,6 +19,7 @@ import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
 import { getSettings } from "@/main/settings"
 import { needsWorkflowApproval } from "@/shared/agents/permission-mode"
+import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveProfileById } from "@/shared/agents/profiles"
 import { WORKFLOW_CHILD_PROFILE_ID } from "@/shared/agents/subagent-tools"
 
@@ -72,7 +74,6 @@ export const buildWorkflowTool = ({
   chatSessionId,
   parentModelId,
   parentRunId,
-  permissionMode,
   projectPath,
   writer
 }: DelegateToolContext) =>
@@ -237,6 +238,13 @@ export const buildWorkflowTool = ({
         args: z.unknown().optional(),
         script: z.string().min(1)
       })
-      .strict(),
-    needsApproval: () => needsWorkflowApproval(permissionMode)
+      .strict()
   })
+
+/**
+ * Call-site approval policy for the workflow tool (v7 `toolApproval`),
+ * replacing the deprecated tool-level `needsApproval` with identical semantics.
+ */
+export const buildWorkflowToolApproval =
+  (permissionMode: AgentPermissionMode) => (): ToolApprovalStatus =>
+    needsWorkflowApproval(permissionMode) ? "user-approval" : undefined

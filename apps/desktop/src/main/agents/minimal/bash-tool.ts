@@ -3,6 +3,7 @@ import fsSync from "node:fs"
 import path from "node:path"
 
 import type { AgentCommandApprovalRule, AgentSettings } from "@etyon/rpc"
+import type { ModelMessage, ToolApprovalStatus } from "ai"
 import { tool } from "ai"
 import { z } from "zod"
 
@@ -134,7 +135,7 @@ const appendTail = ({
  * Runs a shell command from `cwd`, capturing bounded stdout/stderr tails.
  * Exported so a writable delegated child reuses the exact spawn/timeout/abort
  * behavior of the parent's bash tool (the child gates approval in its own
- * execute rather than via the AI SDK `needsApproval` path).
+ * execute rather than via the AI SDK `toolApproval` suspend path).
  */
 export const runShellCommand = ({
   command,
@@ -268,7 +269,7 @@ export const runShellCommand = ({
 
 /**
  * Runs an arbitrary shell command from the project root. Every call is
- * approval-gated (see needsApproval) unless the exact command was remembered
+ * approval-gated (see buildBashToolApproval) unless the exact command was remembered
  * for this project. Non-zero exit codes, timeouts, and aborts all resolve with
  * a structured result — only a spawn failure throws.
  */
@@ -311,29 +312,45 @@ export const buildBashTool = (
         }
       }
     },
-    inputSchema: BashInputSchema,
-    needsApproval: (inputData, context) => {
-      // A call that already asked for approval stays approval-gated so the
-      // SDK's resume revalidation honors the user's answer: approve-and-remember
-      // allowlists the command BEFORE the resume, and a flipped needsApproval
-      // would turn that approval into an automatic denial.
-      if (keepsExistingApprovalGate(context)) {
-        return true
-      }
-
-      const isRemembered = matchesCommandAllowlist({
-        allowlist: settings.approvals.commandAllowlist,
-        approvalTtlMs: settings.approvals.approvalTtlMs,
-        command: inputData.command,
-        nowMs: Date.now(),
-        projectPath: workspace.projectPath,
-        toolName: BASH_TOOL_NAME
-      })
-
-      return needsShellApproval({
-        command: inputData.command,
-        isRemembered,
-        mode: permissionMode
-      })
-    }
+    inputSchema: BashInputSchema
   })
+
+/**
+ * Call-site approval policy for the bash tool (v7 `toolApproval`), replacing
+ * the deprecated tool-level `needsApproval` with identical semantics.
+ */
+export const buildBashToolApproval =
+  (
+    workspace: WorkspaceCore,
+    permissionMode: AgentPermissionMode,
+    settings: Pick<AgentSettings, "approvals">
+  ) =>
+  (
+    inputData: z.infer<typeof BashInputSchema>,
+    context: { messages?: readonly ModelMessage[]; toolCallId?: string }
+  ): ToolApprovalStatus => {
+    // A call that already asked for approval stays approval-gated so the
+    // SDK's resume revalidation honors the user's answer: approve-and-remember
+    // allowlists the command BEFORE the resume, and a flipped decision
+    // would turn that approval into an automatic denial.
+    if (keepsExistingApprovalGate(context)) {
+      return "user-approval"
+    }
+
+    const isRemembered = matchesCommandAllowlist({
+      allowlist: settings.approvals.commandAllowlist,
+      approvalTtlMs: settings.approvals.approvalTtlMs,
+      command: inputData.command,
+      nowMs: Date.now(),
+      projectPath: workspace.projectPath,
+      toolName: BASH_TOOL_NAME
+    })
+
+    return needsShellApproval({
+      command: inputData.command,
+      isRemembered,
+      mode: permissionMode
+    })
+      ? "user-approval"
+      : undefined
+  }

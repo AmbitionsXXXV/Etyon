@@ -10,7 +10,8 @@ import {
   consumeStream,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  streamText
+  streamText,
+  toUIMessageStream
 } from "ai"
 
 import {
@@ -23,6 +24,7 @@ import type {
 } from "@/main/agents/minimal/agent-loop"
 import {
   buildAgentSystemPrompt,
+  buildAgentToolApproval,
   buildAgentToolset
 } from "@/main/agents/minimal/agent-toolset"
 import { createChatSmoothingTransform } from "@/main/agents/minimal/chat-stream-smoothing"
@@ -596,9 +598,10 @@ export const buildChatStreamResponse = ({
       writer.merge(
         tapFirstChunkLatency(
           reasoningTimingTap.wrap(
-            result.toUIMessageStream({
+            toUIMessageStream({
               originalMessages: messages,
-              sendReasoning: true
+              sendReasoning: true,
+              stream: result.stream
             })
           ),
           "chat_first_chunk",
@@ -666,6 +669,7 @@ export const buildChatStreamResponse = ({
         : {}),
       system: agentSystem,
       tapUiStream: reasoningTimingTap.wrap,
+      toolApproval: buildAgentToolApproval({ permissionMode, projectPath }),
       tools: agentTools,
       transform: createChatSmoothingTransform(),
       writer: withFirstChunkLatency(writer, {

@@ -43,7 +43,13 @@ vi.mock("electron", () => ({
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof Ai>()
 
-  return { ...actual, streamText: streamTextMock }
+  return {
+    ...actual,
+    streamText: streamTextMock,
+    // Pass-through: these tests feed UI-level chunks directly through the
+    // mocked `result.stream`, exercising forwarding rather than conversion.
+    toUIMessageStream: ({ stream }: { stream: ReadableStream }) => stream
+  }
 })
 
 vi.mock("@/main/server/lib/providers", () => ({
@@ -104,20 +110,19 @@ describe("runDelegatedAgent live forwarding", () => {
       get text() {
         return Promise.resolve("Hello")
       },
-      toUIMessageStream: () =>
-        streamFrom([
-          { id: "t1", type: "text-start" },
-          { delta: "Hel", id: "t1", type: "text-delta" },
-          { delta: "lo", id: "t1", type: "text-delta" },
-          { id: "t1", type: "text-end" },
-          {
-            input: { path: "a.ts" },
-            toolCallId: "c1",
-            toolName: "read",
-            type: "tool-input-available"
-          },
-          { output: "1\tx", toolCallId: "c1", type: "tool-output-available" }
-        ])
+      stream: streamFrom([
+        { id: "t1", type: "text-start" },
+        { delta: "Hel", id: "t1", type: "text-delta" },
+        { delta: "lo", id: "t1", type: "text-delta" },
+        { id: "t1", type: "text-end" },
+        {
+          input: { path: "a.ts" },
+          toolCallId: "c1",
+          toolName: "read",
+          type: "tool-input-available"
+        },
+        { output: "1\tx", toolCallId: "c1", type: "tool-output-available" }
+      ])
     })
 
     const write = vi.fn()
@@ -192,7 +197,7 @@ describe("runDelegatedAgent live forwarding", () => {
       get text() {
         return Promise.reject(new Error("model boom"))
       },
-      toUIMessageStream: () => streamFrom([])
+      stream: streamFrom([])
     })
 
     const write = vi.fn()

@@ -1,3 +1,4 @@
+import type { ModelMessage, ToolApprovalStatus } from "ai"
 import { tool } from "ai"
 import { z } from "zod"
 
@@ -342,10 +343,7 @@ export const buildFileTools = (
 
       return result
     },
-    inputSchema: EditInputSchema,
-    needsApproval: (_inputData, context) =>
-      keepsExistingApprovalGate(context) ||
-      needsFileEditApproval(permissionMode)
+    inputSchema: EditInputSchema
   }),
   grep: tool({
     description:
@@ -473,12 +471,24 @@ export const buildFileTools = (
 
       return result
     },
-    inputSchema: WriteInputSchema,
-    needsApproval: (_inputData, context) =>
-      keepsExistingApprovalGate(context) ||
-      needsFileEditApproval(permissionMode)
+    inputSchema: WriteInputSchema
   })
 })
+
+/**
+ * Call-site approval policy shared by the edit and write tools (v7
+ * `toolApproval`), replacing the deprecated tool-level `needsApproval` with
+ * identical semantics: a call that already asked stays gated on resume.
+ */
+export const buildFileEditToolApproval =
+  (permissionMode: AgentPermissionMode) =>
+  (
+    _inputData: unknown,
+    context: { messages?: readonly ModelMessage[]; toolCallId?: string }
+  ): ToolApprovalStatus =>
+    keepsExistingApprovalGate(context) || needsFileEditApproval(permissionMode)
+      ? "user-approval"
+      : undefined
 
 export type FileTools = ReturnType<typeof buildFileTools>
 

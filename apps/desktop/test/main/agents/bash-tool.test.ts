@@ -9,9 +9,10 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 import { buildAgentToolset } from "@/main/agents/minimal/agent-toolset"
 import {
   buildBashTool,
+  buildBashToolApproval,
   matchesCommandAllowlist
 } from "@/main/agents/minimal/bash-tool"
-import { buildFileTools } from "@/main/agents/minimal/file-tools"
+import { buildFileEditToolApproval } from "@/main/agents/minimal/file-tools"
 import { resetRtkAvailabilityCacheForTests } from "@/main/agents/minimal/rtk-rewrite"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
@@ -262,24 +263,16 @@ printf '%s' "$*"
   })
 })
 
-describe("bash tool needsApproval", () => {
+describe("bash tool approval policy", () => {
   const callNeedsApproval = (
     command: string,
     settings = makeAgentSettings({ rtk: { autoRewrite: false } })
-  ): boolean | Promise<boolean> => {
-    const { needsApproval } = buildBashTool(
+  ): boolean =>
+    buildBashToolApproval(
       getWorkspaceCore(projectPath),
       "default",
       settings
-    ) as unknown as {
-      needsApproval: (
-        input: unknown,
-        options: unknown
-      ) => boolean | Promise<boolean>
-    }
-
-    return needsApproval({ command }, {})
-  }
+    )({ command }, {}) === "user-approval"
 
   it("requires approval when no allowlist entry matches", async () => {
     expect(await callNeedsApproval("vp test")).toBe(true)
@@ -346,9 +339,10 @@ describe("bash tool needsApproval", () => {
     )
   })
 
-  // Resume revalidation: the SDK denies an approved call whose needsApproval
-  // flips to false, so approve-and-remember (which allowlists the command
-  // between the request and the resume) must keep the original call gated.
+  // Resume revalidation: the SDK denies an approved call whose approval
+  // decision flips to not-applicable, so approve-and-remember (which allowlists
+  // the command between the request and the resume) must keep the original
+  // call gated.
   it("stays gated for a call that already has an approval request, even when the command is now remembered", async () => {
     const settings = makeAgentSettings({
       approvals: {
@@ -363,16 +357,13 @@ describe("bash tool needsApproval", () => {
         ]
       }
     })
-    const { needsApproval } = buildBashTool(
-      getWorkspaceCore(projectPath),
-      "default",
-      settings
-    ) as unknown as {
-      needsApproval: (
-        input: unknown,
-        options: unknown
-      ) => boolean | Promise<boolean>
-    }
+    const needsApproval = (input: unknown, options: unknown): boolean =>
+      buildBashToolApproval(
+        getWorkspaceCore(projectPath),
+        "default",
+        settings
+      )(input as { command: string }, options as { toolCallId?: string }) ===
+      "user-approval"
     const messages = [
       {
         content: [
@@ -401,39 +392,25 @@ describe("bash tool needsApproval", () => {
   })
 })
 
+const editNeedsApproval = (
+  mode: AgentPermissionMode,
+  options: unknown = {}
+): boolean =>
+  buildFileEditToolApproval(mode)({}, options as { toolCallId?: string }) ===
+  "user-approval"
+
 describe("permission-mode gating", () => {
   const workspace = getWorkspaceCore(projectPath)
 
   const bashNeedsApproval = (
     mode: AgentPermissionMode,
     command: string
-  ): boolean | Promise<boolean> => {
-    const { needsApproval } = buildBashTool(
+  ): boolean =>
+    buildBashToolApproval(
       workspace,
       mode,
       makeAgentSettings({ rtk: { autoRewrite: false } })
-    ) as unknown as {
-      needsApproval: (
-        input: unknown,
-        options: unknown
-      ) => boolean | Promise<boolean>
-    }
-
-    return needsApproval({ command }, {})
-  }
-
-  const editNeedsApproval = (
-    mode: AgentPermissionMode,
-    options: unknown = {}
-  ): boolean => {
-    const { edit } = buildFileTools(workspace, mode) as unknown as {
-      edit: {
-        needsApproval: (input: unknown, callOptions: unknown) => boolean
-      }
-    }
-
-    return edit.needsApproval({}, options)
-  }
+    )({ command }, {}) === "user-approval"
 
   it("never gates bash in bypass, even for an unremembered safe command", async () => {
     expect(await bashNeedsApproval("bypass", "vp test")).toBe(false)
@@ -456,8 +433,8 @@ describe("permission-mode gating", () => {
     expect(await bashNeedsApproval("bypass", "rm -rf build")).toBe(false)
   })
 
-  it("does not gate a remembered safe command in default", async () => {
-    const { needsApproval } = buildBashTool(
+  it("does not gate a remembered safe command in default", () => {
+    const approval = buildBashToolApproval(
       workspace,
       "default",
       makeAgentSettings({
@@ -473,14 +450,9 @@ describe("permission-mode gating", () => {
           ]
         }
       })
-    ) as unknown as {
-      needsApproval: (
-        input: unknown,
-        options: unknown
-      ) => boolean | Promise<boolean>
-    }
+    )
 
-    expect(await needsApproval({ command: "vp test" }, {})).toBe(false)
+    expect(approval({ command: "vp test" }, {})).toBe(undefined)
   })
 
   it("gates file edits only in default mode", () => {

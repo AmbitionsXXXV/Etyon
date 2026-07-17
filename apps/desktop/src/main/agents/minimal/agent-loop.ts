@@ -3,11 +3,12 @@ import type {
   LanguageModel,
   ModelMessage,
   StreamTextTransform,
+  ToolApprovalConfiguration,
   ToolSet,
   UIMessage,
   UIMessageStreamWriter
 } from "ai"
-import { isStepCount, streamText } from "ai"
+import { isStepCount, streamText, toUIMessageStream } from "ai"
 
 import { CHAT_RUN_LIMIT_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRunLimitData } from "@/shared/chat/stream-data"
@@ -81,6 +82,11 @@ export interface RunAgentLoopOptions {
   tapUiStream?: <TChunk>(
     stream: ReadableStream<TChunk>
   ) => ReadableStream<TChunk>
+  /**
+   * Call-site approval policy for gated tools (v7 `toolApproval`). Policy for a
+   * tool name absent from `tools` is never consulted.
+   */
+  toolApproval?: ToolApprovalConfiguration<ToolSet, never>
   tools: ToolSet
   /**
    * Optional server-side stream transform (e.g. smoothStream re-chunking).
@@ -229,15 +235,17 @@ const buildOptionalStreamSettings = ({
   abortSignal,
   providerOptions,
   system,
+  toolApproval,
   transform
 }: Pick<
   RunAgentLoopOptions,
-  "abortSignal" | "providerOptions" | "system" | "transform"
+  "abortSignal" | "providerOptions" | "system" | "toolApproval" | "transform"
 >) => ({
   ...(abortSignal ? { abortSignal } : {}),
   ...(transform ? { experimental_transform: transform } : {}),
   ...(providerOptions ? { providerOptions } : {}),
-  ...(system ? { instructions: system } : {})
+  ...(system ? { instructions: system } : {}),
+  ...(toolApproval ? { toolApproval } : {})
 })
 
 export const runAgentLoop = async ({
@@ -250,6 +258,7 @@ export const runAgentLoop = async ({
   providerOptions,
   system,
   tapUiStream,
+  toolApproval,
   tools,
   transform,
   writer
@@ -290,6 +299,7 @@ export const runAgentLoop = async ({
     abortSignal,
     providerOptions,
     system,
+    toolApproval,
     transform
   })
 
@@ -311,11 +321,12 @@ export const runAgentLoop = async ({
       // Provider errors surface as in-stream error parts (finishReason
       // "error"), so forward the app's error formatter instead of the SDK's
       // masked default.
-      const uiStream = result.toUIMessageStream({
+      const uiStream = toUIMessageStream({
         onError: describeError,
         sendFinish: false,
         sendReasoning: true,
-        sendStart: stepIndex === 0
+        sendStart: stepIndex === 0,
+        stream: result.stream
       })
       writer.merge(tapUiStream ? tapUiStream(uiStream) : uiStream)
 
