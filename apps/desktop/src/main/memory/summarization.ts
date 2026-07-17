@@ -177,7 +177,7 @@ const generateMemoryToolText = async ({
     abortSignal,
     model: resolveModel(resolution.modelId),
     prompt,
-    system
+    instructions: system
   })
 
   return result.text

@@ -1,10 +1,10 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3Prompt,
-  LanguageModelV3StreamPart
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4Prompt,
+  LanguageModelV4StreamPart
 } from "@ai-sdk/provider"
 import type { LanguageModelMiddleware } from "ai"
 import { generateId } from "ai"
@@ -32,10 +32,10 @@ import type {
  */
 
 type StreamController =
-  TransformStreamDefaultController<LanguageModelV3StreamPart>
+  TransformStreamDefaultController<LanguageModelV4StreamPart>
 
 /** True when a system message carries the injected XML tool spec. */
-const promptHasXmlSentinel = (prompt: LanguageModelV3Prompt): boolean =>
+const promptHasXmlSentinel = (prompt: LanguageModelV4Prompt): boolean =>
   prompt.some(
     (message) =>
       message.role === "system" &&
@@ -56,11 +56,11 @@ const promptHasXmlSentinel = (prompt: LanguageModelV3Prompt): boolean =>
  *   native `tools` / `toolChoice` so the provider never sees them.
  */
 export const transformXmlToolParams = (
-  params: LanguageModelV3CallOptions
-): LanguageModelV3CallOptions => {
+  params: LanguageModelV4CallOptions
+): LanguageModelV4CallOptions => {
   const prompt = convertToolHistoryToXml(params.prompt)
 
-  const functionTools: LanguageModelV3FunctionTool[] = []
+  const functionTools: LanguageModelV4FunctionTool[] = []
   let droppedProviderTools = 0
 
   for (const tool of params.tools ?? []) {
@@ -99,9 +99,9 @@ export const transformXmlToolParams = (
 }
 
 const rewriteFinishReason = (
-  finishReason: LanguageModelV3StreamPart & { type: "finish" },
+  finishReason: LanguageModelV4StreamPart & { type: "finish" },
   sawToolCall: boolean
-): LanguageModelV3StreamPart => {
+): LanguageModelV4StreamPart => {
   if (sawToolCall && finishReason.finishReason.unified === "stop") {
     return {
       ...finishReason,
@@ -126,12 +126,12 @@ const rewriteFinishReason = (
  *   one call was synthesized, so the agent loop keeps going instead of exiting.
  */
 export const createXmlToolStreamTransform = (): TransformStream<
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamPart
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamPart
 > => {
   let parser: XmlToolCallParser | null = null
   let currentTextId = ""
-  let pendingTextStart: LanguageModelV3StreamPart | null = null
+  let pendingTextStart: LanguageModelV4StreamPart | null = null
   let sawToolCall = false
 
   const emitToolCall = (
@@ -177,7 +177,7 @@ export const createXmlToolStreamTransform = (): TransformStream<
   }
 
   const startBlock = (
-    part: LanguageModelV3StreamPart & { type: "text-start" }
+    part: LanguageModelV4StreamPart & { type: "text-start" }
   ): XmlToolCallParser => {
     const created = createXmlToolCallParser()
 
@@ -254,9 +254,9 @@ export const createXmlToolStreamTransform = (): TransformStream<
  * rewrite. Present because memory summarization runs through `generateText`.
  */
 export const rewriteXmlGenerateResult = (
-  result: LanguageModelV3GenerateResult
-): LanguageModelV3GenerateResult => {
-  const content: LanguageModelV3Content[] = []
+  result: LanguageModelV4GenerateResult
+): LanguageModelV4GenerateResult => {
+  const content: LanguageModelV4Content[] = []
   let sawToolCall = false
 
   for (const part of result.content) {
@@ -308,7 +308,7 @@ export const rewriteXmlGenerateResult = (
  * rewrites.
  */
 export const createXmlToolMiddleware = (): LanguageModelMiddleware => ({
-  specificationVersion: "v3",
+  specificationVersion: "v4",
   transformParams: ({ params }) =>
     Promise.resolve(transformXmlToolParams(params)),
   wrapGenerate: async ({ doGenerate, params }) => {

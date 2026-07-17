@@ -295,7 +295,7 @@ const handleTelegramMessage = async ({
     const result = streamText({
       messages,
       model: resolveModel(settings.defaultModel || undefined),
-      system
+      instructions: system
     })
 
     await thread.post(result.textStream)

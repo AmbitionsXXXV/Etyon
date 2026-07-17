@@ -533,7 +533,7 @@ export const buildChatStreamResponse = ({
         }
       },
       onError: describeChatStreamError,
-      onFinish: async ({ isAborted, messages: nextMessages }) => {
+      onEnd: async ({ isAborted, messages: nextMessages }) => {
         await executeSettled
 
         // The run (and every delegated child under it) has settled, so drop this
@@ -582,7 +582,7 @@ export const buildChatStreamResponse = ({
               abortSignal,
               experimental_transform: createChatSmoothingTransform(),
               ...(effectiveSystemPrompts.length > 0
-                ? { system: effectiveSystemPrompts.join("\n\n") }
+                ? { instructions: effectiveSystemPrompts.join("\n\n") }
                 : {}),
               ...(effortProviderOptions
                 ? { providerOptions: effortProviderOptions }

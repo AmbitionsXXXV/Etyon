@@ -158,7 +158,7 @@ describe("buildChatStreamResponse", () => {
 
     const streamOptions = streamTextMock.mock.calls[0]?.[0]
 
-    expect(streamOptions?.system).toBe("base system")
+    expect(streamOptions?.instructions).toBe("base system")
     expect(streamOptions?.messages).toEqual(options.modelMessages)
     expect(readWorkspaceRulesMock).not.toHaveBeenCalled()
     expect(options.onFinishPersist).toHaveBeenCalledTimes(1)

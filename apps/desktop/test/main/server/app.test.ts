@@ -138,7 +138,7 @@ vi.mock("ai", async (importOriginal) => {
   return {
     ...actual,
     convertToModelMessages: convertToModelMessagesMock,
-    stepCountIs: stepCountIsMock,
+    isStepCount: stepCountIsMock,
     streamText: streamTextMock,
     tool: (definition: unknown) => definition
   }
@@ -475,7 +475,7 @@ describe("hono app", () => {
     })
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        system:
+        instructions:
           "session memory context\n\nproject digest context\n\nskills context\n\nsnapshot context"
       })
     )

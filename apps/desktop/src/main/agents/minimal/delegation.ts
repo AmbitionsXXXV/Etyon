@@ -5,7 +5,7 @@ import type {
   UIMessageChunk,
   UIMessageStreamWriter
 } from "ai"
-import { jsonSchema, stepCountIs, streamText, tool } from "ai"
+import { jsonSchema, isStepCount, streamText, tool } from "ai"
 import { z } from "zod"
 
 import {
@@ -763,8 +763,8 @@ export const runDelegatedAgent = async ({
   const result = streamText({
     model: resolveModel(modelId ?? undefined),
     prompt,
-    stopWhen: stepCountIs(maxSteps ?? CHILD_MAX_STEPS),
-    system: childSystemPrompt(childProfile, canChildWrite),
+    stopWhen: isStepCount(maxSteps ?? CHILD_MAX_STEPS),
+    instructions: childSystemPrompt(childProfile, canChildWrite),
     tools,
     ...(abortSignal ? { abortSignal } : {})
   })

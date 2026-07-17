@@ -25,9 +25,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.97",
-    "@ai-sdk/gateway": "^3.0.152",
-    "@ai-sdk/openai": "^3.0.85",
+    "@ai-sdk/anthropic": "^4.0.16",
+    "@ai-sdk/gateway": "^4.0.23",
+    "@ai-sdk/openai": "^4.0.16",
+    "@ai-sdk/provider": "^4.0.3",
+    "@ai-sdk/provider-utils": "^5.0.11",
     "@bufbuild/protobuf": "^2.12.1",
     "@chat-adapter/state-memory": "^4.34.0",
     "@chat-adapter/telegram": "^4.34.0",
@@ -55,7 +57,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "acorn": "^8.17.0",
-    "ai": "^6.0.229",
+    "ai": "^7.0.31",
     "ansi-to-react": "^6.2.6",
     "chat": "^4.34.0",
     "date-fns": "^4.4.0",
@@ -74,7 +76,7 @@
     "undici": "^8.7.0"
   },
   "devDependencies": {
-    "@ai-sdk/react": "^3.0.231",
+    "@ai-sdk/react": "^4.0.34",
     "@electron-forge/cli": "^7.11.2",
     "@electron-forge/maker-deb": "^7.11.2",
     "@electron-forge/maker-dmg": "^7.11.2",

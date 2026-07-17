@@ -200,7 +200,7 @@ describe("agent delegation", () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const output = await tools.read.execute!(
       { path: "large.txt" },
-      { messages: [], toolCallId: "tc-read-1" }
+      { context: {}, messages: [], toolCallId: "tc-read-1" }
     )
 
     const outputStr = String(output)
@@ -224,7 +224,7 @@ describe("agent delegation", () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const output = await tools.ls.execute!(
       { path: "." },
-      { messages: [], toolCallId: "tc-ls-1" }
+      { context: {}, messages: [], toolCallId: "tc-ls-1" }
     )
 
     const outputStr = String(output)
@@ -252,7 +252,7 @@ describe("agent delegation", () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const output = await tools.grep.execute!(
       { pattern: "FIND_ME" },
-      { messages: [], toolCallId: "tc-grep-1" }
+      { context: {}, messages: [], toolCallId: "tc-grep-1" }
     )
 
     const outputStr = String(output)

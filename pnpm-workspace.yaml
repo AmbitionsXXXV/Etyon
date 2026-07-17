@@ -125,10 +125,14 @@ minimumReleaseAgeExclude:
   - "@voidzero-dev/vite-plus-win32-x64-msvc@0.1.23 || 0.2.5"
   - vite-plus@0.1.23 || 0.2.5
   - "@vitejs/devtools@0.3.4"
-  - "@ai-sdk/gateway@3.0.126 || 3.0.152"
-  - "@ai-sdk/react@3.0.200 || 3.0.231"
+  - "@ai-sdk/anthropic@4.0.16"
+  - "@ai-sdk/gateway@3.0.126 || 3.0.152 || 4.0.23"
+  - "@ai-sdk/openai@4.0.16"
+  - "@ai-sdk/provider@4.0.3"
+  - "@ai-sdk/provider-utils@5.0.11"
+  - "@ai-sdk/react@3.0.200 || 3.0.231 || 4.0.34"
   - "@pierre/diffs@1.2.8"
-  - ai@6.0.198 || 6.0.229
+  - ai@6.0.198 || 6.0.229 || 7.0.31
   - "@heroui/react@3.2.0 || 3.2.2"
   - "@heroui/styles@3.2.0 || 3.2.2"
   - ultracite@7.9.2
@@ -148,3 +152,4 @@ minimumReleaseAgeExclude:
   - "@tailwindcss/oxide@4.3.3"
   - "@tailwindcss/vite@4.3.3"
   - tailwindcss@4.3.3
+  - "@ai-sdk/mcp@2.0.15"

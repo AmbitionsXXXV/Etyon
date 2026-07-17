@@ -267,7 +267,7 @@ export const resolveModel = (modelId?: string): LanguageModel => {
   const stored = findStoredModel(aiSettings, provider, model)
 
   // Wrap only when the stored model is explicitly flagged as lacking a native
-  // tool API. The v3 object guard is required because `LanguageModel` may be a
+  // tool API. The v4 object guard is required because `LanguageModel` may be a
   // bare model-id string, and it keeps plain-object test mocks unwrapped.
   if (
     stored &&
@@ -275,7 +275,7 @@ export const resolveModel = (modelId?: string): LanguageModel => {
     typeof instance === "object" &&
     instance !== null &&
     "specificationVersion" in instance &&
-    instance.specificationVersion === "v3"
+    instance.specificationVersion === "v4"
   ) {
     return wrapLanguageModel({
       middleware: createXmlToolMiddleware(),

@@ -1,4 +1,4 @@
-import type { LanguageModelV3Prompt } from "@ai-sdk/provider"
+import type { LanguageModelV4Prompt } from "@ai-sdk/provider"
 import { describe, expect, it } from "vite-plus/test"
 
 import {
@@ -56,7 +56,7 @@ const coalesce = (events: XmlToolParserEvent[]): XmlToolParserEvent[] => {
 const parse = (input: string): XmlToolParserEvent[] =>
   coalesce(collectEvents([input]))
 
-const firstUserText = (prompt: LanguageModelV3Prompt): string => {
+const firstUserText = (prompt: LanguageModelV4Prompt): string => {
   const [message] = prompt
 
   if (message?.role !== "user") {
@@ -289,7 +289,7 @@ describe("createXmlToolCallParser", () => {
 
 describe("convertToolHistoryToXml", () => {
   it("rewrites an assistant tool-call part as tool_call text with an id", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           {
@@ -325,7 +325,7 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("rewrites a tool message as a user tool_result message", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           {
@@ -359,7 +359,7 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("marks error-json output with is_error and serializes the value", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           {
@@ -380,7 +380,7 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("renders execution-denied output as a denial with is_error", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           {
@@ -401,7 +401,7 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("renders content-type output with file placeholders", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           {
@@ -409,7 +409,11 @@ describe("convertToolHistoryToXml", () => {
               type: "content",
               value: [
                 { text: "here is the image", type: "text" },
-                { data: "AAAA", mediaType: "image/png", type: "image-data" }
+                {
+                  data: { data: "AAAA", type: "data" },
+                  mediaType: "image/png",
+                  type: "file"
+                }
               ]
             },
             toolCallId: "call-1",
@@ -429,7 +433,7 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("drops a tool message that has only approval-response parts", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       {
         content: [
           { approvalId: "a1", approved: false, type: "tool-approval-response" }
@@ -442,11 +446,17 @@ describe("convertToolHistoryToXml", () => {
   })
 
   it("leaves a user message with a file part untouched (same reference)", () => {
-    const userMessage: LanguageModelV3Prompt[number] = {
-      content: [{ data: "AAAA", mediaType: "image/png", type: "file" }],
+    const userMessage: LanguageModelV4Prompt[number] = {
+      content: [
+        {
+          data: { data: "AAAA", type: "data" },
+          mediaType: "image/png",
+          type: "file"
+        }
+      ],
       role: "user"
     }
-    const prompt: LanguageModelV3Prompt = [userMessage]
+    const prompt: LanguageModelV4Prompt = [userMessage]
 
     const [out] = convertToolHistoryToXml(prompt)
 
@@ -456,7 +466,7 @@ describe("convertToolHistoryToXml", () => {
 
 describe("appendToSystemPrompt", () => {
   it("appends to the first system message when one exists", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       { content: "BASE", role: "system" },
       { content: [{ text: "hi", type: "text" }], role: "user" }
     ]
@@ -468,7 +478,7 @@ describe("appendToSystemPrompt", () => {
   })
 
   it("prepends a new system message when none exists", () => {
-    const prompt: LanguageModelV3Prompt = [
+    const prompt: LanguageModelV4Prompt = [
       { content: [{ text: "hi", type: "text" }], role: "user" }
     ]
 

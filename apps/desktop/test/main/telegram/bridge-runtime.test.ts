@@ -427,7 +427,7 @@ describe("telegram bridge runtime", () => {
     )
     expect(streamTextMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        system: expect.stringContaining("Shared memory: dense UI")
+        instructions: expect.stringContaining("Shared memory: dense UI")
       })
     )
     expect(upsertChatbotMemoryEntryMock).toHaveBeenCalledWith(

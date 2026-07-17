@@ -1,12 +1,14 @@
 import type {
-  LanguageModelV3FilePart,
-  LanguageModelV3Message,
-  LanguageModelV3Prompt,
-  LanguageModelV3ReasoningPart,
-  LanguageModelV3TextPart,
-  LanguageModelV3ToolChoice,
-  LanguageModelV3ToolResultOutput,
-  LanguageModelV3ToolResultPart
+  LanguageModelV4CustomPart,
+  LanguageModelV4FilePart,
+  LanguageModelV4Message,
+  LanguageModelV4Prompt,
+  LanguageModelV4ReasoningFilePart,
+  LanguageModelV4ReasoningPart,
+  LanguageModelV4TextPart,
+  LanguageModelV4ToolChoice,
+  LanguageModelV4ToolResultOutput,
+  LanguageModelV4ToolResultPart
 } from "@ai-sdk/provider"
 
 /**
@@ -14,7 +16,8 @@ import type {
  * give tool use to models whose provider has no native function-calling API.
  * Everything here is a pure function or constant — it imports only types from
  * `@ai-sdk/provider` and holds no shared mutable state. The middleware (a
- * separate module) wires these into a `LanguageModelV3` via `wrapLanguageModel`.
+ * separate module) wires these into a `LanguageModelV4` model via
+ * `wrapLanguageModel`.
  */
 
 /** XML tag the model writes to invoke a tool. */
@@ -55,7 +58,7 @@ const TOOL_NAME_ATTR_RE = /name\s*=\s*"([^"]+)"/u
 const BOUNDARY_RE = /[\s/>]/u
 
 const buildToolChoiceInstruction = (
-  toolChoice?: LanguageModelV3ToolChoice
+  toolChoice?: LanguageModelV4ToolChoice
 ): string | null => {
   if (toolChoice?.type === "required") {
     return "You MUST call a tool in your next reply."
@@ -90,7 +93,7 @@ const buildToolBlock = (tool: XmlSpecTool): string => {
  */
 export const buildXmlToolSystemPrompt = (
   tools: readonly XmlSpecTool[],
-  options?: { toolChoice?: LanguageModelV3ToolChoice }
+  options?: { toolChoice?: LanguageModelV4ToolChoice }
 ): string => {
   const sections = [
     XML_TOOL_PROMPT_HEADER,
@@ -145,7 +148,7 @@ const toolCallEvent = (
   input: string
 ): XmlToolParserEvent => ({ input, toolName, type: "tool-call" })
 
-const textPart = (text: string): LanguageModelV3TextPart => ({
+const textPart = (text: string): LanguageModelV4TextPart => ({
   text,
   type: "text"
 })
@@ -314,7 +317,7 @@ export const createXmlToolCallParser = (): XmlToolCallParser => {
 }
 
 const renderToolResultOutput = (
-  output: LanguageModelV3ToolResultOutput
+  output: LanguageModelV4ToolResultOutput
 ): { isError: boolean; text: string } => {
   switch (output.type) {
     case "text": {
@@ -352,7 +355,7 @@ const renderToolResultOutput = (
   }
 }
 
-const renderToolResultPart = (part: LanguageModelV3ToolResultPart): string => {
+const renderToolResultPart = (part: LanguageModelV4ToolResultPart): string => {
   const { isError, text } = renderToolResultOutput(part.output)
   const errorAttr = isError ? ' is_error="true"' : ""
 
@@ -367,12 +370,14 @@ const renderToolCallText = (
   `<${XML_TOOL_CALL_TAG} name="${toolName}" id="${toolCallId}">\n${JSON.stringify(input)}\n</${XML_TOOL_CALL_TAG}>`
 
 const convertAssistantMessage = (
-  message: Extract<LanguageModelV3Message, { role: "assistant" }>
-): LanguageModelV3Message => {
+  message: Extract<LanguageModelV4Message, { role: "assistant" }>
+): LanguageModelV4Message => {
   const content: (
-    | LanguageModelV3FilePart
-    | LanguageModelV3ReasoningPart
-    | LanguageModelV3TextPart
+    | LanguageModelV4CustomPart
+    | LanguageModelV4FilePart
+    | LanguageModelV4ReasoningFilePart
+    | LanguageModelV4ReasoningPart
+    | LanguageModelV4TextPart
   )[] = []
 
   for (const part of message.content) {
@@ -393,9 +398,9 @@ const convertAssistantMessage = (
 }
 
 const convertToolMessage = (
-  message: Extract<LanguageModelV3Message, { role: "tool" }>
-): LanguageModelV3Message | null => {
-  const content: LanguageModelV3TextPart[] = []
+  message: Extract<LanguageModelV4Message, { role: "tool" }>
+): LanguageModelV4Message | null => {
+  const content: LanguageModelV4TextPart[] = []
 
   for (const part of message.content) {
     if (part.type === "tool-result") {
@@ -425,9 +430,9 @@ const convertToolMessage = (
  * Consecutive user messages are deliberately NOT merged.
  */
 export const convertToolHistoryToXml = (
-  prompt: LanguageModelV3Prompt
-): LanguageModelV3Prompt => {
-  const result: LanguageModelV3Prompt = []
+  prompt: LanguageModelV4Prompt
+): LanguageModelV4Prompt => {
+  const result: LanguageModelV4Prompt = []
 
   for (const message of prompt) {
     if (message.role === "system" || message.role === "user") {
@@ -451,9 +456,9 @@ export const convertToolHistoryToXml = (
  * line). If the prompt has no system message, a new one is prepended.
  */
 export const appendToSystemPrompt = (
-  prompt: LanguageModelV3Prompt,
+  prompt: LanguageModelV4Prompt,
   section: string
-): LanguageModelV3Prompt => {
+): LanguageModelV4Prompt => {
   const systemIndex = prompt.findIndex((message) => message.role === "system")
 
   if (systemIndex === -1) {

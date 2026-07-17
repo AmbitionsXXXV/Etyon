@@ -1,10 +1,10 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3Prompt,
-  LanguageModelV3ProviderTool,
-  LanguageModelV3StreamPart
+  LanguageModelV4CallOptions,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4Prompt,
+  LanguageModelV4ProviderTool,
+  LanguageModelV4StreamPart
 } from "@ai-sdk/provider"
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
@@ -41,7 +41,7 @@ const usage = {
   }
 }
 
-const pingTool: LanguageModelV3FunctionTool = {
+const pingTool: LanguageModelV4FunctionTool = {
   description: "Ping a value",
   inputSchema: {
     properties: { value: { type: "number" } },
@@ -51,14 +51,14 @@ const pingTool: LanguageModelV3FunctionTool = {
   type: "function"
 }
 
-const providerTool: LanguageModelV3ProviderTool = {
+const providerTool: LanguageModelV4ProviderTool = {
   args: {},
   id: "openai.web_search",
   name: "web_search",
   type: "provider"
 }
 
-const userText = (text: string): LanguageModelV3Prompt[number] => ({
+const userText = (text: string): LanguageModelV4Prompt[number] => ({
   content: [{ text, type: "text" }],
   role: "user"
 })
@@ -72,16 +72,16 @@ const finishPart = (
     | "stop"
     | "tool-calls",
   raw = unified
-): LanguageModelV3StreamPart => ({
+): LanguageModelV4StreamPart => ({
   finishReason: { raw, unified },
   type: "finish",
   usage
 })
 
 const collect = async (
-  stream: ReadableStream<LanguageModelV3StreamPart>
-): Promise<LanguageModelV3StreamPart[]> => {
-  const parts: LanguageModelV3StreamPart[] = []
+  stream: ReadableStream<LanguageModelV4StreamPart>
+): Promise<LanguageModelV4StreamPart[]> => {
+  const parts: LanguageModelV4StreamPart[] = []
   const reader = stream.getReader()
 
   while (true) {
@@ -98,8 +98,8 @@ const collect = async (
 }
 
 const makeReadable = (
-  parts: readonly LanguageModelV3StreamPart[]
-): ReadableStream<LanguageModelV3StreamPart> =>
+  parts: readonly LanguageModelV4StreamPart[]
+): ReadableStream<LanguageModelV4StreamPart> =>
   new ReadableStream({
     start(controller) {
       for (const part of parts) {
@@ -111,17 +111,17 @@ const makeReadable = (
   })
 
 const runTransform = (
-  parts: readonly LanguageModelV3StreamPart[]
-): Promise<LanguageModelV3StreamPart[]> =>
+  parts: readonly LanguageModelV4StreamPart[]
+): Promise<LanguageModelV4StreamPart[]> =>
   collect(makeReadable(parts).pipeThrough(createXmlToolStreamTransform()))
 
 const textBlock = (
   id: string,
   deltas: readonly string[]
-): LanguageModelV3StreamPart[] => [
+): LanguageModelV4StreamPart[] => [
   { id, type: "text-start" },
   ...deltas.map(
-    (delta): LanguageModelV3StreamPart => ({ delta, id, type: "text-delta" })
+    (delta): LanguageModelV4StreamPart => ({ delta, id, type: "text-delta" })
   ),
   { id, type: "text-end" }
 ]
@@ -132,7 +132,7 @@ beforeEach(() => {
 
 describe("transformXmlToolParams", () => {
   it("strips tools and appends the spec to the existing system message", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ content: "You are helpful.", role: "system" }, userText("hi")],
       toolChoice: { type: "auto" },
       tools: [pingTool]
@@ -161,7 +161,7 @@ describe("transformXmlToolParams", () => {
   })
 
   it("prepends a system message when the prompt has none", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [userText("hi")],
       tools: [pingTool]
     }
@@ -176,7 +176,7 @@ describe("transformXmlToolParams", () => {
   })
 
   it("converts prior tool history but injects no sentinel when there are no tools", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
           content: [
@@ -204,7 +204,7 @@ describe("transformXmlToolParams", () => {
   })
 
   it("drops provider-defined tools with a warning", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ content: "sys", role: "system" }],
       tools: [pingTool, providerTool]
     }
@@ -223,7 +223,7 @@ describe("transformXmlToolParams", () => {
   })
 
   it("injects no spec when toolChoice is none", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ content: "sys", role: "system" }],
       toolChoice: { type: "none" },
       tools: [pingTool]
@@ -237,7 +237,7 @@ describe("transformXmlToolParams", () => {
   })
 
   it("clears toolChoice and adds the required instruction", () => {
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ content: "sys", role: "system" }],
       toolChoice: { type: "required" },
       tools: [pingTool]
@@ -420,9 +420,9 @@ describe("createXmlToolStreamTransform", () => {
 
 describe("createXmlToolMiddleware wrapStream", () => {
   const runWrapStream = async (
-    prompt: LanguageModelV3Prompt,
-    parts: readonly LanguageModelV3StreamPart[]
-  ): Promise<LanguageModelV3StreamPart[]> => {
+    prompt: LanguageModelV4Prompt,
+    parts: readonly LanguageModelV4StreamPart[]
+  ): Promise<LanguageModelV4StreamPart[]> => {
     const middleware = createXmlToolMiddleware()
     const { wrapStream } = middleware
 
@@ -439,13 +439,13 @@ describe("createXmlToolMiddleware wrapStream", () => {
         specificationVersion: "v3",
         supportedUrls: {}
       } as never,
-      params: { prompt } as LanguageModelV3CallOptions
+      params: { prompt } as LanguageModelV4CallOptions
     })
 
     return collect(result.stream)
   }
 
-  const streamWithCall: LanguageModelV3StreamPart[] = [
+  const streamWithCall: LanguageModelV4StreamPart[] = [
     ...textBlock("t1", ['<tool_call name="ping">{}</tool_call>']),
     finishPart("stop")
   ]
@@ -478,7 +478,7 @@ describe("createXmlToolMiddleware wrapStream", () => {
 
 describe("rewriteXmlGenerateResult", () => {
   it("splits mixed text and tool blocks and rewrites the finish reason", () => {
-    const result: LanguageModelV3GenerateResult = {
+    const result: LanguageModelV4GenerateResult = {
       content: [
         {
           text: 'Sure. <tool_call name="ping">{"value":1}</tool_call> done',
@@ -507,7 +507,7 @@ describe("rewriteXmlGenerateResult", () => {
   })
 
   it("leaves pure text content and its finish reason untouched", () => {
-    const result: LanguageModelV3GenerateResult = {
+    const result: LanguageModelV4GenerateResult = {
       content: [{ text: "just an answer", type: "text" }],
       finishReason: { raw: "stop", unified: "stop" },
       usage,

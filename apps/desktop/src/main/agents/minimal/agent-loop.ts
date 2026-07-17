@@ -7,7 +7,7 @@ import type {
   UIMessage,
   UIMessageStreamWriter
 } from "ai"
-import { stepCountIs, streamText } from "ai"
+import { isStepCount, streamText } from "ai"
 
 import { CHAT_RUN_LIMIT_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRunLimitData } from "@/shared/chat/stream-data"
@@ -237,7 +237,7 @@ const buildOptionalStreamSettings = ({
   ...(abortSignal ? { abortSignal } : {}),
   ...(transform ? { experimental_transform: transform } : {}),
   ...(providerOptions ? { providerOptions } : {}),
-  ...(system ? { system } : {})
+  ...(system ? { instructions: system } : {})
 })
 
 export const runAgentLoop = async ({
@@ -304,7 +304,7 @@ export const runAgentLoop = async ({
         messages: history,
         model,
         onError: captureStreamError,
-        stopWhen: stepCountIs(1),
+        stopWhen: isStepCount(1),
         tools
       })
 

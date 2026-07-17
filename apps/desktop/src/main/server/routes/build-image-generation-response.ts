@@ -128,7 +128,7 @@ export const buildImageGenerationStreamResponse = ({
         writer.write({ type: "finish" })
       },
       onError: describeChatStreamError,
-      onFinish: async ({ messages: nextMessages }) => {
+      onEnd: async ({ messages: nextMessages }) => {
         await onFinishPersist(
           attachWorkTimeToLatestAssistantMessage(
             nextMessages,
