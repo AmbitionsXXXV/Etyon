@@ -90,7 +90,7 @@ import {
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
-import { buildPlanIndicatorProps } from "@/renderer/lib/chat/plan-indicator"
+import { buildComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import {
   formatProjectDiffCount,
   getProjectDiffSummary,
@@ -1687,7 +1687,7 @@ const ChatRuntime = ({
       status: "dismissed"
     })
   }, [mutateSessionPlanStatus, selectedSession.id])
-  const planIndicator = buildPlanIndicatorProps({
+  const planQueue = buildComposerPlanQueueProps({
     data: sessionPlanQuery.data,
     isBusy: isPlanStatusPending,
     onDismiss: handleDismissPlan,
@@ -1708,6 +1708,14 @@ const ChatRuntime = ({
     setEditingMessageId(null)
     setEditingMessageText("")
   }, [defaultPermissionMode, selectedSession.id])
+
+  // Switching sessions must drop the previous thread's live todo run: its store
+  // snapshot and plan-queue run id are stale here, and the stream settle that
+  // would normally clear them never fires on a plain session switch.
+  useEffect(() => {
+    setPlanTodoRunId(undefined)
+    clearTodos()
+  }, [selectedSession.id])
 
   // Re-derive the image toggle whenever the selected model changes: a newly
   // capable model defaults ON, a non-capable model forces OFF, and an unchanged
@@ -1958,6 +1966,11 @@ const ChatRuntime = ({
 
     setRequestPhase(null)
     setRequestStartedAt(undefined)
+    // Belt-and-suspenders for the error path where `onFinish` never runs: a
+    // settled turn must release the live todo run so the plan queue falls back
+    // to its header (or hides) instead of pinning a stale checklist.
+    setPlanTodoRunId(undefined)
+    clearTodos()
   }, [status])
   const latestUserMentions = useMemo(() => {
     for (const message of messages.toReversed()) {
@@ -2542,7 +2555,7 @@ const ChatRuntime = ({
             planHintDismissLabel={t("chat.planHint.dismiss")}
             planHintSwitchLabel={t("chat.planHint.switch")}
             planHintTitle={t("chat.planHint.title")}
-            planIndicator={planIndicator}
+            planQueue={planQueue}
             promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
             promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
             promptTemplateItems={promptTemplateItems}

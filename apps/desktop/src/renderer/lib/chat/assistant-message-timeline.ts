@@ -469,23 +469,25 @@ export const groupChainEntries = (
       }
 
       // todo_write maintains one run-wide checklist; collapse repeated updates
-      // to a single entry at the latest call so the fold shows the current list,
-      // not one card per revision.
+      // into a single entry pinned at its FIRST appearance, refreshing the part
+      // in place so the fold shows the current list without jumping to the tail
+      // (or remounting under a new key) on every revision.
       if (toolName === "todo_write") {
         flushToolRun()
         const existingIndex = grouped.findIndex(
           (candidate) => candidate.kind === "todo"
         )
+        const existing = grouped[existingIndex]
 
-        if (existingIndex !== -1) {
-          grouped.splice(existingIndex, 1)
+        if (existing?.kind === "todo") {
+          grouped[existingIndex] = { ...existing, part: entry.part }
+        } else {
+          grouped.push({
+            key: `todo-${entry.part.toolCallId}`,
+            kind: "todo",
+            part: entry.part
+          })
         }
-
-        grouped.push({
-          key: `todo-${entry.part.toolCallId}`,
-          kind: "todo",
-          part: entry.part
-        })
         continue
       }
 

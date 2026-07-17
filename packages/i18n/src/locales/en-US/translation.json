@@ -208,8 +208,10 @@
       "title": "This looks plan-worthy"
     },
     "planIndicator": {
+      "collapseSteps": "Collapse steps",
       "dismiss": "Discard plan",
       "executing": "Executing plan · {title}",
+      "expandSteps": "Expand steps",
       "markDone": "Mark done",
       "more": "Plan options",
       "progress": "{completed}/{total} steps done",

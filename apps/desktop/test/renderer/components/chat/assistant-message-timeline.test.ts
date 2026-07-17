@@ -5,9 +5,10 @@ import type { DynamicToolUIPart } from "ai"
 import { createElement } from "react"
 import type { ReactElement, ReactNode } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vite-plus/test"
+import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
+import { clearTodos, setTodos } from "@/renderer/lib/chat/todo-store"
 
 const TestI18nProvider = I18nProvider as unknown as (props: {
   children?: ReactNode
@@ -290,5 +291,58 @@ describe("AssistantMessageTimeline", () => {
     expect(html).toContain("Streaming response text.")
     expect(html).not.toContain("data-sd-animate")
     expect(html).not.toContain("--streamdown-caret")
+  })
+})
+
+describe("AssistantMessageTimeline todo suppression", () => {
+  const todoMessage = {
+    id: "assistant-1",
+    metadata: {
+      agentProjection: { runId: "run-live", source: "agent_events" }
+    },
+    parts: [
+      {
+        input: {
+          todos: [{ content: "Set up the store", status: "in_progress" }]
+        },
+        state: "output-available",
+        toolCallId: "todo-1",
+        toolName: "todo_write",
+        type: "dynamic-tool"
+      }
+    ],
+    role: "assistant"
+  } as unknown as Parameters<typeof renderTimeline>[0]["message"]
+
+  afterEach(() => {
+    clearTodos()
+  })
+
+  it("suppresses the timeline checklist while the run streams live todos", () => {
+    // The live copy is anchored to the composer's plan queue instead — showing
+    // it here too would double-render the same list.
+    setTodos("run-live", [
+      { content: "Set up the store", status: "in_progress" }
+    ])
+    const html = renderTimeline({ isRunActive: true, message: todoMessage })
+
+    expect(html).not.toContain("Todos")
+    expect(html).not.toContain("Set up the store")
+  })
+
+  it("shows the settled checklist from the persisted part once the run is inactive", () => {
+    const html = renderTimeline({ isRunActive: false, message: todoMessage })
+
+    expect(html).toContain("Todos")
+    expect(html).toContain("Set up the store")
+  })
+
+  it("keeps the persisted checklist on the live first frame before a snapshot arrives", () => {
+    // Run active but the store is still empty for this run: the guard is on live
+    // todos existing, not `isRunActive` alone, so the list must not blink out.
+    const html = renderTimeline({ isRunActive: true, message: todoMessage })
+
+    expect(html).toContain("Todos")
+    expect(html).toContain("Set up the store")
   })
 })

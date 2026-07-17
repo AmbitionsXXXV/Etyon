@@ -208,8 +208,10 @@
       "title": "这个任务适合先规划"
     },
     "planIndicator": {
+      "collapseSteps": "收起步骤",
       "dismiss": "放弃计划",
       "executing": "按计划实施中 · {title}",
+      "expandSteps": "展开步骤",
       "markDone": "标记完成",
       "more": "计划选项",
       "progress": "已完成 {completed}/{total} 步",

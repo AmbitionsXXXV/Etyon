@@ -224,12 +224,13 @@ describe("groupChainEntries", () => {
     ).toEqual(["delegate", "workflow"])
   })
 
-  it("collapses repeated todo_write calls to a single latest todo entry", () => {
+  it("pins the todo entry at its first position and refreshes it in place", () => {
     const grouped = groupChainEntries(
       buildAssistantChainEntries(
         message([
           toolPart({
             input: { todos: [{ content: "a", status: "pending" }] },
+            toolCallId: "first",
             toolName: "todo_write"
           }),
           toolPart({ input: { path: "a.ts" }, toolName: "read" }),
@@ -240,18 +241,23 @@ describe("groupChainEntries", () => {
                 { content: "b", status: "in_progress" }
               ]
             },
+            toolCallId: "second",
             toolName: "todo_write"
           })
         ])
       )
     )
 
-    // One todo entry only, positioned after the read group (latest call wins).
-    expect(grouped.map((entry) => entry.kind)).toEqual(["tool-group", "todo"])
+    // The todo entry stays anchored at its FIRST appearance (before the read
+    // group), instead of jumping to the tail on every revision.
+    expect(grouped.map((entry) => entry.kind)).toEqual(["todo", "tool-group"])
     const todo = grouped.find((entry) => entry.kind === "todo")
+    // Its part is refreshed to the latest snapshot...
     expect(
       getTodoPartTodos((todo as { part: ChatToolPart }).part)
     ).toHaveLength(2)
+    // ...while its key keeps the first tool-call id so React never remounts it.
+    expect((todo as { key: string }).key).toBe("todo-first")
   })
 })
 

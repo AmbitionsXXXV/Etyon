@@ -208,8 +208,10 @@
       "title": "まずプランを立てるのがおすすめ"
     },
     "planIndicator": {
+      "collapseSteps": "ステップを折りたたむ",
       "dismiss": "プランを破棄",
       "executing": "プラン実行中 · {title}",
+      "expandSteps": "ステップを展開",
       "markDone": "完了にする",
       "more": "プランのオプション",
       "progress": "{completed}/{total} ステップ完了",

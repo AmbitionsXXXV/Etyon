@@ -264,9 +264,11 @@ export const TodoItemRow = ({ todo }: { todo: ChatTodoItem }) => {
 // cleared, it falls back to the persisted tool-call input so a re-expanded fold
 // still shows the final list. Collapsed to a "completed/total" header line.
 export const WorkTodoEntry = ({
+  isRunActive = false,
   parentRunId,
   part
 }: {
+  isRunActive?: boolean
   parentRunId?: string
   part: ChatToolPart
 }) => {
@@ -283,6 +285,16 @@ export const WorkTodoEntry = ({
       setIsExpanded(true)
     }
   }, [hasInProgress])
+
+  // While this run is live its checklist is anchored to the composer's plan
+  // queue instead, so suppress the timeline copy to avoid a double render. Gated
+  // on live todos actually existing rather than `isRunActive` alone: the next
+  // turn's submitted phase keeps `isRunActive` true for the prior settled
+  // message, whose run has no live todos in the store, so its finished list
+  // stays visible.
+  if (isRunActive && liveTodos !== undefined && liveTodos.length > 0) {
+    return null
+  }
 
   if (total === 0) {
     return null

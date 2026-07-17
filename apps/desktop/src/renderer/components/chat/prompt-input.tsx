@@ -42,7 +42,7 @@ import {
   ComposerPlanHint,
   usePlanModeHint
 } from "@/renderer/components/chat/composer-plan-hint"
-import { ComposerPlanIndicator } from "@/renderer/components/chat/composer-plan-indicator"
+import { ComposerPlanQueue } from "@/renderer/components/chat/composer-plan-queue"
 import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
   attachmentToFilePart,
@@ -52,7 +52,7 @@ import type {
   AttachmentRejectionReason,
   ComposerAttachment
 } from "@/renderer/lib/chat/attachments"
-import type { ComposerPlanIndicatorProps } from "@/renderer/lib/chat/plan-indicator"
+import type { ComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
   CHAT_AGENT_MODE_OPTIONS,
@@ -1213,7 +1213,7 @@ export const PromptInput = ({
   planHintDismissLabel,
   planHintSwitchLabel,
   planHintTitle,
-  planIndicator,
+  planQueue,
   promptTemplateEmptyLabel,
   promptTemplateGroupLabel,
   promptTemplateItems = EMPTY_PROMPT_TEMPLATE_ITEMS,
@@ -1304,7 +1304,7 @@ export const PromptInput = ({
   planHintDismissLabel: string
   planHintSwitchLabel: string
   planHintTitle: string
-  planIndicator?: ComposerPlanIndicatorProps
+  planQueue?: ComposerPlanQueueProps
   promptTemplateEmptyLabel: string
   promptTemplateGroupLabel: string
   promptTemplateItems?: PromptTemplate[]
@@ -2081,7 +2081,7 @@ export const PromptInput = ({
         promptTemplateItems={promptTemplateItems}
       />
 
-      {planIndicator ? <ComposerPlanIndicator {...planIndicator} /> : null}
+      {planQueue ? <ComposerPlanQueue {...planQueue} /> : null}
 
       {queuedMessages.length > 0 ? (
         <HeroPromptInput.Queue aria-label={queuedMessagesLabel}>
