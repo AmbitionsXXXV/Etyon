@@ -1,3 +1,6 @@
+import { cpSync, existsSync, readFileSync } from "node:fs"
+import path from "node:path"
+
 import { MakerDeb } from "@electron-forge/maker-deb"
 import { MakerDMG } from "@electron-forge/maker-dmg"
 import { MakerRpm } from "@electron-forge/maker-rpm"
@@ -74,6 +77,86 @@ const resolveBuildIdentifier = ():
     : DEVELOPMENT_BUILD_IDENTIFIER
 }
 
+// Packages the packaged main process needs in `node_modules` at runtime but
+// that `@electron/packager` prunes away — pnpm's hoisted layout keeps them at
+// the WORKSPACE ROOT, not in `apps/desktop/node_modules`, so the packager's
+// dependency walker never finds them. We copy the closure ourselves in a
+// `packageAfterCopy` hook. Two flavors:
+//   * `EXTERNAL_MAIN_PACKAGES` — marked `external` in vite.main.config.ts
+//     (they ship `.node` addons or execFile'd helpers that can't be bundled);
+//   * arch-specific native sub-packages that BUNDLED code loads by name at
+//     runtime (node-pty / ripgrep prebuilds, and libsql's `@libsql/<target>`
+//     binding pulled in via `@neon-rs/load`).
+const EXTERNAL_MAIN_PACKAGES = [
+  "font-list",
+  "@lydell/node-pty",
+  "@vscode/ripgrep",
+  "electron-liquid-glass"
+] as const
+
+// App-root directories the main process reads at runtime via `app.getAppPath()`
+// (i.e. from inside the asar). Vite bundles only `.vite`, and the plugin's
+// packager `ignore` drops everything else, so these must be copied in too.
+// `drizzle/` holds the migration journal + SQL that `db/migrate.ts` loads.
+const APP_ASSET_DIRS = ["drizzle"] as const
+
+const projectDir = import.meta.dirname
+const workspaceRootModules = path.resolve(
+  projectDir,
+  "..",
+  "..",
+  "node_modules"
+)
+
+const readPackageDependencies = (packageDir: string): string[] => {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(path.join(packageDir, "package.json"), "utf-8")
+    ) as { dependencies?: Record<string, string> }
+
+    return Object.keys(manifest.dependencies ?? {})
+  } catch {
+    return []
+  }
+}
+
+// Breadth-first over the externalized packages plus their arch-specific native
+// sub-packages, following `dependencies` so transitive runtime deps (e.g.
+// electron-liquid-glass → bindings → file-uri-to-path) come along. Missing
+// packages (e.g. another platform's native sub-package on a cross build) are
+// skipped rather than failing the build.
+const collectExternalPackageClosure = (
+  platform: string,
+  arch: string
+): string[] => {
+  const queue = [
+    ...EXTERNAL_MAIN_PACKAGES,
+    `@lydell/node-pty-${platform}-${arch}`,
+    `@vscode/ripgrep-${platform}-${arch}`,
+    `@libsql/${platform}-${arch}`
+  ]
+  const resolved = new Set<string>()
+
+  while (queue.length > 0) {
+    const name = queue.shift()
+
+    if (name === undefined || resolved.has(name)) {
+      continue
+    }
+
+    const packageDir = path.join(workspaceRootModules, name)
+
+    if (!existsSync(packageDir)) {
+      continue
+    }
+
+    resolved.add(name)
+    queue.push(...readPackageDependencies(packageDir))
+  }
+
+  return [...resolved]
+}
+
 const buildIdentifier = resolveBuildIdentifier()
 const isRelease = buildIdentifier === RELEASE_BUILD_IDENTIFIER
 const appBundleId = isRelease ? "com.etcetera.etyon" : "com.etcetera.etyon.dev"
@@ -102,8 +185,11 @@ const config: ForgeConfig = {
     appCategoryType: APP_CATEGORY_TYPE,
     appCopyright: `Copyright © ${currentYear} ${APP_COPYRIGHT_OWNER}`,
     asar: {
+      // font-list execFile's its bundled `fontlist` helper, and node-pty /
+      // ripgrep load native binaries — all must sit OUTSIDE the asar. (.node
+      // addons are additionally handled by AutoUnpackNativesPlugin.)
       unpack:
-        "{**/node_modules/@lydell/node-pty-*/prebuilds/**,**/node_modules/@vscode/ripgrep-*/bin/**}"
+        "{**/node_modules/@lydell/node-pty-*/prebuilds/**,**/node_modules/@vscode/ripgrep-*/bin/**,**/node_modules/font-list/libs/**}"
     },
     darwinDarkModeSupport: true,
     executableName,
@@ -160,6 +246,37 @@ const config: ForgeConfig = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true
     })
   ],
+  hooks: {
+    // The Vite plugin bundles the app and lets `@electron/packager` prune
+    // node_modules, but pnpm's hoisted layout defeats the packager's dependency
+    // walker, so the externalized main-process packages never make it into the
+    // build. Copy their resolved closure from the workspace root — plus the
+    // runtime app-asset dirs the plugin's `ignore` drops — into the packaged
+    // app (deref symlinks) before the asar is sealed.
+    packageAfterCopy: (
+      _forgeConfig,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch
+    ) => {
+      for (const name of collectExternalPackageClosure(platform, arch)) {
+        cpSync(
+          path.join(workspaceRootModules, name),
+          path.join(buildPath, "node_modules", name),
+          { dereference: true, recursive: true }
+        )
+      }
+
+      for (const dir of APP_ASSET_DIRS) {
+        cpSync(path.join(projectDir, dir), path.join(buildPath, dir), {
+          recursive: true
+        })
+      }
+
+      return Promise.resolve()
+    }
+  },
   rebuildConfig: {}
 }
 
