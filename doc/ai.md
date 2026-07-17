@@ -97,7 +97,7 @@ import { getChatTransport } from "@/renderer/lib/ai/transport"
 const transport = await getChatTransport()
 ```
 
-### useChat Hook（AI SDK v6）
+### useChat Hook（AI SDK v7）
 
 ```tsx
 import { useChat } from "@ai-sdk/react"
@@ -134,7 +134,7 @@ const ChatComponent = () => {
 }
 ```
 
-### AI SDK v6 注意事项
+### AI SDK v6 注意事项（历史，v6 迁移时应用）
 
 - `useChat` 不再内置 input state，需手动使用 `useState` 管理
 - 使用 `sendMessage()` 替代已废弃的 `handleSubmit`
@@ -142,6 +142,19 @@ const ChatComponent = () => {
 - 使用 `toUIMessageStreamResponse()` 替代 `toDataStreamResponse()`
 - Tool 调用使用 `part.type === "tool-<toolName>"` 替代 `"tool-invocation"`
 - `inputSchema` 替代 `parameters`，`maxOutputTokens` 替代 `maxTokens`
+
+### AI SDK v7 迁移记录（2026-07-18）
+
+版本配对（大版本号不再统一）：`ai@7.x` + `@ai-sdk/react@4.x` + `@ai-sdk/{openai,anthropic,gateway}@4.x` + `@ai-sdk/provider@4.x` + `@ai-sdk/provider-utils@5.x`（后两者被 `xml-tool-*` 与 `moonshot-reasoning` 直接 import，已显式声明为依赖）。官方 codemod：`pnpm dlx @ai-sdk/codemod v7`。
+
+- 改名：`system` → `instructions`（streamText/generateText 选项）、`stepCountIs` → `isStepCount`、`createUIMessageStream` 的 `onFinish` → `onEnd`。渲染端 `useChat` 的回调**仍是** `onFinish`（codemod 会误改，需回滚）
+- Provider spec V3 → V4：providers@4 产出 `specificationVersion: "v4"` 模型；`xml-tool-middleware.ts` / `xml-tool-protocol.ts` 已整体移植到 `LanguageModelV4*` 类型，`providers.ts` 的包装守卫改为 `=== "v4"`。实质形态差异只有 `V4FilePart.data` 变 tagged union（`{ type: "data" | "url" | "reference" | "text", … }`）与新增 `V4CustomPart`/`V4ReasoningFilePart`（透传即可）
+- 流式：`result.toUIMessageStream()` 实例方法已废弃 → 顶层无状态 `toUIMessageStream({ stream: result.stream, … })`（agent-loop / delegation / build-chat-stream-response 三处已切换）；`fullStream` 更名 `stream`
+- 审批：tool 级 `needsApproval` 已废弃（仍可用）→ 调用侧 `toolApproval` 策略。现由 `buildAgentToolApproval`（agent-toolset.ts）集中提供 bash/edit/write/workflow 四个策略，语义与原闭包 1:1（含 `keepsExistingApprovalGate` 的 resume 保门——approve-and-remember 路径已实测通过）；**子 agent 的 approval-broker（execute 内 gate）不受影响**
+- 持久化兼容：v6 时期 `chat_messages.parts_json` 的 UIMessage JSON 与 v7 兼容，无数据迁移；`agent_events` 为自有 schema 不受影响
+- 未变（暂无需迁移）：`experimental_transform`、`useChat` 的 `experimental_throttle` 在 v7 仍是现名；`ai/test` 的 `MockLanguageModelV3` 保留（V4 mock 也已提供）；`streamText` 结果的 usage 语义翻转（全步累计）对本仓库无影响——代码中无 usage 消费点，且主循环单步（`isStepCount(1)`）下两者恒等
+- codemod 教训：会把 Etyon 自有的 `system` 字段/属性一并改名（`ROLE_LABELS`、`buildMentionContext` 返回值、`RunAgentLoopOptions`、`generateMemoryToolText` 参数），并产出悬空的 `{ instructions }` 简写——升级大版本跑 codemod 后必须逐文件 review diff
+- v7 起 `ai` 包内置 `docs/` 与 `src/`（`node_modules/ai/docs/`），API 疑问先查本地再查 ai-sdk.dev
 
 ## Chat Session 持久化
 

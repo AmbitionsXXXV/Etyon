@@ -40,3 +40,12 @@
 - [`apps/desktop/vite.renderer.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vite.renderer.config.ts)
 
 这是因为 `@electron-forge/plugin-vite` 仍然按这些入口文件装配主进程、预加载脚本和 renderer 构建；迁移后这些文件已经改为从 `vite-plus` 导出配置。
+
+## Vite DevTools（2026-07-18 接入）
+
+`@vitejs/devtools`（0.3.x，满足 `@voidzero-dev/vite-plus-core` 的可选 peer）只挂在 renderer——它是仓库里唯一真实的 Vite dev server；main/preload 是无 dev server 的 rolldown lib 构建，无处可挂。
+
+- 接入点：[`apps/desktop/vite.renderer.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vite.renderer.config.ts) 中 `...(command === "serve" ? [DevTools()] : [])`，serve 门控保证 `package`/`make` 产物零变化（已用 renderer 生产构建验证）
+- dev 启动后 forge 日志会打印 DevTools 的独立入口与一次性授权 URL（`http://localhost:5173/__devtools/auth?id=…`）；应用窗口内会出现 dock 按钮，首次使用需通过授权 URL 信任该浏览器客户端
+- 已知噪音（非致命）：授权前 dock 的 RPC 调用报 `DTK0013 Unauthorized`（授权一次即消）；devtools 客户端自带的 Vue 打印 feature-flags 警告
+- 与 TanStack Devtools 共存：`devtools()`（`@tanstack/devtools-vite`）插件与 `<TanStackDevtools>` 浮动面板不受影响
