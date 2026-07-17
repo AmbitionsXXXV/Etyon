@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
+import { DevTools } from "@vitejs/devtools"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite-plus"
 
@@ -84,12 +85,14 @@ const useSyncExternalStoreAliases = [
   }
 ] as const
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   optimizeDeps: {
     include: [...optimizedDependencies],
     noDiscovery: true
   },
   plugins: [
+    // Vite DevTools dock; serve-gated so package/make output stays untouched
+    ...(command === "serve" ? [DevTools()] : []),
     devtools(),
     tanstackRouter({
       generatedRouteTree: "./src/renderer/routeTree.gen.ts",
@@ -103,4 +106,4 @@ export default defineConfig({
     dedupe: [...reactDedupeDependencies],
     tsconfigPaths: true
   }
-})
+}))
