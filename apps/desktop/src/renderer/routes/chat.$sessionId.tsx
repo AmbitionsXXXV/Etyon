@@ -155,6 +155,7 @@ import {
   getChatSessionTitle,
   sortChatSessionsByUpdatedAt
 } from "@/renderer/lib/sidebar/chat-sessions"
+import { deriveCommandApprovalPattern } from "@/shared/agents/command-allowlist"
 import { isInputRequiredToolPartType } from "@/shared/agents/input-tools"
 import { getNextPermissionMode } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
@@ -1633,7 +1634,7 @@ const ChatRuntime = ({
         setPlanTodoRunId(dataPart.data.runId)
       }
     },
-    onFinish: () => {
+    onFinish: ({ message }) => {
       setRequestPhase(null)
       clearWorkflowProgress()
       clearSubagents()
@@ -1643,8 +1644,13 @@ const ChatRuntime = ({
       void queryClient.invalidateQueries({
         queryKey: orpc.agents.listRuns.key()
       })
-      clearTodos()
-      setPlanTodoRunId(undefined)
+      // onFinish also fires when a stream segment ends awaiting a tool approval;
+      // keep the live todo checklist (and its plan-queue run) alive across that
+      // pause so the composer strip stays visible until the turn truly ends.
+      if (!hasPendingToolApproval(message)) {
+        clearTodos()
+        setPlanTodoRunId(undefined)
+      }
       // A finished turn may have flipped the saved plan to `implementing`
       // (propose_plan → Implement), so refresh the indicator's query.
       void queryClient.invalidateQueries({
@@ -1949,6 +1955,13 @@ const ChatRuntime = ({
     () => hasPendingToolApproval(latestMessage),
     [latestMessage]
   )
+  // Read the latest awaiting-approval flag from the settle effect without adding
+  // it to the effect deps: keying the effect on `status` alone keeps the clear
+  // race-free (an approval answer flips status ready→submitted, so the effect
+  // never fires on the intermediate frame where the flag clears but status has
+  // not yet advanced).
+  const isAwaitingToolApprovalRef = useRef(isAwaitingToolApproval)
+  isAwaitingToolApprovalRef.current = isAwaitingToolApproval
   // The turn is fully settled only when nothing else is in flight: not pending,
   // no error, not awaiting an approval, and the SDK is not about to auto-resend
   // a tool result. Queued follow-ups drain on the edge into this state.
@@ -1966,11 +1979,14 @@ const ChatRuntime = ({
 
     setRequestPhase(null)
     setRequestStartedAt(undefined)
-    // Belt-and-suspenders for the error path where `onFinish` never runs: a
-    // settled turn must release the live todo run so the plan queue falls back
-    // to its header (or hides) instead of pinning a stale checklist.
-    setPlanTodoRunId(undefined)
-    clearTodos()
+    // Release the live todo run only when the turn is truly over: an error, or a
+    // settle with no pending approval. An approval pause reaches "ready" with the
+    // todos still relevant, so keep them (and the plan-queue run) so the composer
+    // strip stays visible while the user decides.
+    if (status === "error" || !isAwaitingToolApprovalRef.current) {
+      setPlanTodoRunId(undefined)
+      clearTodos()
+    }
   }, [status])
   const latestUserMentions = useMemo(() => {
     for (const message of messages.toReversed()) {
@@ -1991,9 +2007,11 @@ const ChatRuntime = ({
     [messages]
   )
 
-  // Best-effort: persist an exact-command allowlist entry so the main-process
-  // needsApproval gate skips this command next time. A failed write must never
-  // block the approval itself, so it is fire-and-forget with a swallowed error.
+  // Best-effort: persist an allowlist entry so the main-process needsApproval
+  // gate skips this command next time. Stores the derived CLI+subcommand pattern
+  // (falling back to the exact command) so later variants auto-run too. A failed
+  // write must never block the approval itself, so it is fire-and-forget with a
+  // swallowed error.
   const rememberCommandApproval = useCallback(
     async (part: ChatToolPart) => {
       const command = getToolInputCommand(part.input).trim()
@@ -2003,7 +2021,7 @@ const ChatRuntime = ({
       }
 
       const rule = {
-        command,
+        command: deriveCommandApprovalPattern(command) ?? command,
         createdAt: new Date().toISOString(),
         projectPath: selectedSession.projectPath,
         toolName: getToolName(part as never)
@@ -2091,6 +2109,14 @@ const ChatRuntime = ({
       mentions: ChatMention[]
       text: string
     }): void => {
+      // This is the single "definitely sending" choke point (a direct manual
+      // send past the queue guard, or a queued follow-up draining after settle),
+      // so releasing the prior run's live todos here clears the composer strip
+      // exactly when a new turn starts — never on an empty/validation-blocked
+      // submit, which never reaches here.
+      setPlanTodoRunId(undefined)
+      clearTodos()
+
       const metadata = mentions.length > 0 ? { mentions } : undefined
       const options = buildChatRequestOptions(mentions)
 
@@ -2241,8 +2267,12 @@ const ChatRuntime = ({
 
   const handleStop = useCallback(() => {
     // Stopping halts the turn and discards queued follow-ups so they don't
-    // auto-send after the interrupt.
+    // auto-send after the interrupt. A stopped turn never resumes, so release the
+    // live todo run here too — the parts may still carry an approval-requested
+    // entry, so this cannot wait on the no-pending-approval condition.
     setQueuedMessages([])
+    setPlanTodoRunId(undefined)
+    clearTodos()
     void stop()
   }, [stop])
 

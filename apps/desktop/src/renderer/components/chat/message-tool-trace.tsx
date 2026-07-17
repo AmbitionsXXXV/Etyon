@@ -2,7 +2,7 @@ import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatTool } from "@heroui-pro/react"
 import type { ToolPartState } from "@heroui-pro/react"
-import { Button, Chip, Disclosure } from "@heroui/react"
+import { Button, Chip, Disclosure, Tooltip } from "@heroui/react"
 import {
   ArrowTurnBackwardIcon,
   BrainIcon,
@@ -55,6 +55,7 @@ import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/t
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { useWorkflowProgress } from "@/renderer/lib/chat/workflow-progress-store"
 import { formatDuration } from "@/renderer/lib/utils"
+import { deriveCommandApprovalPattern } from "@/shared/agents/command-allowlist"
 
 interface ToolTracePanelProps {
   body?: string
@@ -366,6 +367,9 @@ const ToolApprovalActions = ({
     return null
   }
 
+  const command = getToolInputCommand(part.input)
+  const rememberPattern = deriveCommandApprovalPattern(command) ?? command
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button
@@ -379,18 +383,27 @@ const ToolApprovalActions = ({
         {t("chat.toolTrace.approve")}
       </Button>
       {canRememberCommandApproval(part) ? (
-        <Button
-          isDisabled={isApprovalActionDisabled}
-          onPress={() =>
-            onApprovalResponse(part, true, { rememberCommand: true })
-          }
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          <HugeiconsIcon icon={BrainIcon} size={13} />
-          {t("chat.toolTrace.approveAndRemember")}
-        </Button>
+        <Tooltip>
+          <Tooltip.Trigger>
+            <Button
+              isDisabled={isApprovalActionDisabled}
+              onPress={() =>
+                onApprovalResponse(part, true, { rememberCommand: true })
+              }
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <HugeiconsIcon icon={BrainIcon} size={13} />
+              {t("chat.toolTrace.approveAndRemember")}
+            </Button>
+          </Tooltip.Trigger>
+          <Tooltip.Content placement="top">
+            {t("chat.toolTrace.rememberPatternHint", {
+              pattern: rememberPattern
+            })}
+          </Tooltip.Content>
+        </Tooltip>
       ) : null}
       <Button
         isDisabled={isApprovalActionDisabled}

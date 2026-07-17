@@ -7,12 +7,14 @@ import { tool } from "ai"
 import { z } from "zod"
 
 import { captureBashCheckpoint } from "@/main/agents/checkpoints"
+import { keepsExistingApprovalGate } from "@/main/agents/minimal/model-message-continuity"
 import {
   isRtkAvailable,
   rewriteCommandForRtk
 } from "@/main/agents/minimal/rtk-rewrite"
 import { getShellSpawnEnv } from "@/main/agents/minimal/spawn-env"
 import type { WorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { commandMatchesApprovalRule } from "@/shared/agents/command-allowlist"
 import { needsShellApproval } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 
@@ -61,10 +63,14 @@ export interface BashToolResult extends BashCommandResult {
 }
 
 /**
- * Whether a remembered approval covers this exact command. Matching is
- * deliberately exact (no prefix/pattern matching) to keep the permission
- * surface trivial: an entry counts only when the tool, resolved project path,
- * and trimmed command all match and the approval has not aged out.
+ * Whether a remembered approval covers this command. A rule counts only when the
+ * tool, resolved project path, and command all match and the approval has not
+ * aged out. Command matching accepts either a legacy exact command or a derived
+ * CLI+subcommand pattern (see `commandMatchesApprovalRule`), so a remembered
+ * `git commit` covers later `git commit -m …` variants. This never disarms a
+ * wipe: `needsShellApproval` re-checks `isDangerousShellCommand` before the
+ * allowlist on every call, and legacy full-command rules still match only their
+ * exact command.
  */
 export const matchesCommandAllowlist = ({
   allowlist,
@@ -82,7 +88,6 @@ export const matchesCommandAllowlist = ({
   toolName: string
 }): boolean => {
   const resolvedProjectPath = path.resolve(projectPath)
-  const trimmedCommand = command.trim()
 
   return allowlist.some((rule) => {
     if (rule.toolName !== toolName) {
@@ -93,7 +98,7 @@ export const matchesCommandAllowlist = ({
       return false
     }
 
-    if (rule.command.trim() !== trimmedCommand) {
+    if (!commandMatchesApprovalRule({ command, ruleCommand: rule.command })) {
       return false
     }
 
@@ -307,7 +312,15 @@ export const buildBashTool = (
       }
     },
     inputSchema: BashInputSchema,
-    needsApproval: (inputData) => {
+    needsApproval: (inputData, context) => {
+      // A call that already asked for approval stays approval-gated so the
+      // SDK's resume revalidation honors the user's answer: approve-and-remember
+      // allowlists the command BEFORE the resume, and a flipped needsApproval
+      // would turn that approval into an automatic denial.
+      if (keepsExistingApprovalGate(context)) {
+        return true
+      }
+
       const isRemembered = matchesCommandAllowlist({
         allowlist: settings.approvals.commandAllowlist,
         approvalTtlMs: settings.approvals.approvalTtlMs,

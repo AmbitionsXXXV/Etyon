@@ -239,6 +239,45 @@ const stripPendingApprovalRequests = ({
 }
 
 /**
+ * True when the conversation already carries a `tool-approval-request` for the
+ * given tool call. Used by `needsApproval` implementations to stay `true` for
+ * calls that were already surfaced to the user: the AI SDK revalidates approved
+ * calls on resume and DENIES any whose `needsApproval` flipped to false (reason
+ * "does not require approval"), so an answer-time state change — e.g.
+ * approve-and-remember allowlisting the command, or a permission-mode switch
+ * while suspended — must never retroactively change the question.
+ */
+export const hasApprovalRequestForToolCall = (
+  messages: readonly ModelMessage[],
+  toolCallId: string
+): boolean => {
+  for (const message of messages) {
+    if (message.role !== "assistant") {
+      continue
+    }
+
+    for (const part of getModelMessageContentParts(message)) {
+      if (getApprovalRequestRecord(part)?.toolCallId === toolCallId) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+/**
+ * Convenience wrapper over {@link hasApprovalRequestForToolCall} taking the
+ * options object the AI SDK passes to a tool's `needsApproval`.
+ */
+export const keepsExistingApprovalGate = (context?: {
+  messages?: readonly ModelMessage[]
+  toolCallId?: string
+}): boolean =>
+  context?.toolCallId !== undefined &&
+  hasApprovalRequestForToolCall(context.messages ?? [], context.toolCallId)
+
+/**
  * Ensures every assistant tool-call is followed by a tool-result so
  * providers never see a dangling `tool_call_id`. Tool calls interrupted by a
  * new user message get a synthetic error result; pending approval requests

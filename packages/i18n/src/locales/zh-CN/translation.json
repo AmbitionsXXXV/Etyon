@@ -337,6 +337,7 @@
       "output": "输出",
       "profile": "Profile",
       "rawOutput": "原始结果",
+      "rememberPatternHint": "此后本项目中 \"{{pattern}}\" 命令将自动批准",
       "repeated": "重复 {count} 次",
       "runCommand": "运行 {command}",
       "runGraph": "Run graph",

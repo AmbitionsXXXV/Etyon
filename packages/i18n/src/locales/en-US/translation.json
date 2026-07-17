@@ -337,6 +337,7 @@
       "output": "Output",
       "profile": "Profile",
       "rawOutput": "Raw result",
+      "rememberPatternHint": "Auto-approve \"{{pattern}}\" commands in this project from now on",
       "repeated": "Repeated {count}x",
       "runCommand": "Run {command}",
       "runGraph": "Run graph",

@@ -644,7 +644,6 @@ const AssistantWorkSection = ({
             if (entry.kind === "todo") {
               return (
                 <WorkTodoEntry
-                  isRunActive={isRunActive}
                   key={entry.key}
                   parentRunId={parentRunId}
                   part={entry.part}

@@ -1,6 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Disclosure } from "@heroui/react"
+import { Button, Disclosure, Tooltip } from "@heroui/react"
 import {
   BrainIcon,
   Cancel01Icon,
@@ -38,6 +38,7 @@ import type {
 } from "@/renderer/lib/chat/subagent-view-model"
 import { orpc } from "@/renderer/lib/rpc"
 import { formatElapsedDuration } from "@/renderer/lib/utils"
+import { deriveCommandApprovalPattern } from "@/shared/agents/command-allowlist"
 import type { ChatSubagentApprovalData } from "@/shared/chat/stream-data"
 
 // Poll a still-in-flight child run's trace until it settles.
@@ -137,16 +138,27 @@ const SubagentApprovalCard = ({
           {t("chat.toolTrace.approve")}
         </Button>
         {approval.canRemember ? (
-          <Button
-            isDisabled={isDisabled}
-            onPress={() => respond(true, true)}
-            size="sm"
-            type="button"
-            variant="secondary"
-          >
-            <HugeiconsIcon icon={BrainIcon} size={13} />
-            {t("chat.toolTrace.approveAndRemember")}
-          </Button>
+          <Tooltip>
+            <Tooltip.Trigger>
+              <Button
+                isDisabled={isDisabled}
+                onPress={() => respond(true, true)}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <HugeiconsIcon icon={BrainIcon} size={13} />
+                {t("chat.toolTrace.approveAndRemember")}
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">
+              {t("chat.toolTrace.rememberPatternHint", {
+                pattern:
+                  deriveCommandApprovalPattern(approval.commandOrPath) ??
+                  approval.commandOrPath
+              })}
+            </Tooltip.Content>
+          </Tooltip>
         ) : null}
         <Button
           isDisabled={isDisabled}

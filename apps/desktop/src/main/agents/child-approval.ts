@@ -12,6 +12,7 @@ import type { AppDatabase } from "@/main/db"
 import { agentRuns, agentToolCalls, chatSessions } from "@/main/db/schema"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { isRecord } from "@/renderer/lib/utils"
+import { deriveCommandApprovalPattern } from "@/shared/agents/command-allowlist"
 import { isDangerousShellCommand } from "@/shared/agents/permission-mode"
 
 /**
@@ -40,11 +41,14 @@ const safeParse = (value: string): unknown => {
 }
 
 /**
- * Resolves the exact bash command to remember for this approval — but only when
- * the gated call was `bash` and the command is NOT destructive. This is the
+ * Resolves the generalized bash pattern to remember for this approval — but only
+ * when the gated call was `bash` and the command is NOT destructive. This is the
  * authoritative dangerous-command guard: the renderer hides "approve and
  * remember" for destructive commands, and this refuses it server-side even if a
- * client sends it anyway, so the allowlist can never learn a wipe.
+ * client sends it anyway, so the allowlist can never learn a wipe. The stored
+ * value is the derived CLI+subcommand pattern (falling back to the exact command
+ * when it can't be generalized); the dangerous check runs on the full command
+ * before derivation, so generalization can never widen a wipe past the gate.
  */
 const resolveRememberableCommand = async ({
   db,
@@ -91,7 +95,12 @@ const resolveRememberableCommand = async ({
     .where(eq(chatSessions.id, run.chatSessionId))
     .limit(1)
 
-  return session ? { command, projectPath: session.projectPath } : null
+  return session
+    ? {
+        command: deriveCommandApprovalPattern(command) ?? command,
+        projectPath: session.projectPath
+      }
+    : null
 }
 
 /**

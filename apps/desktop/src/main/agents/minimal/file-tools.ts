@@ -2,6 +2,7 @@ import { tool } from "ai"
 import { z } from "zod"
 
 import { captureFileCheckpoint } from "@/main/agents/checkpoints"
+import { keepsExistingApprovalGate } from "@/main/agents/minimal/model-message-continuity"
 import type {
   WorkspaceCore,
   WorkspaceFileError
@@ -342,7 +343,9 @@ export const buildFileTools = (
       return result
     },
     inputSchema: EditInputSchema,
-    needsApproval: needsFileEditApproval(permissionMode)
+    needsApproval: (_inputData, context) =>
+      keepsExistingApprovalGate(context) ||
+      needsFileEditApproval(permissionMode)
   }),
   grep: tool({
     description:
@@ -471,7 +474,9 @@ export const buildFileTools = (
       return result
     },
     inputSchema: WriteInputSchema,
-    needsApproval: needsFileEditApproval(permissionMode)
+    needsApproval: (_inputData, context) =>
+      keepsExistingApprovalGate(context) ||
+      needsFileEditApproval(permissionMode)
   })
 })
 

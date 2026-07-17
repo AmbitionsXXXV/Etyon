@@ -36,10 +36,13 @@ afterAll(() => {
   fs.rmSync(projectPath, { force: true, recursive: true })
 })
 
+const callNeedsApproval = (value: unknown): unknown =>
+  (value as (input: unknown, options: unknown) => unknown)({}, {})
+
 describe("file tools", () => {
   it("marks edit and write as approval-gated and the rest as free", () => {
-    expect(tools.edit.needsApproval).toBe(true)
-    expect(tools.write.needsApproval).toBe(true)
+    expect(callNeedsApproval(tools.edit.needsApproval)).toBe(true)
+    expect(callNeedsApproval(tools.write.needsApproval)).toBe(true)
     expect(tools.read.needsApproval).toBeFalsy()
     expect(tools.ls.needsApproval).toBeFalsy()
     expect(tools.grep.needsApproval).toBeFalsy()

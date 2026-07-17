@@ -330,7 +330,22 @@ describe("AssistantMessageTimeline todo suppression", () => {
     expect(html).not.toContain("Set up the store")
   })
 
-  it("shows the settled checklist from the persisted part once the run is inactive", () => {
+  it("still suppresses across an approval pause while live todos remain, even though the run is inactive", () => {
+    // The gate is purely live-todos-based: a run parked on a tool approval
+    // reaches the inactive state but keeps its live checklist, so the composer
+    // strip stays authoritative and the timeline copy must not reappear.
+    setTodos("run-live", [
+      { content: "Set up the store", status: "in_progress" }
+    ])
+    const html = renderTimeline({ isRunActive: false, message: todoMessage })
+
+    expect(html).not.toContain("Todos")
+    expect(html).not.toContain("Set up the store")
+  })
+
+  it("shows the persisted checklist once the live snapshot is cleared", () => {
+    // Store empty for this run (settled turn / history): fall back to the
+    // persisted tool-call input regardless of run-active state.
     const html = renderTimeline({ isRunActive: false, message: todoMessage })
 
     expect(html).toContain("Todos")
@@ -339,7 +354,7 @@ describe("AssistantMessageTimeline todo suppression", () => {
 
   it("keeps the persisted checklist on the live first frame before a snapshot arrives", () => {
     // Run active but the store is still empty for this run: the guard is on live
-    // todos existing, not `isRunActive` alone, so the list must not blink out.
+    // todos existing, not run-active state, so the list must not blink out.
     const html = renderTimeline({ isRunActive: true, message: todoMessage })
 
     expect(html).toContain("Todos")

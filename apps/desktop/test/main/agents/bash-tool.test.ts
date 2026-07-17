@@ -302,6 +302,103 @@ describe("bash tool needsApproval", () => {
 
     expect(await callNeedsApproval("vp test", settings)).toBe(false)
   })
+
+  it("skips approval for a variant that matches a remembered pattern but gates a different subcommand", async () => {
+    const settings = makeAgentSettings({
+      approvals: {
+        approvalTtlMs: ALLOWLIST_TTL_MS,
+        commandAllowlist: [
+          {
+            command: "git commit",
+            createdAt: new Date().toISOString(),
+            projectPath,
+            toolName: "bash"
+          }
+        ]
+      }
+    })
+
+    expect(await callNeedsApproval('git commit -m "other"', settings)).toBe(
+      false
+    )
+    expect(await callNeedsApproval("git push origin main", settings)).toBe(true)
+  })
+
+  it("keeps a dangerous command gated even when a remembered pattern would match it", async () => {
+    const settings = makeAgentSettings({
+      approvals: {
+        approvalTtlMs: ALLOWLIST_TTL_MS,
+        commandAllowlist: [
+          {
+            command: "git reset",
+            createdAt: new Date().toISOString(),
+            projectPath,
+            toolName: "bash"
+          }
+        ]
+      }
+    })
+
+    // The dangerous-command gate runs before the allowlist, so a matching
+    // pattern can never auto-run a history wipe.
+    expect(await callNeedsApproval("git reset --hard HEAD~1", settings)).toBe(
+      true
+    )
+  })
+
+  // Resume revalidation: the SDK denies an approved call whose needsApproval
+  // flips to false, so approve-and-remember (which allowlists the command
+  // between the request and the resume) must keep the original call gated.
+  it("stays gated for a call that already has an approval request, even when the command is now remembered", async () => {
+    const settings = makeAgentSettings({
+      approvals: {
+        approvalTtlMs: ALLOWLIST_TTL_MS,
+        commandAllowlist: [
+          {
+            command: "vp test",
+            createdAt: new Date().toISOString(),
+            projectPath,
+            toolName: "bash"
+          }
+        ]
+      }
+    })
+    const { needsApproval } = buildBashTool(
+      getWorkspaceCore(projectPath),
+      "default",
+      settings
+    ) as unknown as {
+      needsApproval: (
+        input: unknown,
+        options: unknown
+      ) => boolean | Promise<boolean>
+    }
+    const messages = [
+      {
+        content: [
+          {
+            approvalId: "approval-1",
+            toolCallId: "call-1",
+            type: "tool-approval-request"
+          }
+        ],
+        role: "assistant"
+      }
+    ]
+
+    expect(
+      await needsApproval(
+        { command: "vp test" },
+        { messages, toolCallId: "call-1" }
+      )
+    ).toBe(true)
+    expect(
+      await needsApproval(
+        { command: "vp test" },
+        { messages, toolCallId: "call-other" }
+      )
+    ).toBe(false)
+  })
 })
 
 describe("permission-mode gating", () => {
@@ -325,12 +422,17 @@ describe("permission-mode gating", () => {
     return needsApproval({ command }, {})
   }
 
-  const editNeedsApproval = (mode: AgentPermissionMode): boolean => {
+  const editNeedsApproval = (
+    mode: AgentPermissionMode,
+    options: unknown = {}
+  ): boolean => {
     const { edit } = buildFileTools(workspace, mode) as unknown as {
-      edit: { needsApproval: boolean }
+      edit: {
+        needsApproval: (input: unknown, callOptions: unknown) => boolean
+      }
     }
 
-    return edit.needsApproval
+    return edit.needsApproval({}, options)
   }
 
   it("never gates bash in bypass, even for an unremembered safe command", async () => {
@@ -385,6 +487,27 @@ describe("permission-mode gating", () => {
     expect(editNeedsApproval("default")).toBe(true)
     expect(editNeedsApproval("acceptEdits")).toBe(false)
     expect(editNeedsApproval("bypass")).toBe(false)
+  })
+
+  it("keeps an already-requested edit approval gated across a mode switch", () => {
+    const options = {
+      messages: [
+        {
+          content: [
+            {
+              approvalId: "approval-1",
+              toolCallId: "call-1",
+              type: "tool-approval-request"
+            }
+          ],
+          role: "assistant"
+        }
+      ],
+      toolCallId: "call-1"
+    }
+
+    expect(editNeedsApproval("acceptEdits", options)).toBe(true)
+    expect(editNeedsApproval("bypass", options)).toBe(true)
   })
 })
 
@@ -454,6 +577,45 @@ describe("matchesCommandAllowlist", () => {
       matchesCommandAllowlist({
         ...baseInput,
         allowlist: [{ ...baseRule, createdAt: "not-a-date" }]
+      })
+    ).toBe(false)
+  })
+
+  it("matches a command against a derived CLI+subcommand pattern rule", () => {
+    expect(
+      matchesCommandAllowlist({
+        ...baseInput,
+        allowlist: [{ ...baseRule, command: "git commit" }],
+        command: 'git commit -m "wip"'
+      })
+    ).toBe(true)
+  })
+
+  it("does not match a different subcommand of a pattern rule", () => {
+    expect(
+      matchesCommandAllowlist({
+        ...baseInput,
+        allowlist: [{ ...baseRule, command: "git commit" }],
+        command: "git push origin main"
+      })
+    ).toBe(false)
+  })
+
+  it("matches a legacy full-command rule only exactly", () => {
+    const legacyRule = { ...baseRule, command: 'git commit -m "exact"' }
+
+    expect(
+      matchesCommandAllowlist({
+        ...baseInput,
+        allowlist: [legacyRule],
+        command: 'git commit -m "exact"'
+      })
+    ).toBe(true)
+    expect(
+      matchesCommandAllowlist({
+        ...baseInput,
+        allowlist: [legacyRule],
+        command: 'git commit -m "different"'
       })
     ).toBe(false)
   })

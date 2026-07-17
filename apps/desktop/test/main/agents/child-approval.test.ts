@@ -168,6 +168,26 @@ describe("respondToChildApproval", () => {
     expect(dangerResult.rememberableCommand).toBeUndefined()
   })
 
+  it("remembers the derived CLI+subcommand pattern, not the full command", async () => {
+    const remembered = await seedPendingApproval({
+      command: "vp test run apps/desktop",
+      toolCallId: "tc-pattern",
+      toolName: "bash"
+    })
+    const result = await respondToChildApproval({
+      approved: true,
+      approvalId: remembered.approvalId,
+      db: remembered.db,
+      rememberCommand: true
+    })
+    await remembered.pending
+
+    expect(result.rememberableCommand).toEqual({
+      command: "vp test",
+      projectPath: remembered.session.projectPath
+    })
+  })
+
   it("does not offer a remember for a file edit", async () => {
     const { approvalId, db, pending } = await seedPendingApproval({
       toolCallId: "tc-edit",

@@ -337,6 +337,7 @@
       "output": "出力",
       "profile": "Profile",
       "rawOutput": "生の結果",
+      "rememberPatternHint": "今後このプロジェクトでは \"{{pattern}}\" コマンドを自動承認します",
       "repeated": "{count} 回繰り返し",
       "runCommand": "{command} を実行",
       "runGraph": "Run graph",
