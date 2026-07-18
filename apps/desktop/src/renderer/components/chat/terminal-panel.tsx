@@ -17,6 +17,7 @@ import {
 } from "@/renderer/lib/chat/terminal-panel"
 import type { TerminalDimensions } from "@/renderer/lib/chat/terminal-panel"
 import { rpcClient } from "@/renderer/lib/rpc"
+import { HEROUI_PRO_THEME_STYLESHEET_ID } from "@/renderer/lib/settings"
 
 type TerminalPanelStatus = "connecting" | "error" | "ready"
 
@@ -48,48 +49,50 @@ const resolveTerminalTheme = () => {
   probe.style.cssText =
     "position:absolute;visibility:hidden;pointer-events:none"
   document.body.append(probe)
-  const canvas = document.createElement("canvas")
-  canvas.width = 1
-  canvas.height = 1
-  const context = canvas.getContext("2d", { willReadFrequently: true })
 
-  const readColor = (cssVar: string, fallback: string): string => {
-    probe.style.color = `var(${cssVar})`
-    const computed = getComputedStyle(probe).color
+  try {
+    const canvas = document.createElement("canvas")
+    canvas.width = 1
+    canvas.height = 1
+    const context = canvas.getContext("2d", { willReadFrequently: true })
 
-    if (!(context && computed)) {
-      return fallback
+    const readColor = (cssVar: string, fallback: string): string => {
+      probe.style.color = `var(${cssVar})`
+      const computed = getComputedStyle(probe).color
+
+      if (!(context && computed)) {
+        return fallback
+      }
+
+      context.clearRect(0, 0, 1, 1)
+      context.fillStyle = computed
+      context.fillRect(0, 0, 1, 1)
+      const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data
+
+      return formatRgba(r, g, b, a)
     }
 
-    context.clearRect(0, 0, 1, 1)
-    context.fillStyle = computed
-    context.fillRect(0, 0, 1, 1)
-    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data
-
-    return formatRgba(r, g, b, a)
-  }
-
-  const surface = readColor(
-    "--card",
-    isDark ? "rgb(9, 9, 11)" : "rgb(255, 255, 255)"
-  )
-  const theme = buildTerminalTheme({
-    background: surface,
-    cursorAccent: surface,
-    foreground: readColor(
-      "--foreground",
-      isDark ? "rgb(244, 244, 245)" : "rgb(24, 24, 27)"
-    ),
-    isDark,
-    selectionBackground: withAlpha(
-      readColor("--primary", "rgb(63, 63, 70)"),
-      0.3
+    const surface = readColor(
+      "--card",
+      isDark ? "rgb(9, 9, 11)" : "rgb(255, 255, 255)"
     )
-  })
 
-  probe.remove()
-
-  return theme
+    return buildTerminalTheme({
+      background: surface,
+      cursorAccent: surface,
+      foreground: readColor(
+        "--foreground",
+        isDark ? "rgb(244, 244, 245)" : "rgb(24, 24, 27)"
+      ),
+      isDark,
+      selectionBackground: withAlpha(
+        readColor("--primary", "rgb(63, 63, 70)"),
+        0.3
+      )
+    })
+  } finally {
+    probe.remove()
+  }
 }
 
 /**
@@ -207,13 +210,38 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
       nextTerminal.loadAddon(nextFitAddon)
       nextTerminal.open(container)
 
-      // Track the app theme: re-resolve when the light/dark class or color
-      // schema flips on <html> so the terminal never drifts from the UI.
+      // Track the app theme: re-resolve when the light/dark class, color
+      // schema, or liquid-glass surface flips on <html>. Skip the (repaint-y)
+      // xterm theme assignment when the resolved colors did not change —
+      // `applySettings` rewrites the class attribute on every settings save.
+      let appliedThemeJson = JSON.stringify(nextTerminal.options.theme)
+      const applyResolvedTerminalTheme = () => {
+        const theme = resolveTerminalTheme()
+        const themeJson = JSON.stringify(theme)
+
+        if (themeJson === appliedThemeJson) {
+          return
+        }
+
+        appliedThemeJson = themeJson
+        nextTerminal.options.theme = theme
+      }
       const themeObserver = new MutationObserver(() => {
-        nextTerminal.options.theme = resolveTerminalTheme()
+        applyResolvedTerminalTheme()
+
+        // The pro color schemas apply through a stylesheet that loads async
+        // after the data-theme flip; the sync resolve above rasterized against
+        // the outgoing sheet, so resolve once more when the new sheet lands.
+        const proStylesheet = document.querySelector<HTMLLinkElement>(
+          `link#${HEROUI_PRO_THEME_STYLESHEET_ID}`
+        )
+
+        proStylesheet?.addEventListener("load", applyResolvedTerminalTheme, {
+          once: true
+        })
       })
       themeObserver.observe(document.documentElement, {
-        attributeFilter: ["class", "data-theme"],
+        attributeFilter: ["class", "data-liquid-glass", "data-theme"],
         attributes: true
       })
       cleanups.push(() => themeObserver.disconnect())

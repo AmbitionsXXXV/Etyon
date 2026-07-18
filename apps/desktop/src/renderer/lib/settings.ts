@@ -8,7 +8,14 @@ import glassThemeUrl from "@etyon/ui/themes/glass.css?url"
 import mouveThemeUrl from "@etyon/ui/themes/mouve.css?url"
 
 const THEME_TRANSITION_MS = 200
-const HEROUI_PRO_THEME_STYLESHEET_ID = "etyon-heroui-pro-theme"
+
+/**
+ * The pro color schemas (brutalism/glass/mouve) apply through this stylesheet
+ * link, which loads asynchronously after the `data-theme` flip. Exported so
+ * consumers that rasterize CSS variables (the terminal theme) can re-resolve
+ * once the sheet actually lands.
+ */
+export const HEROUI_PRO_THEME_STYLESHEET_ID = "etyon-heroui-pro-theme"
 
 const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
 
