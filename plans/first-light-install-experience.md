@@ -72,6 +72,14 @@ P4 显影分两档：
 4. **liquid-glass 改为订阅**：用 MutationObserver 监听 `documentElement` 的 `data-liquid-glass` 属性变化来切换 scrim——PR1 的一次性检测在 dev 里恒为 false（IPC 晚于 overlay 挂载）。
 5. **清理**：reveal 开始后即移除 skip 的 keydown/pointerdown 监听（PR1 挂到组件卸载，而 Gate 永不卸载）；border pulse 的圆角改读锚点元素的 computed border-radius（PR1 硬编码 16）。
 
+### PR2 验收记录（2026-07-18）
+
+五项全部落地并真机验证。两个现场发现（均为可接受行为，非缺陷）：
+
+- **窗口被遮挡时 reveal 半冻结、可视即自愈**：遮挡状态下 rAF/WAAPI 时间线冻结而 setTimeout 照走，区域会短暂停在预隐藏态（inline `opacity: 0` + 1 个存活动画）；窗口一到前台，动画在 ~420ms 内完成并清空 inline 样式（实测两次自愈）。真实首启由安装器前台拉起，影响可忽略；"遮挡时整体暂停时间线"列入延伸。
+- **冷加载的 chat 路由上 caret 帧可能静默降级**：descent（t≈2.6s）时 tiptap 若尚未挂载 contenteditable，`isComposerAnchor` 为 false，落点效果回退为 border pulse——符合设计的优雅降级；编辑器就绪后的检测已实测为 true。
+- liquid-glass scrim 分支在 dev 里仍无法触发（`data-liquid-glass` 始终未置位），MutationObserver 订阅已就位，留待打包版验证（并入 PR3 验收清单）。
+
 ## 延伸（不在本期）
 
 每次冷启动的 400ms 微版本（光点一闪落入 composer 光标），做成可关的设置项——形成品牌记忆，待 First Light 上线后按反馈决定。

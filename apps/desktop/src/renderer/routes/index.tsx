@@ -58,6 +58,7 @@ const HomePage = () => {
         <div className="mt-10 w-full max-w-136 space-y-3">
           <Button
             className="h-13 w-full rounded-2xl text-sm font-semibold"
+            data-first-light-anchor=""
             isDisabled={isCreatingChatSession}
             onPress={handleCreateChatSession}
             size="lg"

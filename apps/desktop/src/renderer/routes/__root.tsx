@@ -155,9 +155,14 @@ const RootComponent = () => {
             } as React.CSSProperties
           }
         >
-          <AppSidebar />
+          <div data-first-light-region="">
+            <AppSidebar />
+          </div>
 
-          <SidebarInset className="relative min-h-0 overflow-hidden">
+          <SidebarInset
+            className="relative min-h-0 overflow-hidden"
+            data-first-light-region=""
+          >
             <InsetHeader />
 
             <div className="flex min-h-0 flex-1 flex-col">

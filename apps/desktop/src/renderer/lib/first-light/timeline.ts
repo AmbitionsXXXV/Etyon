@@ -185,3 +185,44 @@ export const REVEAL_PARAMS = {
   backdropBlurPx: 8,
   overlayDissolveMs: 400
 }
+
+// P4 v1.5 — per-region staggered reveal. Each top-level region (sidebar, inset)
+// animates opacity/scale/blur with WAAPI, ordered by distance from its center to
+// the landing point, so the UI blooms outward from where the dot lands.
+export const REGION_REVEAL_PARAMS = {
+  blurPx: 6,
+  durationMs: 350,
+  scaleFrom: 0.985,
+  staggerMs: 70
+}
+
+/** Region reveal order: indices of `rects` sorted nearest-first to `landing`. */
+export const orderRegionsByDistanceToLanding = (
+  rects: readonly FirstLightRect[],
+  landing: FirstLightPoint
+): number[] =>
+  rects
+    .map((rect, index) => ({
+      distanceSq:
+        (rect.left + rect.width / 2 - landing.x) ** 2 +
+        (rect.top + rect.height / 2 - landing.y) ** 2,
+      index
+    }))
+    .toSorted((a, b) => a.distanceSq - b.distanceSq)
+    .map((entry) => entry.index)
+
+/** Total ms a staggered region reveal spans (0 when there are no regions). */
+export const getRegionRevealTotalMs = (regionCount: number): number =>
+  regionCount > 0
+    ? (regionCount - 1) * REGION_REVEAL_PARAMS.staggerMs +
+      REGION_REVEAL_PARAMS.durationMs
+    : 0
+
+// P4 v1.5 — caret hand-off: when the dot lands on the composer it fades in place
+// and a caret-shaped bar blinks once at the landing point until focus takes over.
+export const CARET_HANDOFF_PARAMS = {
+  blinkMs: 500,
+  dotFadeMs: 200,
+  heightEm: 1.25,
+  widthPx: 2
+}

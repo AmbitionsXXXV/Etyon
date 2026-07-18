@@ -5,7 +5,10 @@ import {
   getLandingPoint,
   getOriginPoint,
   getPhaseStartMs,
+  getRegionRevealTotalMs,
   getRingMaxDiameterPx,
+  orderRegionsByDistanceToLanding,
+  REGION_REVEAL_PARAMS,
   parseFirstLightMode
 } from "@/renderer/lib/first-light/timeline"
 
@@ -72,5 +75,55 @@ describe("getRingMaxDiameterPx", () => {
 
   it("caps at 480px on wide viewports", () => {
     expect(getRingMaxDiameterPx(2000)).toBe(480)
+  })
+})
+
+describe("orderRegionsByDistanceToLanding", () => {
+  it("orders regions nearest-first by center distance to the landing point", () => {
+    // Centers: (50, 50), (950, 950), (450, 450).
+    const rects = [
+      { height: 100, left: 0, top: 0, width: 100 },
+      { height: 100, left: 900, top: 900, width: 100 },
+      { height: 100, left: 400, top: 400, width: 100 }
+    ]
+
+    expect(orderRegionsByDistanceToLanding(rects, { x: 450, y: 450 })).toEqual([
+      2, 0, 1
+    ])
+  })
+
+  it("keeps original order for equidistant regions", () => {
+    // Centers (10, 10) and (30, 10); the landing at x = 20 is equidistant.
+    const rects = [
+      { height: 20, left: 0, top: 0, width: 20 },
+      { height: 20, left: 20, top: 0, width: 20 }
+    ]
+
+    expect(orderRegionsByDistanceToLanding(rects, { x: 20, y: 10 })).toEqual([
+      0, 1
+    ])
+  })
+
+  it("returns an empty order when there are no regions", () => {
+    expect(orderRegionsByDistanceToLanding([], { x: 0, y: 0 })).toEqual([])
+  })
+})
+
+describe("getRegionRevealTotalMs", () => {
+  it("is zero when there are no regions", () => {
+    expect(getRegionRevealTotalMs(0)).toBe(0)
+  })
+
+  it("is a single duration for one region", () => {
+    expect(getRegionRevealTotalMs(1)).toBe(REGION_REVEAL_PARAMS.durationMs)
+  })
+
+  it("adds one stagger per extra region", () => {
+    expect(getRegionRevealTotalMs(2)).toBe(
+      REGION_REVEAL_PARAMS.staggerMs + REGION_REVEAL_PARAMS.durationMs
+    )
+    expect(getRegionRevealTotalMs(3)).toBe(
+      2 * REGION_REVEAL_PARAMS.staggerMs + REGION_REVEAL_PARAMS.durationMs
+    )
   })
 })
