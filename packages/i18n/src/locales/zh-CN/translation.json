@@ -490,6 +490,9 @@
       "viewDetails": "查看详情"
     }
   },
+  "firstLight": {
+    "greeting": "你好，我是 Etyon"
+  },
   "home": {
     "actions": {
       "configureProvider": "配置 Provider",

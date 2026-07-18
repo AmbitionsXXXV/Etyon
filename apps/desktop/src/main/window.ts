@@ -151,7 +151,12 @@ export const createWindow = () => {
   syncMainWindowReference(window)
   hardenWindowWebContents(window)
   applyLiquidGlass(window)
-  loadRenderer(window)
+
+  if (getSettings().onboardedAt === null) {
+    loadRenderer(window, { firstRun: "1" })
+  } else {
+    loadRenderer(window)
+  }
 
   if (is.dev) {
     window.webContents.openDevTools({ mode: "undocked" })

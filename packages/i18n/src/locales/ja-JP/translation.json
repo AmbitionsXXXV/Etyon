@@ -490,6 +490,9 @@
       "viewDetails": "詳細を表示"
     }
   },
+  "firstLight": {
+    "greeting": "こんにちは、Etyon です"
+  },
   "home": {
     "actions": {
       "configureProvider": "プロバイダー設定",

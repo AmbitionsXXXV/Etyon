@@ -2033,6 +2033,7 @@ export const PromptInput = ({
   return (
     <HeroPromptInput
       className="relative shadow-none"
+      data-first-light-anchor=""
       isDisabled={disabled}
       layout="stacked"
       lockInputOnRun={false}

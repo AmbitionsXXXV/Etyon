@@ -490,6 +490,9 @@
       "viewDetails": "View details"
     }
   },
+  "firstLight": {
+    "greeting": "Hi, I'm Etyon."
+  },
   "home": {
     "actions": {
       "configureProvider": "Configure Provider",

@@ -10,7 +10,10 @@ import type { ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 
 import { App } from "./app"
+import { FirstLightGate } from "./components/first-light/first-light-overlay"
 import { SettingsPage } from "./components/settings-page"
+import { parseFirstLightMode } from "./lib/first-light/timeline"
+import type { FirstLightMode } from "./lib/first-light/timeline"
 import { orpc, rpcClient } from "./lib/rpc"
 import {
   applyColorSchemaPreview,
@@ -29,6 +32,7 @@ initLogger((event) => {
 
 const params = new URLSearchParams(window.location.search)
 const isSettingsWindow = params.get("window") === "settings"
+const firstLightMode = parseFirstLightMode(params.get("firstRun"))
 
 window.electron.ipcRenderer.on("liquid-glass-active", () => {
   if (!isSettingsWindow) {
@@ -50,10 +54,12 @@ const loadInitialSettings = async (): Promise<AppSettings> => {
 const root = document.querySelector("#root")
 
 const RendererRoot = ({
+  firstLightModeValue,
   initialSettings,
   isSettingsWindowMode,
   systemLocale
 }: {
+  firstLightModeValue: FirstLightMode
   initialSettings: AppSettings
   isSettingsWindowMode: boolean
   systemLocale: string
@@ -123,7 +129,9 @@ const RendererRoot = ({
   const content: ReactNode = isSettingsWindowMode ? (
     <SettingsPage isStandaloneWindow />
   ) : (
-    <App />
+    <FirstLightGate mode={firstLightModeValue}>
+      <App />
+    </FirstLightGate>
   )
 
   return (
@@ -146,6 +154,7 @@ const bootstrap = async () => {
 
   createRoot(root).render(
     <RendererRoot
+      firstLightModeValue={firstLightMode}
       initialSettings={initialSettings}
       isSettingsWindowMode={isSettingsWindow}
       systemLocale={getSystemLocale()}
