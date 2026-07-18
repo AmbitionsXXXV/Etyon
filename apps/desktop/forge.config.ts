@@ -30,12 +30,26 @@ const originalFilename = `${appName}.exe`
 const config: ForgeConfig = {
   buildIdentifier,
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      loadingGif: "resources/install-loading.gif",
+      setupIcon: "resources/icon.ico"
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({}),
     new MakerDMG({
-      icon: "resources/icon.icns"
+      additionalDMGOptions: {
+        window: { size: { height: 420, width: 660 } }
+      },
+      // Dual-resolution TIFF (660x420 @1x/@2x) built from the First Light dot-
+      // matrix art; icon slots match the rings baked into the background.
+      background: "resources/dmg-background.tiff",
+      contents: (opts) => [
+        { path: opts.appPath, type: "file", x: 180, y: 220 },
+        { path: "/Applications", type: "link", x: 480, y: 220 }
+      ],
+      icon: "resources/icon.icns",
+      iconSize: 100
     })
   ],
   packagerConfig: {

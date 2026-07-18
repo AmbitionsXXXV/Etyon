@@ -80,6 +80,15 @@ P4 显影分两档：
 - **冷加载的 chat 路由上 caret 帧可能静默降级**：descent（t≈2.6s）时 tiptap 若尚未挂载 contenteditable，`isComposerAnchor` 为 false，落点效果回退为 border pulse——符合设计的优雅降级；编辑器就绪后的检测已实测为 true。
 - liquid-glass scrim 分支在 dev 里仍无法触发（`data-liquid-glass` 始终未置位），MutationObserver 订阅已就位，留待打包版验证（并入 PR3 验收清单）。
 
+### PR3 验收记录（2026-07-18）
+
+- **资产**：两件均为程序化生成（HTML/canvas 渲染 + 截图管线），复用 `dot-matrix.ts` 的常量与波纹公式、品牌色取自真机像素采样（背景 `#25283a`、primary `#81a1f2`、wordmark `#c2caf2`）、wordmark 用首页同款 Iowan Old Style 栈。
+  - `resources/install-loading.gif`：640×360、28 帧 × 50ms、无限循环、630KB。波纹速度改为 2π/1400 使周期恰为 28 帧——循环缝合处帧间差（0.445）与普通相邻帧（~0.45）一致，数学无缝；shimmer 只保留空间项（其时间项公共周期 ~21s 会破坏循环）。
+  - `resources/dmg-background.tiff`：660×420 @1x/@2x 双分辨率（`tiffutil -cathidpicheck` 合成，appdmg 的 retina 正规路径）；点阵场 + 图标位光环（圆心即 contents 坐标 (180,220)/(480,220)）+ 点阵语言的引导箭头。
+- **验证**：真实 `electron-forge make` 产出的 DMG 挂载后确认 `.background/dmg-background.tiff` 原样进包、app + /Applications 链接就位；probe 直调 `createDMG` 打印的 spec 确认 window 660×420 / icon-size 100 / contents 坐标全部生效。
+- **坑（记录）**：`make --targets @electron-forge/maker-dmg` 会因 forge 按 `maker.name === target` 匹配（MakerDMG 的 name 是 `"dmg"`）而**静默 fallback 到空配置默认 maker**（exit 0、默认背景）。要么不传 `--targets`，要么用短名 `--targets dmg`。
+- **待办**：Windows Squirrel 的 loadingGif 真实安装体验需在 Windows 构建机上验证；liquid-glass scrim 分支同样待打包版。
+
 ## 延伸（不在本期）
 
 每次冷启动的 400ms 微版本（光点一闪落入 composer 光标），做成可关的设置项——形成品牌记忆，待 First Light 上线后按反馈决定。
