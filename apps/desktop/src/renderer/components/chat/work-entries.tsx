@@ -10,8 +10,8 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { getToolName } from "ai"
 import { useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
-import { Streamdown } from "streamdown"
 
+import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool-trace"
 import {
   getTodoPartTodos,
@@ -118,14 +118,13 @@ export const useWorkElapsedMs = ({
 }
 
 export const WorkTextEntry = ({ text }: { text: string }) => (
-  <Streamdown
+  <AgentMarkdown
     animated={false}
     className={CHAIN_TEXT_MARKDOWN_CLASS_NAME}
     isAnimating={false}
-    skipHtml
   >
     {text}
-  </Streamdown>
+  </AgentMarkdown>
 )
 
 export const WorkThinkingEntry = ({

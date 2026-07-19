@@ -14,8 +14,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useMemo, useState, useSyncExternalStore } from "react"
-import { Streamdown } from "streamdown"
 
+import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
 import {
   ARTIFACT_IFRAME_SANDBOX,
@@ -280,9 +280,9 @@ export const ArtifactPanel = ({
               ) : null}
               {viewMode === "preview" && !srcDoc ? (
                 <div className="h-full min-h-0 overflow-y-auto overscroll-contain p-4">
-                  <Streamdown className={ARTIFACT_MARKDOWN_CLASS_NAME} skipHtml>
+                  <AgentMarkdown className={ARTIFACT_MARKDOWN_CLASS_NAME}>
                     {view.content}
-                  </Streamdown>
+                  </AgentMarkdown>
                 </div>
               ) : null}
             </div>

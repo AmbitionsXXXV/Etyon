@@ -11,6 +11,22 @@ import { t } from "./localization"
 import { getSettings } from "./settings"
 
 const preloadPath = path.join(import.meta.dirname, "preload.js")
+
+// Every window renders trusted app UI that also displays untrusted agent
+// output, so all of them get the same hardened preferences. These match the
+// Electron 43 defaults today; pinning them keeps a future edit from silently
+// re-enabling nodeIntegration, disabling the sandbox, or turning off
+// contextIsolation. The renderer CSP (see content-security-policy.ts) is the
+// complementary backstop.
+const HARDENED_WEB_PREFERENCES = {
+  contextIsolation: true,
+  nodeIntegration: false,
+  nodeIntegrationInSubFrames: false,
+  preload: preloadPath,
+  sandbox: true,
+  webSecurity: true
+} as const
+
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let shouldQuitApp = false
@@ -145,7 +161,7 @@ export const createWindow = () => {
     title: getAppDisplayName(),
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 16, y: 18 },
-    webPreferences: { preload: preloadPath }
+    webPreferences: HARDENED_WEB_PREFERENCES
   })
 
   syncMainWindowReference(window)
@@ -230,7 +246,7 @@ export const createSettingsWindow = (tab?: string) => {
     minWidth: 732,
     title: t("window.settings.title"),
     titleBarStyle: "hidden",
-    webPreferences: { preload: preloadPath },
+    webPreferences: HARDENED_WEB_PREFERENCES,
     width: 900
   })
 

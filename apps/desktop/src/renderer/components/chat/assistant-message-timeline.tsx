@@ -14,9 +14,9 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { getToolName } from "ai"
 import { useEffect, useRef, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
-import { Streamdown } from "streamdown"
 import type { Components, ExtraProps } from "streamdown"
 
+import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import { ImagenMessageImage } from "@/renderer/components/chat/imagen-message"
 import { WorkSubagentEntry } from "@/renderer/components/chat/subagents/subagent-entries"
 import {
@@ -139,16 +139,15 @@ const AssistantMarkdownContent = ({
   const shouldAnimate = isAnimating && animated !== false
 
   return (
-    <Streamdown
+    <AgentMarkdown
       animated={animated}
       caret={shouldAnimate ? "block" : undefined}
       className={STREAMDOWN_MARKDOWN_CLASS_NAME}
       components={STREAMDOWN_MARKDOWN_COMPONENTS}
       isAnimating={shouldAnimate}
-      skipHtml
     >
       {text}
-    </Streamdown>
+    </AgentMarkdown>
   )
 }
 
@@ -428,15 +427,14 @@ const ProposePlanCard = ({
         </span>
       </div>
       <ScrollShadow className="max-h-[360px] rounded-lg border border-border/60 bg-background/50 px-3 py-2">
-        <Streamdown
+        <AgentMarkdown
           animated={false}
           className={STREAMDOWN_MARKDOWN_CLASS_NAME}
           components={STREAMDOWN_MARKDOWN_COMPONENTS}
           isAnimating={false}
-          skipHtml
         >
           {input.plan}
-        </Streamdown>
+        </AgentMarkdown>
       </ScrollShadow>
       <div className="flex flex-wrap items-center gap-2">
         <Button

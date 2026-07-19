@@ -14,8 +14,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
-import { Streamdown } from "streamdown"
 
+import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import {
   TodoItemRow,
   TodoStatusIndicator
@@ -116,14 +116,13 @@ const PlanQueueActions = ({
               {title}
             </span>
             <ScrollShadow className="max-h-[360px] rounded-lg border border-border/60 bg-background/50 px-3 py-2">
-              <Streamdown
+              <AgentMarkdown
                 animated={false}
                 className={PLAN_MARKDOWN_CLASS_NAME}
                 isAnimating={false}
-                skipHtml
               >
                 {planMarkdown}
-              </Streamdown>
+              </AgentMarkdown>
             </ScrollShadow>
           </Popover.Dialog>
         </Popover.Content>

@@ -12,6 +12,7 @@ import {
   registerAttachmentProtocol,
   registerAttachmentProtocolScheme
 } from "@/main/attachments"
+import { registerRendererContentSecurityPolicy } from "@/main/content-security-policy"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
@@ -47,6 +48,9 @@ registerNativeIpcHandlers()
 registerTerminalIpcHandlers()
 
 const handleAppReady = async (): Promise<void> => {
+  // Install the renderer CSP before any window can load a document.
+  registerRendererContentSecurityPolicy()
+
   const appDisplayName = getAppDisplayName()
   const appIcon = createRuntimeIcon()
 
