@@ -22,10 +22,14 @@ import { session } from "electron"
  * - `img-src`: `etyon-attachment:` serves persisted vision images; `data:`/
  *   `blob:` cover generated images. Remote hosts stay blocked, which also
  *   neutralizes remote image beacons embedded in agent markdown.
- * - `connect-src 'self'`: the renderer talks to main over a MessagePort (not
- *   subject to CSP) and makes no remote fetches.
+ * - `connect-src`: MessagePort RPC is not subject to CSP, while AI SDK chat
+ *   streams use the main-process Hono server on a random `127.0.0.1` port.
+ *   Only that loopback HTTP origin is allowed; arbitrary remote fetches remain
+ *   blocked.
  * - `frame-src 'self'`: permits the same-origin `srcdoc` artifact iframe.
  */
+const LOCAL_CHAT_SERVER_CSP_SOURCE = "http://127.0.0.1:*"
+
 const PROD_CSP = [
   "default-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -33,7 +37,7 @@ const PROD_CSP = [
   "img-src 'self' data: blob: etyon-attachment:",
   "font-src 'self' data:",
   "media-src 'self' data: blob:",
-  "connect-src 'self'",
+  `connect-src 'self' ${LOCAL_CHAT_SERVER_CSP_SOURCE}`,
   "frame-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -54,17 +58,20 @@ const buildDevCsp = (devOrigin: string): string =>
     "img-src 'self' data: blob: etyon-attachment:",
     "font-src 'self' data:",
     "media-src 'self' data: blob:",
-    `connect-src 'self' ${devOrigin} ws: wss:`,
+    `connect-src 'self' ${LOCAL_CHAT_SERVER_CSP_SOURCE} ${devOrigin} ws: wss:`,
     "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'"
   ].join("; ")
 
+export const buildRendererContentSecurityPolicy = (
+  devServerUrl?: string
+): string =>
+  devServerUrl ? buildDevCsp(new URL(devServerUrl).origin) : PROD_CSP
+
 const getRendererCsp = (): string =>
-  MAIN_WINDOW_VITE_DEV_SERVER_URL
-    ? buildDevCsp(new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin)
-    : PROD_CSP
+  buildRendererContentSecurityPolicy(MAIN_WINDOW_VITE_DEV_SERVER_URL)
 
 /**
  * Stamps the renderer CSP onto document responses in the default session. Must

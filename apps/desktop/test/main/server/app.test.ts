@@ -37,6 +37,7 @@ const {
   getSettingsMock,
   listSkillPromptTemplatesMock,
   mockedHomeDir,
+  persistSubmittedChatMessagesMock,
   replaceChatMessagesMock,
   resolveModelMock,
   stepCountIsMock,
@@ -113,6 +114,7 @@ const {
     getSettingsMock: vi.fn(() => buildSettings()),
     listSkillPromptTemplatesMock: vi.fn(() => []),
     mockedHomeDir: `/tmp/etyon-server-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    persistSubmittedChatMessagesMock: vi.fn(() => Promise.resolve([])),
     replaceChatMessagesMock: vi.fn(() => Promise.resolve([])),
     resolveModelMock: vi.fn(() => ({ modelId: "test-model" })),
     stepCountIsMock: vi.fn((stepCount: number) => ({
@@ -231,6 +233,7 @@ vi.mock("@/main/server/lib/providers", () => ({
 }))
 
 vi.mock("@/main/chat-messages", () => ({
+  persistSubmittedChatMessages: persistSubmittedChatMessagesMock,
   replaceChatMessages: replaceChatMessagesMock
 }))
 
@@ -454,6 +457,17 @@ describe("hono app", () => {
       expect.anything(),
       "session-1"
     )
+    expect(persistSubmittedChatMessagesMock).toHaveBeenCalledWith({
+      db: expect.anything(),
+      messages: [
+        {
+          id: "message-1",
+          parts: [],
+          role: "user"
+        }
+      ],
+      sessionId: "session-1"
+    })
     expect(buildMentionContextMock).toHaveBeenCalledWith({
       mentions,
       projectPath: "/tmp/project-a"
@@ -492,6 +506,38 @@ describe("hono app", () => {
         ])
       })
     )
+  })
+
+  it("checkpoints the submitted prompt before provider resolution fails", async () => {
+    resolveModelMock.mockImplementationOnce(() => {
+      throw new TypeError("Failed to fetch")
+    })
+
+    const message = {
+      id: "failed-message",
+      parts: [{ text: "Keep this failed prompt", type: "text" }],
+      role: "user"
+    }
+    const response = await app.request("/api/chat", {
+      body: JSON.stringify({
+        messages: [message],
+        model: "cursor/gpt-5.6-terra",
+        sessionId: "session-1"
+      }),
+      headers: {
+        authorization: `Bearer ${getLocalConnectionToken()}`,
+        "content-type": "application/json"
+      },
+      method: "POST"
+    })
+
+    expect(response.status).toBe(500)
+    expect(persistSubmittedChatMessagesMock).toHaveBeenCalledWith({
+      db: expect.anything(),
+      messages: [message],
+      sessionId: "session-1"
+    })
+    expect(replaceChatMessagesMock).not.toHaveBeenCalled()
   })
 
   it("does not inject agent tools into chat requests while agents are disabled", async () => {

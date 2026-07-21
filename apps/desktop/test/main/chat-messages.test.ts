@@ -3,7 +3,11 @@ import fs from "node:fs"
 import type { UIMessage } from "ai"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
-import { listChatMessages, replaceChatMessages } from "@/main/chat-messages"
+import {
+  listChatMessages,
+  persistSubmittedChatMessages,
+  replaceChatMessages
+} from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import { createChatSession, getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
@@ -111,6 +115,36 @@ describe("chat messages", () => {
       messageCount: 2,
       sessionId: session.id
     })
+  })
+
+  it("checkpoints a submitted prompt without building completed-turn memory", async () => {
+    await ensureDatabaseReady()
+
+    const session = await createChatSession({ db: getDb() })
+    const messages: UIMessage[] = [
+      {
+        id: "failed-user-message",
+        parts: [{ text: "Keep this prompt when fetch fails", type: "text" }],
+        role: "user"
+      }
+    ]
+
+    await persistSubmittedChatMessages({
+      db: getDb(),
+      messages,
+      sessionId: session.id
+    })
+
+    const listedMessages = await listChatMessages({
+      db: getDb(),
+      sessionId: session.id
+    })
+    const updatedSession = await getChatSessionById(getDb(), session.id)
+    const memory = await getChatSessionMemory(getDb(), session.id)
+
+    expect(listedMessages).toEqual(messages)
+    expect(updatedSession?.title).toBe("Keep this prompt when fetch fails")
+    expect(memory).toBeUndefined()
   })
 
   it("normalizes blank and duplicate message ids before persistence", async () => {

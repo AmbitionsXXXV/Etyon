@@ -83,6 +83,7 @@ import {
   parseChatMessageMetadata
 } from "@/renderer/lib/chat/message-metadata"
 import type { ChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+import { shouldSyncPersistedMessagesAfterFinish } from "@/renderer/lib/chat/message-persistence"
 import { getToolInputCommand } from "@/renderer/lib/chat/message-tool-trace"
 import type { ChatModelGroup } from "@/renderer/lib/chat/model-options"
 import {
@@ -1634,7 +1635,7 @@ const ChatRuntime = ({
         setPlanTodoRunId(dataPart.data.runId)
       }
     },
-    onFinish: ({ message }) => {
+    onFinish: ({ isError, message }) => {
       setRequestPhase(null)
       clearWorkflowProgress()
       clearSubagents()
@@ -1657,7 +1658,7 @@ const ChatRuntime = ({
         queryKey: sessionPlanQueryOptions.queryKey
       })
 
-      if (agentMode === "agent") {
+      if (shouldSyncPersistedMessagesAfterFinish({ agentMode, isError })) {
         void (async () => {
           try {
             setMessages(await onSyncPersistedMessagesAfterFinish())

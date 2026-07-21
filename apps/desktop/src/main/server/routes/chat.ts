@@ -14,7 +14,10 @@ import {
   getSessionPlan,
   upsertSessionPlanFromMessages
 } from "@/main/agents/session-plans"
-import { replaceChatMessages } from "@/main/chat-messages"
+import {
+  persistSubmittedChatMessages,
+  replaceChatMessages
+} from "@/main/chat-messages"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import type { AppDatabase } from "@/main/db"
@@ -154,6 +157,8 @@ chatRoute.post("/chat", async (c) => {
   if (!session) {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
+
+  await persistSubmittedChatMessages({ db, messages, sessionId })
 
   const baseSettings = getSettings()
   const effectiveModelId = requestedModelId ?? session.modelId ?? null

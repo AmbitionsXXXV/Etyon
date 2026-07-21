@@ -132,31 +132,13 @@ const toUiMessage = (row: typeof chatMessages.$inferSelect): UIMessage => {
   } as UIMessage
 }
 
-export const listChatMessages = async ({
+const getActiveChatSession = async ({
   db,
   sessionId
 }: {
   db: AppDatabase
   sessionId: string
-}): Promise<UIMessage[]> => {
-  const rows = await db
-    .select()
-    .from(chatMessages)
-    .where(eq(chatMessages.sessionId, sessionId))
-    .orderBy(asc(chatMessages.sequence))
-
-  return rows.map(toUiMessage)
-}
-
-export const replaceChatMessages = async ({
-  db,
-  messages,
-  sessionId
-}: {
-  db: AppDatabase
-  messages: UIMessage[]
-  sessionId: string
-}): Promise<UIMessage[]> => {
+}): Promise<typeof chatSessions.$inferSelect> => {
   const [session] = await db
     .select()
     .from(chatSessions)
@@ -167,28 +149,32 @@ export const replaceChatMessages = async ({
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
-  // Move base64 image `data:` URLs out of the message JSON and onto disk before
-  // anything serializes them, so the SQLite chat log stays small and every
-  // downstream path (compaction, memory, title) sees the compact url refs.
-  const persistableMessages = await persistDataUrlAttachments(messages)
-  const settings = getSettings()
-  const compactedMessages = await compactChatMessages({
-    messages: persistableMessages,
-    settings
-  })
-  const normalizedMessages = normalizeMessageIds(compactedMessages)
+  return session
+}
+
+const writeChatMessageSnapshot = async ({
+  db,
+  messages,
+  session,
+  sessionId
+}: {
+  db: AppDatabase
+  messages: UIMessage[]
+  session: typeof chatSessions.$inferSelect
+  sessionId: string
+}): Promise<void> => {
   const now = new Date().toISOString()
   const nextTitle = session.title.trim()
     ? session.title
-    : buildChatSessionTitle(persistableMessages)
+    : buildChatSessionTitle(messages)
 
   await runExclusiveDbWrite(() =>
     db.transaction(async (tx) => {
       await tx.delete(chatMessages).where(eq(chatMessages.sessionId, sessionId))
 
-      if (normalizedMessages.length > 0) {
+      if (messages.length > 0) {
         await tx.insert(chatMessages).values(
-          normalizedMessages.map((message, index) => ({
+          messages.map((message, index) => ({
             agentProjectionRunId: getAgentProjectionRunId(message.metadata),
             createdAt: now,
             messageId: message.id,
@@ -211,6 +197,78 @@ export const replaceChatMessages = async ({
         .where(eq(chatSessions.id, sessionId))
     })
   )
+}
+
+export const listChatMessages = async ({
+  db,
+  sessionId
+}: {
+  db: AppDatabase
+  sessionId: string
+}): Promise<UIMessage[]> => {
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.sessionId, sessionId))
+    .orderBy(asc(chatMessages.sequence))
+
+  return rows.map(toUiMessage)
+}
+
+/** Saves the submitted transcript before provider work begins. This checkpoint
+ * deliberately skips compaction and memory writes so preserving a failed
+ * prompt stays bounded and never treats an incomplete turn as memory. */
+export const persistSubmittedChatMessages = async ({
+  db,
+  messages,
+  sessionId
+}: {
+  db: AppDatabase
+  messages: UIMessage[]
+  sessionId: string
+}): Promise<UIMessage[]> => {
+  const session = await getActiveChatSession({ db, sessionId })
+  const persistableMessages = await persistDataUrlAttachments(messages)
+  const normalizedMessages = normalizeMessageIds(persistableMessages)
+
+  await writeChatMessageSnapshot({
+    db,
+    messages: normalizedMessages,
+    session,
+    sessionId
+  })
+
+  return listChatMessages({ db, sessionId })
+}
+
+export const replaceChatMessages = async ({
+  db,
+  messages,
+  sessionId
+}: {
+  db: AppDatabase
+  messages: UIMessage[]
+  sessionId: string
+}): Promise<UIMessage[]> => {
+  const session = await getActiveChatSession({ db, sessionId })
+
+  // Move base64 image `data:` URLs out of the message JSON and onto disk before
+  // anything serializes them, so the SQLite chat log stays small and every
+  // downstream path (compaction, memory, title) sees the compact url refs.
+  const persistableMessages = await persistDataUrlAttachments(messages)
+  const settings = getSettings()
+  const compactedMessages = await compactChatMessages({
+    messages: persistableMessages,
+    settings
+  })
+  const normalizedMessages = normalizeMessageIds(compactedMessages)
+
+  await writeChatMessageSnapshot({
+    db,
+    messages: normalizedMessages,
+    session,
+    sessionId
+  })
 
   await upsertChatSessionMemory({
     db,

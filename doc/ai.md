@@ -73,6 +73,7 @@ AI 配置存储在 `electron-store` 的 `settings.ai` 字段中：
 Renderer (useChat + DefaultChatTransport)
   ↓ HTTP POST /api/chat (SSE stream)
 Hono Server (127.0.0.1:<port>)
+  ↓ checkpoint submitted UIMessage history (no compaction / memory writes)
   ↓ load session memory + long-term memory + project mention context
   ↓ resolveModel(modelId)
 AI Provider Factory
@@ -86,6 +87,10 @@ Telegram Bridge (main process)
   ↓ streamText({ model: resolveModel(settings.telegram.defaultModel || undefined), messages })
   ↓ Chat SDK thread.post(result.textStream)
 ```
+
+Renderer 的 CSP 仅在 `connect-src` 中额外放行 `http://127.0.0.1:*`，用于连接随机端口的本地 Hono chat server；其他任意远程 fetch 仍保持阻断。
+
+提交的消息会在 provider 解析和请求之前做一次轻量 checkpoint。若 transport 或 provider 返回错误，renderer 保留 AI SDK 已追加的 live messages，不会再用失败前的数据库快照覆盖；重新进入 session 时也能恢复原始用户消息并继续 Regenerate。完整响应成功结束后，仍由 `onFinish` 执行压缩、会话记忆与长期记忆更新。
 
 ## Renderer 端使用
 
