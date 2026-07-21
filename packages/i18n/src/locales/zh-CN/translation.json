@@ -581,8 +581,8 @@
   },
   "settings": {
     "appIcon": {
-      "alt": "备选",
-      "default": "默认",
+      "alt": "白色",
+      "default": "深色",
       "description": "选择用于 Dock、任务栏和托盘的应用图标。",
       "title": "应用图标"
     },

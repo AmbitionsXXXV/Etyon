@@ -581,8 +581,8 @@
   },
   "settings": {
     "appIcon": {
-      "alt": "代替",
-      "default": "デフォルト",
+      "alt": "ホワイト",
+      "default": "ダーク",
       "description": "Dock、タスクバー、トレイに表示するアプリアイコンを選択します。",
       "title": "アプリアイコン"
     },

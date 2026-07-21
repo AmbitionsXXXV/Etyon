@@ -31,7 +31,7 @@ let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let shouldQuitApp = false
 
-const getWindowIcon = () => createRuntimeIcon()
+const getWindowIcon = () => createRuntimeIcon(getSettings().appIcon)
 
 type WindowBehaviorSettings = Pick<
   AppSettings,

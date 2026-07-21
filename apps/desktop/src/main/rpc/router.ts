@@ -104,6 +104,7 @@ import {
   getSessionPlan,
   setSessionPlanStatus
 } from "@/main/agents/session-plans"
+import { syncRuntimeIcon } from "@/main/app-metadata"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -197,6 +198,10 @@ const applySettingsUpdate = (
 
   if (!startupSettingsEqual(previousSettings, result)) {
     syncStartupSettings(result)
+  }
+
+  if (previousSettings.appIcon !== result.appIcon) {
+    syncRuntimeIcon(result.appIcon)
   }
 
   refreshLocalizedAppShell()

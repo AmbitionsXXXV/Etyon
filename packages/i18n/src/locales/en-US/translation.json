@@ -581,8 +581,8 @@
   },
   "settings": {
     "appIcon": {
-      "alt": "Alt",
-      "default": "Default",
+      "alt": "Light",
+      "default": "Dark",
       "description": "Choose your preferred app icon for the dock, taskbar, and tray.",
       "title": "App Icon"
     },

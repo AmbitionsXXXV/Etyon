@@ -66,8 +66,10 @@ const config: ForgeConfig = {
     darwinDarkModeSupport: true,
     executableName,
     extraResource: [
+      "resources/icon-dark.png",
       "resources/icon.icns",
       "resources/icon.ico",
+      "resources/icon-light.png",
       "resources/tray.png"
     ],
     helperBundleId,

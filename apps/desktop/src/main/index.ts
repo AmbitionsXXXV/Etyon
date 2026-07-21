@@ -9,7 +9,7 @@ import {
   expireStaleApprovals,
   recoverInterruptedAgentRuns
 } from "@/main/agents/agent-event-store"
-import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { getAppDisplayName, syncRuntimeIcon } from "@/main/app-metadata"
 import { getElectronUserDataDir } from "@/main/app-paths"
 import {
   registerAttachmentProtocol,
@@ -65,15 +65,10 @@ const handleAppReady = async (): Promise<void> => {
   registerRendererContentSecurityPolicy()
 
   const appDisplayName = getAppDisplayName()
-  const appIcon = createRuntimeIcon()
+  const settings = getSettings()
 
   app.setName(appDisplayName)
-
-  if (platform.isMacOS && appIcon) {
-    app.dock?.setIcon(appIcon)
-  }
-
-  const settings = getSettings()
+  syncRuntimeIcon(settings.appIcon)
 
   if (settings.autoStart) {
     syncStartupSettings(settings)

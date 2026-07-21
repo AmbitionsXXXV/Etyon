@@ -24,7 +24,7 @@
 
 ## 图标
 
-- 托盘优先使用 `apps/desktop/resources/tray.png`
-- 打包产物会额外带上 `tray.png` 与 `tray@2x.png`
-- 创建托盘图标时会执行 `nativeImage.createFromPath(iconPath).resize({ height: 16 })`
-- 如果托盘专用图标不存在，则回退到应用运行时图标
+- 托盘跟随 `settings.appIcon`，深色与白色选项分别读取 `icon-dark.png` 和 `icon-light.png`
+- 创建托盘图标时会把当前应用图标缩放到 `16 px` 高度
+- 保存图标设置后会调用 `refreshTray()`，无需重启即可更新现有托盘图标
+- 如果所选 PNG 不存在，运行时会回退到平台默认的 `icon.icns` 或 `icon.ico`

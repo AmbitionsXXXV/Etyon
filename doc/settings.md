@@ -439,8 +439,10 @@ Other Renderers (RendererRoot)
 
 ## App Icon Preview
 
-- `General -> App Icon` 中的选项预览直接使用 `apps/desktop/resources/` 下的真实图标资源，而不是 `emoji` 占位
-- 当前设置页预览复用 `tray.png`，保证用户在切换图标选项时看到的是实际应用资源，而不是抽象占位符
+- `General -> App Icon` 中的深色与白色选项直接预览 `apps/desktop/resources/icon-dark.png` 和 `apps/desktop/resources/icon-light.png`
+- 为兼容已有设置，持久化值继续使用 `default | alt`：`default` 对应深色图标，`alt` 对应白色图标
+- 保存不同图标后，主进程会立即刷新 macOS Dock，或刷新 Windows / Linux 已有窗口图标，并同步刷新托盘图标
+- 下次启动和创建新窗口时会读取 `appIcon`，所选图标无需再次设置
 
 ## 启动设置
 

@@ -2,18 +2,22 @@ import fs from "node:fs"
 import path from "node:path"
 
 import { platform } from "@electron-toolkit/utils"
-import { app, nativeImage } from "electron"
+import type { AppIcon } from "@etyon/rpc"
+import { BrowserWindow, app, nativeImage } from "electron"
 import type { NativeImage } from "electron"
 
 import { isRuntimeReleaseBuild } from "@/main/app-paths"
 
 const DEVELOPMENT_APP_NAME = "Etyon Dev" as const
 const DEVELOPMENT_ASSET_ROOT = "resources" as const
+const APP_ICON_FILENAMES_BY_ICON: Record<AppIcon, readonly string[]> = {
+  alt: ["icon-light.png"],
+  default: ["icon-dark.png"]
+}
 const ICON_FILENAMES = platform.isMacOS
   ? ["icon.icns", "icon.ico"]
   : ["icon.ico", "icon.icns"]
 const RELEASE_APP_NAME = "Etyon" as const
-const TRAY_ICON_FILENAMES = ["tray.png"] as const
 
 const createNativeImageFromPath = (
   assetPath: string | null
@@ -49,8 +53,10 @@ const resolveAssetPath = (filenames: readonly string[]): string | null => {
   return null
 }
 
-export const createRuntimeIcon = (): NativeImage | undefined => {
-  const iconPath = resolveRuntimeIconPath()
+export const createRuntimeIcon = (
+  appIcon: AppIcon = "default"
+): NativeImage | undefined => {
+  const iconPath = resolveRuntimeIconPath(appIcon)
 
   return createNativeImageFromPath(iconPath)
 }
@@ -58,8 +64,27 @@ export const createRuntimeIcon = (): NativeImage | undefined => {
 export const getAppDisplayName = (): string =>
   isRuntimeReleaseBuild() ? RELEASE_APP_NAME : DEVELOPMENT_APP_NAME
 
-export const resolveTrayIconPath = (): string | null =>
-  resolveAssetPath(TRAY_ICON_FILENAMES)
-
-export const resolveRuntimeIconPath = (): string | null =>
+export const resolveRuntimeIconPath = (
+  appIcon: AppIcon = "default"
+): string | null =>
+  resolveAssetPath(APP_ICON_FILENAMES_BY_ICON[appIcon]) ??
   resolveAssetPath(ICON_FILENAMES)
+
+export const syncRuntimeIcon = (appIcon: AppIcon): void => {
+  const icon = createRuntimeIcon(appIcon)
+
+  if (!icon) {
+    return
+  }
+
+  if (platform.isMacOS) {
+    app.dock?.setIcon(icon)
+    return
+  }
+
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.setIcon(icon)
+    }
+  }
+}

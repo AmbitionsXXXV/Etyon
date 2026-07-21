@@ -1,30 +1,21 @@
-import { Menu, Tray, app, nativeImage } from "electron"
+import { Menu, Tray, app } from "electron"
 import type { NativeImage } from "electron"
 
-import {
-  createRuntimeIcon,
-  getAppDisplayName,
-  resolveTrayIconPath
-} from "./app-metadata"
+import { createRuntimeIcon, getAppDisplayName } from "./app-metadata"
 import { t } from "./localization"
+import { getSettings } from "./settings"
 import { createSettingsWindow, focusOrCreateMainWindow } from "./window"
 
 let tray: Tray | null = null
 
 const createTrayImage = (): NativeImage | undefined => {
-  const iconPath = resolveTrayIconPath()
+  const icon = createRuntimeIcon(getSettings().appIcon)
 
-  if (!iconPath) {
-    return createRuntimeIcon()
+  if (!icon) {
+    return undefined
   }
 
-  const icon = nativeImage.createFromPath(iconPath).resize({ height: 16 })
-
-  if (icon.isEmpty()) {
-    return createRuntimeIcon()
-  }
-
-  return icon
+  return icon.resize({ height: 16 })
 }
 
 const buildTrayMenu = () => {

@@ -15,7 +15,14 @@ import { Tick01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useMemo } from "react"
 
-import trayImage from "../../../../resources/tray.png"
+import darkIconImage from "../../../../resources/icon-dark.png"
+import lightIconImage from "../../../../resources/icon-light.png"
+
+const APP_ICONS: AppIcon[] = ["default", "alt"]
+const APP_ICON_PREVIEW_BY_ICON: Record<AppIcon, string> = {
+  alt: lightIconImage,
+  default: darkIconImage
+}
 
 export const LanguageSelect = ({
   onChange,
@@ -86,6 +93,7 @@ const AppIconButton = ({
 
   return (
     <button
+      aria-pressed={isActive}
       className={cn(
         "relative flex flex-col items-center gap-2 rounded-lg border p-3 transition-all",
         isActive
@@ -114,12 +122,6 @@ const AppIconButton = ({
       <span className="text-xs font-medium">{label}</span>
     </button>
   )
-}
-
-const APP_ICONS: AppIcon[] = ["default", "alt"]
-const APP_ICON_PREVIEW_BY_ICON: Record<AppIcon, string> = {
-  alt: trayImage,
-  default: trayImage
 }
 
 export const AppIconSelector = ({
