@@ -77,7 +77,7 @@ describe("chat sessions", () => {
 
     const session = await createChatSession({ db: getDb() })
 
-    expect(session.projectPath).toBe(`${mockedHomeDir}/.config/etyon`)
+    expect(session.projectPath).toBe(`${mockedHomeDir}/.config/etyon-dev`)
     expect(fs.existsSync(session.projectPath)).toBe(true)
   })
 

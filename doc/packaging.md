@@ -34,6 +34,18 @@
 
 这样做的目的，是避免本地开发包和正式包在 macOS / Windows 上发生应用标识冲突。
 
+## 运行数据路径隔离
+
+`vite.main.config.ts` 会在构建主进程时把同一个 build identifier 固化到 bundle。运行时路径统一由 `apps/desktop/src/main/app-paths.ts` 生成，目录名使用无空格的小写形式，避免开发版与正式版复用 settings、SQLite、日志、附件、模型和 Chromium session 数据。
+
+| 数据 | Development | Release |
+| --- | --- | --- |
+| 应用配置 | `~/.config/etyon-dev/` | `~/.config/etyon/` |
+| 结构化日志 | `~/.etyon-dev/logs/` | `~/.etyon/logs/` |
+| Electron `userData` / `sessionData` | `<appData>/etyon-dev/` | `<appData>/etyon/` |
+
+`electron-forge start`、development package 和本地 Drizzle 命令默认使用 development 路径；release package 继续使用原有正式路径，不迁移或覆盖正式数据。Electron 的 `userData` 与 `sessionData` 会在 `ready` 前完成设置，确保 Chromium cache、local storage 等内部数据也保持隔离。
+
 ## 平台字段
 
 - macOS：补充 `appCategoryType`、`darwinDarkModeSupport`、`appCopyright`

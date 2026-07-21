@@ -1,5 +1,6 @@
 import { defineConfig } from "vite-plus"
 
+import { resolveBuildIdentifier } from "./forge/build-identifier"
 import { desktopAliases } from "./vite-aliases"
 
 const ESM_SHIMS = [
@@ -10,6 +11,8 @@ const ESM_SHIMS = [
   `const __filename = __etyonFileURLToPath(import.meta.url);`,
   `const __dirname = __etyonDirname(__filename);`
 ].join(" ")
+
+const buildIdentifier = resolveBuildIdentifier()
 
 export default defineConfig({
   build: {
@@ -29,6 +32,9 @@ export default defineConfig({
         banner: ESM_SHIMS
       }
     }
+  },
+  define: {
+    "process.env.ETYON_BUILD_IDENTIFIER": JSON.stringify(buildIdentifier)
   },
   resolve: {
     alias: [...desktopAliases],

@@ -291,7 +291,7 @@ Renderer draft.availableModels / draft.models
 
 ## 安全
 
-- API Key 存储在 `~/.config/etyon/settings.json`
+- API Key 存储在当前构建的 `<app-config-dir>/settings.json`（development 为 `~/.config/etyon-dev`，release 为 `~/.config/etyon`）
 - Hono 服务仅绑定 `127.0.0.1`
 - 日志中不记录 API Key
 - Telegram bot token 存储在 `settings.telegram.botToken`，`getMe.username` 存储在 `settings.telegram.botUsername` 用于 mention detection；日志不记录 token，可用 `allowedUserIds` / `allowedChatIds` 限制入口

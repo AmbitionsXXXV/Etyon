@@ -19,8 +19,8 @@ import {
   restoreFileCheckpoint,
   restoreSingleFileFromCheckpoints
 } from "@/main/agents/checkpoints"
+import { getAppConfigDir } from "@/main/app-paths"
 import { getDb } from "@/main/db"
-import { getAppConfigDir } from "@/main/db/libsql-paths"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { agentCheckpoints } from "@/main/db/schema"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"

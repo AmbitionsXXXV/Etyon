@@ -1,3 +1,5 @@
+import fs from "node:fs"
+
 import { optimizer, platform } from "@electron-toolkit/utils"
 import type { AppSettings } from "@etyon/rpc"
 import { app, BrowserWindow, ipcMain } from "electron"
@@ -8,6 +10,7 @@ import {
   recoverInterruptedAgentRuns
 } from "@/main/agents/agent-event-store"
 import { createRuntimeIcon, getAppDisplayName } from "@/main/app-metadata"
+import { getElectronUserDataDir } from "@/main/app-paths"
 import {
   registerAttachmentProtocol,
   registerAttachmentProtocolScheme
@@ -36,6 +39,16 @@ import {
   isAppQuitting,
   setAppQuitting
 } from "@/main/window"
+
+const configureElectronDataPaths = (): void => {
+  const userDataDir = getElectronUserDataDir(app.getPath("appData"))
+
+  fs.mkdirSync(userDataDir, { recursive: true })
+  app.setPath("sessionData", userDataDir)
+  app.setPath("userData", userDataDir)
+}
+
+configureElectronDataPaths()
 
 if (started) {
   app.quit()

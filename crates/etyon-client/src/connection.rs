@@ -47,8 +47,15 @@ impl ConnectionInfo {
 
 pub fn default_connection_path() -> PathBuf {
     let home = env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let config_directory = if cfg!(debug_assertions) {
+        "etyon-dev"
+    } else {
+        "etyon"
+    };
 
-    home.join(".config").join("etyon").join("connection.json")
+    home.join(".config")
+        .join(config_directory)
+        .join("connection.json")
 }
 
 #[cfg(test)]
@@ -58,6 +65,11 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn debug_build_uses_development_connection_directory() {
+        assert!(default_connection_path().ends_with(".config/etyon-dev/connection.json"));
+    }
 
     fn write_connection(path: &Path, version: u32) {
         fs::write(

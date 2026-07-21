@@ -313,7 +313,9 @@ describe("message-port rpc", () => {
       sessionId: createdSession.id
     })
 
-    expect(createdSession.projectPath).toBe(`${mockedHomeDir}/.config/etyon`)
+    expect(createdSession.projectPath).toBe(
+      `${mockedHomeDir}/.config/etyon-dev`
+    )
     expect(
       sessionsAfterCreate.some((session) => session.id === createdSession.id)
     ).toBe(true)

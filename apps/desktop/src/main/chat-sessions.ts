@@ -6,8 +6,8 @@ import { and, desc, eq, isNull } from "drizzle-orm"
 import { app } from "electron"
 
 import { listAgentEditedPathsBySession } from "@/main/agents/agent-edited-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 import type { AppDatabase } from "@/main/db"
-import { getAppConfigDir } from "@/main/db/libsql-paths"
 import { chatSessions } from "@/main/db/schema"
 import {
   getGitProjectStatuses,

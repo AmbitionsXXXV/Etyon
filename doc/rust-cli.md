@@ -20,10 +20,11 @@ crates/
 
 ## Desktop Connection
 
-The desktop app writes a connection file after its local server starts:
+The desktop app writes a connection file after its local server starts. Debug builds use the isolated development directory, while release builds keep the production directory:
 
 ```text
-~/.config/etyon/connection.json
+debug:   ~/.config/etyon-dev/connection.json
+release: ~/.config/etyon/connection.json
 ```
 
 The file contains the desktop URL, process id, transport version, and a per-start token. `/health` stays public; `/rpc/*` and `/api/chat` require:
@@ -32,7 +33,7 @@ The file contains the desktop URL, process id, transport version, and a per-star
 Authorization: Bearer <token>
 ```
 
-The CLI expects desktop to already be running. It does not start desktop in the first Rust CLI version.
+The CLI expects desktop to already be running. A debug CLI build defaults to `etyon-dev`, and a release CLI build defaults to `etyon`, matching the corresponding desktop build. It does not start desktop in the first Rust CLI version.
 
 ## Commands
 

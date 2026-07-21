@@ -4,7 +4,7 @@ import path from "node:path"
 import type { MemoryEmbeddingModelsOutput } from "@etyon/rpc"
 import { app } from "electron"
 
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 import {
   DEFAULT_EMBEDDING_MODEL_LABEL,
   LOCAL_EMBEDDING_MODEL_OPTIONS

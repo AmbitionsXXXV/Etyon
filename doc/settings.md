@@ -12,8 +12,10 @@ Renderer (index.tsx 分流)
   ↓ oRPC
 Main (settings.ts + electron-store)
   ↓ JSON
-~/.config/etyon/settings.json
+<app-config-dir>/settings.json
 ```
+
+`app-config-dir` 在 development 中为 `~/.config/etyon-dev`，在 release 中为 `~/.config/etyon`，两个环境不共享设置与运行数据。
 
 ### 窗口模型
 
@@ -31,7 +33,7 @@ Settings 使用独立的 `BrowserWindow`，与主窗口共享同一 renderer 入
 | --- | --- | --- |
 | Schema | `packages/rpc/src/schemas/settings.ts` | Zod schema 定义（`AppSettingsSchema`、`ThemeSchema`、`UpdateSettingsSchema`） |
 | Font Schema | `packages/rpc/src/schemas/fonts.ts` | `FontListOutputSchema` — 系统字体列表返回值 schema |
-| Main Store | `apps/desktop/src/main/settings.ts` | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `~/.config/etyon/settings.json` |
+| Main Store | `apps/desktop/src/main/settings.ts` | `electron-store` 封装（ESM 顶层静态导入），提供 `getSettings()` / `updateSettings()`，持久化到 `<app-config-dir>/settings.json` |
 | Main Fonts | `apps/desktop/src/main/fonts.ts` | `listSystemFonts()` — 跨平台系统字体枚举（macOS/Linux/Windows），带内存缓存 |
 | RPC Router | `apps/desktop/src/main/rpc/router.ts` | `settings.get` / `settings.update` / `fonts.list` 路由 |
 | Window | `apps/desktop/src/main/window.ts` | `createSettingsWindow()` 单例窗口创建 |
@@ -211,7 +213,7 @@ interface StoredProviderModel {
 - `Embedding Model` 区块：
   - 空字符串表示默认 `text-embedding-3-small`
   - 本地 catalog 先展示 `MiniLM L6 v2`、`BGE Small EN v1.5`、`Multilingual E5 Small`、`Paraphrase Multilingual MiniLM`
-  - 本地模型状态由 main process 根据 `~/.config/etyon/embedding-models` 下的实际文件实时返回，不再使用 renderer hardcoded `installed`
+  - 本地模型状态由 main process 根据 `<app-config-dir>/embedding-models` 下的实际文件实时返回，不再使用 renderer hardcoded `installed`
   - 未安装的本地模型在 UI 中展示 `Install` action；点击后调用 `memory.embeddingModels.install` 下载模型文件并刷新列表
 - 页面底部通过 `memory.stats` 与 `memory.list` 展示当前 memory 条目数、最近更新时间与最近条目预览
 - 当前实现是本地 SQLite + hybrid retrieval；embedding、query rewriting、模型总结与 lifecycle diagnostics 均放在 main process runtime，Settings panel 只负责用户可控配置
@@ -225,7 +227,7 @@ interface StoredProviderModel {
   - project 级：`${projectPath}/.codex/skills/*/SKILL.md`
   - 全局：`~/.codex/skills/*/SKILL.md`
   - 全局：`~/.agents/skills/*/SKILL.md`
-  - 全局：`~/.config/etyon/skills/*/SKILL.md`
+  - 全局：`<app-config-dir>/skills/*/SKILL.md`
 - `SKILL.md` 解析遵循 Codex skill 标准：YAML frontmatter 必须包含 `name` 和 `description`，可选读取 `metadata.short-description`
 - `settings.skills` 只保存开关与预算：
   - `enabled`：关闭后不再向模型请求注入 skills
@@ -393,14 +395,14 @@ Other Renderers (RendererRoot)
 - `settings.sidebar.mode` 通过现有 `settings.get / settings.update` 流程持久化到 `settings.json`
 - 主侧边栏的折叠 UI 状态单独持久化，不进入 `AppSettings`：
   - 主进程存储：[sidebar-ui-state.ts](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/sidebar-ui-state.ts)
-  - 存储文件：`~/.config/etyon/sidebar-ui-state.json`
+  - 存储文件：`<app-config-dir>/sidebar-ui-state.json`
 - `Simple` 模式下，主侧边栏按 `lastOpenedAt desc` 展示扁平 session 列表
 - `Projects` 模式下，主侧边栏按 session 的 `projectPath` 精确分组：
   - 顶部新增独立的 `Pinned Threads` 扁平区块，显示所有已 pinned 的 session
   - 普通项目组只显示未 pinned 的 session
   - 组标题显示文件夹名，完整绝对路径只放在 tooltip
   - 项目组默认使用稳定顺序，不再因为点击/打开 session 更新 `lastOpenedAt` 而自动移动
-  - 项目组支持拖拽排序；排序结果写入 `projectOrder`，保存在 `~/.config/etyon/sidebar-ui-state.json`
+  - 项目组支持拖拽排序；排序结果写入 `projectOrder`，保存在 `<app-config-dir>/sidebar-ui-state.json`
   - 每个项目组都支持折叠；`collapsedProjectPaths` 以精确 `projectPath` 作为 key，并跨窗口、重启保持
   - 当前 active session 所在项目组也遵循用户手动折叠态；点击项目组标题可直接收起当前项目
   - 每个项目组默认显示 `10` 条 session；点击 `Show more` 每次增量展开 `10` 条；全部显示后切成 `Show less`，回到默认 `10` 条
@@ -409,7 +411,7 @@ Other Renderers (RendererRoot)
 - `New Chat` 创建项目归属规则：
   - 优先继承当前选中 session 的 `projectPath`
   - 否则继承最近打开的 session 的 `projectPath`
-  - 若本地还没有任何 session，则回退到 `~/.config/etyon`
+  - 若本地还没有任何 session，则回退到当前构建的 `<app-config-dir>`
 - `Sidebar Settings` 不做跨窗口草稿实时 preview；只有点击 `Save` 后，主窗口才通过既有 `"settings-changed"` 广播切换模式
 
 ## 语言设置

@@ -11,7 +11,7 @@ import { app } from "electron"
 
 import { loadPromptTemplates } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 
 const FRONTMATTER_DELIMITER = "---"
 const MAX_SKILL_BODY_CHARS = 6000

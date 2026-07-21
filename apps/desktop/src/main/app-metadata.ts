@@ -5,6 +5,8 @@ import { platform } from "@electron-toolkit/utils"
 import { app, nativeImage } from "electron"
 import type { NativeImage } from "electron"
 
+import { isRuntimeReleaseBuild } from "@/main/app-paths"
+
 const DEVELOPMENT_APP_NAME = "Etyon Dev" as const
 const DEVELOPMENT_ASSET_ROOT = "resources" as const
 const ICON_FILENAMES = platform.isMacOS
@@ -54,7 +56,7 @@ export const createRuntimeIcon = (): NativeImage | undefined => {
 }
 
 export const getAppDisplayName = (): string =>
-  app.isPackaged ? RELEASE_APP_NAME : DEVELOPMENT_APP_NAME
+  isRuntimeReleaseBuild() ? RELEASE_APP_NAME : DEVELOPMENT_APP_NAME
 
 export const resolveTrayIconPath = (): string | null =>
   resolveAssetPath(TRAY_ICON_FILENAMES)

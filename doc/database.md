@@ -12,8 +12,10 @@
 
 ## 路径
 
-- 配置目录：`~/.config/etyon/`
-- SQLite 文件：`~/.config/etyon/etyon.sqlite`
+- Development 配置目录：`~/.config/etyon-dev/`
+- Development SQLite 文件：`~/.config/etyon-dev/etyon.sqlite`
+- Release 配置目录：`~/.config/etyon/`
+- Release SQLite 文件：`~/.config/etyon/etyon.sqlite`
 - Drizzle 配置：[drizzle.config.ts](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle.config.ts)
 - Schema 占位文件：[schema.ts](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/src/main/db/schema.ts)
 - Migration 输出目录：[drizzle](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle)
@@ -49,7 +51,7 @@
 - 第四条 migration：[`0003_tidy_magma.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0003_tidy_magma.sql)
 - 第五条 migration：[`0004_red_nicolaos.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0004_red_nicolaos.sql)
 - 第六条 migration：[`0005_sleepy_grey_gargoyle.sql`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/drizzle/0005_sleepy_grey_gargoyle.sql)
-- 首次创建 session 且没有可继承项目时，`project_path` 回退到 `~/.config/etyon`
+- 首次创建 session 且没有可继承项目时，`project_path` 回退到当前构建对应的应用配置目录
 - `pinned_at` 仅用于 `Projects` 模式下的顶部 `Pinned Threads` 排序：先按 `pinned_at desc`，再按 `last_opened_at desc`
 - `archived_at` 为软归档标记；`chatSessions.list` 只返回 `archived_at is null` 的 active session
 - 主进程在 `app.on("ready")` 期间先调用 `ensureDatabaseReady()`，再注册 RPC 与本地 HTTP server，保证 `chatSessions.*` RPC 首次调用时表已经存在

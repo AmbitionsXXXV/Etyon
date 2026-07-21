@@ -4,19 +4,16 @@ import path from "node:path"
 
 import { app } from "electron"
 
+import { getAppConfigDir } from "@/main/app-paths"
+
 const CONNECTION_FILE_VERSION = 1
 const CONNECTION_TRANSPORT = "desktop-http"
-const LOCAL_CONNECTION_DIR = ".config/etyon"
 const LOCAL_CONNECTION_FILE_NAME = "connection.json"
 
 let localConnectionToken = crypto.randomBytes(32).toString("base64url")
 
 const buildLocalConnectionFilePath = (): string =>
-  path.join(
-    app.getPath("home"),
-    LOCAL_CONNECTION_DIR,
-    LOCAL_CONNECTION_FILE_NAME
-  )
+  path.join(getAppConfigDir(app.getPath("home")), LOCAL_CONNECTION_FILE_NAME)
 
 export const createLocalConnectionToken = (): string => {
   localConnectionToken = crypto.randomBytes(32).toString("base64url")

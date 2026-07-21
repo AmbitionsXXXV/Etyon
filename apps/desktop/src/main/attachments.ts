@@ -5,7 +5,7 @@ import path from "node:path"
 import type { UIMessage } from "ai"
 import { app, protocol } from "electron"
 
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 import { logger } from "@/main/logger"
 
 /**

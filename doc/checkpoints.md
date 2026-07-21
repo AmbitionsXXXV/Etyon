@@ -7,7 +7,7 @@ Phase 1 persists a pre-image before the main agent's `write`, `edit`, and `bash`
 ## Storage
 
 - Manifests live in the SQLite `agent_checkpoints` table.
-- File content is gzip-compressed and content-addressed by SHA-256 under `~/.config/etyon/checkpoints/<projectHash>/objects/<sha-prefix>/<sha>`.
+- File content is gzip-compressed and content-addressed by SHA-256 under `<app-config-dir>/checkpoints/<projectHash>/objects/<sha-prefix>/<sha>` (`app-config-dir` is `~/.config/etyon-dev` for development and `~/.config/etyon` for release).
 - `projectHash` is the first 16 hexadecimal characters of the SHA-256 digest of the normalized absolute project path.
 - A manifest points to the latest checkpoint for the same project through `parent_id`.
 - Files larger than 5 MB retain their hash and mode in the manifest with `overCap: true`, but their content is not stored.

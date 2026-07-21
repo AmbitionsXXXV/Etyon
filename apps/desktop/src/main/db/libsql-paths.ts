@@ -1,10 +1,8 @@
 import path from "node:path"
 
-const APP_CONFIG_DIR_SEGMENTS = [".config", "etyon"] as const
-const DATABASE_FILENAME = "etyon.sqlite" as const
+import { getAppConfigDir } from "@/main/app-paths"
 
-export const getAppConfigDir = (homeDir: string): string =>
-  path.join(homeDir, ...APP_CONFIG_DIR_SEGMENTS)
+const DATABASE_FILENAME = "etyon.sqlite" as const
 
 export const getDatabaseFilePath = (homeDir: string): string =>
   path.join(getAppConfigDir(homeDir), DATABASE_FILENAME)

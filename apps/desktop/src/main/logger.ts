@@ -10,7 +10,9 @@ import type {
 } from "@etyon/logger/types"
 import { app } from "electron"
 
-const LOG_DIR = path.join(app.getPath("home"), ".etyon", "logs")
+import { getAppLogDir } from "@/main/app-paths"
+
+const LOG_DIR = getAppLogDir(app.getPath("home"))
 const MAIN_LOGGER_CONTEXT = {
   pid: process.pid,
   process_type: "main",

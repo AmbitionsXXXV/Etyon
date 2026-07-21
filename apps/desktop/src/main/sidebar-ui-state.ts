@@ -3,7 +3,7 @@ import type { SidebarUiState } from "@etyon/rpc"
 import { app } from "electron"
 import ElectronStore from "electron-store"
 
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 
 const SIDEBAR_UI_STATE_DIR = getAppConfigDir(app.getPath("home"))
 const SIDEBAR_WIDTH_PX_MAX = 420

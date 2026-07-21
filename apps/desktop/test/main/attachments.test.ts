@@ -5,6 +5,7 @@ import path from "node:path"
 import type { UIMessage } from "ai"
 import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 
+import { getAppConfigDir } from "@/main/app-paths"
 import {
   ATTACHMENT_PROTOCOL_SCHEME,
   getAttachmentsDir,
@@ -13,7 +14,6 @@ import {
   resolveAttachmentRequestPath,
   resolveAttachmentsForModelMessages
 } from "@/main/attachments"
-import { getAppConfigDir } from "@/main/db/libsql-paths"
 
 const { mockedHomeDir } = vi.hoisted(() => ({
   mockedHomeDir: `/tmp/etyon-attachments-home-${Date.now()}-${Math.random()

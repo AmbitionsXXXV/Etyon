@@ -271,7 +271,7 @@ vi.mock("@/main/settings", () => ({
 const getLogFilePath = (): string =>
   path.join(
     mockedHomeDir,
-    ".etyon",
+    ".etyon-dev",
     "logs",
     `${new Date().toISOString().slice(0, 10)}.jsonl`
   )

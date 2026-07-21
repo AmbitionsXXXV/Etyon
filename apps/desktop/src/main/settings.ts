@@ -3,7 +3,7 @@ import type { AppSettings } from "@etyon/rpc"
 import { app } from "electron"
 import ElectronStore from "electron-store"
 
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 import { hydrateAiSettingsProviders } from "@/shared/providers/provider-catalog"
 
 const SETTINGS_DIR = getAppConfigDir(app.getPath("home"))

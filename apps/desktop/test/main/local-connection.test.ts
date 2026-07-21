@@ -17,7 +17,7 @@ const isPosix = process.platform !== "win32"
 const connectionFilePath = path.join(
   mockedHomeDir,
   ".config",
-  "etyon",
+  "etyon-dev",
   "connection.json"
 )
 

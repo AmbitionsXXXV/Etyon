@@ -1,7 +1,7 @@
 import { app, safeStorage } from "electron"
 import ElectronStore from "electron-store"
 
-import { getAppConfigDir } from "@/main/db/libsql-paths"
+import { getAppConfigDir } from "@/main/app-paths"
 
 import { refreshCursorToken } from "./auth"
 import type { CursorTokens } from "./types"

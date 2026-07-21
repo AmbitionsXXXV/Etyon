@@ -64,7 +64,7 @@ describe("database infrastructure", () => {
       "file:"
     )
     expect((drizzleConfig.dbCredentials as { url: string }).url).toContain(
-      ".config/etyon/etyon.sqlite"
+      ".config/etyon-dev/etyon.sqlite"
     )
     expect(drizzleConfig.dialect).toBe("sqlite")
     expect(drizzleConfig.out).toBe("./drizzle")

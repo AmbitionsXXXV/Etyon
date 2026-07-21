@@ -40,7 +40,8 @@ Main (Log Collector → StreamTransport / FileTransport / RemoteTransport)
 
 ## 存储
 
-- **目录**：`~/.etyon/logs/`
+- **Development 目录**：`~/.etyon-dev/logs/`
+- **Release 目录**：`~/.etyon/logs/`
 - **格式**：JSON Lines（`.jsonl`），每行一条结构化 JSON
 - **文件命名**：`{date}.jsonl`（如 `2026-03-18.jsonl`）
 - **清理策略**：保留最近 30 天，启动时自动清理
