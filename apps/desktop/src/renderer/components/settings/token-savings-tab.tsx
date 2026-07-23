@@ -526,10 +526,13 @@ const RecentCommandsTable = ({
           <Table.ScrollContainer>
             <Table.Content
               aria-label={t("settings.tokenSavings.recent.title")}
-              className="min-w-[820px]"
+              className="min-w-205"
             >
               <Table.Header className="**:data-[slot=table-column]:text-foreground [&_[data-slot=table-column]:first-child]:rounded-l-none [&_[data-slot=table-column]:last-child]:rounded-r-none">
-                <Table.Column isRowHeader minWidth={120}>
+                <Table.Column
+                  className="w-30 min-w-30 whitespace-nowrap"
+                  isRowHeader
+                >
                   {t("settings.tokenSavings.recent.time")}
                 </Table.Column>
                 <Table.Column minWidth={500}>
@@ -548,7 +551,7 @@ const RecentCommandsTable = ({
                     id={`${command.timestampLabel}-${command.command}`}
                     key={`${command.timestampLabel}-${command.command}`}
                   >
-                    <Table.Cell className="text-xs text-muted-foreground">
+                    <Table.Cell className="w-30 min-w-30 text-xs whitespace-nowrap text-muted-foreground">
                       {command.timestampLabel}
                     </Table.Cell>
                     <RecentCommandCell command={command.command} />
