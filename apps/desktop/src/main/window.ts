@@ -240,14 +240,14 @@ export const createSettingsWindow = (tab?: string) => {
     ...(platform.isMacOS
       ? { trafficLightPosition: { x: 16, y: 18 }, transparent: true }
       : { titleBarOverlay: { height: 36 } }),
-    height: 720,
+    height: 828,
     maximizable: false,
-    minHeight: 480,
-    minWidth: 732,
+    minHeight: 552,
+    minWidth: 842,
     title: t("window.settings.title"),
     titleBarStyle: "hidden",
     webPreferences: HARDENED_WEB_PREFERENCES,
-    width: 900
+    width: 1035
   })
 
   if (is.dev) {

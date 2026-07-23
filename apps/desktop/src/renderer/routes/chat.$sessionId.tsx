@@ -3135,8 +3135,8 @@ const ChatSessionPage = () => {
   )
 
   const handleOpenSettings = useCallback(() => {
-    navigate({ to: "/settings" })
-  }, [navigate])
+    window.electron.ipcRenderer.send("open-settings", "providers")
+  }, [])
   const handleProjectContextOpenChange = useCallback((isOpen: boolean) => {
     setProjectContextOpen(isOpen)
   }, [])
