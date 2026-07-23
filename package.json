@@ -22,6 +22,7 @@
     "fmt": "vp fmt . --write",
     "make": "turbo run make",
     "prepare": "vp config",
+    "release": "node script/release.mjs",
     "sherif": "sherif",
     "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo deny check bans licenses sources",
     "rust:clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings",

@@ -59,6 +59,17 @@
 - 开发阶段主进程直接从 `apps/desktop/resources/` 读取图标；所选 PNG 用于 `macOS` Dock、Windows / Linux 窗口和托盘，缺失时回退到 `icon.icns` 或 `icon.ico`
 - 开发阶段如果使用 `electron-forge start`，`macOS` Dock / Finder 显示的应用名仍然来自 `Electron.app` 本体，无法仅靠 `forge.config.ts` 或 `app.setName()` 改掉；代码里只能把菜单文案、窗口标题和 Dock 图标切到项目自己的元数据
 
+## 版本与发版入口
+
+产品版本（根 `etyon` + `@etyon/desktop`）通过 Vite+ / pnpm 原生 versioning 锁定，统一入口：
+
+```bash
+vp run release -- patch -- --dry-run
+vp run release -- patch
+```
+
+说明见 [release.md](./release.md)。不要引入 Changesets；tag push 后由下方 workflow 负责打包与 GitHub Release。
+
 ## GitHub Actions release
 
 Release workflow 位于 [`.github/workflows/release.yml`](/Users/jiantianjianghui/Web_Project/Etyon/.github/workflows/release.yml)，触发条件：
