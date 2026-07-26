@@ -15,6 +15,10 @@ import {
   getMentionTitle,
   getMentionTokenTypeLabel
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  MOTION_CHIP_IN_CLASS,
+  MOTION_TRANSITION_FAST_CLASS
+} from "@/renderer/lib/motion"
 
 const getMentionHtmlValue = (attrs: Record<string, unknown>): unknown => {
   if (attrs.kind === "skill") {
@@ -72,8 +76,10 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
       className="mx-0.5 inline-flex max-w-full align-baseline"
       data-project-mention=""
     >
+      {/* The node view mounts exactly when the chip is inserted, so the CSS
+          entrance needs no further guard. */}
       <span
-        className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 text-sm font-medium text-foreground ring-1 ring-border/70"
+        className={`inline-flex max-w-full items-center gap-1.5 rounded-md bg-muted/80 px-1.5 py-1 text-sm font-medium text-foreground ring-1 ring-border/70 ${MOTION_CHIP_IN_CLASS}`}
         title={getMentionTitle(mention)}
       >
         <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
@@ -92,7 +98,7 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
         </span>
         <button
           aria-label={`Remove ${getMentionTextValue(mention)}`}
-          className="rounded-sm text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100"
+          className={`rounded-sm text-muted-foreground opacity-70 transition-opacity hover:text-foreground hover:opacity-100 ${MOTION_TRANSITION_FAST_CLASS}`}
           contentEditable={false}
           onClick={handleRemove}
           type="button"

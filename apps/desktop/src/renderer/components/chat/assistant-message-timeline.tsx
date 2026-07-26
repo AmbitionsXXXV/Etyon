@@ -12,6 +12,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { getToolName } from "ai"
+import { motion } from "motion/react"
 import { useEffect, useRef, useState } from "react"
 import type { ComponentPropsWithoutRef } from "react"
 import type { Components, ExtraProps } from "streamdown"
@@ -71,6 +72,17 @@ import { parseChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
 import { useHasSubagentApprovalPending } from "@/renderer/lib/chat/subagent-stream-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  MOTION_FADE_IN,
+  MOTION_FADE_IN_FAST,
+  MOTION_RISE_PX,
+  MOTION_ROW_RISE_IN,
+  MOTION_TRANSITION_GENTLE_CLASS,
+  useEntranceGuard,
+  useHasChangedSinceMount
+} from "@/renderer/lib/motion"
 import { formatElapsedDuration } from "@/renderer/lib/utils"
 import { PROPOSE_PLAN_TOOL_NAME } from "@/shared/agents/input-tools"
 import type { PlanDecision } from "@/shared/agents/input-tools"
@@ -153,6 +165,14 @@ const AssistantMarkdownContent = ({
   )
 }
 
+// The one entrance in the timeline allowed a scale: an approval or interaction
+// card asks the user to act, so it lands with slightly more weight than a row.
+const APPROVAL_CARD_MOTION = {
+  animate: { opacity: 1, scale: 1, y: 0 },
+  initial: { opacity: 0, scale: 0.97, y: MOTION_RISE_PX },
+  transition: { duration: MOTION_DURATION.gentle, ease: MOTION_EASE }
+}
+
 const getWorkSectionLabelText = (
   t: Translate,
   status: WorkSectionStatus,
@@ -189,14 +209,23 @@ export type InputToolResultHandler = (
 // trace-style line echoing the prompt and the chosen answer.
 const InputToolAnsweredLine = ({
   icon,
+  isJustAnswered,
   label,
   value
 }: {
   icon: IconSvgElement
+  // Only the card that settled in front of the user cross-fades; a historical
+  // answer is simply there when its message mounts.
+  isJustAnswered: boolean
   label: string
   value: string
 }) => (
-  <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/40 px-2 py-1.5">
+  <motion.div
+    animate={MOTION_FADE_IN.animate}
+    className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/40 px-2 py-1.5"
+    initial={isJustAnswered ? MOTION_FADE_IN.initial : false}
+    transition={MOTION_FADE_IN.transition}
+  >
     <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
       <HugeiconsIcon icon={icon} size={13} />
     </span>
@@ -208,7 +237,7 @@ const InputToolAnsweredLine = ({
         {value}
       </span>
     ) : null}
-  </div>
+  </motion.div>
 )
 
 const AskUserCard = ({
@@ -223,6 +252,7 @@ const AskUserCard = ({
   const { t } = useI18n()
   const input = getAskUserCardInput(part)
   const isPending = part.state === "input-available"
+  const isJustAnswered = useHasChangedSinceMount(isPending)
   const [submitted, setSubmitted] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [customText, setCustomText] = useState("")
@@ -234,6 +264,7 @@ const AskUserCard = ({
     return (
       <InputToolAnsweredLine
         icon={HelpCircleIcon}
+        isJustAnswered={isJustAnswered}
         label={input?.question ?? t("chat.askUser.title")}
         value={output ? formatAskUserAnswer(output) : ""}
       />
@@ -270,7 +301,12 @@ const AskUserCard = ({
   }
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3">
+    <motion.div
+      animate={APPROVAL_CARD_MOTION.animate}
+      className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3"
+      initial={APPROVAL_CARD_MOTION.initial}
+      transition={APPROVAL_CARD_MOTION.transition}
+    >
       <div className="flex min-w-0 items-start gap-2">
         <HugeiconsIcon
           className="mt-0.5 shrink-0 text-warning"
@@ -362,7 +398,7 @@ const AskUserCard = ({
           {t("chat.askUser.customSubmit")}
         </Button>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -378,6 +414,7 @@ const ProposePlanCard = ({
   const { t } = useI18n()
   const input = getProposePlanCardInput(part)
   const isPending = part.state === "input-available"
+  const isJustAnswered = useHasChangedSinceMount(isPending)
   const [submitted, setSubmitted] = useState(false)
   const isLocked = submitted || isDisabled || !isPending
 
@@ -394,6 +431,7 @@ const ProposePlanCard = ({
     return (
       <InputToolAnsweredLine
         icon={ClipboardIcon}
+        isJustAnswered={isJustAnswered}
         label={input?.title ?? t("chat.planProposal.title")}
         value={value}
       />
@@ -414,7 +452,12 @@ const ProposePlanCard = ({
   }
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3">
+    <motion.div
+      animate={APPROVAL_CARD_MOTION.animate}
+      className="flex flex-col gap-2.5 rounded-xl border border-warning/25 bg-warning/5 p-3"
+      initial={APPROVAL_CARD_MOTION.initial}
+      transition={APPROVAL_CARD_MOTION.transition}
+    >
       <div className="flex min-w-0 items-center gap-2">
         <HugeiconsIcon
           className="shrink-0 text-warning"
@@ -458,7 +501,7 @@ const ProposePlanCard = ({
           {t("chat.planProposal.notNow")}
         </Button>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -492,6 +535,82 @@ const AssistantInputToolEntry = ({
       isDisabled={isDisabled}
       onSubmit={(askPart, output) => onInputToolResult(askPart, output)}
       part={part}
+    />
+  )
+}
+
+const AssistantWorkEntry = ({
+  entry,
+  isApprovalActionDisabled,
+  isLive,
+  isRunActive,
+  onApprovalResponse,
+  onInputToolResult,
+  parentRunId,
+  thoughtDurationsMs
+}: {
+  entry: GroupedChainEntry
+  isApprovalActionDisabled: boolean
+  isLive: boolean
+  isRunActive: boolean
+  onApprovalResponse: (
+    part: ChatToolPart,
+    approved: boolean,
+    options?: AssistantToolApprovalResponseOptions
+  ) => void
+  onInputToolResult: InputToolResultHandler
+  parentRunId?: string
+  thoughtDurationsMs?: number[]
+}) => {
+  if (entry.kind === "reasoning") {
+    return (
+      <WorkThinkingEntry
+        durationMs={thoughtDurationsMs?.[entry.index]}
+        isRunActive={isRunActive}
+        streaming={entry.streaming}
+        text={entry.text}
+      />
+    )
+  }
+
+  if (entry.kind === "text") {
+    return (
+      <div className={cn("py-1", !isLive && "px-2")}>
+        <WorkTextEntry text={entry.text} />
+      </div>
+    )
+  }
+
+  if (entry.kind === "subagent-call") {
+    return (
+      <WorkSubagentEntry
+        entry={entry}
+        isApprovalActionDisabled={isApprovalActionDisabled}
+        onApprovalResponse={onApprovalResponse}
+        parentRunId={parentRunId}
+      />
+    )
+  }
+
+  if (entry.kind === "todo") {
+    return <WorkTodoEntry parentRunId={parentRunId} part={entry.part} />
+  }
+
+  if (entry.kind === "input-tool") {
+    return (
+      <AssistantInputToolEntry
+        isDisabled={isApprovalActionDisabled}
+        onInputToolResult={onInputToolResult}
+        part={entry.part}
+      />
+    )
+  }
+
+  return (
+    <WorkToolGroupEntry
+      entry={entry}
+      isApprovalActionDisabled={isApprovalActionDisabled}
+      onApprovalResponse={onApprovalResponse}
     />
   )
 }
@@ -568,6 +687,12 @@ const AssistantWorkSection = ({
     liveStartedAt: isRunActive ? liveWorkTimeStartedAt : undefined,
     workTimeMs
   })
+  // Rows already present when the section mounted are history — only the ones
+  // the run appends afterwards get to enter.
+  const isEntryEntering = useEntranceGuard({
+    ids: entries.map((entry) => entry.key)
+  })
+  const hasStatusChanged = useHasChangedSinceMount(status)
   const durationText =
     elapsedMs === undefined ? "" : formatElapsedDuration(elapsedMs)
   const isLive = status === "working" || status === "waiting"
@@ -594,14 +719,20 @@ const AssistantWorkSection = ({
         isDisabled={isLive}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span
+          {/* Keyed on the status so Working → Worked swaps the label with a
+              cross-fade; a settled message mounts on its final label instead. */}
+          <motion.span
+            animate={MOTION_FADE_IN_FAST.animate}
             className={cn(
               "truncate",
               isLive && "shimmer [--shimmer-color:var(--primary)]"
             )}
+            initial={hasStatusChanged ? MOTION_FADE_IN_FAST.initial : false}
+            key={status}
+            transition={MOTION_FADE_IN_FAST.transition}
           >
             {getWorkSectionLabelText(t, status, durationText)}
-          </span>
+          </motion.span>
           {isLive && durationText ? (
             <span className="shrink-0 text-[0.625rem] text-muted-foreground tabular-nums">
               {durationText}
@@ -609,71 +740,36 @@ const AssistantWorkSection = ({
           ) : null}
         </span>
       </ChainOfThought.Trigger>
-      <ChainOfThought.Content className={cn(isLive ? "p-0" : "px-2 pb-2")}>
+      {/* HeroUI's Disclosure already transitions height + opacity; this only
+          retunes it from its 200ms default to the `gentle` token. */}
+      <ChainOfThought.Content
+        className={cn(
+          MOTION_TRANSITION_GENTLE_CLASS,
+          isLive ? "p-0" : "px-2 pb-2"
+        )}
+      >
         <div className="flex flex-col gap-1">
-          {entries.map((entry) => {
-            if (entry.kind === "reasoning") {
-              return (
-                <WorkThinkingEntry
-                  durationMs={thoughtDurationsMs?.[entry.index]}
-                  isRunActive={isRunActive}
-                  key={entry.key}
-                  streaming={entry.streaming}
-                  text={entry.text}
-                />
-              )
-            }
-
-            if (entry.kind === "text") {
-              return (
-                <div className={cn("py-1", !isLive && "px-2")} key={entry.key}>
-                  <WorkTextEntry text={entry.text} />
-                </div>
-              )
-            }
-
-            if (entry.kind === "subagent-call") {
-              return (
-                <WorkSubagentEntry
-                  entry={entry}
-                  isApprovalActionDisabled={isApprovalActionDisabled}
-                  key={entry.key}
-                  onApprovalResponse={onApprovalResponse}
-                  parentRunId={parentRunId}
-                />
-              )
-            }
-
-            if (entry.kind === "todo") {
-              return (
-                <WorkTodoEntry
-                  key={entry.key}
-                  parentRunId={parentRunId}
-                  part={entry.part}
-                />
-              )
-            }
-
-            if (entry.kind === "input-tool") {
-              return (
-                <AssistantInputToolEntry
-                  isDisabled={isApprovalActionDisabled}
-                  key={entry.key}
-                  onInputToolResult={onInputToolResult}
-                  part={entry.part}
-                />
-              )
-            }
-
-            return (
-              <WorkToolGroupEntry
+          {entries.map((entry) => (
+            <motion.div
+              animate={MOTION_ROW_RISE_IN.animate}
+              initial={
+                isEntryEntering(entry.key) ? MOTION_ROW_RISE_IN.initial : false
+              }
+              key={entry.key}
+              transition={MOTION_ROW_RISE_IN.transition}
+            >
+              <AssistantWorkEntry
                 entry={entry}
                 isApprovalActionDisabled={isApprovalActionDisabled}
-                key={entry.key}
+                isLive={isLive}
+                isRunActive={isRunActive}
                 onApprovalResponse={onApprovalResponse}
+                onInputToolResult={onInputToolResult}
+                parentRunId={parentRunId}
+                thoughtDurationsMs={thoughtDurationsMs}
               />
-            )
-          })}
+            </motion.div>
+          ))}
         </div>
       </ChainOfThought.Content>
     </ChainOfThought>

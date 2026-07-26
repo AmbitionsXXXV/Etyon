@@ -41,6 +41,7 @@ import type {
   FileTreeItemHandle
 } from "@pierre/trees"
 import { FileTree, useFileTree } from "@pierre/trees/react"
+import { motion } from "motion/react"
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
 
@@ -87,6 +88,13 @@ import type {
   ChatPanelTab,
   PanelSurfaceKind
 } from "@/renderer/lib/chat/side-panel-tabs"
+import {
+  MOTION_FADE_IN_CLASS,
+  MOTION_RISE_IN,
+  MOTION_SCALE_IN_CLASS,
+  MOTION_TRANSITION_FAST_CLASS,
+  useEntranceGuard
+} from "@/renderer/lib/motion"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 // HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
@@ -1533,6 +1541,9 @@ const PANEL_SHELL_CLASS_NAME =
   "flex h-full min-h-0 min-w-0 overflow-hidden overscroll-contain border border-border bg-card shadow-sm"
 const PANEL_TAB_CONTENT_CLASS_NAME =
   "mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
+// Each launcher row trails the one above it by a beat; the whole list is in
+// under 200ms, so it reads as one entrance rather than a sequence.
+const LAUNCHER_STAGGER_SECONDS = 0.03
 
 /** `Mod` is Cmd on macOS and Ctrl elsewhere, matching `useHotkey("Mod+J")`. */
 const getModifierKeyValue = (): "command" | "ctrl" =>
@@ -1585,11 +1596,16 @@ const ProjectPanelLauncher = ({
   return (
     <div className="title-bar-drag flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-6">
       <div className="title-bar-no-drag w-full max-w-72">
-        <p className="px-2 pb-2 text-xs font-medium text-muted-foreground">
+        <motion.p
+          animate={MOTION_RISE_IN.animate}
+          className="px-2 pb-2 text-xs font-medium text-muted-foreground"
+          initial={MOTION_RISE_IN.initial}
+          transition={MOTION_RISE_IN.transition}
+        >
           {t("chat.projectPanel.launcherTitle")}
-        </p>
+        </motion.p>
         <ul className="space-y-0.5">
-          {PANEL_LAUNCHER_SURFACE_KINDS.map((kind) => {
+          {PANEL_LAUNCHER_SURFACE_KINDS.map((kind, index) => {
             const { icon, labelKey, shortcutKey } = PANEL_SURFACE_METADATA[kind]
             const badgeCount = getPanelSurfaceBadgeCount({
               changedFileCount,
@@ -1597,9 +1613,20 @@ const ProjectPanelLauncher = ({
             })
 
             return (
-              <li key={kind}>
+              <motion.li
+                animate={MOTION_RISE_IN.animate}
+                initial={MOTION_RISE_IN.initial}
+                key={kind}
+                transition={{
+                  ...MOTION_RISE_IN.transition,
+                  delay: (index + 1) * LAUNCHER_STAGGER_SECONDS
+                }}
+              >
                 <button
-                  className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  className={cn(
+                    "flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    MOTION_TRANSITION_FAST_CLASS
+                  )}
                   onClick={() => onOpenTab(kind)}
                   type="button"
                 >
@@ -1617,7 +1644,7 @@ const ProjectPanelLauncher = ({
                   ) : null}
                   <PanelSurfaceShortcutHint shortcutKey={shortcutKey} />
                 </button>
-              </li>
+              </motion.li>
             )
           })}
         </ul>
@@ -1719,7 +1746,10 @@ const ProjectPanelTabContent = ({
       */}
       <span
         aria-hidden="true"
-        className="-mr-1 grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 hover:bg-muted hover:text-foreground"
+        className={cn(
+          "-mr-1 grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 hover:bg-muted hover:text-foreground",
+          MOTION_TRANSITION_FAST_CLASS
+        )}
         onPointerDown={(event) => {
           if (event.button !== 0) {
             return
@@ -1848,6 +1878,12 @@ export const ProjectContextPanel = ({
     () => getUnopenedPanelSurfaces(openTabs),
     [openTabs]
   )
+  // Only a chip the user just opened animates; the strip a session restores
+  // with, and re-showing the strip after a collapse, stay still.
+  const isTabEntering = useEntranceGuard({
+    ids: openTabs.map((tab) => tab.id),
+    resetKey: selectedSession.id
+  })
   const { changedFileCount } = diffSummary
   // Terminal, browser, and artifact tabs carry their own controls; only the Git
   // surfaces are fed by the queries this button invalidates.
@@ -1964,7 +2000,10 @@ export const ProjectContextPanel = ({
             >
               {openTabs.map((tab) => (
                 <Tabs.Tab
-                  className="group/tab h-7 w-auto gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground"
+                  className={cn(
+                    "group/tab h-7 w-auto gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground",
+                    isTabEntering(tab.id) && MOTION_SCALE_IN_CLASS
+                  )}
                   id={tab.id}
                   key={tab.id}
                   onAuxClick={(event) => {
@@ -1991,7 +2030,7 @@ export const ProjectContextPanel = ({
           {isRefreshVisible ? (
             <Button
               aria-label={t("chat.projectPanel.refresh")}
-              className="title-bar-no-drag"
+              className={cn("title-bar-no-drag", MOTION_TRANSITION_FAST_CLASS)}
               isIconOnly
               onPress={onRefresh}
               size="sm"
@@ -2007,7 +2046,7 @@ export const ProjectContextPanel = ({
           ) : null}
           <Button
             aria-label={t("chat.projectPanel.closePanel")}
-            className="title-bar-no-drag"
+            className={cn("title-bar-no-drag", MOTION_TRANSITION_FAST_CLASS)}
             isIconOnly
             onPress={onCollapsePanel}
             size="sm"
@@ -2028,8 +2067,14 @@ export const ProjectContextPanel = ({
         />
 
         {openTabs.map((tab) => (
+          // Inactive panels are display:none, so a fade class replays each time
+          // a panel becomes the active one. The browser tab is excluded: its
+          // page is a native view that cannot fade with its chrome.
           <Tabs.Panel
-            className={PANEL_TAB_CONTENT_CLASS_NAME}
+            className={cn(
+              PANEL_TAB_CONTENT_CLASS_NAME,
+              tab.kind !== "browser" && MOTION_FADE_IN_CLASS
+            )}
             id={tab.id}
             key={tab.id}
           >

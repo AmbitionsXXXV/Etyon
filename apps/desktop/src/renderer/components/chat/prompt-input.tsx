@@ -27,7 +27,7 @@ import { Placeholder } from "@tiptap/extension-placeholder"
 import { EditorContent, useEditor } from "@tiptap/react"
 import { StarterKit } from "@tiptap/starter-kit"
 import type { FileUIPart } from "ai"
-import { motion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -102,6 +102,15 @@ import {
   clearPickedWebElement,
   usePickedWebElement
 } from "@/renderer/lib/chat/web-element-capture"
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  MOTION_FADE_IN_FAST,
+  MOTION_ROW_RISE_IN,
+  MOTION_SCALE_IN,
+  useEntranceGuard,
+  useHasChangedSinceMount
+} from "@/renderer/lib/motion"
 import { getNextPermissionMode } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { getNextChatAgentMode } from "@/shared/chat/agent-mode"
@@ -628,7 +637,7 @@ const FOCUSABLE_TAB_INDEX = { tabIndex: 0 } as Record<string, unknown>
 const PERMISSION_MODE_PULSE_MOTION = {
   animate: { opacity: 1, scale: 1 },
   initial: { opacity: 0.65, scale: 0.9 },
-  transition: { duration: 0.18 }
+  transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
 }
 
 const PromptInputAgentModeControl = ({
@@ -682,8 +691,17 @@ const PromptInputAgentModeControl = ({
       onPress={handlePress}
       size="sm"
     >
-      <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
-      <span>{labelByMode[mode]}</span>
+      {/* Keyed on the mode so cycling swaps icon and label together, in place. */}
+      <motion.span
+        animate={MOTION_FADE_IN_FAST.animate}
+        className="inline-flex items-center gap-1.5"
+        initial={MOTION_FADE_IN_FAST.initial}
+        key={mode}
+        transition={MOTION_FADE_IN_FAST.transition}
+      >
+        <HugeiconsIcon icon={activeOption.icon} size={14} strokeWidth={2} />
+        <span>{labelByMode[mode]}</span>
+      </motion.span>
     </ToggleButton>
   )
 }
@@ -928,6 +946,12 @@ const PromptInputContextUsage = ({
   )
 }
 
+const SEND_ACTION_MOTION = {
+  animate: { opacity: 1, scale: 1 },
+  initial: { opacity: 0, scale: 0.92 },
+  transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
+}
+
 const PromptInputActions = ({
   disabled,
   hasInput,
@@ -948,6 +972,7 @@ const PromptInputActions = ({
   // While the model is responding the button stops the run, unless the user has
   // typed a follow-up — then it submits (queued by the parent) like a send.
   const isStopAction = isOutputActive && !hasInput
+  const hasActionChanged = useHasChangedSinceMount(isStopAction)
   const actionLabel = isStopAction ? stopLabel : submitLabel
   const actionIcon = isStopAction ? StopIcon : SentIcon
   const isActionDisabled = isStopAction ? !onStop : disabled || isSubmitting
@@ -961,7 +986,17 @@ const PromptInputActions = ({
       status={status}
       type="button"
     >
-      <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
+      {/* The send/stop swap cross-fades in place; mounting the composer on a
+          settled session must not replay it. */}
+      <motion.span
+        animate={SEND_ACTION_MOTION.animate}
+        className="inline-flex"
+        initial={hasActionChanged ? SEND_ACTION_MOTION.initial : false}
+        key={isStopAction ? "stop" : "send"}
+        transition={SEND_ACTION_MOTION.transition}
+      >
+        <HugeiconsIcon icon={actionIcon} size={16} strokeWidth={2} />
+      </motion.span>
     </HeroPromptInput.Send>
   )
 }
@@ -1029,6 +1064,13 @@ const PromptInputAttachControl = ({
   )
 }
 
+// Removal is a plain fade at `fast`: the sibling chips reflow underneath it
+// rather than the chip collapsing its own box.
+const ATTACHMENT_CHIP_EXIT = {
+  opacity: 0,
+  transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
+}
+
 const ComposerAttachmentChips = ({
   attachments,
   onRemove,
@@ -1044,26 +1086,34 @@ const ComposerAttachmentChips = ({
 
   return (
     <div className="mb-3 flex flex-wrap gap-2">
-      {attachments.map((attachment) => (
-        <div
-          className="group relative size-16 overflow-hidden rounded-lg border border-border/60 bg-muted/40"
-          key={attachment.id}
-        >
-          <img
-            alt={attachment.name}
-            className="size-full object-cover"
-            src={attachment.dataUrl}
-          />
-          <button
-            aria-label={removeLabel}
-            className="absolute top-0.5 right-0.5 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white/60"
-            onClick={() => onRemove(attachment.id)}
-            type="button"
+      {/* Staged attachments only ever exist because the user just added them,
+          so every chip here is a genuine arrival — no entrance guard needed. */}
+      <AnimatePresence>
+        {attachments.map((attachment) => (
+          <motion.div
+            animate={MOTION_SCALE_IN.animate}
+            className="group relative size-16 overflow-hidden rounded-lg border border-border/60 bg-muted/40"
+            exit={ATTACHMENT_CHIP_EXIT}
+            initial={MOTION_SCALE_IN.initial}
+            key={attachment.id}
+            transition={MOTION_SCALE_IN.transition}
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
-          </button>
-        </div>
-      ))}
+            <img
+              alt={attachment.name}
+              className="size-full object-cover"
+              src={attachment.dataUrl}
+            />
+            <button
+              aria-label={removeLabel}
+              className="absolute top-0.5 right-0.5 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white/60"
+              onClick={() => onRemove(attachment.id)}
+              type="button"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   )
 }
@@ -1339,6 +1389,9 @@ export const PromptInput = ({
   const [promptInputValue, setPromptInputValue] = useState("")
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
+  const isQueuedMessageEntering = useEntranceGuard({
+    ids: queuedMessages.map((message) => message.id)
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mentionItemElementByKeyRef = useRef(
     new Map<string, HTMLButtonElement>()
@@ -2123,33 +2176,47 @@ export const PromptInput = ({
           >
             {queuedMessages.map((message) => (
               <HeroPromptInput.Queue.Item key={message.id} value={message}>
-                <HeroPromptInput.Queue.Item.Handle
-                  aria-label={queueReorderLabel}
-                />
-                <HeroPromptInput.Queue.Item.Body>
-                  <HeroPromptInput.Queue.Item.Icon />
-                  <HeroPromptInput.Queue.Item.Content>
-                    {message.text}
-                  </HeroPromptInput.Queue.Item.Content>
-                </HeroPromptInput.Queue.Item.Body>
-                <HeroPromptInput.Queue.Item.Actions>
-                  <HeroPromptInput.Queue.Item.Action
-                    aria-label={queueEditLabel}
-                    onPress={() => handleEditQueuedMessage(message)}
-                    type="button"
-                  >
-                    <HugeiconsIcon
-                      icon={PencilEdit02Icon}
-                      size={15}
-                      strokeWidth={2}
-                    />
-                  </HeroPromptInput.Queue.Item.Action>
-                  <HeroPromptInput.Queue.Item.Remove
-                    aria-label={queueRemoveLabel}
-                    onPress={() => onRemoveQueuedMessage?.(message.id)}
-                    type="button"
+                {/* HeroUI owns the <li> (and turns it into a reorder item), so
+                    the entrance rides its content: only a draft queued in front
+                    of the user animates. */}
+                <motion.div
+                  animate={MOTION_ROW_RISE_IN.animate}
+                  className="flex min-w-0 flex-1 items-center gap-2"
+                  initial={
+                    isQueuedMessageEntering(message.id)
+                      ? MOTION_ROW_RISE_IN.initial
+                      : false
+                  }
+                  transition={MOTION_ROW_RISE_IN.transition}
+                >
+                  <HeroPromptInput.Queue.Item.Handle
+                    aria-label={queueReorderLabel}
                   />
-                </HeroPromptInput.Queue.Item.Actions>
+                  <HeroPromptInput.Queue.Item.Body>
+                    <HeroPromptInput.Queue.Item.Icon />
+                    <HeroPromptInput.Queue.Item.Content>
+                      {message.text}
+                    </HeroPromptInput.Queue.Item.Content>
+                  </HeroPromptInput.Queue.Item.Body>
+                  <HeroPromptInput.Queue.Item.Actions>
+                    <HeroPromptInput.Queue.Item.Action
+                      aria-label={queueEditLabel}
+                      onPress={() => handleEditQueuedMessage(message)}
+                      type="button"
+                    >
+                      <HugeiconsIcon
+                        icon={PencilEdit02Icon}
+                        size={15}
+                        strokeWidth={2}
+                      />
+                    </HeroPromptInput.Queue.Item.Action>
+                    <HeroPromptInput.Queue.Item.Remove
+                      aria-label={queueRemoveLabel}
+                      onPress={() => onRemoveQueuedMessage?.(message.id)}
+                      type="button"
+                    />
+                  </HeroPromptInput.Queue.Item.Actions>
+                </motion.div>
               </HeroPromptInput.Queue.Item>
             ))}
           </HeroPromptInput.Queue.List>

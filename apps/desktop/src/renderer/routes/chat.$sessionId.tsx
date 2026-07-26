@@ -37,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import type { DefaultChatTransport, FileUIPart } from "ai"
 import { getToolName, isToolUIPart } from "ai"
+import { AnimatePresence, motion } from "motion/react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
@@ -143,6 +144,16 @@ import {
   clearWorkflowProgress,
   setWorkflowProgress
 } from "@/renderer/lib/chat/workflow-progress-store"
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  MOTION_RISE_IN,
+  MOTION_RISE_PX,
+  MOTION_SCALE_IN,
+  MOTION_SLIDE_PX,
+  MOTION_TRANSITION_FAST_CLASS,
+  useEntranceGuard
+} from "@/renderer/lib/motion"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
@@ -584,6 +595,49 @@ const ChatSessionHeader = ({
   </div>
 )
 
+// Carries its own horizontal centering: motion owns `transform` on this node,
+// so the usual `-translate-x-1/2` cannot be left to Tailwind.
+const SCROLL_TO_BOTTOM_MOTION = {
+  animate: { opacity: 1, scale: 1, x: "-50%" },
+  initial: { opacity: 0, scale: MOTION_SCALE_IN.initial.scale, x: "-50%" },
+  transition: MOTION_SCALE_IN.transition
+}
+
+// Expanding the side panel is covered by its content, never by its width.
+const PANEL_CONTENT_VARIANTS = {
+  closed: { opacity: 0, x: MOTION_SLIDE_PX },
+  open: { opacity: 1, x: 0 }
+}
+
+// Same choreography minus the travel, for the browser tab: a transform on an
+// ancestor of the native view's host moves the view with it.
+const PANEL_CONTENT_FADE_VARIANTS = {
+  closed: { opacity: 0, x: 0 },
+  open: { opacity: 1, x: 0 }
+}
+
+const PANEL_CONTENT_TRANSITION = {
+  duration: MOTION_DURATION.gentle,
+  ease: MOTION_EASE
+}
+
+// The rail lives beside the resizable area, so it may travel; it slides in from
+// the edge it is docked to and reverses on the way out.
+const COLLAPSED_RAIL_MOTION = {
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: MOTION_RISE_PX },
+  initial: { opacity: 0, x: MOTION_RISE_PX },
+  transition: { duration: MOTION_DURATION.base, ease: MOTION_EASE }
+}
+
+// One beat on the count itself, so a changed badge is noticed without the rail
+// around it moving.
+const RAIL_BADGE_MOTION = {
+  animate: { scale: 1 },
+  initial: { scale: 0.9 },
+  transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE }
+}
+
 /**
  * Collapsed mirror of the open tab strip: same surfaces, same order, one click
  * to expand and focus. It disappears entirely when nothing is open, leaving the
@@ -603,7 +657,13 @@ const ProjectContextCollapsedToolbar = ({
   const { t } = useI18n()
 
   return (
-    <aside className="flex h-full w-18 shrink-0 items-start justify-center px-3 py-6">
+    <motion.aside
+      animate={COLLAPSED_RAIL_MOTION.animate}
+      className="flex h-full w-18 shrink-0 items-start justify-center px-3 py-6"
+      exit={COLLAPSED_RAIL_MOTION.exit}
+      initial={COLLAPSED_RAIL_MOTION.initial}
+      transition={COLLAPSED_RAIL_MOTION.transition}
+    >
       <div className="flex flex-col items-center gap-2 rounded-full border border-border bg-card/70 p-2 shadow-sm">
         {openTabs.map((tab) => {
           const { badge, icon, labelKey } = PANEL_SURFACE_METADATA[tab.kind]
@@ -616,6 +676,7 @@ const ProjectContextCollapsedToolbar = ({
               aria-label={label}
               className={cn(
                 "relative grid size-9 place-items-center rounded-full border-0 bg-transparent p-0 text-muted-foreground outline-none transition-[background-color,color] hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                MOTION_TRANSITION_FAST_CLASS,
                 isSelected && "bg-primary/12 text-primary"
               )}
               key={tab.id}
@@ -625,15 +686,21 @@ const ProjectContextCollapsedToolbar = ({
             >
               <HugeiconsIcon icon={icon} size={19} strokeWidth={2} />
               {showBadge ? (
-                <span className="absolute -top-1.5 -right-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums">
+                <motion.span
+                  animate={RAIL_BADGE_MOTION.animate}
+                  className="absolute -top-1.5 -right-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums"
+                  initial={RAIL_BADGE_MOTION.initial}
+                  key={changedFileCount}
+                  transition={RAIL_BADGE_MOTION.transition}
+                >
                   {formatProjectDiffCount(changedFileCount)}
-                </span>
+                </motion.span>
               ) : null}
             </button>
           )
         })}
       </div>
-    </aside>
+    </motion.aside>
   )
 }
 
@@ -813,35 +880,57 @@ const ChatProjectContextLayout = ({
           onCollapse={() => onOpenChange(false)}
           onExpand={() => onOpenChange(true)}
         >
-          <ProjectContextPanel
-            activeArtifact={activeArtifact}
-            activeTabId={activeTabId}
-            gitDiff={gitDiff}
-            gitDiffScope={gitDiffScope}
-            isBrowserSurfaceVisible={isBrowserSurfaceVisible}
-            isDiffLoading={isDiffLoading}
-            isTreeLoading={isTreeLoading}
-            onCloseTab={onCloseTab}
-            onCollapsePanel={() => onOpenChange(false)}
-            onFocusTab={onFocusTab}
-            onGitDiffScopeChange={onGitDiffScopeChange}
-            onOpenTab={onOpenTab}
-            onRefresh={onRefresh}
-            openTabs={openTabs}
-            projectItems={projectItems}
-            revealTarget={revealTarget}
-            selectedSession={selectedSession}
-          />
+          {/*
+            The panel's width is never animated — the Resizable owns it and the
+            browser tab's native view tracks the host rectangle, so a moving
+            wrapper would drag the page with it. Expanding is covered by this
+            inner choreography instead; the slide is dropped while the native
+            view is on screen because a transform here republishes its bounds.
+          */}
+          <motion.div
+            animate={isOpen ? "open" : "closed"}
+            className="h-full min-h-0 min-w-0"
+            initial={false}
+            transition={PANEL_CONTENT_TRANSITION}
+            variants={
+              activeTabId === "browser"
+                ? PANEL_CONTENT_FADE_VARIANTS
+                : PANEL_CONTENT_VARIANTS
+            }
+          >
+            <ProjectContextPanel
+              activeArtifact={activeArtifact}
+              activeTabId={activeTabId}
+              gitDiff={gitDiff}
+              gitDiffScope={gitDiffScope}
+              isBrowserSurfaceVisible={isBrowserSurfaceVisible}
+              isDiffLoading={isDiffLoading}
+              isTreeLoading={isTreeLoading}
+              onCloseTab={onCloseTab}
+              onCollapsePanel={() => onOpenChange(false)}
+              onFocusTab={onFocusTab}
+              onGitDiffScopeChange={onGitDiffScopeChange}
+              onOpenTab={onOpenTab}
+              onRefresh={onRefresh}
+              openTabs={openTabs}
+              projectItems={projectItems}
+              revealTarget={revealTarget}
+              selectedSession={selectedSession}
+            />
+          </motion.div>
         </Resizable.Panel>
       </Resizable>
-      {isOpen || openTabs.length === 0 ? null : (
-        <ProjectContextCollapsedToolbar
-          activeTabId={activeTabId}
-          changedFileCount={changedFileCount}
-          onOpenTab={handleOpenTab}
-          openTabs={openTabs}
-        />
-      )}
+      <AnimatePresence>
+        {isOpen || openTabs.length === 0 ? null : (
+          <ProjectContextCollapsedToolbar
+            activeTabId={activeTabId}
+            changedFileCount={changedFileCount}
+            key="project-context-rail"
+            onOpenTab={handleOpenTab}
+            openTabs={openTabs}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -1305,10 +1394,26 @@ const ChatMessageBubble = ({
   )
 }
 
+// The empty assistant message the live-status row stands in for: already in
+// `messages`, but nothing of it is on screen yet.
+const isLiveStatusPlaceholderMessage = ({
+  latestMessageId,
+  message,
+  shouldShowAssistantLiveStatus
+}: {
+  latestMessageId?: string
+  message: ChatUiMessage
+  shouldShowAssistantLiveStatus: boolean
+}): boolean =>
+  shouldShowAssistantLiveStatus &&
+  message.role === "assistant" &&
+  message.id === latestMessageId
+
 const ChatMessageItem = memo(
   ({
     editingMessageId,
     editingMessageText,
+    isEntering,
     isLatestAssistantMessage,
     isRequestPending,
     liveWorkTimeStartedAt,
@@ -1326,6 +1431,9 @@ const ChatMessageItem = memo(
   }: {
     editingMessageId: string | null
     editingMessageText: string
+    // Only a message appended in front of the user animates; history, session
+    // switches and remounts must render settled.
+    isEntering: boolean
     isLatestAssistantMessage: boolean
     isRequestPending: boolean
     liveWorkTimeStartedAt?: number
@@ -1358,11 +1466,14 @@ const ChatMessageItem = memo(
           isAssistant ? "justify-start" : "justify-end"
         )}
       >
-        <div
+        <motion.div
+          animate={MOTION_RISE_IN.animate}
           className={cn(
             "min-w-0",
             isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
           )}
+          initial={isEntering ? MOTION_RISE_IN.initial : false}
+          transition={MOTION_RISE_IN.transition}
         >
           {isEditingMessage ? (
             <EditingMessageBubble
@@ -1409,7 +1520,7 @@ const ChatMessageItem = memo(
               onRegenerate={() => onRegenerate(message.id)}
             />
           ) : null}
-        </div>
+        </motion.div>
       </MessageRoot>
     )
   }
@@ -1905,6 +2016,23 @@ const ChatRuntime = ({
   )
   const shouldShowAssistantLiveStatus =
     isRequestPending && !hasRenderableAssistantContent(latestMessage)
+  // Everything the transcript already held when this session opened is history;
+  // only what the turn appends afterwards enters. The placeholder the live
+  // status stands in for is excluded, so the reply enters when it first paints
+  // rather than while it is still an empty message.
+  const isMessageEntering = useEntranceGuard({
+    ids: messages
+      .filter(
+        (message) =>
+          !isLiveStatusPlaceholderMessage({
+            latestMessageId: latestMessage?.id,
+            message,
+            shouldShowAssistantLiveStatus
+          })
+      )
+      .map((message) => message.id),
+    resetKey: selectedSession.id
+  })
   const isAwaitingToolApproval = useMemo(
     () => hasPendingToolApproval(latestMessage),
     [latestMessage]
@@ -2359,11 +2487,13 @@ const ChatRuntime = ({
               ) : (
                 <div className="space-y-4">
                   {messages.map((message) => {
-                    const isEmptyLatestAssistant =
-                      shouldShowAssistantLiveStatus &&
-                      message.id === latestMessage?.id &&
-                      message.role === "assistant"
-                    if (isEmptyLatestAssistant) {
+                    if (
+                      isLiveStatusPlaceholderMessage({
+                        latestMessageId: latestMessage?.id,
+                        message,
+                        shouldShowAssistantLiveStatus
+                      })
+                    ) {
                       return null
                     }
 
@@ -2371,6 +2501,7 @@ const ChatRuntime = ({
                       <ChatMessageItem
                         editingMessageId={editingMessageId}
                         editingMessageText={editingMessageText}
+                        isEntering={isMessageEntering(message.id)}
                         isLatestAssistantMessage={
                           message.role === "assistant" &&
                           message.id === latestAssistantMessageId
@@ -2415,23 +2546,33 @@ const ChatRuntime = ({
               )}
             </ScrollShadow>
 
-            {showScrollToBottom ? (
-              <Button
-                aria-label={t("chat.messageScroll.toBottom")}
-                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 shadow-md"
-                isIconOnly
-                onPress={handleScrollToBottom}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <HugeiconsIcon
-                  icon={ArrowDown02Icon}
-                  size={16}
-                  strokeWidth={2}
-                />
-              </Button>
-            ) : null}
+            <AnimatePresence>
+              {showScrollToBottom ? (
+                <motion.div
+                  animate={SCROLL_TO_BOTTOM_MOTION.animate}
+                  className="absolute bottom-3 left-1/2 z-10"
+                  exit={SCROLL_TO_BOTTOM_MOTION.initial}
+                  initial={SCROLL_TO_BOTTOM_MOTION.initial}
+                  transition={SCROLL_TO_BOTTOM_MOTION.transition}
+                >
+                  <Button
+                    aria-label={t("chat.messageScroll.toBottom")}
+                    className="shadow-md"
+                    isIconOnly
+                    onPress={handleScrollToBottom}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <HugeiconsIcon
+                      icon={ArrowDown02Icon}
+                      size={16}
+                      strokeWidth={2}
+                    />
+                  </Button>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
           <PromptInput

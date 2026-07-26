@@ -5,6 +5,8 @@ import { PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useEffect, useState } from "react"
 
+import { MOTION_TRANSITION_FAST_CLASS } from "@/renderer/lib/motion"
+
 const COPY_FEEDBACK_RESET_MS = 1600
 // HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
 const FOCUSABLE_TAB_INDEX = { tabIndex: 0 } as Record<string, unknown>
@@ -95,6 +97,7 @@ export const MessageActions = ({
       aria-label={t("label")}
       className={cn(
         "invisible mt-1.5 flex h-8 items-center gap-0.5 px-1 opacity-0 transition-opacity group-hover/message:visible group-hover/message:opacity-100 group-focus-within/message:visible group-focus-within/message:opacity-100",
+        MOTION_TRANSITION_FAST_CLASS,
         align === "end" && "justify-end"
       )}
       role="toolbar"

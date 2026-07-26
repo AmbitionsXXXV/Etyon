@@ -15,6 +15,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { getToolName } from "ai"
+import { motion } from "motion/react"
 import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 
@@ -62,8 +63,23 @@ import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-nav
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import { mapAssistantToolPartStateToChatToolState } from "@/renderer/lib/chat/tool-ui"
 import { useWorkflowProgress } from "@/renderer/lib/chat/workflow-progress-store"
+import {
+  MOTION_DURATION,
+  MOTION_EASE,
+  MOTION_RISE_PX,
+  MOTION_TRANSITION_FAST_CLASS,
+  MOTION_TRANSITION_GENTLE_CLASS
+} from "@/renderer/lib/motion"
 import { formatDuration } from "@/renderer/lib/utils"
 import { deriveCommandApprovalPattern } from "@/shared/agents/command-allowlist"
+
+// A gated call is the timeline's one "act now" moment, so its actions land with
+// the same weighted entrance the ask/plan cards use.
+const TOOL_APPROVAL_MOTION = {
+  animate: { opacity: 1, scale: 1, y: 0 },
+  initial: { opacity: 0, scale: 0.97, y: MOTION_RISE_PX },
+  transition: { duration: MOTION_DURATION.gentle, ease: MOTION_EASE }
+}
 
 interface ToolTracePanelProps {
   body?: string
@@ -103,7 +119,7 @@ const ToolTracePanel = ({ body, label }: ToolTracePanelProps) => {
           <Disclosure.Indicator />
         </Button>
       </Disclosure.Heading>
-      <Disclosure.Content>
+      <Disclosure.Content className={MOTION_TRANSITION_GENTLE_CLASS}>
         <Disclosure.Body className="border-t border-border/60 p-1.5">
           <pre className="max-h-48 overflow-auto rounded-sm bg-muted/50 p-2 font-mono text-[0.6875rem] leading-5 wrap-break-word whitespace-pre-wrap text-muted-foreground">
             {body}
@@ -243,9 +259,12 @@ const ToolTraceCard = ({
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
             {badge}
+            {/* running → done/failed is a colour change only: the badge must
+                never flash or jump while a run is streaming. */}
             <span
               className={cn(
-                "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium",
+                "rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium transition-colors",
+                MOTION_TRANSITION_FAST_CLASS,
                 statusClassName
               )}
             >
@@ -254,7 +273,7 @@ const ToolTraceCard = ({
           </span>
         </span>
       </ChatTool.Trigger>
-      <ChatTool.Content>
+      <ChatTool.Content className={MOTION_TRANSITION_GENTLE_CLASS}>
         <div className="space-y-2 border-t border-border/60 p-2">
           {actions}
           {children}
@@ -448,7 +467,12 @@ const ToolApprovalActions = ({
   const rememberPattern = deriveCommandApprovalPattern(command) ?? command
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <motion.div
+      animate={TOOL_APPROVAL_MOTION.animate}
+      className="flex flex-wrap items-center gap-2"
+      initial={TOOL_APPROVAL_MOTION.initial}
+      transition={TOOL_APPROVAL_MOTION.transition}
+    >
       <Button
         isDisabled={isApprovalActionDisabled}
         onPress={() => onApprovalResponse(part, true)}
@@ -492,7 +516,7 @@ const ToolApprovalActions = ({
         <HugeiconsIcon icon={Cancel01Icon} size={13} />
         {t("chat.toolTrace.deny")}
       </Button>
-    </div>
+    </motion.div>
   )
 }
 

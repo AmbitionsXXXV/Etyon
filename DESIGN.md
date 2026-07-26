@@ -372,6 +372,52 @@ Use HeroUI's default rounded shape language and Tailwind radius utilities. Custo
 | `radius` | `8.64px` |  | `--radius` | Prefer Tailwind radius utilities like `rounded-lg`, `rounded-xl`, and `rounded-2xl`. | Global corner radius basis for surfaces, buttons, and container shapes. |
 | `field radius` | `24px` |  | `--field-radius` | Prefer HeroUI field components so this radius is applied automatically. | Corner radius basis for inputs, selects, text areas, and other form controls. |
 
+## Motion
+
+Motion is restrained, fast, and one-directional. It exists to explain what changed and where it came from, never to perform. Tokens live in `apps/desktop/src/renderer/lib/motion.ts`; use them through the exported presets rather than writing durations and offsets by hand. Three rules hold everywhere:
+
+1. **Under 240ms, under 12px, no bounce.** Springs are damped only; nothing overshoots its resting state.
+2. **Hot paths animate `transform` and `opacity` only.** Anything on screen during a stream stays off the layout path.
+3. **One-time entrances play once, for real arrivals.** History load, session switches, and remounts render settled; guard entrances with `useEntranceGuard` rather than relying on mount.
+
+### Duration and Easing
+
+| Token | Raw value | Formula / source | Motion export | Tailwind / component equivalent | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| `ease` | `cubic-bezier(0.25, 0.1, 0.25, 1)` | ease-out-quart variant | `MOTION_EASE` | `ease-[cubic-bezier(0.25,0.1,0.25,1)]` | The single curve for every transition, motion-driven or CSS. |
+| `fast` | `120ms` |  | `MOTION_DURATION.fast` | `duration-[120ms]` | Hover and press colour, icon and label swaps, badge pulses. |
+| `base` | `180ms` |  | `MOTION_DURATION.base` | `duration-[180ms]` | Fades and small-travel entrances: messages, rows, chips, queue items. |
+| `gentle` | `240ms` |  | `MOTION_DURATION.gentle` | `duration-[240ms]` | Disclosure height, panel content choreography, approval cards. |
+| `entrance` | `320ms` |  | `MOTION_DURATION.entrance` | — | Page-level first paint on Home and Settings only; outside the chat budget by design. |
+
+### Travel and Presets
+
+| Token | Raw value | Motion export | Tailwind / component equivalent | Purpose |
+| --- | --- | --- | --- | --- |
+| `rise` | `8px` | `MOTION_RISE_PX`, `MOTION_RISE_IN` | `slide-in-from-bottom-2` | Default entrance travel for a surface: message, launcher row, session row. |
+| `row rise` | `4px` | `MOTION_ROW_RISE_PX`, `MOTION_ROW_RISE_IN` | — | Entrance travel for a dense row: tool trace, queued draft. |
+| `slide` | `12px` | `MOTION_SLIDE_PX` | — | The largest travel in the product: side panel content on expand. |
+| `fade` | `opacity 0 → 1` | `MOTION_FADE_IN`, `MOTION_FADE_IN_FAST` | `animate-in fade-in` | Content swaps, tab switches, answered cards. |
+| `scale in` | `0.9 → 1` | `MOTION_SCALE_IN` | `animate-in zoom-in-90` | Something popping into an existing layout: scroll-to-bottom, attachment chip, tab chip. |
+| `emphasis` | `0.97 → 1` + rise | — | — | Reserved for approval and interaction cards, the only scaled entrance in the transcript. |
+
+### Reduced Motion
+
+`<MotionConfig reducedMotion="user">` at the app root degrades every motion animation to an instant cut when the OS asks for it. CSS-driven motion bypasses that config, so it always carries `motion-reduce:transition-none` or `motion-reduce:animate-none` — the class constants in `lib/motion.ts` include them.
+
+## Do's and Don'ts for Motion
+
+- Do reach for a token preset first; a hand-written duration or offset is a sign the moment needs a new token, not a new value.
+- Do animate the arrival of something the user caused: a sent message, a queued draft, an opened tab, a card asking for a decision.
+- Do let one curve and three durations carry the whole product; variety in easing reads as inconsistency, not personality.
+- Do cover a layout change with content instead of animating the layout itself when a native surface or a resizable pane owns the geometry.
+- Do keep entrances interruptible; a user who keeps typing or scrolling must never wait on an animation.
+- Don't animate content that merely loaded: history, restored panels, and remounted lists arrive settled.
+- Don't stack animations on streaming text; the streaming renderer already owns that motion.
+- Don't animate width, height, or position on the hot path, and never on a container whose size a native view tracks.
+- Don't use bounce, overshoot, or elastic easing; damped and short reads as fast, springy reads as slow.
+- Don't add exit choreography where the replacement needs the space immediately; an element on its way out must never swallow a click.
+
 ## Components
 
 - **Buttons:** Use HeroUI Button semantic variants. Primary actions use `variant="primary"`; alternatives use `secondary`, `tertiary`, `outline`, or `ghost`; destructive actions use `danger` or `danger-soft`.

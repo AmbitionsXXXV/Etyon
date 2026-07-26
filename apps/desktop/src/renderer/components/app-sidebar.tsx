@@ -58,6 +58,7 @@ import type {
 } from "react"
 import { createPortal } from "react-dom"
 
+import { MOTION_RISE_IN_CLASS, useEntranceGuard } from "@/renderer/lib/motion"
 import { orpc } from "@/renderer/lib/rpc"
 import {
   CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS,
@@ -110,6 +111,9 @@ interface ChatSessionItemProps {
   archivingSessionId?: string
   currentSessionId?: string
   fallbackSessionTitle: string
+  // A row created while the sidebar is on screen enters; the list the sidebar
+  // mounts with, and any later reorder, stay still.
+  isEntering?: boolean
   layout?: "project" | "simple"
   onArchive: (sessionId: string) => void
   onOpen: (sessionId: string) => void
@@ -525,6 +529,7 @@ const ChatSessionItem = ({
   archivingSessionId,
   currentSessionId,
   fallbackSessionTitle,
+  isEntering = false,
   onArchive,
   onOpen,
   onTogglePinned,
@@ -587,7 +592,8 @@ const ChatSessionItem = ({
         className={cn(
           SESSION_ROW_CLASS_NAME,
           "flex w-full items-center gap-0 overflow-hidden py-0",
-          getSessionRowPaddingClassName(showPinAction)
+          getSessionRowPaddingClassName(showPinAction),
+          isEntering && MOTION_RISE_IN_CLASS
         )}
         data-active={isRowActive ? true : undefined}
         onContextMenu={handleContextMenu}
@@ -746,6 +752,11 @@ const ProjectGroupSection = ({
   const visibleSessions = getVisibleProjectGroupSessions({
     sessions: group.sessions,
     visibleCount
+  })
+  // Tracked over the whole group, not the visible slice, so "show more" reveals
+  // rows without them reading as newly created.
+  const isSessionEntering = useEntranceGuard({
+    ids: group.sessions.map((session) => session.id)
   })
   const hasHiddenSessions = hasHiddenProjectGroupSessions({
     sessions: group.sessions,
@@ -1007,6 +1018,7 @@ const ProjectGroupSection = ({
                 currentSessionId={currentSessionId}
                 archivingSessionId={archivingSessionId}
                 fallbackSessionTitle={fallbackSessionTitle}
+                isEntering={isSessionEntering(session.id)}
                 key={session.id}
                 layout="project"
                 onArchive={onArchive}

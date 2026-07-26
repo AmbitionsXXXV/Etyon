@@ -24,7 +24,7 @@ import { PacerDevtoolsPanel } from "@tanstack/react-pacer-devtools"
 import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools"
 import { createRootRoute, Outlet, useRouterState } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
-import { AnimatePresence, motion } from "motion/react"
+import { AnimatePresence, motion, MotionConfig } from "motion/react"
 import type { ComponentProps } from "react"
 
 import { AppSidebar } from "@/renderer/components/app-sidebar"
@@ -146,67 +146,72 @@ const RootComponent = () => {
   })
 
   return (
-    <TooltipProvider>
-      {isAppShellRoute ? (
-        <SidebarProvider
-          style={
-            {
-              "--sidebar-width": `${sidebarWidthPx}px`
-            } as React.CSSProperties
-          }
-        >
-          <div data-first-light-region="">
-            <AppSidebar />
-          </div>
-
-          <SidebarInset
-            className="relative min-h-0 overflow-hidden"
-            data-first-light-region=""
+    // `reducedMotion="user"` degrades every motion animation in the app to an
+    // instant cut when the OS asks for it; CSS-driven motion carries its own
+    // `motion-reduce:` variants (see lib/motion.ts).
+    <MotionConfig reducedMotion="user">
+      <TooltipProvider>
+        {isAppShellRoute ? (
+          <SidebarProvider
+            style={
+              {
+                "--sidebar-width": `${sidebarWidthPx}px`
+              } as React.CSSProperties
+            }
           >
-            <InsetHeader />
+            <div data-first-light-region="">
+              <AppSidebar />
+            </div>
 
-            <div className="flex min-h-0 flex-1 flex-col">
+            <SidebarInset
+              className="relative min-h-0 overflow-hidden"
+              data-first-light-region=""
+            >
+              <InsetHeader />
+
+              <div className="flex min-h-0 flex-1 flex-col">
+                <Outlet />
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+        ) : (
+          <>
+            <TitleBar />
+
+            <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
               <Outlet />
             </div>
-          </SidebarInset>
-        </SidebarProvider>
-      ) : (
-        <>
-          <TitleBar />
 
-          <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
-            <Outlet />
-          </div>
+            <Toaster />
+          </>
+        )}
 
-          <Toaster />
-        </>
-      )}
-
-      <TanStackDevtools
-        plugins={[
-          {
-            name: "TanStack Query",
-            render: <ReactQueryDevtoolsPanel />
-          },
-          {
-            name: "TanStack Router",
-            render: <TanStackRouterDevtoolsPanel />
-          },
-          {
-            name: "TanStack Hotkeys",
-            render: renderHotkeysDevtoolsPanel
-          },
-          {
-            name: "TanStack Form",
-            render: <FormDevtoolsPanel />
-          },
-          {
-            name: "TanStack Pacer",
-            render: renderPacerDevtoolsPanel
-          }
-        ]}
-      />
-    </TooltipProvider>
+        <TanStackDevtools
+          plugins={[
+            {
+              name: "TanStack Query",
+              render: <ReactQueryDevtoolsPanel />
+            },
+            {
+              name: "TanStack Router",
+              render: <TanStackRouterDevtoolsPanel />
+            },
+            {
+              name: "TanStack Hotkeys",
+              render: renderHotkeysDevtoolsPanel
+            },
+            {
+              name: "TanStack Form",
+              render: <FormDevtoolsPanel />
+            },
+            {
+              name: "TanStack Pacer",
+              render: renderPacerDevtoolsPanel
+            }
+          ]}
+        />
+      </TooltipProvider>
+    </MotionConfig>
   )
 }
 

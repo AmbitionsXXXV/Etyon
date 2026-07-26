@@ -25,6 +25,7 @@ import type {
 import { getToolIcon } from "@/renderer/lib/chat/message-tool-trace"
 import { useTodos } from "@/renderer/lib/chat/todo-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
+import { MOTION_TRANSITION_GENTLE_CLASS } from "@/renderer/lib/motion"
 import { formatElapsedDuration } from "@/renderer/lib/utils"
 import { countTodosByStatus } from "@/shared/chat/stream-data"
 import type { ChatTodoItem, ChatTodoStatus } from "@/shared/chat/stream-data"
@@ -201,7 +202,7 @@ export const WorkThinkingEntry = ({
           <Disclosure.Indicator />
         </Button>
       </Disclosure.Heading>
-      <Disclosure.Content>
+      <Disclosure.Content className={MOTION_TRANSITION_GENTLE_CLASS}>
         <Disclosure.Body className="px-2 pt-1 pb-2">
           <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
             {text}
@@ -335,7 +336,7 @@ export const WorkTodoEntry = ({
           </span>
         </Button>
       </Disclosure.Heading>
-      <Disclosure.Content>
+      <Disclosure.Content className={MOTION_TRANSITION_GENTLE_CLASS}>
         <Disclosure.Body className="px-2 pt-1 pb-1.5">
           <ul className="flex flex-col gap-1">
             {todos.map((todo, index) => (
@@ -405,7 +406,7 @@ export const WorkToolGroupEntry = ({
           <Disclosure.Indicator />
         </Button>
       </Disclosure.Heading>
-      <Disclosure.Content>
+      <Disclosure.Content className={MOTION_TRANSITION_GENTLE_CLASS}>
         <Disclosure.Body className="space-y-1.5 px-1 pt-1 pb-1">
           {entry.tools.map((tool) => (
             <StructuredToolTraceCard
