@@ -15,6 +15,8 @@ import {
   registerAttachmentProtocol,
   registerAttachmentProtocolScheme
 } from "@/main/attachments"
+import { registerBrowserIpcHandlers } from "@/main/browser/ipc"
+import { disposeAllBrowserViews } from "@/main/browser/manager"
 import { registerRendererContentSecurityPolicy } from "@/main/content-security-policy"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -59,6 +61,7 @@ if (started) {
 registerAttachmentProtocolScheme()
 registerNativeIpcHandlers()
 registerTerminalIpcHandlers()
+registerBrowserIpcHandlers()
 
 const handleAppReady = async (): Promise<void> => {
   // Install the renderer CSP before any window can load a document.
@@ -141,6 +144,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   setAppQuitting(true)
   disposeAllPtys()
+  disposeAllBrowserViews()
   stopServer()
   stopTelegramBridge()
   destroyTray()

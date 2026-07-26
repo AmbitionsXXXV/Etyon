@@ -169,6 +169,24 @@ export type {
   ReadArtifactFileOutput
 } from "./schemas/artifacts"
 export {
+  BrowserEnsureInputSchema,
+  BrowserMutationOutputSchema,
+  BrowserNavigateInputSchema,
+  BrowserSessionInputSchema,
+  BrowserSetBoundsInputSchema,
+  BrowserSetVisibleInputSchema,
+  BrowserStateSchema
+} from "./schemas/browser"
+export type {
+  BrowserEnsureInput,
+  BrowserMutationOutput,
+  BrowserNavigateInput,
+  BrowserSessionInput,
+  BrowserSetBoundsInput,
+  BrowserSetVisibleInput,
+  BrowserState
+} from "./schemas/browser"
+export {
   ArchiveChatSessionInputSchema,
   ChatMentionSchema,
   ChatSessionMemoryOutputSchema,

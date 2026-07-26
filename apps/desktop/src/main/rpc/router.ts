@@ -10,6 +10,13 @@ import {
   SetSessionPlanStatusInputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
+  BrowserEnsureInputSchema,
+  BrowserMutationOutputSchema,
+  BrowserNavigateInputSchema,
+  BrowserSessionInputSchema,
+  BrowserSetBoundsInputSchema,
+  BrowserSetVisibleInputSchema,
+  BrowserStateSchema,
   ChatSessionSummarySchema,
   ChatSessionMemoryOutputSchema,
   ChatSessionMessagesInputSchema,
@@ -105,6 +112,21 @@ import {
   setSessionPlanStatus
 } from "@/main/agents/session-plans"
 import { syncRuntimeIcon } from "@/main/app-metadata"
+import {
+  disposeBrowserView,
+  ensureBrowserView,
+  goBackBrowserView,
+  goForwardBrowserView,
+  navigateBrowserView,
+  reloadBrowserView,
+  setBrowserViewBounds,
+  setBrowserViewVisible,
+  stopBrowserView
+} from "@/main/browser/manager"
+import {
+  isAllowedBrowserUrl,
+  normalizeBrowserUrlInput
+} from "@/main/browser/url-policy"
 import { listChatMessages } from "@/main/chat-messages"
 import { getChatSessionMemory } from "@/main/chat-session-memory"
 import {
@@ -153,6 +175,7 @@ import {
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
+import type { AppRpcContext } from "@/main/rpc/context"
 import { getRtkTokenSavings } from "@/main/rtk-token-savings"
 import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
@@ -823,6 +846,118 @@ const artifactsRead = rpc
     })
   )
 
+// Browser controls drive native WebContentsViews, so they must never run over
+// the loopback HTTP transport. The transport rejection is defense-in-depth
+// behind the server's bearer token; the session check mirrors terminalEnsure.
+const assertBrowserRpcAccess = async (
+  context: AppRpcContext,
+  sessionId: string
+): Promise<void> => {
+  if (context.transport === "http") {
+    throw new Error(
+      "Browser controls are not available over the HTTP transport"
+    )
+  }
+
+  const session = await getChatSessionById(context.db, sessionId)
+
+  if (!session) {
+    throw new Error(`Chat session not found: ${sessionId}`)
+  }
+}
+
+const browserDispose = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    disposeBrowserView(input.sessionId)
+    return { ok: true as const }
+  })
+
+const browserEnsure = rpc
+  .input(BrowserEnsureInputSchema)
+  .output(BrowserStateSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    return ensureBrowserView({ sessionId: input.sessionId, url: input.url })
+  })
+
+const browserGoBack = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    goBackBrowserView(input.sessionId)
+    return { ok: true as const }
+  })
+
+const browserGoForward = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    goForwardBrowserView(input.sessionId)
+    return { ok: true as const }
+  })
+
+const browserNavigate = rpc
+  .input(BrowserNavigateInputSchema)
+  .output(BrowserStateSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+
+    const normalizedUrl = normalizeBrowserUrlInput(input.input)
+
+    if (normalizedUrl === null || !isAllowedBrowserUrl(normalizedUrl)) {
+      throw new Error(`Browser URL not allowed: ${input.input}`)
+    }
+
+    return navigateBrowserView({
+      sessionId: input.sessionId,
+      url: normalizedUrl
+    })
+  })
+
+const browserReload = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    reloadBrowserView(input.sessionId)
+    return { ok: true as const }
+  })
+
+const browserSetBounds = rpc
+  .input(BrowserSetBoundsInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    setBrowserViewBounds({ bounds: input.bounds, sessionId: input.sessionId })
+    return { ok: true as const }
+  })
+
+const browserSetVisible = rpc
+  .input(BrowserSetVisibleInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    setBrowserViewVisible({
+      sessionId: input.sessionId,
+      visible: input.visible
+    })
+    return { ok: true as const }
+  })
+
+const browserStop = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    stopBrowserView(input.sessionId)
+    return { ok: true as const }
+  })
+
 export const router = {
   agents: {
     getSessionPlan: agentsGetSessionPlan,
@@ -835,6 +970,17 @@ export const router = {
   },
   artifacts: {
     read: artifactsRead
+  },
+  browser: {
+    dispose: browserDispose,
+    ensure: browserEnsure,
+    goBack: browserGoBack,
+    goForward: browserGoForward,
+    navigate: browserNavigate,
+    reload: browserReload,
+    setBounds: browserSetBounds,
+    setVisible: browserSetVisible,
+    stop: browserStop
   },
   chatSessions: {
     archive: chatSessionsArchive,
