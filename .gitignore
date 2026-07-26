@@ -109,3 +109,5 @@ target/
 .superpowers/
 artifacts/images
 generated-images
+
+.qoder/

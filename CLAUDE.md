@@ -12,7 +12,7 @@ Rankings, higher = better. Cost reflects what I actually pay (OpenAI has really 
 | gpt-5.6 terra | 9    | 7.5          | 7     |
 | gpt-5.6 luna  | 9    | 6            | 6     |
 | sonnet-5      | 5    | 5            | 7     |
-| opus-4.8      | 4    | 7            | 8     |
+| opus-5        | 4    | 9            | 9     |
 | fable-5       | 2    | 9            | 9     |
 
 How to apply:
@@ -21,10 +21,10 @@ How to apply:
 - Cost is a tie-breaker only; when axes conflict for anything that ships, intelligence > taste > cost.
 - Bulk/mechanical work (clear-spec implementation, data analysis, migrations): gpt-5.6
 - it's effectively free. - Anything user-facing (UI, copy, API design) needs taste ≥ 7.
-- Reviews of plans/implementations: fable-5 or opus-4.8, optionally gpt-5.6 as an extra independent perspective.
+- Reviews of plans/implementations: fable-5 or opus-5, optionally gpt-5.6 as an extra independent perspective.
 - Never use Haiku.
 - Mechanics: gpt-5.6 is only reachable through the Codex CLI - 'codex exec' / 'codex review" (my ~/. codex/config.toml defaults to gpt-5.6). Use the codex-implementation, codex-review, and codex-computer-use skills; for work they don't cover (investigation, data analysis), run codex exec -s read-only directly with a self-contained prompt.
-- Claude models (sonnet-5, opus-4.8, fable-5) run via the Agent/Workflow model parameter.
+- Claude models (sonnet-5, opus-5, fable-5) run via the Agent/Workflow model parameter.
 - Effort per model, esp. for subagent editing: run **terra at xhigh** by default — it's cheap, so high effort is affordable, and it's the workhorse for edits, including much of what opus could do. Use **sol at medium** for lighter edits that still need a bit of thought, and avoid **sol at high/xhigh**.
 
 Using gpt-5.6 inside workflows and subagents (the model parameter only takes Claude models, so use a wrapper):
