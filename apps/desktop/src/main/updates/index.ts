@@ -11,8 +11,8 @@ import {
 } from "@/main/app-paths"
 import { logger } from "@/main/logger"
 import { getSettings } from "@/main/settings"
-import { isAllowedReleaseUrl, parseLatestRelease } from "@/main/updates/core"
 import { createSettingsWindow } from "@/main/window"
+import { isAllowedReleaseUrl, parseLatestRelease } from "@/shared/updates/core"
 
 const LATEST_RELEASE_ENDPOINT =
   "https://api.github.com/repos/AmbitionsXXXV/Etyon/releases/latest"

@@ -1,5 +1,5 @@
-// Pure, Node-testable update logic. No Electron imports, so the checker in
-// `updates/index.ts` and the renderer's toast gate share one implementation.
+// Pure, Node-testable update logic shared by the main-process checker
+// (`main/updates/index.ts`) and the renderer's toast gate. No Electron imports.
 
 import type { AvailableUpdate, UpdateStatus } from "@etyon/rpc"
 

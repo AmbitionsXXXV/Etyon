@@ -1,10 +1,10 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { UpdateStatus } from "@etyon/rpc"
 import { toast } from "@etyon/ui/components/sonner"
-import { shouldNotify } from "@main/updates/core"
 import { useEffect } from "react"
 
 import { rpcClient } from "@/renderer/lib/rpc"
+import { shouldNotify } from "@/shared/updates/core"
 
 const ABOUT_SETTINGS_TAB = "about"
 

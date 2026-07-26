@@ -7,7 +7,7 @@ import {
   parseLatestRelease,
   pickDmgAsset,
   shouldNotify
-} from "@/main/updates/core"
+} from "@/shared/updates/core"
 
 // Assembled via join so the source carries no literal `javascript:` URL, which
 // the linter rejects; the runtime value is still `javascript:alert(1)`.
