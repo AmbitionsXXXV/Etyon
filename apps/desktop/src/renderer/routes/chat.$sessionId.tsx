@@ -80,13 +80,12 @@ import {
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
+import { consumePanelOpenRequest } from "@/renderer/lib/chat/panel-open-request"
 import { buildComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import {
   formatProjectDiffCount,
-  getProjectDiffSummary,
   getProjectGitDiffInput,
   PROJECT_CHANGES_SCOPE_AGENT,
-  parseProjectDiffFiles,
   shouldFetchProjectGitDiff
 } from "@/renderer/lib/chat/project-context-panel"
 import type { ProjectChangesScope } from "@/renderer/lib/chat/project-context-panel"
@@ -518,34 +517,16 @@ const ChatErrorActionBar = ({
 }
 
 const ProjectContextTrigger = ({
-  gitDiff,
   gitStatus,
   isOpen,
   onToggle
 }: {
-  gitDiff?: GitProjectDiffOutput
   gitStatus: ChatSessionSummary["gitStatus"]
   isOpen: boolean
   onToggle: () => void
 }) => {
   const { t } = useI18n()
-  const diffFiles = useMemo(
-    () =>
-      parseProjectDiffFiles({
-        fileSnapshots: gitDiff?.fileSnapshots ?? [],
-        patch: gitDiff?.patch ?? ""
-      }),
-    [gitDiff?.fileSnapshots, gitDiff?.patch]
-  )
-  const diffSummary = useMemo(
-    () =>
-      getProjectDiffSummary({
-        diffFiles,
-        fallbackChangedFileCount: gitStatus?.changedFileCount ?? 0
-      }),
-    [diffFiles, gitStatus?.changedFileCount]
-  )
-  const hasDiffSummary = diffSummary.changedFileCount > 0
+  const changedFileCount = gitStatus?.changedFileCount ?? 0
 
   return (
     <Button
@@ -553,7 +534,8 @@ const ProjectContextTrigger = ({
         isOpen ? "chat.projectPanel.closePanel" : "chat.projectPanel.openPanel"
       )}
       aria-pressed={isOpen}
-      className="title-bar-no-drag shrink-0"
+      className="title-bar-no-drag relative shrink-0"
+      isIconOnly
       onPress={onToggle}
       size="sm"
       type="button"
@@ -564,22 +546,9 @@ const ProjectContextTrigger = ({
         size={15}
         strokeWidth={2}
       />
-      {t("chat.projectPanel.review")}
-      {hasDiffSummary ? (
-        <span className="ml-1 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold tabular-nums">
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-            {formatProjectDiffCount(diffSummary.changedFileCount)}
-          </span>
-          {diffSummary.additions > 0 ? (
-            <span className="text-success">
-              +{formatProjectDiffCount(diffSummary.additions)}
-            </span>
-          ) : null}
-          {diffSummary.deletions > 0 ? (
-            <span className="text-danger">
-              -{formatProjectDiffCount(diffSummary.deletions)}
-            </span>
-          ) : null}
+      {changedFileCount > 0 ? (
+        <span className="absolute -top-1.5 -right-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums">
+          {formatProjectDiffCount(changedFileCount)}
         </span>
       ) : null}
     </Button>
@@ -587,13 +556,11 @@ const ProjectContextTrigger = ({
 }
 
 const ChatSessionHeader = ({
-  gitDiff,
   isProjectContextOpen,
   onToggleProjectContext,
   selectedSession,
   sessionTitle
 }: {
-  gitDiff?: GitProjectDiffOutput
   isProjectContextOpen: boolean
   onToggleProjectContext: () => void
   selectedSession: ChatSessionSummary
@@ -605,7 +572,6 @@ const ChatSessionHeader = ({
     </div>
     <div className="title-bar-no-drag flex shrink-0 items-center gap-2">
       <ProjectContextTrigger
-        gitDiff={gitDiff}
         gitStatus={selectedSession.gitStatus}
         isOpen={isProjectContextOpen}
         onToggle={onToggleProjectContext}
@@ -617,7 +583,7 @@ const ChatSessionHeader = ({
 /**
  * Collapsed mirror of the open tab strip: same surfaces, same order, one click
  * to expand and focus. It disappears entirely when nothing is open, leaving the
- * header's Review button as the only way back in.
+ * header trigger as the only way back in.
  */
 const ProjectContextCollapsedToolbar = ({
   activeTabId,
@@ -851,6 +817,7 @@ const ChatProjectContextLayout = ({
             isDiffLoading={isDiffLoading}
             isTreeLoading={isTreeLoading}
             onCloseTab={onCloseTab}
+            onCollapsePanel={() => onOpenChange(false)}
             onFocusTab={onFocusTab}
             onGitDiffScopeChange={onGitDiffScopeChange}
             onOpenTab={onOpenTab}
@@ -2360,7 +2327,6 @@ const ChatRuntime = ({
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
-          gitDiff={gitDiff}
           isProjectContextOpen={isProjectContextOpen}
           onToggleProjectContext={onToggleProjectContext}
           selectedSession={selectedSession}
@@ -2687,7 +2653,6 @@ const ChatPendingState = ({
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
-          gitDiff={gitDiff}
           isProjectContextOpen={isProjectContextOpen}
           onToggleProjectContext={onToggleProjectContext}
           selectedSession={selectedSession}
@@ -3174,10 +3139,16 @@ const ChatSessionPage = () => {
 
   // Tab sessions belong to one chat session: artifact paths are
   // project-relative and the terminal/browser instances are keyed by session,
-  // so switching sessions starts over from the launcher empty state.
+  // so switching sessions starts over from the launcher empty state. The home
+  // page's panel trigger creates a session and lands here, so its parked
+  // request is consumed in the same pass.
   useEffect(() => {
     setActiveArtifact(null)
     setSidePanelTabs(EMPTY_SIDE_PANEL_TABS_STATE)
+
+    if (consumePanelOpenRequest()) {
+      setProjectContextOpen(true)
+    }
   }, [sessionId])
 
   // An agent-driven navigation reveals the page it is acting on: the user and

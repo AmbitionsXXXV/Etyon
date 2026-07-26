@@ -152,3 +152,51 @@ interface SidePanelTabsState {
 10. 走查产生的测试残留 `artifacts/pr4.html` 已删除；权限模式/agent 模式已还原（Default / Chat）。
 
 **已知限缩**（实现有意为之，随代码注释记录）：close `×` 无键盘路径（presentation span 方案固有）；关闭 artifact tab 不清 `activeArtifact`（重开需再点卡片，唯一消费者是该 tab，无泄漏）；launcher 无 h-12 标题栏，包裹层补 `title-bar-drag` 保持 macOS 拖窗。启动时 `sidebarWidthPx` 校验报错为 PR1 前既有问题，与本 PR 无关。
+
+## 9. PR5 — Strip 真浏览器化 + Trigger 全局去 Review 化
+
+> Source: 2026-07-26 用户对 PR4 真机效果的两点反馈（附两张截图）：①现 strip 是整条 pill、tab 居中、`+` 钉在最右（截图 3），要改成 Codex 真实浏览器 tab 观感（截图 4）：紧凑 chip 左对齐、`+` 紧随最后一个 tab、strip 右端是窗口/面板控制钮；②右侧面板 trigger 要「即便没有 chat session 也展示」——经 AskUserQuestion 确认为**全局常驻（含首页）**，且去 Review 化；header 图标**保留 changed-count 数字 badge**（用户选定，+/- 明细去掉）。
+
+### D7 Strip 视觉 = 真实浏览器 tab
+
+- **List 去容器化**：`Tabs.List` className 去 `w-full`，加 `w-fit bg-transparent p-0`（BEM `.tabs__list` 的 pill 背景/内边距全部清零）；`Tabs.ListContainer` 不再 `flex-1`，改 `min-w-0 shrink`（tabs 多时靠内建 scroller 滚动，`+` 不被推走）。
+- **Chip 样式**（替换现在 List 上的 `*:` 批量覆盖，直接写在 `Tabs.Tab` className）：`h-7 rounded-lg px-2 text-xs gap-1.5`；选中 `data-[selected=true]:bg-muted data-[selected=true]:text-foreground`；未选中 `text-muted-foreground hover:bg-muted/50 hover:text-foreground`。**去掉 `Tabs.Indicator`**（chip 背景即选中态，underline 消失）；选中文字不再用 `text-accent`（真浏览器 tab 是中性前景色）。
+- **`+` 紧随 tabs**：`ProjectPanelTabMenu` 移到 ListContainer 之后紧邻位置（同一左侧 cluster），之间不留 `flex-1`；spacer `flex-1` 放 `+` 之后。
+- **Strip 右端 cluster**（对照截图 4 右侧，只取有真实功能的）：条件 refresh（不变）+ 新增**面板折叠按钮**（`PanelRightCloseIcon`，`ProjectContextPanel` 新增 prop `onCollapsePanel: () => void`，layout 传 `() => onOpenChange(false)`）。
+- 关闭/中键/close span、`Tabs.Panel` className、挂载语义、reducer——全部不动（D3/D4 原样）。
+
+### D8 Trigger 全局常驻 + 去 Review 化
+
+- **会话页 header**：`ProjectContextTrigger` 改纯图标按钮（`PanelRightOpen/CloseIcon`，isIconOnly ghost/outline），叠一个 changed-count 角标（复用折叠浮动条的 badge 样式，`changedFileCount > 0` 时显示数字，无 +/- 明细）。`gitDiff`/diffFiles 解析留给 badge 数字来源（`getProjectDiffSummary` 的 fallbackChangedFileCount 路径即可，可简化为直接用 `gitStatus.changedFileCount`——两处数字本就同源，删掉 trigger 内的 parseProjectDiffFiles/diffSummary 重算）。
+- **i18n**：删 `chat.projectPanel.review` key（3 locale）；`openPanel`/`closePanel` 值去 Review 化（en "Open panel"/"Close panel"、zh "打开面板"/"关闭面板"、ja "パネルを開く"/"パネルを閉じる"）。
+- **首页常驻**：`routes/index.tsx` 右上角 absolute 定位（`top-4 right-4` 一带，`title-bar-no-drag`）同款图标按钮（无 badge、无 session）。点击 = **创建新会话并展开面板**：复用 `useChatSessionActions.handleCreateChatSession`（自带导航到 `/chat/$sessionId`），配合一个 one-shot 请求让 chat 页 mount 后自动展开面板（落在 launcher 空态）。理由：面板五个 surface 全部按 session 键控（pty/browser/projectPath），无 session 的面板只能是全禁用摆设；「打开面板」在产品语义上就是开始一段工作。`isDisabled={isCreatingChatSession}` 防连点。
+- **one-shot 机制**：`lib/chat/panel-open-request.ts`（新，仿 `project-panel-navigation.ts` 的 module-level store 但更简：`requestPanelOpen()` / `consumePanelOpenRequest(): boolean`，无需订阅——chat 路由在现有 `useEffect([sessionId])`（session 切换清 tabs 的那个）里消费：有 pending 请求则 `setProjectContextOpen(true)`）。不 import rpc/window，node 可测（两条单测：consume 后清零、无请求返回 false）。
+
+### 接线点（PR5）
+
+1. `components/chat/project-context-panel.tsx` — D7 strip 重排 + `onCollapsePanel` prop。
+2. `routes/chat.$sessionId.tsx` — trigger 图标化 + badge；layout 传 `onCollapsePanel`；`useEffect([sessionId])` 消费 panel-open 请求。
+3. `routes/index.tsx` — 首页右上 trigger。
+4. `lib/chat/panel-open-request.ts`（新）+ `test/renderer/lib/chat/panel-open-request.test.ts`（新）。
+5. `packages/i18n/*/translation.json` — 删 `review`、改 `openPanel`/`closePanel` 值。
+
+### 验收（PR5）
+
+`vp check` + workspace tsc + `vp test run` 后真机走查：chips 左对齐无 pill 无 underline、选中态 bg-muted 中性文字、`+` 紧随 tab、strip 内折叠钮生效；header 图标 + 数字角标、全仓无 "Review" 文案残留（rg i18n+tsx）；首页右上图标 → 建会话落地 chat 页且面板已展开在 launcher；PR4 行为快速回归（close 邻位、`+` 菜单、terminal/browser 重开恢复）。落地后更新本节验收记录与 doc/chat-project-context.md 对应段落。
+
+### PR5 验收记录 (2026-07-26)
+
+**分工**：fable 设计（§9）→ opus-5 后台实现 → fable diff review + 独立复跑 + CDP 真机走查。
+
+**静态审查**：diff 对照 D7/D8 逐条通过。实现偏差 5 处全部接受，其中两处是 HeroUI cascade 的必要修正（随代码注释记录）：① `.tabs__list-container` 自带 `bg-default`，而 `variant="secondary"` 的重置选择器是「tabs 根的直接子级」——strip 自定义行结构不满足，须显式 `bg-transparent`；② `.tabs__tab` 基类 `w-full` + 原 `*:min-w-0` 是旧「等分居中」观感的来源，chip 需 `w-auto` 恢复 content-hugging（溢出仍走内建 scroller）。其余：顺带把 `resizeHandle` 文案去 Review 化（验收标准要求无残留）、一条注释随实体改名、badge 定位的显式 `relative`。检查复跑：`vp check` 624/503 全绿，`turbo run typecheck` 3/3 0 错（注：`tsc -p tsconfig.root.json` 的 files 只含 vite.config.ts，近乎空转——后续验收以 turbo typecheck 为准），`vp test run` 142 文件 1147 通过（+panel-open-request 2 条）。rg：`projectPanel.review` 全仓 0 引用、strip 无 `Tabs.Indicator` 残留、locale 内剩余 "Review" 均为内置 Review agent 的名称/描述（非面板文案，保留正确）。
+
+**真机走查**（forge dev 重启 + CDP :9230）：
+
+1. **首页 trigger 全链路**：右上 `top-4 right-4` 纯图标（aria "Open panel"）→ 点击创建新会话 `d5ffe97b` → 自动落地 chat 路由且面板已展开在 launcher（5 项、零 tab）✓。
+2. **Strip 真浏览器观感**（计算样式佐证）：List 背景 `rgba(0,0,0,0)`（pill 消失）；选中 chip `bg` = muted、前景 = 近白中性色（accent 蓝已除）、圆角 8px、高 28px；chips 左对齐；`+` 紧贴最后一个 tab；无 `.tabs__indicator` 节点 ✓。
+3. **Strip 折叠钮**：点击即折叠（tablist 隐藏、浮动 rail 镜像 [Files, Terminal]）；header trigger 再展开 ✓。
+4. **Header trigger**：图标态 aria 随开合切换（"Close panel"/"Open panel"），角标显示 "9"（= 当前 9 个改动文件，与状态条一致）✓。
+5. **PR4 回归**：关激活首 tab（Files）→ 右邻 Terminal 聚焦；resize handle aria = "Resize panel" ✓。
+6. 测试会话已通过 `chatSessions.archive` 归档清理。
+
+**已知限缩**：launcher 空态（零 tab 展开）无面板内折叠控件——折叠钮只在 strip 上，此时收起靠 header trigger / 拖拽 handle（opus 主动标记，接受：header trigger 常驻可达）。首页 trigger 的「建会话再开面板」语义为 fable 拍板（面板五 surface 全按 session 键控，无 session 的面板只能全禁用摆设），用户可在使用后复议。`doc/home.md` :91 「Commit 按钮仅作为视图入口，不执行 Git 写操作」是 W1 启用 git commit 前的陈旧描述（与本 PR 无关，未动，另行处理）。

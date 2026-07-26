@@ -29,6 +29,7 @@ import {
   FileCodeIcon,
   FolderMinusIcon,
   GitCompareIcon,
+  PanelRightCloseIcon,
   PlusSignIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -1732,7 +1733,6 @@ const ProjectPanelTabContent = ({
       >
         <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
       </span>
-      <Tabs.Indicator />
     </>
   )
 }
@@ -1746,6 +1746,7 @@ export const ProjectContextPanel = ({
   isDiffLoading,
   isTreeLoading,
   onCloseTab,
+  onCollapsePanel,
   onFocusTab,
   onGitDiffScopeChange,
   onOpenTab,
@@ -1768,6 +1769,7 @@ export const ProjectContextPanel = ({
   isDiffLoading: boolean
   isTreeLoading: boolean
   onCloseTab: (kind: PanelSurfaceKind) => void
+  onCollapsePanel: () => void
   onFocusTab: (kind: PanelSurfaceKind) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onOpenTab: (kind: PanelSurfaceKind) => void
@@ -1948,14 +1950,21 @@ export const ProjectContextPanel = ({
         variant="secondary"
       >
         <div className="title-bar-drag flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-          <Tabs.ListContainer className="title-bar-no-drag min-w-0 flex-1">
+          {/*
+            The strip is a browser tab bar: the tabs hug their content on the
+            left, `+` sits right behind them, and the panel controls are pushed
+            to the far end. `bg-transparent`/`w-auto` undo the HeroUI pill —
+            `variant="secondary"` cannot reset them because its overrides need
+            the list container to be a direct child of the tabs root.
+          */}
+          <Tabs.ListContainer className="title-bar-no-drag min-w-0 bg-transparent">
             <Tabs.List
               aria-label={t("chat.projectPanel.viewsLabel")}
-              className="w-full justify-start gap-1 *:h-8 *:min-w-0 *:px-2 *:text-xs *:text-foreground *:hover:text-foreground *:data-[selected=true]:text-accent *:data-[selected=true]:hover:text-accent"
+              className="w-fit justify-start gap-1 bg-transparent p-0"
             >
               {openTabs.map((tab) => (
                 <Tabs.Tab
-                  className="group/tab gap-1.5"
+                  className="group/tab h-7 w-auto gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground"
                   id={tab.id}
                   key={tab.id}
                   onAuxClick={(event) => {
@@ -1978,6 +1987,7 @@ export const ProjectContextPanel = ({
             availableKinds={unopenedSurfaces}
             onOpenTab={onOpenTab}
           />
+          <div className="flex-1" />
           {isRefreshVisible ? (
             <Button
               aria-label={t("chat.projectPanel.refresh")}
@@ -1995,6 +2005,21 @@ export const ProjectContextPanel = ({
               />
             </Button>
           ) : null}
+          <Button
+            aria-label={t("chat.projectPanel.closePanel")}
+            className="title-bar-no-drag"
+            isIconOnly
+            onPress={onCollapsePanel}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon
+              icon={PanelRightCloseIcon}
+              size={15}
+              strokeWidth={2}
+            />
+          </Button>
         </div>
 
         <ProjectPanelStatusStrip

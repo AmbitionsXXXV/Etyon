@@ -1,9 +1,12 @@
 import { useI18n } from "@etyon/i18n/react"
 import { Button } from "@heroui/react"
+import { PanelRightOpenIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { createFileRoute } from "@tanstack/react-router"
 import { motion } from "motion/react"
 
 import trayImage from "../../../resources/tray.png"
+import { requestPanelOpen } from "../lib/chat/panel-open-request"
 import { SETTINGS_PAGE_EASE_CURVE } from "../lib/settings-page/constants"
 import { useChatSessionActions } from "../lib/sidebar/use-chat-session-actions"
 
@@ -23,9 +26,28 @@ const HomePage = () => {
   const { t } = useI18n()
   const { handleCreateChatSession, isCreatingChatSession } =
     useChatSessionActions()
+  // Every panel surface is keyed by a chat session, so opening the panel from
+  // here starts one and lets the chat route expand it on the launcher.
+  const handleOpenPanel = (): void => {
+    requestPanelOpen()
+    handleCreateChatSession()
+  }
 
   return (
-    <section className="flex flex-1 items-center justify-center px-6 py-10 sm:px-8">
+    <section className="relative flex flex-1 items-center justify-center px-6 py-10 sm:px-8">
+      <Button
+        aria-label={t("chat.projectPanel.openPanel")}
+        className="title-bar-no-drag absolute top-4 right-4"
+        isDisabled={isCreatingChatSession}
+        isIconOnly
+        onPress={handleOpenPanel}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon icon={PanelRightOpenIcon} size={15} strokeWidth={2} />
+      </Button>
+
       <motion.div
         animate={{ opacity: 1, y: 0 }}
         className="flex w-full max-w-96 flex-col items-center text-center"
