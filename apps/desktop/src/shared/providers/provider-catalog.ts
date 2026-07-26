@@ -204,6 +204,31 @@ const hydrateMoonshotProviderConfig = (
 export const getProviderCatalogEntry = (providerId: BuiltInProviderId) =>
   BUILT_IN_PROVIDER_CATALOG_BY_ID[providerId]
 
+/**
+ * The provider a compound model id (`"<provider>/<model>"`) names, or null when
+ * the id has no prefix or an unknown one. Pure, so provider-conditional
+ * behavior can be decided without instantiating a model — the agent toolset
+ * uses it to decide whether tool results may carry native image content, and a
+ * null answer is deliberately the conservative branch (no prefix means no
+ * provider guarantee, even though `resolveModel` would fall back to the default
+ * provider when actually creating the model).
+ */
+export const getModelProviderId = (
+  compoundModelId: string
+): BuiltInProviderId | null => {
+  const slashIndex = compoundModelId.indexOf("/")
+
+  if (slashIndex === -1) {
+    return null
+  }
+
+  const prefix = compoundModelId.slice(0, slashIndex)
+
+  return Object.hasOwn(BUILT_IN_PROVIDER_CATALOG_BY_ID, prefix)
+    ? (prefix as BuiltInProviderId)
+    : null
+}
+
 export const getProviderDefaultBaseURL = (
   providerId: BuiltInProviderId,
   providerConfig?: Pick<AiProviderConfig, "region">

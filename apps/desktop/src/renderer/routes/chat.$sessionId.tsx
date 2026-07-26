@@ -3204,8 +3204,8 @@ const ChatSessionPage = () => {
   // An agent-driven navigation reveals the page it is acting on: the user and
   // the agent share one view per session, so what the agent does has to be
   // visible while it happens. User-initiated pushes are ignored — they are the
-  // echo of an action the panel already performed. Inert until the agent
-  // `browser` tool ships, which is the only producer of `initiator: "agent"`.
+  // echo of an action the panel already performed. The agent `browser` tool is
+  // the only producer of `initiator: "agent"`.
   useEffect(() => {
     const unsubscribe = window.electron.onBrowserState((payload) => {
       if (payload.sessionId !== sessionId || payload.initiator !== "agent") {

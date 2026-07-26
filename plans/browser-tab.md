@@ -150,6 +150,17 @@ Agent 运行时：
 
 每个 PR 落地后在本文追加 `### PRn 验收记录 (YYYY-MM-DD)`。
 
+### PR3 验收记录 (2026-07-26)
+
+实现:opus-5。静态:`vp check` 过(619 格式/499 零 lint),`vp test run` 1123/1123(新增 23:permission-mode 谓词 1、url-policy `resolveAllowedBrowserUrl` 2、page-content 截断/缩放 6、renderer browser-tool-ui 14),workspace tsc 0 错。
+
+- **spike 结论已落地**:`toModelOutput` 的图像分支**只对原生 anthropic provider 开**(`getModelProviderId(effectiveModelId) === "anthropic"`,seam 在 `buildAgentToolset` 的 `modelSupportsToolResultImages`);其余 provider(含 amux 中继走的 openai chat-completions)一律 `{type:"json"}` 元数据——chat-completions 会把 content 输出 stringify,发图等于灌 base64。模型 id 无可识别前缀时保守走 JSON。
+- manager 最小扩展(均走既有 chokepoint/租约,未动任何加固):`beginBrowserLoad`(把原 `loadBrowserUrl` 拆成"白名单校验 + 返回 loadURL promise",fire-and-forget 版本行为不变)、`loadBrowserViewUrlFromAgent`(initiator=agent + 可 await)、`withPaintableBrowserView`(隐藏/0×0 视图临时给屏外有效 bounds + 可见性后恢复,截图专用)。
+- 截图落 attachments 内容寻址目录(`persistAttachmentBytes`,由 vision 输入持久化逻辑抽出复用),输出 `{height, imageUrl, path, title, url, width}`——**新增 `imageUrl` 是对计划的偏差**:renderer 图片卡片与 `toModelOutput` 的字节回读都用它,回读经 `resolveAttachmentRequestPath` 的目录包含校验。
+- timeline:三种 action 都是 work section 内的紧凑 trace 行(`BrowserToolCard`,审批态在卡片正文里显示模型可见性提示);截图**额外**在正文下方渲染图片卡片(work section 折叠后仍可见)。i18n `chat.browserTool.*` 三语齐全。
+- 附带改动:`bash-tool.test.ts` 补 electron/@electron-toolkit/utils mock(agent-toolset 现在通过 browser-tool 间接 import window.ts);`StructuredToolTraceCard` 的 workflow 进度块抽成 `useWorkflowProgressMeta`(新增分支使其超出 complexity 20 上限)。
+- ~~**未做真机走查**~~ → **真机走查 (2026-07-26 20:5x,fable 验收,forge dev + CDP 驱动真实 UI)**:✅ default 模式下 navigate/read/screenshot 三个 action 各自弹审批卡,文案含模型可见性+登录态提示("The page content or screenshot will be sent to the model, including anything this browser is signed in to");✅ 批准 navigate 后面板自动切到 Browser tab(initiator=agent)且地址栏同步;✅ read 文本进入模型上下文(最终回答引用了 Example Domain 内容,模型为 amux 中继 gpt-5.6-terra → json 分支);✅ screenshot 经审批后落 attachments 并以 `etyon-attachment://` 图片卡出现在 timeline,长边 1568 缩放生效(855×1568);✅ discriminated-union inputSchema 在 openai-compatible function-calling 下工作正常(三 action 均被正确调用)。**仍未运行时验证**(转入 PR4/重构验收清单):bypass 直通、acceptEdits 与 default 同权、run abort → `stop()`、离屏 `capturePage` 路径(本次面板可见,走的可见分支)、原生 anthropic 的图像进模型分支(由 provider 门控单测覆盖)。plan mode 无 browser 由单测覆盖。
+
 ### PR2 验收记录 (2026-07-26)
 
 实现:opus-5(中途一次 API 529 中断,零产出后续跑完成)。静态:`vp check` 过(612/493),`vp test run` 1100/1100(含 browser-panel lib 23 个新增单测),workspace tsc 0 错(注意:apps/desktop 下裸 `npx tsc` 会报 45 个假错,须用 workspace 二进制)。真机(HMR + reload,CDP 驱动真实 UI):

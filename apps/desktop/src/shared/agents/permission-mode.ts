@@ -117,6 +117,16 @@ export const isDangerousShellCommand = (command: string): boolean => {
 }
 
 /**
+ * Whether a `browser` call needs approval. Follows the shell rule rather than
+ * the file-edit rule: acceptEdits only auto-runs in-project edits, and the
+ * embedded browser is neither in-project nor side-effect-free — it carries the
+ * user's persistent logins, and every action ships page text or a screenshot to
+ * the model provider. Only bypass skips the prompt.
+ */
+export const needsBrowserApproval = (mode: AgentPermissionMode): boolean =>
+  mode !== "bypass"
+
+/**
  * Whether an `edit`/`write` call needs approval. acceptEdits and bypass both
  * auto-run in-project edits; only default gates them. (The tools are already
  * sandboxed to the project root and refuse secret paths, so auto-running an

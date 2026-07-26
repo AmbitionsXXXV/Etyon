@@ -13,6 +13,16 @@ export const BROWSER_PARTITION = "persist:browser"
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"])
 
+// Geometry for a capture-only mount: large enough to be a realistic viewport,
+// positioned left of the window's content area so it never flashes over the UI.
+const MIN_PAINTABLE_VIEW_SIZE_PX = 64
+const OFFSCREEN_CAPTURE_BOUNDS = {
+  height: 900,
+  width: 1280,
+  x: -2000,
+  y: 0
+} as const
+
 export type BrowserStateInitiator = "agent" | "user"
 
 export interface BrowserStatePush {
@@ -192,26 +202,15 @@ const emitBrowserState = (
   }
 }
 
-const runBrowserLoad = async (
-  view: WebContentsView,
-  url: string
-): Promise<void> => {
-  try {
-    await view.webContents.loadURL(url)
-  } catch (error) {
-    // loadURL rejects on aborted loads and network errors; log and move on so
-    // the fire-and-forget navigation never surfaces an unhandled rejection.
-    logger.error("browser_load_url_failed", { error, url })
-  }
-}
-
 // The single navigation chokepoint. `will-*` events cannot see main-process
-// loads, so the allowlist is re-checked here before every `loadURL`.
-const loadBrowserUrl = (
+// loads, so the allowlist is re-checked here before every `loadURL`. Throws
+// synchronously for a rejected URL; the returned promise settles with the load
+// itself (resolves on did-finish-load, rejects on did-fail-load/abort).
+const beginBrowserLoad = (
   browserSession: BrowserSession,
   url: string,
   initiator: BrowserStateInitiator
-): void => {
+): Promise<void> => {
   if (!isAllowedBrowserUrl(url)) {
     throw new Error(`Browser URL not allowed: ${url}`)
   }
@@ -219,7 +218,29 @@ const loadBrowserUrl = (
   browserSession.initiator = initiator
   browserSession.lastUrl = url
   browserSession.lastUsedAt = Date.now()
-  void runBrowserLoad(browserSession.view, url)
+
+  return browserSession.view.webContents.loadURL(url)
+}
+
+const runBrowserLoad = async (
+  load: Promise<void>,
+  url: string
+): Promise<void> => {
+  try {
+    await load
+  } catch (error) {
+    // loadURL rejects on aborted loads and network errors; log and move on so
+    // the fire-and-forget navigation never surfaces an unhandled rejection.
+    logger.error("browser_load_url_failed", { error, url })
+  }
+}
+
+const loadBrowserUrl = (
+  browserSession: BrowserSession,
+  url: string,
+  initiator: BrowserStateInitiator
+): void => {
+  void runBrowserLoad(beginBrowserLoad(browserSession, url, initiator), url)
 }
 
 const attachViewListeners = (
@@ -368,6 +389,18 @@ export const navigateBrowserView = ({
   return deriveBrowserState(browserSession)
 }
 
+/**
+ * Agent-initiated navigation. Same allowlist chokepoint as the user path, but
+ * tagged `initiator: "agent"` so the panel reveals the browser tab, and the
+ * `loadURL` promise is handed back so the caller can await (and time out on)
+ * the load instead of firing and forgetting.
+ */
+export const loadBrowserViewUrlFromAgent = ({
+  sessionId,
+  url
+}: NavigateBrowserViewInput): Promise<void> =>
+  beginBrowserLoad(getBrowserSession(sessionId), url, "agent")
+
 export const goBackBrowserView = (sessionId: string): void => {
   const { navigationHistory } = getBrowserSession(sessionId).view.webContents
 
@@ -476,6 +509,42 @@ export const withBrowserLease = async <T>(
     if (current === browserSession) {
       current.leaseCount = Math.max(0, current.leaseCount - 1)
     }
+  }
+}
+
+/**
+ * Runs `capture` with the view in a paintable state. A view that is hidden (the
+ * panel was never opened, or it is collapsed) or sized 0×0 has no compositor
+ * frames, so `capturePage` would return an empty image; it is temporarily given
+ * valid offscreen bounds and made visible, then restored to exactly the
+ * geometry and visibility the panel had asked for. Kept here rather than in the
+ * caller so the `isVisible`/`hasBounds` bookkeeping cannot drift.
+ */
+export const withPaintableBrowserView = async <T>(
+  sessionId: string,
+  capture: (view: WebContentsView) => Promise<T>
+): Promise<T> => {
+  const browserSession = getBrowserSession(sessionId)
+  const { view } = browserSession
+  const previousBounds = view.getBounds()
+  const isPaintable =
+    browserSession.isVisible &&
+    browserSession.hasBounds &&
+    previousBounds.width >= MIN_PAINTABLE_VIEW_SIZE_PX &&
+    previousBounds.height >= MIN_PAINTABLE_VIEW_SIZE_PX
+
+  if (isPaintable) {
+    return await capture(view)
+  }
+
+  view.setBounds(OFFSCREEN_CAPTURE_BOUNDS)
+  view.setVisible(true)
+
+  try {
+    return await capture(view)
+  } finally {
+    view.setBounds(previousBounds)
+    applyBrowserViewVisibility(browserSession)
   }
 }
 

@@ -169,43 +169,72 @@ const mapMessageParts = async (
   return nextMessages
 }
 
-const persistDataUrlPart = async (
-  part: UIMessage["parts"][number],
-  attachmentsDir: string
-): Promise<UIMessage["parts"][number]> => {
-  if (!(isFileMessagePart(part) && part.url.startsWith("data:"))) {
-    return part
-  }
+export interface PersistedAttachment {
+  path: string
+  url: string
+}
 
-  const parsed = parseBase64DataUrl(part.url)
-  const extension = parsed
-    ? EXTENSION_BY_MEDIA_TYPE[parsed.mediaType]
-    : undefined
+/**
+ * Content-addresses image bytes into the attachments directory and returns the
+ * stored path plus its `etyon-attachment://` url. Returns null for an unknown
+ * media type or an empty/oversized payload. Shared by vision-input persistence
+ * and the agent `browser` tool's screenshots, so agent-produced images land in
+ * the app's attachment store instead of the user's project directory.
+ */
+export const persistAttachmentBytes = async ({
+  bytes,
+  mediaType
+}: {
+  bytes: Buffer
+  mediaType: string
+}): Promise<PersistedAttachment | null> => {
+  const extension = EXTENSION_BY_MEDIA_TYPE[mediaType]
 
   if (
-    !parsed ||
     !extension ||
-    parsed.bytes.length === 0 ||
-    parsed.bytes.length > MAX_PERSISTED_ATTACHMENT_BYTES
+    bytes.length === 0 ||
+    bytes.length > MAX_PERSISTED_ATTACHMENT_BYTES
   ) {
-    return part
+    return null
   }
 
-  const sha = createHash("sha256").update(parsed.bytes).digest("hex")
+  const attachmentsDir = getAttachmentsDir()
+  const sha = createHash("sha256").update(bytes).digest("hex")
   const fileName = `${sha}.${extension}`
   const filePath = path.join(attachmentsDir, fileName)
 
   await fs.mkdir(attachmentsDir, { recursive: true })
 
   try {
-    await fs.writeFile(filePath, parsed.bytes, { flag: "wx" })
+    await fs.writeFile(filePath, bytes, { flag: "wx" })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw error
     }
   }
 
-  return { ...part, url: buildAttachmentUrl(fileName) }
+  return { path: filePath, url: buildAttachmentUrl(fileName) }
+}
+
+const persistDataUrlPart = async (
+  part: UIMessage["parts"][number]
+): Promise<UIMessage["parts"][number]> => {
+  if (!(isFileMessagePart(part) && part.url.startsWith("data:"))) {
+    return part
+  }
+
+  const parsed = parseBase64DataUrl(part.url)
+
+  if (!parsed) {
+    return part
+  }
+
+  const persisted = await persistAttachmentBytes({
+    bytes: parsed.bytes,
+    mediaType: parsed.mediaType
+  })
+
+  return persisted ? { ...part, url: persisted.url } : part
 }
 
 /**
@@ -217,11 +246,7 @@ export const persistDataUrlAttachments = async (
   messages: UIMessage[]
 ): Promise<UIMessage[]> => {
   try {
-    const attachmentsDir = getAttachmentsDir()
-
-    return await mapMessageParts(messages, (part) =>
-      persistDataUrlPart(part, attachmentsDir)
-    )
+    return await mapMessageParts(messages, persistDataUrlPart)
   } catch (error) {
     logger.error("attachment_persist_failed", { error })
 

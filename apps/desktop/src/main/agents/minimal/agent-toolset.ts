@@ -11,6 +11,10 @@ import {
   buildBashTool,
   buildBashToolApproval
 } from "@/main/agents/minimal/bash-tool"
+import {
+  buildBrowserTool,
+  buildBrowserToolApproval
+} from "@/main/agents/minimal/browser-tool"
 import { buildDelegateTool } from "@/main/agents/minimal/delegation"
 import {
   buildFileEditToolApproval,
@@ -40,6 +44,7 @@ import {
 } from "@/shared/agents/profiles"
 import type { ResolvedAgentProfile } from "@/shared/agents/profiles"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
+import { getModelProviderId } from "@/shared/providers/provider-catalog"
 
 /**
  * System prompt and tool set for the self-owned agent loop. This replaces the
@@ -59,6 +64,7 @@ export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You
 - write: create or overwrite a file (requires user approval)
 - artifact: publish an .html or .md file from the project as a rendered artifact in the app's preview panel
 - imagen: generate an image from a text prompt; it renders inline in the chat message (available when an OpenAI provider is configured)
+- browser: drive this session's embedded browser — navigate to a page, read its text, or screenshot it (each call needs user approval)
 
 Guidelines:
 - Paths are relative to the project root. You cannot access files outside it or secret files such as .env or keys.
@@ -82,6 +88,12 @@ Artifacts:
 - Write the content to a file under artifacts/ (e.g. artifacts/report.html), then call artifact with its path and a short title. To update it, edit the file and call artifact again with the same path.
 - HTML artifacts render in a sandboxed preview with no network access: write a complete, fully self-contained document — inline all CSS and JavaScript, embed images as data: URIs, never reference external scripts, stylesheets, fonts, or images.
 - Support light and dark themes: honor the prefers-color-scheme media query and a data-theme attribute ("dark" or "light") set on the root element.
+
+Browser (when the browser tool is available):
+- The browser is the user's own view for this session, shown in the app's Browser panel: navigating changes what is on their screen, so browse deliberately and say what you are looking for.
+- navigate takes an http(s) URL (a bare domain gets https://), waits for the load, and reports the settled title and url; read returns the page text (long pages are cut to a head and a tail); screenshot captures the rendered page.
+- Every call is approval-gated because the page text or screenshot is sent to the model provider and the browser keeps the user's logged-in sessions. Prefer read over screenshot unless the question is about layout or rendering.
+- Only http and https work — the browser cannot open local files, custom schemes, or interact with the page (no clicking, typing, or scrolling).
 
 Images (when the imagen tool is available):
 - Call imagen to generate an image from a text prompt; it saves the image under generated-images/ and shows it inline in the chat message. You do not need an image model selected — imagen handles that itself.
@@ -131,6 +143,28 @@ export const resolveToolsetProfile = ({
         readonly: true
       }
     : profile
+
+/**
+ * Whether this run's model can receive an image inside a tool result. Only the
+ * native Anthropic provider maps a `content` tool output with a file part onto
+ * a real `tool_result` image block; the OpenAI-compatible chat-completions path
+ * stringifies it, which would spill base64 into the transcript. Mirrors the
+ * model resolution in build-chat-stream-response (a profile's preferred model
+ * overrides the session model) and defaults to "no" whenever the id carries no
+ * recognizable provider prefix.
+ */
+const modelSupportsToolResultImages = ({
+  modelId,
+  profile
+}: {
+  modelId: string | null
+  profile: ResolvedAgentProfile
+}): boolean => {
+  const effectiveModelId =
+    profile.preferredModel.length > 0 ? profile.preferredModel : (modelId ?? "")
+
+  return getModelProviderId(effectiveModelId) === "anthropic"
+}
 
 export const buildAgentToolset = ({
   agentMode,
@@ -200,6 +234,21 @@ export const buildAgentToolset = ({
             agentRunId ?? undefined
           )
         }),
+    // The embedded browser navigates the real web with the user's persistent
+    // logins, so it follows bash's writable-profile rule (and plan mode's
+    // read-only flip drops it). It drives the view keyed by this chat session,
+    // so without a session there is nothing to drive.
+    ...(profile.readonly || !chatSessionId
+      ? {}
+      : {
+          browser: buildBrowserTool({
+            chatSessionId,
+            supportsToolResultImages: modelSupportsToolResultImages({
+              modelId,
+              profile
+            })
+          })
+        }),
     // Publishing is read-only on the filesystem, but the write-then-publish
     // flow only makes sense for profiles that can create the file.
     ...(profile.readonly ? {} : { artifact: buildArtifactTool(workspace) }),
@@ -264,6 +313,7 @@ export const buildAgentToolApproval = ({
 
   return {
     bash: buildBashToolApproval(workspace, permissionMode, settings.agents),
+    browser: buildBrowserToolApproval(permissionMode),
     edit: fileEditApproval,
     workflow: buildWorkflowToolApproval(permissionMode),
     write: fileEditApproval

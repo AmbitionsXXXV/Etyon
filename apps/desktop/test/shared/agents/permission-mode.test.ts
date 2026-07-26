@@ -5,6 +5,7 @@ import {
   getNextPermissionMode,
   isAgentPermissionMode,
   isDangerousShellCommand,
+  needsBrowserApproval,
   needsFileEditApproval,
   needsShellApproval,
   needsWorkflowApproval
@@ -73,6 +74,16 @@ describe("isDangerousShellCommand", () => {
     expect(isDangerousShellCommand("grep -r --hard-tabs src")).toBe(false)
     expect(isDangerousShellCommand("vp test")).toBe(false)
     expect(isDangerousShellCommand("")).toBe(false)
+  })
+})
+
+describe("needsBrowserApproval", () => {
+  it("gates in every mode except bypass, unlike file edits", () => {
+    expect(needsBrowserApproval("default")).toBe(true)
+    // acceptEdits only auto-runs in-project file edits; the browser reaches the
+    // network with the user's logins and ships what it sees to the model.
+    expect(needsBrowserApproval("acceptEdits")).toBe(true)
+    expect(needsBrowserApproval("bypass")).toBe(false)
   })
 })
 

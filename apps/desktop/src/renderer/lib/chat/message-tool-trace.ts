@@ -1,6 +1,7 @@
 import {
   ComputerTerminal02Icon,
   FileCodeIcon,
+  GlobeIcon,
   SearchCodeIcon,
   ToolsIcon,
   WorkflowSquare02Icon
@@ -248,6 +249,10 @@ export const getToolIcon = (toolName: string): IconSvgElement => {
     toolName === "searchFiles"
   ) {
     return SearchCodeIcon
+  }
+
+  if (toolName === "browser") {
+    return GlobeIcon
   }
 
   if (toolName === "workflow" || toolName.startsWith("agent")) {

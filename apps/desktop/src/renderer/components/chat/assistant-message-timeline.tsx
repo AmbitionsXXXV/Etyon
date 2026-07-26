@@ -17,6 +17,7 @@ import type { ComponentPropsWithoutRef } from "react"
 import type { Components, ExtraProps } from "streamdown"
 
 import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
+import { BrowserScreenshotImage } from "@/renderer/components/chat/browser-screenshot"
 import { ImagenMessageImage } from "@/renderer/components/chat/imagen-message"
 import { WorkSubagentEntry } from "@/renderer/components/chat/subagents/subagent-entries"
 import {
@@ -56,6 +57,7 @@ import type {
   SourceUrlChatPart,
   WorkSectionStatus
 } from "@/renderer/lib/chat/assistant-message-timeline"
+import { getBrowserScreenshotView } from "@/renderer/lib/chat/browser-tool-ui"
 import { isImagenToolPart } from "@/renderer/lib/chat/imagen-message"
 import {
   formatAskUserAnswer,
@@ -868,6 +870,11 @@ export const AssistantMessageTimeline = ({
   const imagenParts = message.parts.filter((part) =>
     isImagenToolPart(part)
   ) as ChatToolPart[]
+  // Screenshots stay in the work section as a normal (approval-gated) trace row
+  // AND render here, so the captured page survives the section collapsing.
+  const browserScreenshotParts = message.parts.filter(
+    (part) => getBrowserScreenshotView(part as ChatToolPart) !== null
+  ) as ChatToolPart[]
   const referenceParts = message.parts
     .map((part, index) => ({ index, part }))
     .filter(({ part }) => isReferencePart(part))
@@ -910,6 +917,12 @@ export const AssistantMessageTimeline = ({
           key={`${message.id}-imagen-${part.toolCallId}`}
           part={part}
           sessionId={sessionId}
+        />
+      ))}
+      {browserScreenshotParts.map((part) => (
+        <BrowserScreenshotImage
+          key={`${message.id}-screenshot-${part.toolCallId}`}
+          part={part}
         />
       ))}
       {referenceParts.map(({ index, part }) => (

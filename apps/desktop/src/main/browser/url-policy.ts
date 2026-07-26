@@ -47,3 +47,18 @@ export const isAllowedBrowserUrl = (url: string): boolean => {
     return false
   }
 }
+
+/**
+ * Normalize + allowlist in one step, for callers that take free-form address
+ * text and must end up with something navigable: the agent `browser` tool and
+ * the RPC navigate handler. Returns the canonical URL, or null when the text is
+ * unparseable or resolves to a scheme the browser refuses — the caller owns the
+ * error message, since the two surfaces phrase rejection differently.
+ */
+export const resolveAllowedBrowserUrl = (input: string): string | null => {
+  const normalized = normalizeBrowserUrlInput(input)
+
+  return normalized !== null && isAllowedBrowserUrl(normalized)
+    ? normalized
+    : null
+}

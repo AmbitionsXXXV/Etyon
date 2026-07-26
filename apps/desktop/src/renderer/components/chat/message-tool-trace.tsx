@@ -9,7 +9,8 @@ import {
   Cancel01Icon,
   CheckmarkCircle01Icon,
   ComputerTerminal02Icon,
-  FileCodeIcon
+  FileCodeIcon,
+  GlobeIcon
 } from "@hugeicons/core-free-icons"
 import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -18,6 +19,13 @@ import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 
 import { TerminalOutput } from "@/renderer/components/chat/terminal-output"
+import {
+  getBrowserToolAction,
+  getBrowserToolPreview,
+  getBrowserToolTargetUrl,
+  isBrowserToolPart
+} from "@/renderer/lib/chat/browser-tool-ui"
+import type { BrowserToolAction } from "@/renderer/lib/chat/browser-tool-ui"
 import { isRestoreCandidateToolName } from "@/renderer/lib/chat/checkpoint-restore"
 import {
   requestCheckpointRestore,
@@ -348,6 +356,75 @@ const CommandToolCallCard = ({
   )
 }
 
+const BROWSER_ACTION_TITLE_KEYS = {
+  navigate: "chat.browserTool.navigate",
+  read: "chat.browserTool.read",
+  screenshot: "chat.browserTool.screenshot"
+} as const satisfies Record<BrowserToolAction, string>
+
+/**
+ * Compact row for a `browser` call: the action as the title, the page it acts
+ * on as the description. While approval is pending it also states, in the card
+ * itself, that the page's content leaves the machine — the browser carries the
+ * user's logins, so that consequence must not be one click away in a details
+ * panel.
+ */
+const BrowserToolCard = ({
+  actions,
+  detail,
+  metaItems,
+  part,
+  state,
+  statusClassName,
+  statusLabel
+}: {
+  actions?: ReactNode
+  detail?: ReactNode
+  metaItems: string[]
+  part: ChatToolPart
+  state: ToolPartState
+  statusClassName: string
+  statusLabel: string
+}) => {
+  const { t } = useI18n()
+  const action = getBrowserToolAction(part) ?? "navigate"
+  const targetUrl = getBrowserToolTargetUrl(part)
+  const preview = getBrowserToolPreview(part)
+  const isApprovalPending = part.state === "approval-requested"
+
+  return (
+    <ToolTraceCard
+      actions={
+        isApprovalPending ? (
+          <div className="space-y-2">
+            <p className="rounded-md bg-amber-500/10 px-2 py-1.5 text-[0.6875rem] leading-4 text-amber-700 dark:text-amber-300">
+              {t("chat.browserTool.modelVisibilityHint")}
+            </p>
+            {actions}
+          </div>
+        ) : (
+          actions
+        )
+      }
+      defaultExpanded={isApprovalPending}
+      description={targetUrl || preview}
+      icon={GlobeIcon}
+      state={state}
+      statusClassName={statusClassName}
+      statusLabel={statusLabel}
+      title={t(BROWSER_ACTION_TITLE_KEYS[action])}
+    >
+      {preview ? (
+        <p className="line-clamp-3 text-xs wrap-break-word text-muted-foreground">
+          {preview}
+        </p>
+      ) : null}
+      <ToolTraceMeta items={metaItems} />
+      {detail ? <div className="space-y-1.5">{detail}</div> : null}
+    </ToolTraceCard>
+  )
+}
+
 const ToolApprovalActions = ({
   isApprovalActionDisabled,
   onApprovalResponse,
@@ -459,6 +536,33 @@ const buildGenericToolTraceExtras = (
   return { description: inputLabel || preview, headerAction: undefined }
 }
 
+// The workflow tool streams transient progress while running; surface it as a
+// live meta line until the tool produces its final output. Extracted from
+// StructuredToolTraceCard to keep that component under the complexity limit.
+const useWorkflowProgressMeta = (
+  part: ChatToolPart,
+  toolName: string
+): string => {
+  const { t } = useI18n()
+  const workflowProgress = useWorkflowProgress(part.toolCallId)
+  const isReceivingInput =
+    part.state === "input-available" || part.state === "input-streaming"
+
+  if (!(toolName === "workflow" && workflowProgress && isReceivingInput)) {
+    return ""
+  }
+
+  return [
+    workflowProgress.phase,
+    t("chat.toolTrace.workflowAgents", {
+      done: workflowProgress.agentsDone,
+      started: workflowProgress.agentsStarted
+    })
+  ]
+    .filter(Boolean)
+    .join(" · ")
+}
+
 export const StructuredToolTraceCard = ({
   isApprovalActionDisabled,
   onApprovalResponse,
@@ -476,23 +580,7 @@ export const StructuredToolTraceCard = ({
 }) => {
   const { t } = useI18n()
   const toolName = getToolName(part)
-  const workflowProgress = useWorkflowProgress(part.toolCallId)
-  // The workflow tool streams transient progress while running; surface it as a
-  // live meta line until the tool produces its final output.
-  const workflowProgressMeta =
-    toolName === "workflow" &&
-    workflowProgress &&
-    (part.state === "input-available" || part.state === "input-streaming")
-      ? [
-          workflowProgress.phase,
-          t("chat.toolTrace.workflowAgents", {
-            done: workflowProgress.agentsDone,
-            started: workflowProgress.agentsStarted
-          })
-        ]
-          .filter(Boolean)
-          .join(" · ")
-      : ""
+  const workflowProgressMeta = useWorkflowProgressMeta(part, toolName)
   const output =
     part.state === "output-available" ? getToolOutputSummary(part.output) : ""
   const preview = output || getToolTracePreview(part)
@@ -549,6 +637,20 @@ export const StructuredToolTraceCard = ({
   const detailPanels = (
     <ToolTraceDetailPanels input={part.input} output={outputDetail} />
   )
+
+  if (isBrowserToolPart(part)) {
+    return (
+      <BrowserToolCard
+        actions={approvalActions}
+        detail={detailPanels}
+        metaItems={[...metaItems, repeatedMetaItem]}
+        part={part}
+        state={heroToolState}
+        statusClassName={statusClassName}
+        statusLabel={statusLabel}
+      />
+    )
+  }
 
   if (inputCommand) {
     const commandOutputText = commandOutputContent || preview

@@ -51,6 +51,13 @@
       "typeError": "不支持的格式，请使用 PNG、JPEG、WebP 或 GIF。",
       "unsupported": "当前模型无法识别图片"
     },
+    "browserTool": {
+      "modelVisibilityHint": "页面内容或截图将发送给模型，其中包含此浏览器已登录的任何信息。",
+      "navigate": "打开网页",
+      "read": "读取网页",
+      "screenshot": "截取网页",
+      "screenshotAlt": "{{url}} 的截图"
+    },
     "imageMode": {
       "label": "图像",
       "tooltip": "开启后，发送的消息将直接生成图片",

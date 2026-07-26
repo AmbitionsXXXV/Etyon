@@ -1,0 +1,107 @@
+# Etyon 内置浏览器（Browser Tab）
+
+右侧 project-context 面板的第五个 tab，一个由主进程持有的真实浏览器视图：用户可以直接浏览（地址栏、前进/后退、刷新），agent 也可以通过 `browser` 工具驱动**同一个**视图。设计与取舍见 `plans/browser-tab.md`。
+
+## 1. 架构
+
+**渲染宿主：`WebContentsView`（不是 iframe，也不是 `<webview>`）。**
+
+- app 窗口的 renderer CSP 是 `frame-src 'self'`，且 `onHeadersReceived` 会把严格 CSP 盖到 default session 的所有文档上（`src/main/content-security-policy.ts`）→ iframe 方案不可行。
+- `HARDENED_WEB_PREFERENCES`（`src/main/window.ts`）是钉死的安全不变量，`webviewTag` 未开启 → `<webview>` 方案不可行。
+- `WebContentsView` 由主进程创建并 `mainWindow.contentView.addChildView()` 挂载，app 窗口的安全策略一行不动。代价是原生视图浮在全部 DOM 之上（tooltip/popover 会被盖住），并且需要 renderer 侧度量宿主矩形后同步 bounds/可见性。
+
+**会话隔离：单一 `session.fromPartition("persist:browser")`。**
+
+- 与 default session 完全隔离：拿不到 `etyon-attachment://`、拿不到 app 的 CSP 注入、拿不到 preload/IPC。
+- webPreferences 固定为 `{ contextIsolation: true, sandbox: true }`，**无 preload、无 node**。
+- 登录态跨重启保留（`persist:` 前缀），且所有 chat session 共用这一个 partition——登录一次到处可用。
+
+**三道安全墙（`src/main/browser/manager.ts`）：**
+
+1. **URL 白名单**：`isAllowedBrowserUrl` 只放行 `http:`/`https:`（因此 `http://localhost` 本地 dev server 可预览）。执行位置是 `beginBrowserLoad` —— **每一次 `loadURL` 之前**，因为 `will-navigate` 系列事件看不见主进程发起的导航。`will-navigate` / `will-frame-navigate` / `will-redirect` 三个事件挂同一个纯函数作纵深防御，`setWindowOpenHandler` 一律 deny（白名单通过则在当前视图内导航）。
+2. **权限全拒**：`setPermissionRequestHandler` + `setPermissionCheckHandler` + `setDevicePermissionHandler` 全部拒绝，`select-hid-device` / `select-serial-port` / `select-usb-device` 全部取消。
+3. **loopback 拦截**：浏览分区的 `webRequest.onBeforeRequest` 拦掉指向 Etyon 自身本机端口的请求。分区隔离不是网络隔离，恶意页面完全可以对 127.0.0.1 发请求；这是 bearer token（`/rpc/*` 与 `/api/*` 的主防线）之外的纵深。
+
+URL 规范化与白名单是纯函数，放在 `src/main/browser/url-policy.ts`（无 Electron 依赖，node 下单测）。
+
+## 2. RPC 面
+
+请求/响应走 oRPC，高频状态推送走 raw ipc —— 照抄 terminal 的双轨。
+
+- schemas：`packages/rpc/src/schemas/browser.ts`（`BrowserStateSchema = {canGoBack, canGoForward, faviconUrl?, isLoading, title, url}`）。
+- procedures（`src/main/rpc/router.ts` 的 `browser.*` 组）：`ensure`、`navigate`、`goBack`、`goForward`、`reload`、`stop`、`setBounds`、`setVisible`、`dispose`。
+- **所有 `browser.*` 处理器拒绝 `context.transport === "http"`**：router 同时暴露在本机 HTTP 上，bearer token 是主防线，这里是纵深。
+- 推送：`browser:state` 通道，payload 为 `{initiator, sessionId, state}`，preload 侧 `onBrowserState(cb) → unsubscribe` 带运行时类型校验。`initiator: "agent"` 是 chat 路由自动切到 browser tab 并展开面板的唯一触发源（`routes/chat.$sessionId.tsx`）。
+
+renderer 侧：`components/chat/browser-panel.tsx` 是工具条 + 被度量的空容器，纯逻辑（bounds 取整、≥100×48 门槛、地址显示格式化、状态 reducer）在 `lib/chat/browser-panel.ts`。
+
+## 3. 生命周期：租约 + LRU
+
+每个 chat session 一个 `WebContentsView`（agent run 是 per-session 的，共享单视图会让后台 session 的 agent 抢走用户正在看的页面）。每个视图是一个真实渲染进程，因此不能 leak-until-quit：
+
+- `BROWSER_VIEW_LRU_MAX = 3`；**驱逐资格 = 不可见 && 无进行中操作 && 非当前选中 session**（`src/main/browser/lru.ts`，纯函数 + 单测）。
+- **租约**：`withBrowserLease(sessionId, op)` 在 op 期间把视图钉住不可驱逐，并让 op 与"视图被销毁"竞速——销毁时所有挂起 promise 以 `BrowserViewDisposedError` reject，绝不悬挂。agent 工具的每个动作都跑在租约内。
+- 驱逐前记录 `lastUrl`，下次 `ensure` 时恢复 URL（SPA 内存态/表单/滚动位置不保证）。
+- `before-quit` 调 `disposeAllBrowserViews()`（挂在 `disposeAllPtys` 旁边）。
+
+## 4. Agent 工具 `browser`
+
+`src/main/agents/minimal/browser-tool.ts`，单个工具 + `z.discriminatedUnion("action", …)`，注册在 `buildAgentToolset` 中，门槛与 bash 相同（可写 profile 才有；plan mode 把 profile 翻成 readonly，因此自动剔除），另外要求存在 chat session（工具驱动的就是这个 session 的视图）。
+
+| action | 行为 | 输出 |
+| --- | --- | --- |
+| `navigate` | `resolveAllowedBrowserUrl` 规范化 + 白名单（失败抛描述性错误）→ 以 `initiator: "agent"` 加载（面板自动聚焦）→ 等待加载完成，15s 超时返回 partial 而非报错 | `{action, status: "aborted"｜"loaded"｜"timeout", title, url}` |
+| `read` | `executeJavaScript` 取 `document.title` + `document.body.innerText` | `{action, text, title, truncated, url}` |
+| `screenshot` | 必要时临时给视图屏外有效 bounds + 可见性（`withPaintableBrowserView`）→ `capturePage()` → 空帧重试一次 → 最长边缩到 ≤1568px → PNG 写入 attachments 内容寻址目录 | `{action, height, imageUrl, path, title, url, width}` |
+
+要点：
+
+- **截断策略是页面专属的**（`src/main/browser/page-content.ts`）：头 9000 + 尾 3000 字符，中间插省略标记。刻意不同于 bash 的双流 tail —— 日志的信息在尾部，网页的信息在头部。
+- **abort**：run 被中断时 navigate 不只是停止等待，还会 `webContents.stop()` 并摘掉监听器——页面不能在用户眼皮下继续加载。
+- **截图落盘在 attachments 目录**（`persistAttachmentBytes`，`src/main/attachments.ts`），不是用户项目目录：它是 app 产物不是项目产物，而且 renderer 只能通过 `etyon-attachment://` 协议读它。**base64 永远不进持久化输出、不进事件存储、不进 UI 流**。
+- **视图丢失**：`BrowserViewDisposedError` 被翻译成一句人话错误返回给模型。
+
+### 审批语义
+
+`shared/agents/permission-mode.ts` 的 `needsBrowserApproval(mode)` 只在 `bypass` 返回 false —— `default` **和** `acceptEdits` 都要审批。这与 bash 对齐而非与文件编辑对齐：`acceptEdits` 只自动放行项目内文件编辑，而浏览器带着用户的持久登录态，read/screenshot 的内容会**发送给模型供应商**，不是本地无副作用读取。没有"批准并记住"，审批疲劳的出口是 bypass 模式。
+
+审批策略挂在 `buildAgentToolApproval` 的 `browser` 项上；聊天里的审批卡（`components/chat/message-tool-trace.tsx` 的 `BrowserToolCard`）显示 action + 目标 URL，并**在卡片正文里**明示"页面内容/截图将发送给模型"（i18n key `chat.browserTool.modelVisibilityHint`）——这个后果不该藏在详情折叠里。
+
+### 供应商门控的截图视觉
+
+`toModelOutput` 决定截图以什么形态进入模型上下文，门控在 `buildAgentToolset`：
+
+```
+effectiveModelId = profile.preferredModel || sessionModelId
+supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
+```
+
+- **原生 anthropic provider**：返回 `{type: "content", value: [{type: "text", …}, {type: "file", data: {type: "data", data: <base64>}, mediaType: "image/png"}]}`，`@ai-sdk/anthropic` 会把 file part 转成原生 `tool_result` 图像块。
+- **其他所有 provider**（包括 OpenAI-compatible 的 chat-completions 中继）：返回 `{type: "json", value: output}`。这不是保守起见——chat-completions 路径会把 content 输出 `JSON.stringify` 成纯文本，真发图就等于把 base64 垃圾灌进上下文。
+- 模型 id 没有可识别的 provider 前缀时一律走 JSON 分支（保守默认）。
+- base64 是在 `toModelOutput` 里按需从 attachments 读回来的，读取路径经 `resolveAttachmentRequestPath` 的目录包含校验，因此被手改过的历史记录也无法让它读到 attachments 目录之外的文件。
+- 注意：`convertToModelMessages` 在本仓库不传 `tools`（`agents/agent-chat-context.ts`），所以图像只在**产生它的那一轮**留在上下文里；后续轮次的历史里它退化成元数据 JSON。
+
+## 5. 聊天时间线渲染
+
+- 三种 action 都以紧凑 trace 行出现在 work section 里（标题 = action，描述 = 目标 URL），纯取值逻辑在 `renderer/lib/chat/browser-tool-ui.ts`（node 可测）。
+- 截图**额外**在消息正文下方渲染成图片卡片（对标 imagen），src 直接是 `etyon-attachment://` —— renderer CSP 的 `img-src` 允许该 scheme。之所以两处都渲染：审批必须发生在 work section 的 trace 行上，而 work section 在 run 结束后会折叠，图片得留在外面。
+
+## 6. 不可回退的不变量
+
+改这块代码时，以下任何一条被破坏都属于安全回归：
+
+1. `src/main/window.ts` 的 `HARDENED_WEB_PREFERENCES` 与 `src/main/content-security-policy.ts` 的 CSP 注入**不因浏览器功能而放宽**（PR1/PR2/PR3 对这两个文件零改动）。
+2. 浏览分区不得有 preload、不得开 node、权限 request/check/device 全拒。
+3. 白名单在 `loadURL` 源头强制（不能只依赖 `will-navigate`），且新增的导航入口必须走 `beginBrowserLoad` 这个唯一 chokepoint。
+4. `browser.*` RPC 拒绝 HTTP transport；浏览分区不得访问 Etyon 自身 loopback 端口。
+5. 所有 agent 侧异步操作在 `withBrowserLease` 内执行，销毁时以 `BrowserViewDisposedError` 结算，不留悬挂 promise。
+6. 截图 base64 不得进入持久化输出、事件存储或 UI 流；只在 `toModelOutput` 里按需读回，且只对原生 anthropic provider 发送。
+
+## 7. 已知限制
+
+- agent 只能 navigate/read/screenshot，不能点击/输入/滚动（交互动作见 `plans/browser-tab.md` §8 延伸）。
+- 原生视图 z-order 压 DOM：与浏览区域重叠的 overlay 会被盖住。
+- 用户点进页面后键盘焦点在 `WebContentsView`，app 热键不触发。
+- agent 与用户争用同一视图：agent 导航会打断用户浏览（审批卡即是提示）。
+- 没有 per-origin"批准并记住"，也没有"清空浏览数据"入口。

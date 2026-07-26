@@ -2,7 +2,8 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   isAllowedBrowserUrl,
-  normalizeBrowserUrlInput
+  normalizeBrowserUrlInput,
+  resolveAllowedBrowserUrl
 } from "@/main/browser/url-policy"
 
 // Assembled via join so the source carries no literal `javascript:` URL, which
@@ -49,6 +50,26 @@ describe("normalizeBrowserUrlInput", () => {
 
       expect(normalized === null || !isAllowedBrowserUrl(normalized)).toBe(true)
     }
+  })
+})
+
+describe("resolveAllowedBrowserUrl", () => {
+  it("normalizes agent-supplied addresses that pass the allowlist", () => {
+    expect(resolveAllowedBrowserUrl("example.com/docs")).toBe(
+      "https://example.com/docs"
+    )
+    expect(resolveAllowedBrowserUrl("  http://localhost:5173  ")).toBe(
+      "http://localhost:5173/"
+    )
+  })
+
+  it("rejects every non-http(s) scheme and unusable input", () => {
+    for (const dangerous of DANGEROUS_INPUTS) {
+      expect(resolveAllowedBrowserUrl(dangerous)).toBeNull()
+    }
+
+    expect(resolveAllowedBrowserUrl("")).toBeNull()
+    expect(resolveAllowedBrowserUrl("not a url")).toBeNull()
   })
 })
 

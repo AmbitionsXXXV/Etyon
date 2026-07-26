@@ -31,6 +31,21 @@ const { getSettingsMock } = vi.hoisted(() => ({
   }))
 }))
 
+// The toolset reaches Electron through the browser tool's manager (window +
+// WebContentsView); nothing here drives a browser, so a bare stub is enough to
+// keep the import graph loadable under node.
+vi.mock("@electron-toolkit/utils", () => ({
+  is: { dev: true },
+  optimizer: { watchWindowShortcuts: vi.fn() },
+  platform: { isLinux: true, isMacOS: false, isWindows: false }
+}))
+
+vi.mock("electron", () => ({
+  BrowserWindow: { getAllWindows: () => [] },
+  app: { getPath: () => os.tmpdir() },
+  ipcMain: { on: vi.fn() }
+}))
+
 vi.mock("@/main/settings", () => ({
   getSettings: getSettingsMock
 }))

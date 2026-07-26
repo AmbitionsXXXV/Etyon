@@ -51,6 +51,13 @@
       "typeError": "対応していない形式です。PNG・JPEG・WebP・GIF を使用してください。",
       "unsupported": "選択中のモデルは画像を認識できません"
     },
+    "browserTool": {
+      "modelVisibilityHint": "ページの内容やスクリーンショットはモデルに送信されます。このブラウザーでログイン中の情報も含まれます。",
+      "navigate": "ページを開く",
+      "read": "ページを読む",
+      "screenshot": "ページを撮影",
+      "screenshotAlt": "{{url}} のスクリーンショット"
+    },
     "imageMode": {
       "label": "画像",
       "tooltip": "オンにすると、メッセージから画像を生成します",
