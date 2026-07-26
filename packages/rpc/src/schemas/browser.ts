@@ -46,6 +46,30 @@ export const BrowserMutationOutputSchema = z.object({
   ok: z.literal(true)
 })
 
+/**
+ * One element captured by the in-page picker. Every field is a raw, JSON-safe
+ * value collected in the isolated world; sizes are already clamped there
+ * (classes ≤ 5, innerText ≤ 300 chars, outerHtml ≤ 4000 chars).
+ */
+export const PickedWebElementSchema = z.object({
+  classes: z.array(z.string()),
+  id: z.string().nullable(),
+  innerText: z.string(),
+  outerHtml: z.string(),
+  rect: BrowserBoundsSchema,
+  selector: z.string(),
+  styles: z.record(z.string(), z.string()),
+  tagName: z.string(),
+  title: z.string(),
+  url: z.string()
+})
+
+// `null` covers every cancel route: Escape, a navigation, a torn-down view, the
+// picker timeout, or a second pick superseding this one.
+export const BrowserPickElementOutputSchema = z.object({
+  element: PickedWebElementSchema.nullable()
+})
+
 export type BrowserState = z.infer<typeof BrowserStateSchema>
 export type BrowserEnsureInput = z.infer<typeof BrowserEnsureInputSchema>
 export type BrowserNavigateInput = z.infer<typeof BrowserNavigateInputSchema>
@@ -55,3 +79,7 @@ export type BrowserSetVisibleInput = z.infer<
   typeof BrowserSetVisibleInputSchema
 >
 export type BrowserMutationOutput = z.infer<typeof BrowserMutationOutputSchema>
+export type PickedWebElement = z.infer<typeof PickedWebElementSchema>
+export type BrowserPickElementOutput = z.infer<
+  typeof BrowserPickElementOutputSchema
+>

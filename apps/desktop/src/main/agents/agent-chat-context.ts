@@ -35,6 +35,49 @@ export interface PreparedAgentChatContext {
 }
 
 const WHITESPACE_PATTERN = /\s+/gu
+// The picker already clamps `outerHtml` in the page; this is the defensive cap
+// for a mention that reached the server by another route.
+const MAX_WEB_ELEMENT_HTML_CHARS = 4000
+
+const formatWebElementBlock = (
+  mention: Extract<ChatMention, { kind: "webElement" }>
+): string => {
+  const styles = Object.entries(mention.styles)
+    .map(([property, value]) => `${property}: ${value}`)
+    .join("; ")
+
+  return [
+    `Selected element from ${mention.url} (${mention.title}):`,
+    `selector: ${mention.selector}`,
+    "```html",
+    mention.outerHtml.slice(0, MAX_WEB_ELEMENT_HTML_CHARS),
+    "```",
+    // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- `mention` is a serialized payload, not a DOM node.
+    `innerText: ${mention.innerText}`,
+    `styles: ${styles}`
+  ].join("\n")
+}
+
+/**
+ * Web-element mentions do not go through the project snapshot: the payload was
+ * captured in the browser panel and travels with the message, so it is rendered
+ * here as its own system block alongside the file/folder mention context. Both
+ * the chat and the agent path reach this through `prepareAgentChatContext`.
+ */
+const buildWebElementMentionSystemPrompt = (
+  mentions: ChatMention[]
+): string => {
+  const blocks = mentions
+    .filter((mention) => mention.kind === "webElement")
+    .map(formatWebElementBlock)
+
+  return blocks.length === 0
+    ? ""
+    : [
+        "The user selected these elements in the embedded browser:",
+        blocks.join("\n\n")
+      ].join("\n")
+}
 
 const getMessageText = (message: UIMessage): string =>
   message.parts
@@ -94,7 +137,8 @@ export const prepareAgentChatContext = async ({
     sessionMemorySystem,
     digestSystem,
     skillsSystem,
-    system
+    system,
+    buildWebElementMentionSystemPrompt(mentions)
   ].filter(isSystemPrompt)
 
   return {

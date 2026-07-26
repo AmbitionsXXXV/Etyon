@@ -245,6 +245,7 @@
       "browserGo": "Go",
       "browserLabel": "Embedded browser",
       "browserOpenExternal": "Open in System Browser",
+      "browserPickElement": "Select Element",
       "browserReload": "Reload",
       "browserRetry": "Retry",
       "browserStop": "Stop",

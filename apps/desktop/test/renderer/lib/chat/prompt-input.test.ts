@@ -1,4 +1,4 @@
-import type { ParsedSkill, PromptTemplate } from "@etyon/rpc"
+import type { ChatMention, ParsedSkill, PromptTemplate } from "@etyon/rpc"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import type { PromptCommandPaletteItem } from "@/renderer/lib/chat/prompt-input"
@@ -14,6 +14,7 @@ import {
   filterPromptTemplateItems,
   filterPromptSkillMentionItems,
   getActiveMentionMatch,
+  getMentionTextValue,
   getMentionTokenTypeLabel,
   getPromptEditorActiveCommandPaletteRange,
   getPromptEditorActiveMentionRange,
@@ -631,6 +632,60 @@ describe("prompt input helpers", () => {
         type: "text"
       }
     ])
+  })
+
+  it("renders a picked web element mention through the shared text value path", () => {
+    const mention = {
+      innerText: "Example Domain",
+      kind: "webElement",
+      label: "h1#main-title",
+      outerHtml: '<h1 id="main-title">Example Domain</h1>',
+      selector: "#main-title",
+      styles: { fontSize: "32px" },
+      tagName: "h1",
+      title: "Example Domain",
+      url: "https://example.com/"
+    } satisfies ChatMention
+
+    expect(getMentionTextValue(mention)).toBe("h1#main-title")
+    expect(getMentionTokenTypeLabel(mention)).toBe("DOM")
+    expect(
+      splitPromptTextByMentions({
+        mentions: [mention],
+        text: "这个元素 @h1#main-title 的文字是什么"
+      })
+    ).toEqual([
+      {
+        text: "这个元素 ",
+        type: "text"
+      },
+      {
+        mention,
+        type: "mention"
+      },
+      {
+        text: " 的文字是什么",
+        type: "text"
+      }
+    ])
+    expect(
+      buildPromptEditorJsonFromMessage({
+        mentions: [mention],
+        text: "这个元素 @h1#main-title 的文字是什么"
+      })
+    ).toEqual({
+      content: [
+        {
+          content: [
+            { text: "这个元素 ", type: "text" },
+            { attrs: mention, type: "projectMention" },
+            { text: " 的文字是什么", type: "text" }
+          ],
+          type: "paragraph"
+        }
+      ],
+      type: "doc"
+    })
   })
 
   it("maps every permission mode to a composer option and cycles in order", () => {

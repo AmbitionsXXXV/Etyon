@@ -103,6 +103,7 @@ import {
   filterPromptSkillMentionItems,
   filterPromptTemplateItems,
   getMentionDisplayName,
+  getMentionTextValue,
   getMentionTokenTypeLabel,
   getMentionTitle,
   splitPromptTextByMentions
@@ -464,7 +465,7 @@ const MessageTextContent = ({
       {messageParts.map((part, index) =>
         part.type === "mention" ? (
           <InlineMentionToken
-            key={`${messageId}-mention-${part.mention.kind}-${part.mention.path}-${index}`}
+            key={`${messageId}-mention-${part.mention.kind}-${getMentionTextValue(part.mention)}-${index}`}
             mention={part.mention}
           />
         ) : (
@@ -1013,7 +1014,7 @@ const MessageMentionChips = ({
             </Chip.Label>
           </Chip>
         )
-        const chipKey = `${messageId}-${mention.kind}-${mention.path}`
+        const chipKey = `${messageId}-${mention.kind}-${getMentionTextValue(mention)}`
 
         if (mention.kind === "file") {
           return (

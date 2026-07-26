@@ -1,5 +1,5 @@
 import type { ChatMention } from "@etyon/rpc"
-import { Cancel01Icon } from "@hugeicons/core-free-icons"
+import { Cancel01Icon, CursorPointer01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Node, mergeAttributes } from "@tiptap/core"
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react"
@@ -15,6 +15,18 @@ import {
   getMentionTitle,
   getMentionTokenTypeLabel
 } from "@/renderer/lib/chat/prompt-input"
+
+const getMentionHtmlValue = (attrs: Record<string, unknown>): unknown => {
+  if (attrs.kind === "skill") {
+    return attrs.name ?? attrs.relativePath ?? ""
+  }
+
+  if (attrs.kind === "webElement") {
+    return attrs.label ?? ""
+  }
+
+  return attrs.relativePath ?? ""
+}
 
 const getMentionFromNodeAttrs = (attrs: Record<string, unknown>): ChatMention =>
   createMentionFromEditorAttrs(attrs) ?? {
@@ -65,7 +77,15 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
         title={getMentionTitle(mention)}
       >
         <span className="grid h-5 min-w-5 place-items-center rounded-[4px] bg-foreground/15 px-1 text-[0.62rem] leading-none font-semibold text-muted-foreground uppercase">
-          {getMentionTokenTypeLabel(mention)}
+          {mention.kind === "webElement" ? (
+            <HugeiconsIcon
+              className="size-3"
+              icon={CursorPointer01Icon}
+              strokeWidth={2}
+            />
+          ) : (
+            getMentionTokenTypeLabel(mention)
+          )}
         </span>
         <span className="max-w-52 truncate">
           {getMentionDisplayName(mention)}
@@ -89,15 +109,27 @@ const ProjectMentionNodeView = ({ editor, getPos, node }: NodeViewProps) => {
 }
 
 export const ProjectMentionExtension = Node.create({
+  // Every mention field of every kind is declared here: tiptap drops any
+  // attribute the node does not know about, which would silently strip a
+  // picked element's payload on round-trip.
   addAttributes() {
     return {
       description: {
         default: ""
       },
+      innerText: {
+        default: ""
+      },
       kind: {
         default: "file"
       },
+      label: {
+        default: ""
+      },
       name: {
+        default: ""
+      },
+      outerHtml: {
         default: ""
       },
       path: {
@@ -112,10 +144,25 @@ export const ProjectMentionExtension = Node.create({
       scope: {
         default: "project"
       },
+      selector: {
+        default: ""
+      },
       shortDescription: {
         default: null
       },
       snapshotId: {
+        default: ""
+      },
+      styles: {
+        default: {}
+      },
+      tagName: {
+        default: ""
+      },
+      title: {
+        default: ""
+      },
+      url: {
         default: ""
       }
     }
@@ -136,10 +183,7 @@ export const ProjectMentionExtension = Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     const prefix = HTMLAttributes.kind === "skill" ? "$" : "@"
-    const value =
-      HTMLAttributes.kind === "skill"
-        ? (HTMLAttributes.name ?? HTMLAttributes.relativePath ?? "")
-        : (HTMLAttributes.relativePath ?? "")
+    const value = getMentionHtmlValue(HTMLAttributes)
 
     return [
       "span",

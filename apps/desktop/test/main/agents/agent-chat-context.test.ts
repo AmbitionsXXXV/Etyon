@@ -200,6 +200,52 @@ describe("agent chat context", () => {
     expect(getProjectMemoryDigestMock).toHaveBeenCalledWith({}, "/project")
   })
 
+  it("expands a picked web element into its own system block", async () => {
+    const pickedElement = {
+      innerText: "Example Domain",
+      kind: "webElement",
+      label: "h1#main-title",
+      outerHtml: '<h1 id="main-title">Example Domain</h1>',
+      selector: "#main-title",
+      styles: {
+        color: "rgb(0, 0, 0)",
+        fontSize: "32px"
+      },
+      tagName: "h1",
+      title: "Example Domain",
+      url: "https://example.com/"
+    } satisfies ChatMention
+    const settings = AppSettingsSchema.parse({})
+
+    const context = await prepareAgentChatContext({
+      db: {} as Parameters<typeof prepareAgentChatContext>[0]["db"],
+      mentions: [pickedElement],
+      messages: [
+        createTextMessage({
+          id: "user-1",
+          role: "user",
+          text: "What does this element say?"
+        })
+      ],
+      projectPath: "/project",
+      sessionId: "session-1",
+      settings
+    })
+
+    expect(context.systemPrompts.at(-1)).toBe(
+      [
+        "The user selected these elements in the embedded browser:",
+        "Selected element from https://example.com/ (Example Domain):",
+        "selector: #main-title",
+        "```html",
+        '<h1 id="main-title">Example Domain</h1>',
+        "```",
+        "innerText: Example Domain",
+        "styles: color: rgb(0, 0, 0); fontSize: 32px"
+      ].join("\n")
+    )
+  })
+
   it("skips the digest read entirely when memory is disabled", async () => {
     const settings = AppSettingsSchema.parse({
       memory: {

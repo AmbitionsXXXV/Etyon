@@ -555,8 +555,10 @@ export const isPromptImeConfirmKeyDown = ({
     isCompositionEndGuardActive ||
     isPromptNativeCompositionKeyDown(event))
 
+// `relativePath` is optional because web-element mentions carry no path; every
+// other kind still passes its own value through unchanged.
 export const getMentionTokenTypeLabel = (
-  mention: Pick<ChatMention, "kind" | "relativePath">
+  mention: Pick<ChatMention, "kind"> & { relativePath?: string }
 ): string => {
   if (mention.kind === "skill") {
     return "SKILL"
@@ -566,7 +568,11 @@ export const getMentionTokenTypeLabel = (
     return "DIR"
   }
 
-  const fileName = mention.relativePath.split("/").at(-1) ?? ""
+  if (mention.kind === "webElement") {
+    return "DOM"
+  }
+
+  const fileName = mention.relativePath?.split("/").at(-1) ?? ""
   const extension = fileName.includes(".") ? fileName.split(".").at(-1) : null
 
   return extension ? extension.toUpperCase() : "TXT"
@@ -577,12 +583,20 @@ export const getMentionTextValue = (mention: ChatMention): string => {
     return mention.name
   }
 
+  if (mention.kind === "webElement") {
+    return mention.label
+  }
+
   return mention.relativePath
 }
 
 export const getMentionDisplayName = (mention: ChatMention): string => {
   if (mention.kind === "skill") {
     return formatSkillName(mention.name)
+  }
+
+  if (mention.kind === "webElement") {
+    return mention.label
   }
 
   return mention.relativePath.split("/").at(-1) ?? mention.relativePath
@@ -599,7 +613,55 @@ export const getMentionTitle = (mention: ChatMention): string => {
     return mention.shortDescription ?? mention.description
   }
 
+  if (mention.kind === "webElement") {
+    return `${mention.selector} · ${mention.url}`
+  }
+
   return mention.relativePath
+}
+
+const toStringRecord = (value: unknown): Record<string, string> => {
+  if (typeof value !== "object" || value === null) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  )
+}
+
+const createWebElementMentionFromAttrs = ({
+  // eslint-disable-next-line unicorn/prefer-dom-node-text-content -- `innerText` is the picked element's payload field, not a DOM node read.
+  innerText,
+  label,
+  outerHtml,
+  selector,
+  styles,
+  tagName,
+  title,
+  url
+}: Record<string, unknown>): ChatMention | null => {
+  if (
+    typeof label !== "string" ||
+    typeof selector !== "string" ||
+    typeof url !== "string"
+  ) {
+    return null
+  }
+
+  return {
+    innerText: typeof innerText === "string" ? innerText : "",
+    kind: "webElement",
+    label,
+    outerHtml: typeof outerHtml === "string" ? outerHtml : "",
+    selector,
+    styles: toStringRecord(styles),
+    tagName: typeof tagName === "string" ? tagName : "",
+    title: typeof title === "string" ? title : "",
+    url
+  }
 }
 
 export const createMentionFromEditorAttrs = (
@@ -610,6 +672,10 @@ export const createMentionFromEditorAttrs = (
   }
 
   const { kind, path, relativePath, snapshotId } = attrs
+
+  if (kind === "webElement") {
+    return createWebElementMentionFromAttrs(attrs)
+  }
 
   if (kind === "skill") {
     const { description, name, projectPath, scope, shortDescription } = attrs

@@ -1,10 +1,11 @@
 import { useI18n } from "@etyon/i18n/react"
-import { Button, Input, Spinner, TextField } from "@heroui/react"
+import { Button, Input, Spinner, TextField, ToggleButton } from "@heroui/react"
 import {
   ArrowLeft01Icon,
   ArrowReloadHorizontalIcon,
   ArrowRight01Icon,
   Cancel01Icon,
+  CursorPointer01Icon,
   GlobeIcon,
   LinkSquare02Icon
 } from "@hugeicons/core-free-icons"
@@ -24,6 +25,10 @@ import {
   roundBrowserSurfaceBounds
 } from "@/renderer/lib/chat/browser-panel"
 import type { BrowserSurfaceBounds } from "@/renderer/lib/chat/browser-panel"
+import {
+  createWebElementMention,
+  publishPickedWebElement
+} from "@/renderer/lib/chat/web-element-capture"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 /** Fire-and-forget browser command; a lost view must not reject unhandled. */
@@ -98,6 +103,7 @@ export const BrowserPanel = ({
   const [isSurfaceMeasurable, setSurfaceMeasurable] = useState(false)
   const [connectToken, setConnectToken] = useState(0)
   const [addressDraft, setAddressDraft] = useState<string | null>(null)
+  const [isPickingElement, setPickingElement] = useState(false)
   const isReady = state.status === "ready"
 
   useEffect(() => {
@@ -248,6 +254,43 @@ export const BrowserPanel = ({
     () => () => {
       void runBrowserCommand(() =>
         rpcClient.browser.setVisible({ sessionId, visible: false })
+      )
+    },
+    [sessionId]
+  )
+
+  // A pick stays pending until the user clicks in the page, so the toggle owns
+  // both edges: pressing it again sends the cancel that settles the call with a
+  // null element, and the same call's `finally` resets the flag either way.
+  const togglePickElement = useCallback(async (): Promise<void> => {
+    if (isPickingElement) {
+      await runBrowserCommand(() =>
+        rpcClient.browser.cancelElementPick({ sessionId })
+      )
+      return
+    }
+
+    setPickingElement(true)
+
+    try {
+      const { element } = await rpcClient.browser.pickElement({ sessionId })
+
+      if (element) {
+        publishPickedWebElement(createWebElementMention(element))
+      }
+    } catch {
+      // The view was evicted or the session switched mid-pick; nothing to add.
+    } finally {
+      setPickingElement(false)
+    }
+  }, [isPickingElement, sessionId])
+
+  // Unmount routes (tab switch, session switch) never reach the toggle, and a
+  // pick left running would keep a lease on the view.
+  useEffect(
+    () => () => {
+      void runBrowserCommand(() =>
+        rpcClient.browser.cancelElementPick({ sessionId })
       )
     },
     [sessionId]
@@ -437,6 +480,16 @@ export const BrowserPanel = ({
             variant="secondary"
           />
         </TextField>
+        <ToggleButton
+          aria-label={t("chat.projectPanel.browserPickElement")}
+          isIconOnly
+          isSelected={isPickingElement}
+          onPress={() => void togglePickElement()}
+          size="sm"
+          variant="ghost"
+        >
+          <HugeiconsIcon icon={CursorPointer01Icon} size={15} strokeWidth={2} />
+        </ToggleButton>
         <BrowserToolbarButton
           icon={LinkSquare02Icon}
           isDisabled={state.url === ""}

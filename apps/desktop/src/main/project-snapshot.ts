@@ -1103,7 +1103,9 @@ export const buildMentionContext = ({
   }
 
   for (const mention of mentions) {
-    if (mention.kind === "skill") {
+    // Skills resolve through the skills loader, picked web elements carry their
+    // own payload; neither has anything to read out of the snapshot.
+    if (mention.kind === "skill" || mention.kind === "webElement") {
       continue
     }
 

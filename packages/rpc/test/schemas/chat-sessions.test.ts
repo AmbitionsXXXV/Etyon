@@ -50,6 +50,25 @@ describe("chat session schemas", () => {
     })
   })
 
+  it("round-trips a picked web element mention", () => {
+    const mention = {
+      innerText: "Example Domain",
+      kind: "webElement",
+      label: "h1#main-title",
+      outerHtml: '<h1 id="main-title">Example Domain</h1>',
+      selector: "#main-title",
+      styles: {
+        color: "rgb(0, 0, 0)",
+        fontSize: "32px"
+      },
+      tagName: "h1",
+      title: "Example Domain",
+      url: "https://example.com/"
+    }
+
+    expect(ChatMentionSchema.parse(mention)).toEqual(mention)
+  })
+
   it("accepts explicit skill mentions", () => {
     expect(
       ChatMentionSchema.parse({

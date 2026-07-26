@@ -28,10 +28,26 @@ const ChatSkillMentionSchema = z.object({
   shortDescription: z.string().nullable()
 })
 
+// An element the user picked in the embedded browser. Unlike file/folder
+// mentions it carries its own payload — there is no snapshot to read it back
+// from, and the page may have navigated away by the time the turn is sent.
+const ChatWebElementMentionSchema = z.object({
+  innerText: z.string(),
+  kind: z.literal("webElement"),
+  label: z.string(),
+  outerHtml: z.string(),
+  selector: z.string(),
+  styles: z.record(z.string(), z.string()),
+  tagName: z.string(),
+  title: z.string(),
+  url: z.string()
+})
+
 export const ChatMentionSchema = z.discriminatedUnion("kind", [
   ChatFileMentionSchema,
   ChatFolderMentionSchema,
-  ChatSkillMentionSchema
+  ChatSkillMentionSchema,
+  ChatWebElementMentionSchema
 ])
 
 export const ChatSessionSummarySchema = z.object({
@@ -108,6 +124,7 @@ export type ArchiveChatSessionInput = z.infer<
 >
 export type ChatMention = z.infer<typeof ChatMentionSchema>
 export type ChatSkillMention = z.infer<typeof ChatSkillMentionSchema>
+export type ChatWebElementMention = z.infer<typeof ChatWebElementMentionSchema>
 export type ChatSessionMemory = z.infer<typeof ChatSessionMemorySchema>
 export type ChatSessionMessagesInput = z.infer<
   typeof ChatSessionMessagesInputSchema

@@ -13,6 +13,7 @@ import {
   BrowserEnsureInputSchema,
   BrowserMutationOutputSchema,
   BrowserNavigateInputSchema,
+  BrowserPickElementOutputSchema,
   BrowserSessionInputSchema,
   BrowserSetBoundsInputSchema,
   BrowserSetVisibleInputSchema,
@@ -112,6 +113,10 @@ import {
   setSessionPlanStatus
 } from "@/main/agents/session-plans"
 import { syncRuntimeIcon } from "@/main/app-metadata"
+import {
+  cancelElementPick,
+  runElementPick
+} from "@/main/browser/element-picker"
 import {
   disposeBrowserView,
   ensureBrowserView,
@@ -866,6 +871,15 @@ const assertBrowserRpcAccess = async (
   }
 }
 
+const browserCancelElementPick = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserMutationOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+    cancelElementPick({ sessionId: input.sessionId })
+    return { ok: true as const }
+  })
+
 const browserDispose = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
@@ -917,6 +931,17 @@ const browserNavigate = rpc
       sessionId: input.sessionId,
       url: normalizedUrl
     })
+  })
+
+// Stays pending until the user clicks an element or the pick is cancelled; the
+// MessagePort transport has no call timeout, and the picker enforces its own.
+const browserPickElement = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserPickElementOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+
+    return { element: await runElementPick({ sessionId: input.sessionId }) }
   })
 
 const browserReload = rpc
@@ -972,11 +997,13 @@ export const router = {
     read: artifactsRead
   },
   browser: {
+    cancelElementPick: browserCancelElementPick,
     dispose: browserDispose,
     ensure: browserEnsure,
     goBack: browserGoBack,
     goForward: browserGoForward,
     navigate: browserNavigate,
+    pickElement: browserPickElement,
     reload: browserReload,
     setBounds: browserSetBounds,
     setVisible: browserSetVisible,

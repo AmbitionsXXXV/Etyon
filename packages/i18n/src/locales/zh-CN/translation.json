@@ -245,6 +245,7 @@
       "browserGo": "前往",
       "browserLabel": "内置浏览器",
       "browserOpenExternal": "在系统浏览器中打开",
+      "browserPickElement": "选取元素",
       "browserReload": "刷新",
       "browserRetry": "重试",
       "browserStop": "停止",

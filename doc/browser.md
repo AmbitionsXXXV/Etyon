@@ -29,7 +29,7 @@ URL 规范化与白名单是纯函数，放在 `src/main/browser/url-policy.ts`�
 请求/响应走 oRPC，高频状态推送走 raw ipc —— 照抄 terminal 的双轨。
 
 - schemas：`packages/rpc/src/schemas/browser.ts`（`BrowserStateSchema = {canGoBack, canGoForward, faviconUrl?, isLoading, title, url}`）。
-- procedures（`src/main/rpc/router.ts` 的 `browser.*` 组）：`ensure`、`navigate`、`goBack`、`goForward`、`reload`、`stop`、`setBounds`、`setVisible`、`dispose`。
+- procedures（`src/main/rpc/router.ts` 的 `browser.*` 组）：`ensure`、`navigate`、`goBack`、`goForward`、`reload`、`stop`、`setBounds`、`setVisible`、`dispose`、`pickElement`、`cancelElementPick`（后两个见 §6）。
 - **所有 `browser.*` 处理器拒绝 `context.transport === "http"`**：router 同时暴露在本机 HTTP 上，bearer token 是主防线，这里是纵深。
 - 推送：`browser:state` 通道，payload 为 `{initiator, sessionId, state}`，preload 侧 `onBrowserState(cb) → unsubscribe` 带运行时类型校验。`initiator: "agent"` 是 chat 路由自动切到 browser tab 并展开面板的唯一触发源（`routes/chat.$sessionId.tsx`）。
 
@@ -87,7 +87,19 @@ supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
 - 三种 action 都以紧凑 trace 行出现在 work section 里（标题 = action，描述 = 目标 URL），纯取值逻辑在 `renderer/lib/chat/browser-tool-ui.ts`（node 可测）。
 - 截图**额外**在消息正文下方渲染成图片卡片（对标 imagen），src 直接是 `etyon-attachment://` —— renderer CSP 的 `img-src` 允许该 scheme。之所以两处都渲染：审批必须发生在 work section 的 trace 行上，而 work section 在 run 结束后会折叠，图片得留在外面。
 
-## 6. 不可回退的不变量
+## 6. 元素选取（用户侧）
+
+工具条上的选取 toggle（i18n `chat.projectPanel.browserPickElement`）把页面里的一个元素捞进 composer，是**用户动作**，与 agent 的 `browser` 工具无关。
+
+- 页面侧注入：`src/main/browser/element-picker.ts` 的 `PICKER_SCRIPT` 是一段纯浏览器 JS 字符串，经 `executeJavaScriptInIsolatedWorld(1013, …)` 注入。分区没有 preload，所以这是页面与 main 之间唯一的通道；隔离 world 与页面共享 DOM（高亮框可见）但不共享 JS 全局，`globalThis.__etyonCancelElementPick` 这个取消钩子在页面 console 里看不到。
+- 脚本装 capture 阶段的 `mousemove`/`click`/`keydown` + 一个 `pointer-events:none` 的 fixed 高亮框（左上角 tag 徽标），并把 `documentElement` 的 cursor 改成 crosshair；点击 `preventDefault + stopImmediatePropagation`（页面链接不跳转），Esc 取消；无论哪条路径都在 `try/finally` 里先卸监听 + 移除 overlay + 还原 cursor + 删钩子再 resolve。
+- main 侧 `runElementPick` 跑在 `withBrowserLease` 内，与主 frame `did-start-navigation`、`destroyed`、120s 超时竞速；取消路径尽力调一次页面钩子做清理再返回 `null`。同 session 重复选取先取消旧的（脚本开头也会自我取消上一轮，双保险）。
+- selector 采集：id 唯一则短路成 `#id`，否则 `nth-of-type` 路径向上最多 5 层。
+- RPC：`browser.pickElement({sessionId}) → {element|null}`（长挂起，MessagePort 无调用超时）与 `browser.cancelElementPick`，同样拒绝 HTTP transport。
+- 传给 composer：新 mention kind `webElement`（`{label, selector, url, title, tagName, innerText, outerHtml, styles}`，`rect` 只留在 pick 结果里）。面板 → composer 走模块级 store `renderer/lib/chat/web-element-capture.ts`（仿 project-panel-navigation），PromptInput 订阅后插入既有 `projectMention` 节点 + 尾随空格。chip 的 label 在 renderer 生成（`tag#id.firstClass`，≤40 字符）。
+- 模型上下文：`agents/agent-chat-context.ts` 把 webElement mention 拼成独立 system 块（url/title/selector/outerHtml 代码块/innerText/styles），chat 与 agent 两条路径都经 `prepareAgentChatContext`，因此一处生效。payload 自带，不读 project snapshot。
+
+## 7. 不可回退的不变量
 
 改这块代码时，以下任何一条被破坏都属于安全回归：
 
@@ -98,10 +110,11 @@ supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
 5. 所有 agent 侧异步操作在 `withBrowserLease` 内执行，销毁时以 `BrowserViewDisposedError` 结算，不留悬挂 promise。
 6. 截图 base64 不得进入持久化输出、事件存储或 UI 流；只在 `toModelOutput` 里按需读回，且只对原生 anthropic provider 发送。
 
-## 7. 已知限制
+## 8. 已知限制
 
 - agent 只能 navigate/read/screenshot，不能点击/输入/滚动（交互动作见 `plans/browser-tab.md` §8 延伸）。
 - 原生视图 z-order 压 DOM：与浏览区域重叠的 overlay 会被盖住。
 - 用户点进页面后键盘焦点在 `WebContentsView`，app 热键不触发。
 - agent 与用户争用同一视图：agent 导航会打断用户浏览（审批卡即是提示）。
 - 没有 per-origin"批准并记住"，也没有"清空浏览数据"入口。
+- 元素选取只覆盖主 frame（iframe 内元素取不到）；只拦 `click`，`mousedown` 驱动的页面控件仍会响应；不做元素区域截图、多选与持久标记。

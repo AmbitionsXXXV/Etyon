@@ -245,6 +245,7 @@
       "browserGo": "移動",
       "browserLabel": "内蔵ブラウザー",
       "browserOpenExternal": "システムブラウザーで開く",
+      "browserPickElement": "要素を選択",
       "browserReload": "再読み込み",
       "browserRetry": "再試行",
       "browserStop": "停止",

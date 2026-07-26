@@ -172,19 +172,23 @@ export {
   BrowserEnsureInputSchema,
   BrowserMutationOutputSchema,
   BrowserNavigateInputSchema,
+  BrowserPickElementOutputSchema,
   BrowserSessionInputSchema,
   BrowserSetBoundsInputSchema,
   BrowserSetVisibleInputSchema,
-  BrowserStateSchema
+  BrowserStateSchema,
+  PickedWebElementSchema
 } from "./schemas/browser"
 export type {
   BrowserEnsureInput,
   BrowserMutationOutput,
   BrowserNavigateInput,
+  BrowserPickElementOutput,
   BrowserSessionInput,
   BrowserSetBoundsInput,
   BrowserSetVisibleInput,
-  BrowserState
+  BrowserState,
+  PickedWebElement
 } from "./schemas/browser"
 export {
   ArchiveChatSessionInputSchema,
@@ -205,6 +209,7 @@ export type {
   ArchiveChatSessionInput,
   ChatMention,
   ChatSkillMention,
+  ChatWebElementMention,
   ChatSessionMemory,
   ChatSessionMessagesInput,
   ChatSessionMessagesOutput,

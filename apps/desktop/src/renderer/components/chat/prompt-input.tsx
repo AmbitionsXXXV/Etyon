@@ -98,6 +98,10 @@ import type {
   PromptMentionTrigger,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  clearPickedWebElement,
+  usePickedWebElement
+} from "@/renderer/lib/chat/web-element-capture"
 import { getNextPermissionMode } from "@/shared/agents/permission-mode"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { getNextChatAgentMode } from "@/shared/chat/agent-mode"
@@ -1620,6 +1624,33 @@ export const PromptInput = ({
   useEffect(() => {
     editor?.setEditable(!(disabled || isSubmitting))
   }, [disabled, editor, isSubmitting])
+
+  const pickedWebElement = usePickedWebElement()
+
+  // The browser panel's element picker sits in an unrelated subtree, so its
+  // result arrives through a module store. Insert it as a mention chip plus a
+  // trailing space, then clear the store so a re-render cannot insert it twice.
+  useEffect(() => {
+    if (!(editor && pickedWebElement)) {
+      return
+    }
+
+    editor
+      .chain()
+      .focus()
+      .insertContent([
+        {
+          attrs: pickedWebElement.mention,
+          type: PROJECT_MENTION_NODE_TYPE
+        },
+        {
+          text: " ",
+          type: "text"
+        }
+      ])
+      .run()
+    clearPickedWebElement()
+  }, [editor, pickedWebElement])
 
   useEffect(
     () => () => {
