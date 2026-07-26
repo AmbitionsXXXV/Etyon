@@ -169,7 +169,12 @@ export type {
   ReadArtifactFileOutput
 } from "./schemas/artifacts"
 export {
+  BrowserCookieImportErrorReasonSchema,
+  BrowserCookieSourceSchema,
+  BrowserCookieSourcesOutputSchema,
   BrowserEnsureInputSchema,
+  BrowserImportCookiesInputSchema,
+  BrowserImportCookiesOutputSchema,
   BrowserMutationOutputSchema,
   BrowserNavigateInputSchema,
   BrowserPickElementOutputSchema,
@@ -180,7 +185,12 @@ export {
   PickedWebElementSchema
 } from "./schemas/browser"
 export type {
+  BrowserCookieImportErrorReason,
+  BrowserCookieSource,
+  BrowserCookieSourcesOutput,
   BrowserEnsureInput,
+  BrowserImportCookiesInput,
+  BrowserImportCookiesOutput,
   BrowserMutationOutput,
   BrowserNavigateInput,
   BrowserPickElementOutput,

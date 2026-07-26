@@ -70,8 +70,65 @@ export const BrowserPickElementOutputSchema = z.object({
   element: PickedWebElementSchema.nullable()
 })
 
+/**
+ * One local Chromium profile the embedded browser can import sign-ins from.
+ * `browser` is a display label ("Chrome"), `id` is opaque to the renderer, and
+ * `cookieCount` is `null` when the profile's cookie database could not be
+ * counted — a profile stays listed even then, because the import may still work.
+ */
+export const BrowserCookieSourceSchema = z.object({
+  browser: z.string(),
+  cookieCount: z.number().int().nullable(),
+  id: z.string(),
+  profileDir: z.string(),
+  profileName: z.string()
+})
+
+export const BrowserCookieSourcesOutputSchema = z.object({
+  sources: z.array(BrowserCookieSourceSchema)
+})
+
+// `domainFilter` is a plain substring match on the source cookie's host; empty
+// imports the whole profile.
+export const BrowserImportCookiesInputSchema = z.object({
+  domainFilter: z.string().optional(),
+  sessionId: BrowserSessionIdSchema,
+  sourceId: z.string().min(1)
+})
+
+// Counts only: decrypted cookie values never leave the main process.
+export const BrowserImportCookiesOutputSchema = z.object({
+  failed: z.number().int(),
+  imported: z.number().int(),
+  total: z.number().int()
+})
+
+/**
+ * Import failures the dialog turns into its own copy. Carried as the `data`
+ * payload of the RPC error, since the import output is counts only.
+ */
+export const BrowserCookieImportErrorReasonSchema = z.enum([
+  "keychain-denied",
+  "keychain-missing",
+  "source-missing",
+  "unsupported-platform"
+])
+
 export type BrowserState = z.infer<typeof BrowserStateSchema>
+export type BrowserCookieImportErrorReason = z.infer<
+  typeof BrowserCookieImportErrorReasonSchema
+>
+export type BrowserCookieSource = z.infer<typeof BrowserCookieSourceSchema>
+export type BrowserCookieSourcesOutput = z.infer<
+  typeof BrowserCookieSourcesOutputSchema
+>
 export type BrowserEnsureInput = z.infer<typeof BrowserEnsureInputSchema>
+export type BrowserImportCookiesInput = z.infer<
+  typeof BrowserImportCookiesInputSchema
+>
+export type BrowserImportCookiesOutput = z.infer<
+  typeof BrowserImportCookiesOutputSchema
+>
 export type BrowserNavigateInput = z.infer<typeof BrowserNavigateInputSchema>
 export type BrowserSessionInput = z.infer<typeof BrowserSessionInputSchema>
 export type BrowserSetBoundsInput = z.infer<typeof BrowserSetBoundsInputSchema>

@@ -10,7 +10,10 @@ import {
   SetSessionPlanStatusInputSchema,
   AppSettingsSchema,
   ArchiveChatSessionInputSchema,
+  BrowserCookieSourcesOutputSchema,
   BrowserEnsureInputSchema,
+  BrowserImportCookiesInputSchema,
+  BrowserImportCookiesOutputSchema,
   BrowserMutationOutputSchema,
   BrowserNavigateInputSchema,
   BrowserPickElementOutputSchema,
@@ -93,6 +96,7 @@ import {
   RtkTokenSavingsOutputSchema,
   UpdateSettingsSchema
 } from "@etyon/rpc"
+import { ORPCError } from "@orpc/server"
 import { BrowserWindow } from "electron"
 
 import {
@@ -113,6 +117,11 @@ import {
   setSessionPlanStatus
 } from "@/main/agents/session-plans"
 import { syncRuntimeIcon } from "@/main/app-metadata"
+import {
+  BrowserCookieImportError,
+  importCookies,
+  listCookieSources
+} from "@/main/browser/cookie-import"
 import {
   cancelElementPick,
   runElementPick
@@ -915,6 +924,53 @@ const browserGoForward = rpc
     return { ok: true as const }
   })
 
+// A plain thrown error reaches the renderer as oRPC's generic "Internal server
+// error", so the actionable cookie-import failures (a denied Keychain prompt, a
+// profile that vanished) ride an ORPCError payload the dialog can read.
+const toCookieImportRpcError = (error: unknown): Error => {
+  if (error instanceof BrowserCookieImportError) {
+    return new ORPCError("BAD_REQUEST", {
+      data: { reason: error.reason },
+      message: error.message
+    })
+  }
+
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+// `sessionId` carries no meaning for the listing itself; it is required so this
+// procedure passes the same gate as the rest of the group.
+const browserListCookieSources = rpc
+  .input(BrowserSessionInputSchema)
+  .output(BrowserCookieSourcesOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+
+    try {
+      return { sources: await listCookieSources() }
+    } catch (error) {
+      throw toCookieImportRpcError(error)
+    }
+  })
+
+const browserImportCookies = rpc
+  .input(BrowserImportCookiesInputSchema)
+  .output(BrowserImportCookiesOutputSchema)
+  .handler(async ({ context, input }) => {
+    await assertBrowserRpcAccess(context, input.sessionId)
+
+    try {
+      return await importCookies({
+        ...(input.domainFilter === undefined
+          ? {}
+          : { domainFilter: input.domainFilter }),
+        sourceId: input.sourceId
+      })
+    } catch (error) {
+      throw toCookieImportRpcError(error)
+    }
+  })
+
 const browserNavigate = rpc
   .input(BrowserNavigateInputSchema)
   .output(BrowserStateSchema)
@@ -1002,6 +1058,8 @@ export const router = {
     ensure: browserEnsure,
     goBack: browserGoBack,
     goForward: browserGoForward,
+    importCookies: browserImportCookies,
+    listCookieSources: browserListCookieSources,
     navigate: browserNavigate,
     pickElement: browserPickElement,
     reload: browserReload,

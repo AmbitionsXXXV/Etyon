@@ -147,7 +147,12 @@ const installBrowsingSessionHardening = (
   })
 }
 
-const getBrowsingSession = (): Session => {
+/**
+ * The only sanctioned way to reach the browsing partition's session: hardening
+ * is installed on first access, so callers outside this module (e.g. the cookie
+ * import) never touch an unhardened partition regardless of call order.
+ */
+export const getBrowsingSession = (): Session => {
   if (browsingSession) {
     return browsingSession
   }

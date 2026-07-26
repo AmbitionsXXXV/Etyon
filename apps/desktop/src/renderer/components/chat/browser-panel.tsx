@@ -6,6 +6,7 @@ import {
   ArrowRight01Icon,
   Cancel01Icon,
   CursorPointer01Icon,
+  DownloadCircle01Icon,
   GlobeIcon,
   LinkSquare02Icon
 } from "@hugeicons/core-free-icons"
@@ -13,6 +14,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useEffect, useReducer, useRef, useState } from "react"
 import type { KeyboardEvent } from "react"
 
+import { BrowserCookieImportDialog } from "@/renderer/components/chat/browser-cookie-import-dialog"
 import { openExternalUrl } from "@/renderer/lib/chat/assistant-message-timeline"
 import {
   BROWSER_BOUNDS_THROTTLE_MS,
@@ -104,6 +106,7 @@ export const BrowserPanel = ({
   const [connectToken, setConnectToken] = useState(0)
   const [addressDraft, setAddressDraft] = useState<string | null>(null)
   const [isPickingElement, setPickingElement] = useState(false)
+  const [isCookieImportOpen, setCookieImportOpen] = useState(false)
   const isReady = state.status === "ready"
 
   useEffect(() => {
@@ -236,7 +239,12 @@ export const BrowserPanel = ({
       try {
         await rpcClient.browser.setVisible({
           sessionId,
-          visible: isBrowserSurfaceVisible && isSurfaceMeasurable
+          // The native view paints above the DOM, so an open dialog would be
+          // covered by the page; it is hidden for as long as one is up.
+          visible:
+            isBrowserSurfaceVisible &&
+            isSurfaceMeasurable &&
+            !isCookieImportOpen
         })
       } catch {
         // Before the first ensure resolves there is no view to address; the
@@ -245,7 +253,12 @@ export const BrowserPanel = ({
     }
 
     void applyVisibility()
-  }, [isBrowserSurfaceVisible, isSurfaceMeasurable, sessionId])
+  }, [
+    isBrowserSurfaceVisible,
+    isCookieImportOpen,
+    isSurfaceMeasurable,
+    sessionId
+  ])
 
   // Collapsing the panel keeps this component mounted, so the effect above owns
   // steady-state visibility. This one covers the unmount routes — tab switch,
@@ -362,6 +375,15 @@ export const BrowserPanel = ({
     setConnectToken((token) => token + 1)
   }
 
+  // Reachable from the empty state and the toolbar alike: the point of an
+  // import is usually to reach a site the user is not signed into yet.
+  const cookieImportDialog = isCookieImportOpen ? (
+    <BrowserCookieImportDialog
+      onOpenChange={setCookieImportOpen}
+      sessionId={sessionId}
+    />
+  ) : null
+
   if (state.status === "connecting") {
     return (
       <div className="flex h-full min-h-0 w-full items-center justify-center bg-card">
@@ -418,6 +440,20 @@ export const BrowserPanel = ({
             {t("chat.projectPanel.browserGo")}
           </Button>
         </div>
+        <Button
+          onPress={() => setCookieImportOpen(true)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <HugeiconsIcon
+            icon={DownloadCircle01Icon}
+            size={15}
+            strokeWidth={2}
+          />
+          {t("chat.projectPanel.cookieImportAction")}
+        </Button>
+        {cookieImportDialog}
       </div>
     )
   }
@@ -491,6 +527,11 @@ export const BrowserPanel = ({
           <HugeiconsIcon icon={CursorPointer01Icon} size={15} strokeWidth={2} />
         </ToggleButton>
         <BrowserToolbarButton
+          icon={DownloadCircle01Icon}
+          label={t("chat.projectPanel.cookieImportAction")}
+          onPress={() => setCookieImportOpen(true)}
+        />
+        <BrowserToolbarButton
           icon={LinkSquare02Icon}
           isDisabled={state.url === ""}
           label={t("chat.projectPanel.browserOpenExternal")}
@@ -512,6 +553,7 @@ export const BrowserPanel = ({
         ref={hostRef}
         role="application"
       />
+      {cookieImportDialog}
     </div>
   )
 }
