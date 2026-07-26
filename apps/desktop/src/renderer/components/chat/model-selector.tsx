@@ -171,7 +171,7 @@ export const ModelSelector = ({
       value={value || null}
       variant="secondary"
     >
-      <Autocomplete.Trigger className="min-h-10 rounded-xl border-foreground/15 bg-popover/90 px-3 py-2 shadow-sm hover:bg-accent/10 dark:bg-popover/80 dark:hover:bg-accent/15">
+      <Autocomplete.Trigger className="min-h-10 min-w-0 overflow-hidden rounded-xl border-foreground/15 bg-popover/90 px-3 py-2 shadow-sm hover:bg-accent/10 dark:bg-popover/80 dark:hover:bg-accent/15">
         <Autocomplete.Value className="min-w-0 flex-1">
           {({ defaultChildren, isPlaceholder }) => {
             if (isPlaceholder || !selectedOption) {

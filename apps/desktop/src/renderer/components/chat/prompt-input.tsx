@@ -2157,9 +2157,16 @@ export const PromptInput = ({
           </div>
         </HeroPromptInput.Content>
 
-        <HeroPromptInput.Toolbar className="flex items-center justify-between gap-3 px-4 py-3">
-          <HeroPromptInput.ToolbarStart className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-3">
+        {/* `static` takes the toolbar out of HeroUI's absolute bottom overlay:
+            in-flow it can wrap onto extra rows when the chat column is dragged
+            narrow (growing the shell) instead of climbing over the editor, and
+            long editor content can no longer run underneath it. */}
+        <HeroPromptInput.Toolbar className="static flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+          {/* `flex-auto`, not `flex-1`: a basis-0 item never triggers the
+              toolbar's wrap, so the end cluster would stay on the first row and
+              get painted over. Content-sized basis lets it wrap below instead. */}
+          <HeroPromptInput.ToolbarStart className="min-w-0 flex-auto">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
               <PromptInputAgentModeControl
                 agentLabel={agentModeAgentLabel}
                 chatLabel={agentModeChatLabel}
@@ -2199,7 +2206,7 @@ export const PromptInput = ({
               />
             </div>
           </HeroPromptInput.ToolbarStart>
-          <HeroPromptInput.ToolbarEnd>
+          <HeroPromptInput.ToolbarEnd className="ml-auto shrink-0">
             <PromptInputContextUsage contextUsage={contextUsage} />
             <PromptInputActions
               disabled={disabled}

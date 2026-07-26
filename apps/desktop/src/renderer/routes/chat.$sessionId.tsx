@@ -317,7 +317,10 @@ const NOOP_IMAGE_MODE_TOGGLE = (): void => {
 }
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
-const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
+// The chat column keeps enough width for the composer toolbar (mode pills +
+// model select + actions) even when the project panel is dragged wide open.
+const CHAT_MAIN_PANEL_MIN_SIZE = 26
+const PROJECT_CONTEXT_PANEL_MAX_SIZE = 74
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
@@ -785,6 +788,7 @@ const ChatProjectContextLayout = ({
           className="min-w-0 overflow-hidden"
           defaultSize={100}
           id="chat-main"
+          minSize={CHAT_MAIN_PANEL_MIN_SIZE}
         >
           {children}
         </Resizable.Panel>
@@ -2460,7 +2464,7 @@ const ChatRuntime = ({
               "chat.mentions.commandWorkflowLabel"
             )}
             footer={
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <ModelSelector
                   effortLabel={t("chat.model.effortLabel")}
                   effortLevelLabels={effortLevelLabels}
@@ -2701,7 +2705,7 @@ const ChatPendingState = ({
             )}
             disabled
             footer={
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <ModelSelector
                   disabled
                   effortLabel={t("chat.model.effortLabel")}
