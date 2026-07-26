@@ -105,6 +105,18 @@ env:
   HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
 ```
 
+## 应用内更新检查
+
+Release 产物未签名，macOS 上没有 Squirrel.Mac 自动更新的前提条件，所以本期只做「检查 + 通知 + 跳转下载」，不做静默自更新。
+
+- 更新源：`GET https://api.github.com/repos/AmbitionsXXXV/Etyon/releases/latest`（仓库 public，免认证；该端点自动排除 draft / prerelease）
+- 请求只发生在主进程 `apps/desktop/src/main/updates/index.ts`（`net.fetch`，继承应用代理设置），renderer CSP 与 `webPreferences` 零改动
+- 纯逻辑（版本比较、release 解析、DMG 资产挑选、URL 允许名单、通知判定）在 `apps/desktop/src/main/updates/core.ts`，零 electron import，单测见 `apps/desktop/test/main/updates.test.ts`
+- 自动检查仅在 release build 且 `settings.updates.autoCheck` 打开时运行：ready 后 15s 首查，之后每 6h 一次；development build 只保留设置页的手动按钮（版本行带 Dev 徽标）
+- `shell.openExternal` 只接受缓存 status 里、且命中 `https://github.com/AmbitionsXXXV/Etyon/` 前缀的 URL；renderer 不能通过 rpc 传入任意 URL
+- release notes 是远端 markdown，统一走 `<AgentMarkdown>` 渲染
+- UI 在设置页 About 区（nav 最后一项），菜单入口是 macOS 应用菜单的「检查更新…」
+
 字段来源参考 Electron Forge 配置文档与 Electron Packager `Options` 文档：
 
 - [https://www.electronforge.io/config/configuration](https://www.electronforge.io/config/configuration)

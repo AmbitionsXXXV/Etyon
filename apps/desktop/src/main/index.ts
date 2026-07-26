@@ -34,6 +34,7 @@ import { stopTelegramBridge, syncTelegramBridge } from "@/main/telegram/bridge"
 import { registerTerminalIpcHandlers } from "@/main/terminal/ipc"
 import { disposeAllPtys } from "@/main/terminal/pty-manager"
 import { destroyTray, setupTray } from "@/main/tray"
+import { setupUpdates } from "@/main/updates"
 import {
   createSettingsWindow,
   createWindow,
@@ -98,6 +99,7 @@ const handleAppReady = async (): Promise<void> => {
   syncTelegramBridge(settings)
   setupMenu(appDisplayName)
   setupTray()
+  setupUpdates()
 
   ipcMain.on("open-settings", (_event, tab?: string) => {
     createSettingsWindow(tab)

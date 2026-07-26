@@ -2,6 +2,7 @@ import { platform } from "@electron-toolkit/utils"
 import { Menu } from "electron"
 
 import { t } from "./localization"
+import { openUpdatesSettings } from "./updates"
 import { createSettingsWindow } from "./window"
 
 export const setupMenu = (appName: string) => {
@@ -14,6 +15,10 @@ export const setupMenu = (appName: string) => {
               {
                 label: t("menu.app.about", { appName }),
                 role: "about" as const
+              },
+              {
+                click: () => openUpdatesSettings(),
+                label: t("menu.app.checkForUpdates")
               },
               { type: "separator" as const },
               {

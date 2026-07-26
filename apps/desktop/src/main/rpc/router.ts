@@ -94,7 +94,9 @@ import {
   TestProxyInputSchema,
   TestProxyOutputSchema,
   RtkTokenSavingsOutputSchema,
-  UpdateSettingsSchema
+  OpenUpdateLinkOutputSchema,
+  UpdateSettingsSchema,
+  UpdateStatusSchema
 } from "@etyon/rpc"
 import { ORPCError } from "@orpc/server"
 import { BrowserWindow } from "electron"
@@ -211,6 +213,12 @@ import {
   ensurePtySession,
   resizePty
 } from "@/main/terminal/pty-manager"
+import {
+  checkForUpdates,
+  getUpdateStatus,
+  openUpdateDownload,
+  openUpdateReleasePage
+} from "@/main/updates"
 
 const loggerEmit = rpc.input(LogEventSchema).handler(({ context, input }) => {
   const enriched = enrichLogEvent({
@@ -437,6 +445,22 @@ const skillsListPromptTemplates = rpc
 const tokenSavingsGet = rpc
   .output(RtkTokenSavingsOutputSchema)
   .handler(() => getRtkTokenSavings())
+
+const updatesStatus = rpc
+  .output(UpdateStatusSchema)
+  .handler(() => getUpdateStatus())
+
+const updatesCheck = rpc
+  .output(UpdateStatusSchema)
+  .handler(() => checkForUpdates({ reason: "manual" }))
+
+const updatesOpenDownload = rpc
+  .output(OpenUpdateLinkOutputSchema)
+  .handler(async () => ({ opened: await openUpdateDownload() }))
+
+const updatesOpenReleasePage = rpc
+  .output(OpenUpdateLinkOutputSchema)
+  .handler(async () => ({ opened: await openUpdateReleasePage() }))
 
 const chatSessionsCreate = rpc
   .input(CreateChatSessionInputSchema)
@@ -1157,6 +1181,12 @@ export const router = {
   },
   tokenSavings: {
     get: tokenSavingsGet
+  },
+  updates: {
+    check: updatesCheck,
+    openDownload: updatesOpenDownload,
+    openReleasePage: updatesOpenReleasePage,
+    status: updatesStatus
   }
 }
 
