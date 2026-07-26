@@ -1,6 +1,6 @@
 # Etyon 内置浏览器（Browser Tab）
 
-右侧 project-context 面板的第五个 tab，一个由主进程持有的真实浏览器视图：用户可以直接浏览（地址栏、前进/后退、刷新），agent 也可以通过 `browser` 工具驱动**同一个**视图。设计与取舍见 `plans/browser-tab.md`。
+右侧 project-context 面板的 Browser surface（动态 tab session 之一，见 `doc/chat-project-context.md` 的「右侧面板动态 Tab Sessions」），一个由主进程持有的真实浏览器视图：用户可以直接浏览（地址栏、前进/后退、刷新），agent 也可以通过 `browser` 工具驱动**同一个**视图。设计与取舍见 `plans/browser-tab.md`。
 
 ## 1. 架构
 

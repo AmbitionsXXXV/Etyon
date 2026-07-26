@@ -13,6 +13,8 @@ import {
   Button,
   Checkbox,
   Chip,
+  Dropdown,
+  Kbd,
   Label,
   Spinner,
   Tabs,
@@ -26,7 +28,8 @@ import {
   Cancel01Icon,
   FileCodeIcon,
   FolderMinusIcon,
-  GitCompareIcon
+  GitCompareIcon,
+  PlusSignIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { FileDiffMetadata } from "@pierre/diffs"
@@ -40,9 +43,11 @@ import { FileTree, useFileTree } from "@pierre/trees/react"
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
 
+import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { BrowserPanel } from "@/renderer/components/chat/browser-panel"
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
 import { TerminalPanel } from "@/renderer/components/chat/terminal-panel"
+import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
 import {
   buildProjectGitStatusSummary,
   buildProjectTreeDirectoryPaths,
@@ -54,23 +59,14 @@ import {
   getProjectDiffFileStats,
   getProjectDiffSummary,
   isProjectChangesScope,
-  isProjectContextPanelView,
   parseProjectDiffFiles,
   PROJECT_CHANGES_SCOPE_AGENT,
   PROJECT_CHANGES_SCOPE_ALL,
-  PROJECT_CONTEXT_BROWSER_TAB_ID,
-  PROJECT_CONTEXT_CHANGES_TAB_ID,
-  PROJECT_CONTEXT_COMMIT_TAB_ID,
-  PROJECT_CONTEXT_FILES_TAB_ID,
-  PROJECT_CONTEXT_TERMINAL_TAB_ID,
   PROJECT_FILE_TREE_DEFAULT_SIZE,
   PROJECT_FILE_TREE_MAX_SIZE,
   PROJECT_FILE_TREE_MIN_SIZE
 } from "@/renderer/lib/chat/project-context-panel"
-import type {
-  ProjectChangesScope,
-  ProjectContextPanelView
-} from "@/renderer/lib/chat/project-context-panel"
+import type { ProjectChangesScope } from "@/renderer/lib/chat/project-context-panel"
 import {
   buildProjectBufferTabLabels,
   closeProjectFileBuffer,
@@ -80,6 +76,16 @@ import {
 import type { ProjectFileBuffersState } from "@/renderer/lib/chat/project-file-buffers"
 import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-navigation"
 import type { ProjectPanelRevealRequest } from "@/renderer/lib/chat/project-panel-navigation"
+import {
+  getUnopenedPanelSurfaces,
+  isPanelSurfaceKind,
+  PANEL_LAUNCHER_SURFACE_KINDS,
+  PANEL_SURFACE_METADATA
+} from "@/renderer/lib/chat/side-panel-tabs"
+import type {
+  ChatPanelTab,
+  PanelSurfaceKind
+} from "@/renderer/lib/chat/side-panel-tabs"
 import { rpcClient } from "@/renderer/lib/rpc"
 
 // HeroUI v3 Button type omits tabIndex, but Tooltip.Trigger's Focusable needs it on the child; spread bypasses the type restriction
@@ -1522,20 +1528,235 @@ const ProjectCommitPanel = ({
   )
 }
 
+const PANEL_SHELL_CLASS_NAME =
+  "flex h-full min-h-0 min-w-0 overflow-hidden overscroll-contain border border-border bg-card shadow-sm"
+const PANEL_TAB_CONTENT_CLASS_NAME =
+  "mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
+
+/** `Mod` is Cmd on macOS and Ctrl elsewhere, matching `useHotkey("Mod+J")`. */
+const getModifierKeyValue = (): "command" | "ctrl" =>
+  window.electron.process.platform === "darwin" ? "command" : "ctrl"
+
+const PanelSurfaceShortcutHint = ({
+  className,
+  shortcutKey
+}: {
+  className?: string
+  shortcutKey: string | null
+}) => {
+  if (shortcutKey === null) {
+    return null
+  }
+
+  return (
+    <Kbd className={className} variant="light">
+      <Kbd.Abbr keyValue={getModifierKeyValue()} />
+      <Kbd.Content>{shortcutKey}</Kbd.Content>
+    </Kbd>
+  )
+}
+
+const getPanelSurfaceBadgeCount = ({
+  changedFileCount,
+  kind
+}: {
+  changedFileCount: number
+  kind: PanelSurfaceKind
+}): number =>
+  PANEL_SURFACE_METADATA[kind].badge === "changedFileCount"
+    ? changedFileCount
+    : 0
+
+/**
+ * The empty state: no surface is open yet, so the panel offers the five
+ * launchable ones as a centered list. Artifacts are missing on purpose — they
+ * are opened from their card in the transcript.
+ */
+const ProjectPanelLauncher = ({
+  changedFileCount,
+  onOpenTab
+}: {
+  changedFileCount: number
+  onOpenTab: (kind: PanelSurfaceKind) => void
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <div className="title-bar-drag flex h-full min-h-0 w-full flex-col items-center justify-center overflow-y-auto p-6">
+      <div className="title-bar-no-drag w-full max-w-72">
+        <p className="px-2 pb-2 text-xs font-medium text-muted-foreground">
+          {t("chat.projectPanel.launcherTitle")}
+        </p>
+        <ul className="space-y-0.5">
+          {PANEL_LAUNCHER_SURFACE_KINDS.map((kind) => {
+            const { icon, labelKey, shortcutKey } = PANEL_SURFACE_METADATA[kind]
+            const badgeCount = getPanelSurfaceBadgeCount({
+              changedFileCount,
+              kind
+            })
+
+            return (
+              <li key={kind}>
+                <button
+                  className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={() => onOpenTab(kind)}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    className="shrink-0 text-muted-foreground"
+                    icon={icon}
+                    size={16}
+                    strokeWidth={2}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{t(labelKey)}</span>
+                  {badgeCount > 0 ? (
+                    <span className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground tabular-nums">
+                      {formatProjectDiffCount(badgeCount)}
+                    </span>
+                  ) : null}
+                  <PanelSurfaceShortcutHint shortcutKey={shortcutKey} />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** The strip's trailing `+`: opens any launchable surface that has no tab yet. */
+const ProjectPanelTabMenu = ({
+  availableKinds,
+  onOpenTab
+}: {
+  availableKinds: readonly PanelSurfaceKind[]
+  onOpenTab: (kind: PanelSurfaceKind) => void
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <Dropdown>
+      <Button
+        aria-label={t("chat.projectPanel.openTabMenu")}
+        className="title-bar-no-drag"
+        isDisabled={availableKinds.length === 0}
+        isIconOnly
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon icon={PlusSignIcon} size={15} strokeWidth={2} />
+      </Button>
+      <Dropdown.Popover className="min-w-48">
+        <Dropdown.Menu
+          onAction={(key) => {
+            if (isPanelSurfaceKind(key)) {
+              onOpenTab(key)
+            }
+          }}
+        >
+          {availableKinds.map((kind) => {
+            const { icon, labelKey, shortcutKey } = PANEL_SURFACE_METADATA[kind]
+
+            return (
+              <Dropdown.Item id={kind} key={kind} textValue={t(labelKey)}>
+                <HugeiconsIcon
+                  className="shrink-0 text-muted-foreground"
+                  icon={icon}
+                  size={16}
+                  strokeWidth={2}
+                />
+                <Label>{t(labelKey)}</Label>
+                <PanelSurfaceShortcutHint
+                  className="ms-auto"
+                  shortcutKey={shortcutKey}
+                />
+              </Dropdown.Item>
+            )
+          })}
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown>
+  )
+}
+
+const ProjectPanelTabContent = ({
+  changedFileCount,
+  kind,
+  label,
+  onClose
+}: {
+  changedFileCount: number
+  kind: PanelSurfaceKind
+  label: string
+  onClose: () => void
+}) => {
+  const { t } = useI18n()
+  const { icon } = PANEL_SURFACE_METADATA[kind]
+  const badgeCount = getPanelSurfaceBadgeCount({ changedFileCount, kind })
+
+  return (
+    <>
+      <HugeiconsIcon
+        className="shrink-0"
+        icon={icon}
+        size={14}
+        strokeWidth={2}
+      />
+      <span className="max-w-32 truncate">{label}</span>
+      {badgeCount > 0 ? (
+        <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground tabular-nums">
+          {formatProjectDiffCount(badgeCount)}
+        </span>
+      ) : null}
+      {/*
+        React Aria owns the tab's press handling and the tab itself is a
+        `role="tab"` div, so the close affordance is a presentational span that
+        swallows the primary pointerdown before the tab sees it (VS Code/Codex
+        do the same) rather than an interactive control nested in a tab.
+      */}
+      <span
+        aria-hidden="true"
+        className="-mr-1 grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/tab:opacity-100 group-data-[selected=true]/tab:opacity-100 hover:bg-muted hover:text-foreground"
+        onPointerDown={(event) => {
+          if (event.button !== 0) {
+            return
+          }
+
+          event.stopPropagation()
+          onClose()
+        }}
+        role="presentation"
+        title={t("chat.projectPanel.closeTab", { name: label })}
+      >
+        <HugeiconsIcon icon={Cancel01Icon} size={11} strokeWidth={2} />
+      </span>
+      <Tabs.Indicator />
+    </>
+  )
+}
+
 export const ProjectContextPanel = ({
+  activeArtifact,
+  activeTabId,
   gitDiff,
   gitDiffScope,
   isBrowserSurfaceVisible,
   isDiffLoading,
   isTreeLoading,
+  onCloseTab,
+  onFocusTab,
   onGitDiffScopeChange,
+  onOpenTab,
   onRefresh,
-  onViewChange,
+  openTabs,
   projectItems,
   revealTarget,
-  selectedSession,
-  selectedView
+  selectedSession
 }: {
+  activeArtifact: ChatArtifactRef | null
+  activeTabId: PanelSurfaceKind | null
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
   /**
@@ -1546,13 +1767,15 @@ export const ProjectContextPanel = ({
   isBrowserSurfaceVisible: boolean
   isDiffLoading: boolean
   isTreeLoading: boolean
+  onCloseTab: (kind: PanelSurfaceKind) => void
+  onFocusTab: (kind: PanelSurfaceKind) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
+  onOpenTab: (kind: PanelSurfaceKind) => void
   onRefresh: () => void
-  onViewChange: (view: ProjectContextPanelView) => void
+  openTabs: readonly ChatPanelTab[]
   projectItems: ProjectSnapshotItem[]
   revealTarget?: ProjectPanelRevealRequest | null
   selectedSession: ChatSessionSummary
-  selectedView: ProjectContextPanelView
 }) => {
   const { t } = useI18n()
   const fileRevealTarget = revealTarget?.view === "file" ? revealTarget : null
@@ -1611,21 +1834,117 @@ export const ProjectContextPanel = ({
       />
     )
   }, [])
-  const handleViewChange = useCallback(
-    (view: Key) => {
-      if (isProjectContextPanelView(view)) {
-        onViewChange(view)
+  const handleSelectionChange = useCallback(
+    (key: Key) => {
+      if (isPanelSurfaceKind(key)) {
+        onFocusTab(key)
       }
     },
-    [onViewChange]
+    [onFocusTab]
   )
+  const unopenedSurfaces = useMemo(
+    () => getUnopenedPanelSurfaces(openTabs),
+    [openTabs]
+  )
+  const { changedFileCount } = diffSummary
+  // Terminal, browser, and artifact tabs carry their own controls; only the Git
+  // surfaces are fed by the queries this button invalidates.
+  const isRefreshVisible =
+    activeTabId === "changes" ||
+    activeTabId === "commit" ||
+    activeTabId === "files"
+
+  const getTabLabel = (kind: PanelSurfaceKind): string =>
+    kind === "artifact" && activeArtifact
+      ? activeArtifact.title
+      : t(PANEL_SURFACE_METADATA[kind].labelKey)
+
+  const renderTabContent = (kind: PanelSurfaceKind): ReactNode => {
+    if (kind === "artifact") {
+      return activeArtifact ? (
+        <ArtifactPanel
+          artifact={activeArtifact}
+          key={activeArtifact.toolCallId}
+          sessionId={selectedSession.id}
+        />
+      ) : null
+    }
+
+    if (kind === "browser") {
+      return (
+        <BrowserPanel
+          isBrowserSurfaceVisible={isBrowserSurfaceVisible}
+          key={selectedSession.id}
+          sessionId={selectedSession.id}
+        />
+      )
+    }
+
+    if (kind === "terminal") {
+      return (
+        <TerminalPanel
+          key={selectedSession.id}
+          sessionId={selectedSession.id}
+        />
+      )
+    }
+
+    if (kind === "changes") {
+      return (
+        <ProjectChangesPanel
+          diffFiles={diffFiles}
+          emptyDiffMessage={emptyDiffMessage}
+          gitDiff={gitDiff}
+          gitDiffScope={gitDiffScope}
+          hasAgentEditedPaths={hasAgentEditedPaths}
+          isDiffLoading={isDiffLoading}
+          onGitDiffScopeChange={onGitDiffScopeChange}
+          renderDiffHeaderMetadata={renderDiffHeaderMetadata}
+          revealTarget={diffRevealTarget}
+        />
+      )
+    }
+
+    if (kind === "commit") {
+      return (
+        <ProjectCommitPanel
+          changedFiles={changedFiles}
+          diffSummary={diffSummary}
+          onRefresh={onRefresh}
+          sessionId={selectedSession.id}
+        />
+      )
+    }
+
+    return (
+      <ProjectFilesPanel
+        gitStatusFiles={gitStatus?.files ?? []}
+        isTreeLoading={isTreeLoading}
+        label={t("chat.projectPanel.filesTitle")}
+        paths={paths}
+        revealTarget={fileRevealTarget}
+        sessionId={selectedSession.id}
+      />
+    )
+  }
+
+  if (openTabs.length === 0) {
+    return (
+      <aside className={PANEL_SHELL_CLASS_NAME}>
+        <ProjectPanelLauncher
+          changedFileCount={changedFileCount}
+          onOpenTab={onOpenTab}
+        />
+      </aside>
+    )
+  }
 
   return (
-    <aside className="flex h-full min-h-0 min-w-0 overflow-hidden overscroll-contain border border-border bg-card shadow-sm">
+    <aside className={PANEL_SHELL_CLASS_NAME}>
       <Tabs
         className="flex h-full min-h-0 w-full flex-col gap-0 overflow-hidden"
-        onSelectionChange={handleViewChange}
-        selectedKey={selectedView}
+        onSelectionChange={handleSelectionChange}
+        selectedKey={activeTabId ?? undefined}
         variant="secondary"
       >
         <div className="title-bar-drag flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
@@ -1634,48 +1953,48 @@ export const ProjectContextPanel = ({
               aria-label={t("chat.projectPanel.viewsLabel")}
               className="w-full justify-start gap-1 *:h-8 *:min-w-0 *:px-2 *:text-xs *:text-foreground *:hover:text-foreground *:data-[selected=true]:text-accent *:data-[selected=true]:hover:text-accent"
             >
-              <Tabs.Tab id={PROJECT_CONTEXT_FILES_TAB_ID}>
-                {t("chat.projectPanel.filesView")}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-              <Tabs.Tab id={PROJECT_CONTEXT_CHANGES_TAB_ID}>
-                {t("chat.projectPanel.changesView")}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-              <Tabs.Tab id={PROJECT_CONTEXT_COMMIT_TAB_ID}>
-                {t("chat.projectPanel.commitView")}
-                {diffSummary.changedFileCount > 0 ? (
-                  <span className="rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground tabular-nums">
-                    {formatProjectDiffCount(diffSummary.changedFileCount)}
-                  </span>
-                ) : null}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-              <Tabs.Tab id={PROJECT_CONTEXT_TERMINAL_TAB_ID}>
-                {t("chat.projectPanel.terminalView")}
-                <Tabs.Indicator />
-              </Tabs.Tab>
-              <Tabs.Tab id={PROJECT_CONTEXT_BROWSER_TAB_ID}>
-                {t("chat.projectPanel.browserView")}
-                <Tabs.Indicator />
-              </Tabs.Tab>
+              {openTabs.map((tab) => (
+                <Tabs.Tab
+                  className="group/tab gap-1.5"
+                  id={tab.id}
+                  key={tab.id}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) {
+                      onCloseTab(tab.id)
+                    }
+                  }}
+                >
+                  <ProjectPanelTabContent
+                    changedFileCount={changedFileCount}
+                    kind={tab.kind}
+                    label={getTabLabel(tab.kind)}
+                    onClose={() => onCloseTab(tab.id)}
+                  />
+                </Tabs.Tab>
+              ))}
             </Tabs.List>
           </Tabs.ListContainer>
-          <Button
-            aria-label={t("chat.projectPanel.refresh")}
-            className="title-bar-no-drag"
-            isIconOnly
-            onPress={onRefresh}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon
-              icon={ArrowReloadHorizontalIcon}
-              size={15}
-              strokeWidth={2}
-            />
-          </Button>
+          <ProjectPanelTabMenu
+            availableKinds={unopenedSurfaces}
+            onOpenTab={onOpenTab}
+          />
+          {isRefreshVisible ? (
+            <Button
+              aria-label={t("chat.projectPanel.refresh")}
+              className="title-bar-no-drag"
+              isIconOnly
+              onPress={onRefresh}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon
+                icon={ArrowReloadHorizontalIcon}
+                size={15}
+                strokeWidth={2}
+              />
+            </Button>
+          ) : null}
         </div>
 
         <ProjectPanelStatusStrip
@@ -1683,69 +2002,15 @@ export const ProjectContextPanel = ({
           gitStatusSummaryItems={gitStatusSummaryItems}
         />
 
-        <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
-          id={PROJECT_CONTEXT_FILES_TAB_ID}
-        >
-          <ProjectFilesPanel
-            gitStatusFiles={gitStatus?.files ?? []}
-            isTreeLoading={isTreeLoading}
-            label={t("chat.projectPanel.filesTitle")}
-            paths={paths}
-            revealTarget={fileRevealTarget}
-            sessionId={selectedSession.id}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
-          id={PROJECT_CONTEXT_CHANGES_TAB_ID}
-        >
-          <ProjectChangesPanel
-            diffFiles={diffFiles}
-            emptyDiffMessage={emptyDiffMessage}
-            gitDiff={gitDiff}
-            gitDiffScope={gitDiffScope}
-            hasAgentEditedPaths={hasAgentEditedPaths}
-            isDiffLoading={isDiffLoading}
-            onGitDiffScopeChange={onGitDiffScopeChange}
-            renderDiffHeaderMetadata={renderDiffHeaderMetadata}
-            revealTarget={diffRevealTarget}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
-          id={PROJECT_CONTEXT_COMMIT_TAB_ID}
-        >
-          <ProjectCommitPanel
-            changedFiles={changedFiles}
-            diffSummary={diffSummary}
-            onRefresh={onRefresh}
-            sessionId={selectedSession.id}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
-          id={PROJECT_CONTEXT_TERMINAL_TAB_ID}
-        >
-          <TerminalPanel
-            key={selectedSession.id}
-            sessionId={selectedSession.id}
-          />
-        </Tabs.Panel>
-
-        <Tabs.Panel
-          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
-          id={PROJECT_CONTEXT_BROWSER_TAB_ID}
-        >
-          <BrowserPanel
-            isBrowserSurfaceVisible={isBrowserSurfaceVisible}
-            key={selectedSession.id}
-            sessionId={selectedSession.id}
-          />
-        </Tabs.Panel>
+        {openTabs.map((tab) => (
+          <Tabs.Panel
+            className={PANEL_TAB_CONTENT_CLASS_NAME}
+            id={tab.id}
+            key={tab.id}
+          >
+            {renderTabContent(tab.kind)}
+          </Tabs.Panel>
+        ))}
       </Tabs>
     </aside>
   )

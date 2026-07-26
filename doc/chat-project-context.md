@@ -118,6 +118,22 @@ type ChatMention =
 
 右侧 Review 面板的 Files tab 直接展示完整项目文件树，不启用 `@pierre/trees` 内置 search。未选择文件时只展示文件树，不挂载空的 File Preview 区域；选择文件后，文件树和右侧预览区之间使用 `@heroui-pro/react` 的 `Resizable` 分栏，可拖拽调整宽度。点击文件时通过 `projectSnapshots.readFile` 读取项目内文本文件，并使用 `shiki/bundle/web` 渲染带行号的只读代码视图，文件树本身不被替换。文件树顶部提供“收起所有文件夹”按钮，用于快速恢复到初始折叠层级。
 
+## 右侧面板动态 Tab Sessions
+
+右侧 Review 面板不预置固定 tab，而是 Codex 风格的动态 tab sessions：surface（Files / Changes / Commit / Terminal / Browser / Artifact）按需打开，形成可关闭的 tab strip；零 tab 时面板显示 launcher 空态（五个可启动 surface 的纵向列表，Artifact 不在其中——它只从聊天里的 artifact 卡片打开）。
+
+模型与 reducer 在 `apps/desktop/src/renderer/lib/chat/side-panel-tabs.ts`（纯逻辑，node 可测）：
+
+- `SidePanelTabsState = { activeTabId, openTabs }`，v1 每 kind 至多一个实例（`id === kind`）。
+- `openPanelTab`（已开则聚焦，未开则 append 并聚焦）、`closePanelTab`（关闭激活 tab 时聚焦右邻，无右邻取左邻，关到零回 launcher；next active 与移除原子完成，避免 `selectedKey` 悬空）、`focusPanelTab`。
+- `PANEL_SURFACE_METADATA` 是 surface 展示元数据的唯一来源（icon / labelKey / badge / 快捷键提示），launcher、`+` 菜单、tab strip、折叠浮动条四处共用。
+
+Strip 交互：tab 条目 = icon + label（artifact tab 的 label 为 artifact 标题并截断）+ changed-count badge（Changes / Commit）+ close `×`。close 是 `role="presentation"` 的 span，在 `onPointerDown` 里 `stopPropagation` 后关闭（React Aria 的 `Tabs.Tab` 不能内嵌交互元素）；中键关闭走 `Tabs.Tab` 的 `onAuxClick`。strip 尾部 `+` 为 HeroUI Dropdown，仅列未打开的 surface，全部已开时禁用。refresh 按钮仅在 activeTab ∈ {files, changes, commit} 时显示。
+
+挂载语义（与重构前逐字一致）：每个 open tab 一个 `Tabs.Panel`（无 `shouldForceMount`），非活动 tab 卸载、面板折叠不卸载；Terminal / Browser 关 tab = 组件卸载，main 侧 pty / WebContentsView 按既有规则存活，重开 tab 经 ensure 恢复（terminal 缓冲回放、browser 当前页面保持）。Browser 可见性派生为 `isBrowserSurfaceVisible = isProjectContextOpen && activeTabId === "browser"`。Artifact 由此从「整面板替换」变为一等 tab：`ArtifactPanel` 的 `onClose` 改为可选且不再传入（tab `×` 接管），`key={toolCallId}` 的 remount 语义保留。
+
+入口全部收敛到 `openPanelTab`：header Review 按钮只 toggle 面板开合；文件 reveal 先开 files/changes tab 再下传 `revealTarget`；Mod+J 在 terminal tab 激活且展开时折叠面板，否则展开并开/聚焦 terminal；artifact 卡片与流中 artifact part 设置 `activeArtifact` 后开 artifact tab；agent 驱动的 browser 导航（`initiator: "agent"`）展开并开/聚焦 browser tab。折叠态浮动工具条只镜像 `openTabs`（点击 = 展开 + 聚焦），零 tab 时整条隐藏。tab 状态是 route `useState`，切换 session 即清零回 launcher。
+
 ## Agent 编辑范围的 Git 对比
 
 会话列表在每次 Git 状态轮询时，通过一条 `agent_tool_calls` 与 `agent_runs` 的 joined query 汇总当前 session 中已完成 `edit` / `write` 工具调用的项目相对路径。sidebar 徽章只展示这批路径与当前 Git 状态的交集；完整 `gitStatus` 仍保留给项目文件树和提交视图。

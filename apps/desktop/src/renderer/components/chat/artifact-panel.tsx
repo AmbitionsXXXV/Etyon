@@ -146,7 +146,8 @@ export const ArtifactPanel = ({
   sessionId
 }: {
   artifact: ChatArtifactRef
-  onClose: () => void
+  /** Omitted when the host already offers a close affordance (the tab's ×). */
+  onClose?: () => void
   sessionId: string
 }) => {
   const { t } = useI18n()
@@ -233,16 +234,18 @@ export const ArtifactPanel = ({
               strokeWidth={2}
             />
           </Button>
-          <Button
-            aria-label={t("chat.artifact.close")}
-            isIconOnly
-            onPress={onClose}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={2} />
-          </Button>
+          {onClose ? (
+            <Button
+              aria-label={t("chat.artifact.close")}
+              isIconOnly
+              onPress={onClose}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={2} />
+            </Button>
+          ) : null}
         </div>
       </div>
 

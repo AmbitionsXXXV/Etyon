@@ -4,7 +4,6 @@ import type {
 } from "@etyon/rpc"
 
 import type { ChatToolPart } from "@/renderer/lib/chat/message-tool-trace"
-import type { ProjectContextPanelView } from "@/renderer/lib/chat/project-context-panel"
 import { getString, isRecord } from "@/renderer/lib/utils"
 
 /**
@@ -18,12 +17,6 @@ import { getString, isRecord } from "@/renderer/lib/utils"
  * Generated images are NOT artifacts — they render inline in the message
  * (see lib/chat/imagen-message.ts). The panel is only for renderable documents.
  */
-
-export const ARTIFACT_PANEL_VIEW_ID = "artifact"
-
-export type ChatSidePanelView =
-  | ProjectContextPanelView
-  | typeof ARTIFACT_PANEL_VIEW_ID
 
 export type ChatArtifactKind = "html" | "markdown"
 

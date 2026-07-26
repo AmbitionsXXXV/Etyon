@@ -26,14 +26,9 @@ import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
-  FolderGitIcon,
-  GitCommitIcon,
-  GitCompareIcon,
-  GlobeIcon,
   Image01Icon,
   PanelRightCloseIcon,
-  PanelRightOpenIcon,
-  TerminalIcon
+  PanelRightOpenIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useHotkey } from "@tanstack/react-hotkeys"
@@ -46,7 +41,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
-import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import type { InputToolResultHandler } from "@/renderer/components/chat/assistant-message-timeline"
 import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
@@ -59,14 +53,8 @@ import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
-import {
-  ARTIFACT_PANEL_VIEW_ID,
-  collectPublishedArtifactRefs
-} from "@/renderer/lib/chat/artifact-panel"
-import type {
-  ChatArtifactRef,
-  ChatSidePanelView
-} from "@/renderer/lib/chat/artifact-panel"
+import { collectPublishedArtifactRefs } from "@/renderer/lib/chat/artifact-panel"
+import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
 import { messageHasWorkSection } from "@/renderer/lib/chat/assistant-message-timeline"
 import { getImageFileParts } from "@/renderer/lib/chat/attachments"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
@@ -98,19 +86,10 @@ import {
   getProjectDiffSummary,
   getProjectGitDiffInput,
   PROJECT_CHANGES_SCOPE_AGENT,
-  isProjectContextPanelView,
   parseProjectDiffFiles,
-  PROJECT_CONTEXT_BROWSER_TAB_ID,
-  PROJECT_CONTEXT_CHANGES_TAB_ID,
-  PROJECT_CONTEXT_COMMIT_TAB_ID,
-  PROJECT_CONTEXT_FILES_TAB_ID,
-  PROJECT_CONTEXT_TERMINAL_TAB_ID,
   shouldFetchProjectGitDiff
 } from "@/renderer/lib/chat/project-context-panel"
-import type {
-  ProjectChangesScope,
-  ProjectContextPanelView
-} from "@/renderer/lib/chat/project-context-panel"
+import type { ProjectChangesScope } from "@/renderer/lib/chat/project-context-panel"
 import {
   clearProjectPanelReveal,
   requestProjectPanelReveal,
@@ -134,6 +113,18 @@ import type {
   PromptSkillMentionItem,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  closePanelTab,
+  EMPTY_SIDE_PANEL_TABS_STATE,
+  focusPanelTab,
+  openPanelTab,
+  PANEL_SURFACE_METADATA
+} from "@/renderer/lib/chat/side-panel-tabs"
+import type {
+  ChatPanelTab,
+  PanelSurfaceKind,
+  SidePanelTabsState
+} from "@/renderer/lib/chat/side-panel-tabs"
 import { getChatStreamdownAnimation } from "@/renderer/lib/chat/streamdown-settings"
 import {
   applySubagentApproval,
@@ -331,33 +322,6 @@ const PROJECT_CONTEXT_PANEL_MAX_SIZE = 100
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
-const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
-  {
-    icon: FolderGitIcon,
-    labelKey: "chat.projectPanel.filesView",
-    view: PROJECT_CONTEXT_FILES_TAB_ID
-  },
-  {
-    icon: GitCompareIcon,
-    labelKey: "chat.projectPanel.changesView",
-    view: PROJECT_CONTEXT_CHANGES_TAB_ID
-  },
-  {
-    icon: GitCommitIcon,
-    labelKey: "chat.projectPanel.commitView",
-    view: PROJECT_CONTEXT_COMMIT_TAB_ID
-  },
-  {
-    icon: TerminalIcon,
-    labelKey: "chat.projectPanel.terminalView",
-    view: PROJECT_CONTEXT_TERMINAL_TAB_ID
-  },
-  {
-    icon: GlobeIcon,
-    labelKey: "chat.projectPanel.browserView",
-    view: PROJECT_CONTEXT_BROWSER_TAB_ID
-  }
-] as const
 
 const getMessageText = (message: ChatUiMessage): string =>
   message.parts
@@ -650,38 +614,46 @@ const ChatSessionHeader = ({
   </div>
 )
 
+/**
+ * Collapsed mirror of the open tab strip: same surfaces, same order, one click
+ * to expand and focus. It disappears entirely when nothing is open, leaving the
+ * header's Review button as the only way back in.
+ */
 const ProjectContextCollapsedToolbar = ({
+  activeTabId,
   changedFileCount,
-  onOpenView,
-  selectedView
+  onOpenTab,
+  openTabs
 }: {
+  activeTabId: PanelSurfaceKind | null
   changedFileCount: number
-  onOpenView: (view: ProjectContextPanelView) => void
-  selectedView: ChatSidePanelView
+  onOpenTab: (kind: PanelSurfaceKind) => void
+  openTabs: readonly ChatPanelTab[]
 }) => {
   const { t } = useI18n()
 
   return (
     <aside className="flex h-full w-18 shrink-0 items-start justify-center px-3 py-6">
       <div className="flex flex-col items-center gap-2 rounded-full border border-border bg-card/70 p-2 shadow-sm">
-        {PROJECT_CONTEXT_TOOLBAR_ITEMS.map((item) => {
-          const isSelected = selectedView === item.view
-          const showBadge =
-            item.view === PROJECT_CONTEXT_COMMIT_TAB_ID && changedFileCount > 0
+        {openTabs.map((tab) => {
+          const { badge, icon, labelKey } = PANEL_SURFACE_METADATA[tab.kind]
+          const label = t(labelKey)
+          const isSelected = activeTabId === tab.id
+          const showBadge = badge === "changedFileCount" && changedFileCount > 0
 
           return (
             <button
-              aria-label={t(item.labelKey)}
+              aria-label={label}
               className={cn(
                 "relative grid size-9 place-items-center rounded-full border-0 bg-transparent p-0 text-muted-foreground outline-none transition-[background-color,color] hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
                 isSelected && "bg-primary/12 text-primary"
               )}
-              key={item.view}
-              onClick={() => onOpenView(item.view)}
-              title={t(item.labelKey)}
+              key={tab.id}
+              onClick={() => onOpenTab(tab.kind)}
+              title={label}
               type="button"
             >
-              <HugeiconsIcon icon={item.icon} size={19} strokeWidth={2} />
+              <HugeiconsIcon icon={icon} size={19} strokeWidth={2} />
               {showBadge ? (
                 <span className="absolute -top-1.5 -right-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums">
                   {formatProjectDiffCount(changedFileCount)}
@@ -697,52 +669,50 @@ const ProjectContextCollapsedToolbar = ({
 
 const ChatProjectContextLayout = ({
   activeArtifact = null,
+  activeTabId,
   children,
   gitDiff,
   gitDiffScope,
   isDiffLoading,
   isOpen,
   isTreeLoading,
+  onCloseTab,
+  onFocusTab,
   onOpenChange,
   onGitDiffScopeChange,
-  onViewChange,
+  onOpenTab,
   onRefresh,
+  openTabs,
   projectItems,
-  selectedSession,
-  selectedView
+  selectedSession
 }: {
   activeArtifact?: ChatArtifactRef | null
+  activeTabId: PanelSurfaceKind | null
   children: ReactNode
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
   isDiffLoading: boolean
   isOpen: boolean
   isTreeLoading: boolean
+  onCloseTab: (kind: PanelSurfaceKind) => void
+  onFocusTab: (kind: PanelSurfaceKind) => void
   onOpenChange: (isOpen: boolean) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
-  onViewChange: (view: ProjectContextPanelView) => void
+  onOpenTab: (kind: PanelSurfaceKind) => void
   onRefresh: () => void
+  openTabs: readonly ChatPanelTab[]
   projectItems: ProjectSnapshotItem[]
   selectedSession: ChatSessionSummary
-  selectedView: ChatSidePanelView
 }) => {
   const { t } = useI18n()
   const projectContextPanelRef = useRef<PanelImperativeHandle | null>(null)
   const changedFileCount = selectedSession.gitStatus?.changedFileCount ?? 0
-  const isArtifactView =
-    selectedView === ARTIFACT_PANEL_VIEW_ID && activeArtifact !== null
   // The browser tab's page is a native view composited over the renderer, so it
   // cannot be hidden by CSS. Collapsing the panel keeps `BrowserPanel` mounted
   // (the Resizable panel only gets `hidden`), so visibility has to be derived
-  // here and pushed down; the artifact swap unmounts the panel outright, which
-  // the component's own cleanup covers.
-  const isBrowserSurfaceVisible =
-    isOpen && selectedView === PROJECT_CONTEXT_BROWSER_TAB_ID
-  const projectPanelView: ProjectContextPanelView = isProjectContextPanelView(
-    selectedView
-  )
-    ? selectedView
-    : PROJECT_CONTEXT_FILES_TAB_ID
+  // here and pushed down; closing the tab unmounts it outright, which the
+  // component's own cleanup covers.
+  const isBrowserSurfaceVisible = isOpen && activeTabId === "browser"
 
   useEffect(() => {
     const projectContextPanel = projectContextPanelRef.current
@@ -766,12 +736,12 @@ const ChatProjectContextLayout = ({
     }
   }, [isOpen])
 
-  const handleOpenView = useCallback(
-    (view: ProjectContextPanelView) => {
-      onViewChange(view)
+  const handleOpenTab = useCallback(
+    (kind: PanelSurfaceKind) => {
+      onOpenTab(kind)
       onOpenChange(true)
     },
-    [onOpenChange, onViewChange]
+    [onOpenChange, onOpenTab]
   )
 
   const revealRequest = useProjectPanelRevealRequest()
@@ -820,11 +790,9 @@ const ChatProjectContextLayout = ({
         ? "diff"
         : "file"
 
-    onViewChange(
-      resolvedView === "diff"
-        ? PROJECT_CONTEXT_CHANGES_TAB_ID
-        : PROJECT_CONTEXT_FILES_TAB_ID
-    )
+    // The target tab may not exist yet, so open it before handing the reveal
+    // down; the sub-panels consume `revealTarget` after they mount.
+    onOpenTab(resolvedView === "diff" ? "changes" : "files")
     onOpenChange(true)
     setRevealTarget({
       path: relativePath,
@@ -835,7 +803,7 @@ const ChatProjectContextLayout = ({
     clearProjectPanelReveal()
   }, [
     onOpenChange,
-    onViewChange,
+    onOpenTab,
     revealRequest,
     selectedSession.gitStatus,
     selectedSession.projectPath
@@ -874,36 +842,32 @@ const ChatProjectContextLayout = ({
           onCollapse={() => onOpenChange(false)}
           onExpand={() => onOpenChange(true)}
         >
-          {isArtifactView && activeArtifact ? (
-            <ArtifactPanel
-              artifact={activeArtifact}
-              key={activeArtifact.toolCallId}
-              onClose={() => onOpenChange(false)}
-              sessionId={selectedSession.id}
-            />
-          ) : (
-            <ProjectContextPanel
-              gitDiff={gitDiff}
-              gitDiffScope={gitDiffScope}
-              isBrowserSurfaceVisible={isBrowserSurfaceVisible}
-              isDiffLoading={isDiffLoading}
-              isTreeLoading={isTreeLoading}
-              onGitDiffScopeChange={onGitDiffScopeChange}
-              onRefresh={onRefresh}
-              onViewChange={onViewChange}
-              projectItems={projectItems}
-              revealTarget={revealTarget}
-              selectedSession={selectedSession}
-              selectedView={projectPanelView}
-            />
-          )}
+          <ProjectContextPanel
+            activeArtifact={activeArtifact}
+            activeTabId={activeTabId}
+            gitDiff={gitDiff}
+            gitDiffScope={gitDiffScope}
+            isBrowserSurfaceVisible={isBrowserSurfaceVisible}
+            isDiffLoading={isDiffLoading}
+            isTreeLoading={isTreeLoading}
+            onCloseTab={onCloseTab}
+            onFocusTab={onFocusTab}
+            onGitDiffScopeChange={onGitDiffScopeChange}
+            onOpenTab={onOpenTab}
+            onRefresh={onRefresh}
+            openTabs={openTabs}
+            projectItems={projectItems}
+            revealTarget={revealTarget}
+            selectedSession={selectedSession}
+          />
         </Resizable.Panel>
       </Resizable>
-      {isOpen ? null : (
+      {isOpen || openTabs.length === 0 ? null : (
         <ProjectContextCollapsedToolbar
+          activeTabId={activeTabId}
           changedFileCount={changedFileCount}
-          onOpenView={handleOpenView}
-          selectedView={selectedView}
+          onOpenTab={handleOpenTab}
+          openTabs={openTabs}
         />
       )}
     </div>
@@ -1499,24 +1463,26 @@ const ChatRuntime = ({
   modelGroups,
   initialMessages,
   onChatFinish,
+  onClosePanelTab,
   onEffortChange,
+  onFocusPanelTab,
   onGitDiffScopeChange,
   onMentionQueryChange,
   onModelChange,
   onOpenArtifact,
+  onOpenPanelTab,
   onOpenSettings,
   onPromptTemplateQueryChange,
   onProjectContextOpenChange,
   onRefreshProjectContext,
   onSyncPersistedMessagesAfterFinish,
   onToggleProjectContext,
-  onProjectContextViewChange,
   projectTreeItems,
-  projectContextView,
   promptTemplateItems,
   selectedModelValue,
   selectedSession,
   sessionTitle,
+  sidePanelTabs,
   streamdownAnimation,
   transport
 }: {
@@ -1538,10 +1504,12 @@ const ChatRuntime = ({
   modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
   onChatFinish: () => void
+  onClosePanelTab: (kind: PanelSurfaceKind) => void
   onEffortChange: (
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
+  onFocusPanelTab: (kind: PanelSurfaceKind) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
@@ -1549,19 +1517,19 @@ const ChatRuntime = ({
   ) => void
   onModelChange: (value: string | null) => void
   onOpenArtifact: (artifact: ChatArtifactRef) => void
+  onOpenPanelTab: (kind: PanelSurfaceKind) => void
   onOpenSettings: () => void
   onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
   onRefreshProjectContext: () => void
   onSyncPersistedMessagesAfterFinish: () => Promise<ChatUiMessage[]>
   onToggleProjectContext: () => void
-  onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
-  projectContextView: ChatSidePanelView
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
   sessionTitle: string
+  sidePanelTabs: SidePanelTabsState
   streamdownAnimation: StreamdownAnimation
   transport: DefaultChatTransport<ChatUiMessage>
 }) => {
@@ -1926,26 +1894,24 @@ const ChatRuntime = ({
     setIsImageMode((previous) => !previous)
   }, [isImageModeToggleDisabled])
 
-  // Mod+J reveals the terminal tab (opening the project panel if closed), and
-  // toggles it closed when the terminal is already the visible tab — a VS Code-
-  // style terminal toggle. The terminal focuses itself once it becomes visible.
+  // Mod+J opens or focuses the terminal tab (expanding the project panel if
+  // collapsed), and collapses the panel when the terminal is already the active
+  // tab — a VS Code-style terminal toggle. The terminal focuses itself once it
+  // becomes visible.
   const handleToggleTerminal = useCallback(() => {
-    if (
-      isProjectContextOpen &&
-      projectContextView === PROJECT_CONTEXT_TERMINAL_TAB_ID
-    ) {
+    if (isProjectContextOpen && sidePanelTabs.activeTabId === "terminal") {
       onToggleProjectContext()
       return
     }
 
-    onProjectContextViewChange(PROJECT_CONTEXT_TERMINAL_TAB_ID)
+    onOpenPanelTab("terminal")
     onProjectContextOpenChange(true)
   }, [
     isProjectContextOpen,
+    onOpenPanelTab,
     onProjectContextOpenChange,
-    onProjectContextViewChange,
     onToggleProjectContext,
-    projectContextView
+    sidePanelTabs.activeTabId
   ])
 
   useHotkey("Shift+Tab", handlePermissionModeCycle, {
@@ -2376,18 +2342,21 @@ const ChatRuntime = ({
   return (
     <ChatProjectContextLayout
       activeArtifact={activeArtifact}
+      activeTabId={sidePanelTabs.activeTabId}
       gitDiff={gitDiff}
       gitDiffScope={gitDiffScope}
       isDiffLoading={isProjectDiffLoading}
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
+      onCloseTab={onClosePanelTab}
+      onFocusTab={onFocusPanelTab}
       onOpenChange={onProjectContextOpenChange}
       onGitDiffScopeChange={onGitDiffScopeChange}
+      onOpenTab={onOpenPanelTab}
       onRefresh={onRefreshProjectContext}
-      onViewChange={onProjectContextViewChange}
+      openTabs={sidePanelTabs.openTabs}
       projectItems={projectTreeItems}
       selectedSession={selectedSession}
-      selectedView={projectContextView}
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
@@ -2631,22 +2600,24 @@ const ChatPendingState = ({
   isProjectDiffLoading,
   modelEffort,
   modelGroups,
+  onClosePanelTab,
   onEffortChange,
+  onFocusPanelTab,
   onGitDiffScopeChange,
   onMentionQueryChange,
   onModelChange,
+  onOpenPanelTab,
   onOpenSettings,
   onPromptTemplateQueryChange,
   onProjectContextOpenChange,
   onRefreshProjectContext,
   onToggleProjectContext,
-  onProjectContextViewChange,
   projectTreeItems,
-  projectContextView,
   promptTemplateItems,
   selectedModelValue,
   selectedSession,
-  sessionTitle
+  sessionTitle,
+  sidePanelTabs
 }: {
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
@@ -2658,28 +2629,30 @@ const ChatPendingState = ({
   isProjectDiffLoading: boolean
   modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
+  onClosePanelTab: (kind: PanelSurfaceKind) => void
   onEffortChange: (
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
+  onFocusPanelTab: (kind: PanelSurfaceKind) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
     trigger: PromptMentionTrigger | null
   ) => void
   onModelChange: (value: string | null) => void
+  onOpenPanelTab: (kind: PanelSurfaceKind) => void
   onOpenSettings: () => void
   onPromptTemplateQueryChange: (query: string | null) => void
   onProjectContextOpenChange: (isOpen: boolean) => void
   onRefreshProjectContext: () => void
   onToggleProjectContext: () => void
-  onProjectContextViewChange: (view: ProjectContextPanelView) => void
   projectTreeItems: ProjectSnapshotItem[]
-  projectContextView: ChatSidePanelView
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
   selectedSession: ChatSessionSummary
   sessionTitle: string
+  sidePanelTabs: SidePanelTabsState
 }) => {
   const { t } = useI18n()
   const effortLevelLabels = useMemo(
@@ -2696,18 +2669,21 @@ const ChatPendingState = ({
 
   return (
     <ChatProjectContextLayout
+      activeTabId={sidePanelTabs.activeTabId}
       gitDiff={gitDiff}
       gitDiffScope={gitDiffScope}
       isDiffLoading={isProjectDiffLoading}
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
+      onCloseTab={onClosePanelTab}
+      onFocusTab={onFocusPanelTab}
       onOpenChange={onProjectContextOpenChange}
       onGitDiffScopeChange={onGitDiffScopeChange}
+      onOpenTab={onOpenPanelTab}
       onRefresh={onRefreshProjectContext}
-      onViewChange={onProjectContextViewChange}
+      openTabs={sidePanelTabs.openTabs}
       projectItems={projectTreeItems}
       selectedSession={selectedSession}
-      selectedView={projectContextView}
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
@@ -2840,8 +2816,9 @@ const ChatSessionPage = () => {
   const queryClient = useQueryClient()
   const { sessionId } = Route.useParams()
   const [isProjectContextOpen, setProjectContextOpen] = useState(false)
-  const [projectContextView, setProjectContextView] =
-    useState<ChatSidePanelView>(PROJECT_CONTEXT_FILES_TAB_ID)
+  const [sidePanelTabs, setSidePanelTabs] = useState<SidePanelTabsState>(
+    EMPTY_SIDE_PANEL_TABS_STATE
+  )
   const [gitDiffScope, setGitDiffScope] = useState<ProjectChangesScope>(
     PROJECT_CHANGES_SCOPE_AGENT
   )
@@ -3180,25 +3157,27 @@ const ChatSessionPage = () => {
   const handleToggleProjectContext = useCallback(() => {
     setProjectContextOpen((currentValue) => !currentValue)
   }, [])
-  const handleProjectContextViewChange = useCallback(
-    (view: ProjectContextPanelView) => {
-      setProjectContextView(view)
-    },
-    []
-  )
+  const handleOpenPanelTab = useCallback((kind: PanelSurfaceKind) => {
+    setSidePanelTabs((state) => openPanelTab(state, kind))
+  }, [])
+  const handleClosePanelTab = useCallback((kind: PanelSurfaceKind) => {
+    setSidePanelTabs((state) => closePanelTab(state, kind))
+  }, [])
+  const handleFocusPanelTab = useCallback((kind: PanelSurfaceKind) => {
+    setSidePanelTabs((state) => focusPanelTab(state, kind))
+  }, [])
   const handleOpenArtifact = useCallback((artifact: ChatArtifactRef) => {
     setActiveArtifact(artifact)
-    setProjectContextView(ARTIFACT_PANEL_VIEW_ID)
+    setSidePanelTabs((state) => openPanelTab(state, "artifact"))
     setProjectContextOpen(true)
   }, [])
 
-  // Artifact paths are project-relative, so a session switch drops the active
-  // artifact instead of resolving the old path inside the new project.
+  // Tab sessions belong to one chat session: artifact paths are
+  // project-relative and the terminal/browser instances are keyed by session,
+  // so switching sessions starts over from the launcher empty state.
   useEffect(() => {
     setActiveArtifact(null)
-    setProjectContextView((view) =>
-      view === ARTIFACT_PANEL_VIEW_ID ? PROJECT_CONTEXT_FILES_TAB_ID : view
-    )
+    setSidePanelTabs(EMPTY_SIDE_PANEL_TABS_STATE)
   }, [sessionId])
 
   // An agent-driven navigation reveals the page it is acting on: the user and
@@ -3212,7 +3191,7 @@ const ChatSessionPage = () => {
         return
       }
 
-      setProjectContextView(PROJECT_CONTEXT_BROWSER_TAB_ID)
+      setSidePanelTabs((state) => openPanelTab(state, "browser"))
       setProjectContextOpen(true)
     })
 
@@ -3279,15 +3258,17 @@ const ChatSessionPage = () => {
           modelEffort={modelEffort}
           modelGroups={modelGroups}
           onChatFinish={handleChatFinish}
+          onClosePanelTab={handleClosePanelTab}
           onEffortChange={handleEffortChange}
+          onFocusPanelTab={handleFocusPanelTab}
           onGitDiffScopeChange={handleGitDiffScopeChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
           onOpenArtifact={handleOpenArtifact}
+          onOpenPanelTab={handleOpenPanelTab}
           onOpenSettings={handleOpenSettings}
           onPromptTemplateQueryChange={handlePromptTemplateQueryChange}
           onProjectContextOpenChange={handleProjectContextOpenChange}
-          onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
           onSyncPersistedMessagesAfterFinish={async () => {
             // The post-turn repair must read the just-persisted transcript;
@@ -3301,12 +3282,12 @@ const ChatSessionPage = () => {
             return result.messages.map(toRuntimeChatMessage)
           }}
           onToggleProjectContext={handleToggleProjectContext}
-          projectContextView={projectContextView}
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
           promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
           sessionTitle={sessionTitle}
+          sidePanelTabs={sidePanelTabs}
           streamdownAnimation={getChatStreamdownAnimation(
             settingsQuery.data?.chat
           )}
@@ -3324,22 +3305,24 @@ const ChatSessionPage = () => {
           isProjectDiffLoading={gitDiffQuery.isFetching}
           modelEffort={modelEffort}
           modelGroups={modelGroups}
+          onClosePanelTab={handleClosePanelTab}
           onEffortChange={handleEffortChange}
+          onFocusPanelTab={handleFocusPanelTab}
           onGitDiffScopeChange={handleGitDiffScopeChange}
           onMentionQueryChange={handleMentionQueryChange}
           onModelChange={handleModelChange}
+          onOpenPanelTab={handleOpenPanelTab}
           onOpenSettings={handleOpenSettings}
           onPromptTemplateQueryChange={handlePromptTemplateQueryChange}
           onProjectContextOpenChange={handleProjectContextOpenChange}
-          onProjectContextViewChange={handleProjectContextViewChange}
           onRefreshProjectContext={handleRefreshProjectContext}
           onToggleProjectContext={handleToggleProjectContext}
-          projectContextView={projectContextView}
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
           promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
           selectedSession={session}
           sessionTitle={sessionTitle}
+          sidePanelTabs={sidePanelTabs}
         />
       )}
     </section>
