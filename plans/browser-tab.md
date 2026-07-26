@@ -150,6 +150,18 @@ Agent 运行时：
 
 每个 PR 落地后在本文追加 `### PRn 验收记录 (YYYY-MM-DD)`。
 
+### PR2 验收记录 (2026-07-26)
+
+实现:opus-5(中途一次 API 529 中断,零产出后续跑完成)。静态:`vp check` 过(612/493),`vp test run` 1100/1100(含 browser-panel lib 23 个新增单测),workspace tsc 0 错(注意:apps/desktop 下裸 `npx tsc` 会报 45 个假错,须用 workspace 二进制)。真机(HMR + reload,CDP 驱动真实 UI):
+
+- ✅ 第五个 tab「Browser」出现在 tab 条与折叠工具条(GlobeIcon)
+- ✅ 空态渲染(居中 Globe + 提示 + 地址输入);输入 `example.com` → Enter → 页面加载,view target 截图验证渲染,host rect 287×816 与 view 比例一致
+- ✅ 地址栏 display 格式化生效(`https://example.com` 无尾斜杠);composer 输入不受影响
+- 未程序化断言(代码 review 覆盖,留用户肉眼确认):折叠路径的 setVisible(false)(manager 无 bounds/visible getter)、Resizable 拖动跟手、跨 session 实例隔离(lru 单测覆盖)、重启后登录态(persist: 分区语义)
+- 实现偏差(已认可):tab 文本无图标(与现有四 tab 一致);空态/错误态整体替换 toolbar(原生 view 盖 DOM,overlay 不可行);500ms 定时器终身轮询(host 平移不触发 ResizeObserver);进度条恒占位 2px(避免加载时 rect 抖动)
+- 遗留 polish:navigate 失败(罕见,normalization 已兜大多数)会把整面板置 error 态、活页面暂隐,Retry 可恢复——后续可改成 inline 提示;5 tab 在窄面板触发 tab 条滚动按钮,可观察是否需要压缩 label
+- 环境备忘:app 是 hash 路由(`/#/chat/<id>`);本机 Surge 代理会劫持 CDP HTTP 发现端点,driving 须 `--noproxy` 或直连 WS
+
 ### PR1 验收记录 (2026-07-26)
 
 实现:opus-5(fable 设计+验收,按用户指示本轮不用 codex)。静态:`vp check` 过(610 格式/490 零 lint),`vp test run` 1077/1077(含 url-policy 9 + lru 6 新增单测),tsc 双包 0 错,window.ts/content-security-policy.ts 零改动。真机 smoke(forge dev + CDP 9230,裸 WS 驱动——本机 Surge 代理会劫持 CDP 的 HTTP 发现端点,须 `--noproxy` 或直连 WS):

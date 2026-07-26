@@ -40,6 +40,7 @@ import { FileTree, useFileTree } from "@pierre/trees/react"
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { CSSProperties, Key, ReactNode } from "react"
 
+import { BrowserPanel } from "@/renderer/components/chat/browser-panel"
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
 import { TerminalPanel } from "@/renderer/components/chat/terminal-panel"
 import {
@@ -57,6 +58,7 @@ import {
   parseProjectDiffFiles,
   PROJECT_CHANGES_SCOPE_AGENT,
   PROJECT_CHANGES_SCOPE_ALL,
+  PROJECT_CONTEXT_BROWSER_TAB_ID,
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
   PROJECT_CONTEXT_FILES_TAB_ID,
@@ -1523,6 +1525,7 @@ const ProjectCommitPanel = ({
 export const ProjectContextPanel = ({
   gitDiff,
   gitDiffScope,
+  isBrowserSurfaceVisible,
   isDiffLoading,
   isTreeLoading,
   onGitDiffScopeChange,
@@ -1535,6 +1538,12 @@ export const ProjectContextPanel = ({
 }: {
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
+  /**
+   * Whether the browser tab's native view may paint. It is composited over the
+   * renderer rather than mounted in it, so collapsing the panel — which keeps
+   * this subtree mounted — has to be signalled explicitly.
+   */
+  isBrowserSurfaceVisible: boolean
   isDiffLoading: boolean
   isTreeLoading: boolean
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
@@ -1646,6 +1655,10 @@ export const ProjectContextPanel = ({
                 {t("chat.projectPanel.terminalView")}
                 <Tabs.Indicator />
               </Tabs.Tab>
+              <Tabs.Tab id={PROJECT_CONTEXT_BROWSER_TAB_ID}>
+                {t("chat.projectPanel.browserView")}
+                <Tabs.Indicator />
+              </Tabs.Tab>
             </Tabs.List>
           </Tabs.ListContainer>
           <Button
@@ -1718,6 +1731,17 @@ export const ProjectContextPanel = ({
           id={PROJECT_CONTEXT_TERMINAL_TAB_ID}
         >
           <TerminalPanel
+            key={selectedSession.id}
+            sessionId={selectedSession.id}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel
+          className="mt-0 flex min-h-0 flex-1 overflow-hidden p-0 data-[inert=true]:hidden"
+          id={PROJECT_CONTEXT_BROWSER_TAB_ID}
+        >
+          <BrowserPanel
+            isBrowserSurfaceVisible={isBrowserSurfaceVisible}
             key={selectedSession.id}
             sessionId={selectedSession.id}
           />

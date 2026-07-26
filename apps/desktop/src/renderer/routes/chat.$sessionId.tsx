@@ -29,6 +29,7 @@ import {
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
+  GlobeIcon,
   Image01Icon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
@@ -99,6 +100,7 @@ import {
   PROJECT_CHANGES_SCOPE_AGENT,
   isProjectContextPanelView,
   parseProjectDiffFiles,
+  PROJECT_CONTEXT_BROWSER_TAB_ID,
   PROJECT_CONTEXT_CHANGES_TAB_ID,
   PROJECT_CONTEXT_COMMIT_TAB_ID,
   PROJECT_CONTEXT_FILES_TAB_ID,
@@ -349,6 +351,11 @@ const PROJECT_CONTEXT_TOOLBAR_ITEMS = [
     icon: TerminalIcon,
     labelKey: "chat.projectPanel.terminalView",
     view: PROJECT_CONTEXT_TERMINAL_TAB_ID
+  },
+  {
+    icon: GlobeIcon,
+    labelKey: "chat.projectPanel.browserView",
+    view: PROJECT_CONTEXT_BROWSER_TAB_ID
   }
 ] as const
 
@@ -724,6 +731,13 @@ const ChatProjectContextLayout = ({
   const changedFileCount = selectedSession.gitStatus?.changedFileCount ?? 0
   const isArtifactView =
     selectedView === ARTIFACT_PANEL_VIEW_ID && activeArtifact !== null
+  // The browser tab's page is a native view composited over the renderer, so it
+  // cannot be hidden by CSS. Collapsing the panel keeps `BrowserPanel` mounted
+  // (the Resizable panel only gets `hidden`), so visibility has to be derived
+  // here and pushed down; the artifact swap unmounts the panel outright, which
+  // the component's own cleanup covers.
+  const isBrowserSurfaceVisible =
+    isOpen && selectedView === PROJECT_CONTEXT_BROWSER_TAB_ID
   const projectPanelView: ProjectContextPanelView = isProjectContextPanelView(
     selectedView
   )
@@ -871,6 +885,7 @@ const ChatProjectContextLayout = ({
             <ProjectContextPanel
               gitDiff={gitDiff}
               gitDiffScope={gitDiffScope}
+              isBrowserSurfaceVisible={isBrowserSurfaceVisible}
               isDiffLoading={isDiffLoading}
               isTreeLoading={isTreeLoading}
               onGitDiffScopeChange={onGitDiffScopeChange}
@@ -3184,6 +3199,24 @@ const ChatSessionPage = () => {
     setProjectContextView((view) =>
       view === ARTIFACT_PANEL_VIEW_ID ? PROJECT_CONTEXT_FILES_TAB_ID : view
     )
+  }, [sessionId])
+
+  // An agent-driven navigation reveals the page it is acting on: the user and
+  // the agent share one view per session, so what the agent does has to be
+  // visible while it happens. User-initiated pushes are ignored — they are the
+  // echo of an action the panel already performed. Inert until the agent
+  // `browser` tool ships, which is the only producer of `initiator: "agent"`.
+  useEffect(() => {
+    const unsubscribe = window.electron.onBrowserState((payload) => {
+      if (payload.sessionId !== sessionId || payload.initiator !== "agent") {
+        return
+      }
+
+      setProjectContextView(PROJECT_CONTEXT_BROWSER_TAB_ID)
+      setProjectContextOpen(true)
+    })
+
+    return unsubscribe
   }, [sessionId])
 
   const handleGoHome = useCallback(() => {
