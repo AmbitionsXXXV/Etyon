@@ -12,7 +12,7 @@ import type {
   StreamdownAnimation
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { ChatLoader, ChatMessage, Resizable } from "@heroui-pro/react"
+import { ChatMessage, Resizable } from "@heroui-pro/react"
 import type { PanelImperativeHandle } from "@heroui-pro/react"
 import {
   Button,
@@ -40,6 +40,7 @@ import { getToolName, isToolUIPart } from "ai"
 import { AnimatePresence, motion } from "motion/react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, UIEvent } from "react"
+import { ThinkingOrb } from "thinking-orbs"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
@@ -66,6 +67,7 @@ import {
 import { respondToAssistantInputTool } from "@/renderer/lib/chat/input-tools-ui"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
+  getAssistantLiveStatusOrbState,
   resolveAssistantLiveStatus
 } from "@/renderer/lib/chat/live-status"
 import {
@@ -1152,9 +1154,11 @@ const hasRenderableAssistantContent = (message: ChatUiMessage | undefined) =>
     getMessageToolParts(message).length > 0)
 
 const AssistantWorkTime = ({
+  className,
   liveStartedAt,
   workTimeMs
 }: {
+  className?: string
   liveStartedAt?: number
   workTimeMs?: number
 }) => {
@@ -1190,7 +1194,7 @@ const AssistantWorkTime = ({
   }
 
   return (
-    <p className="mb-2 text-[0.6875rem] text-muted-foreground">
+    <p className={cn("mb-2 text-[0.6875rem] text-muted-foreground", className)}>
       {t("chat.workTime.label", {
         duration: formatWorkTime(durationMs)
       })}
@@ -1215,23 +1219,28 @@ const AssistantLiveStatus = ({
     requestPhase,
     status
   })
+  const statusLabel = t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])
 
   return (
     <ChatMessage.Assistant className="group/message flex justify-start outline-none">
-      <ChatMessage.Bubble className="w-full max-w-3xl bg-transparent px-1 py-2 shadow-none">
+      <ChatMessage.Bubble className="w-full max-w-3xl bg-transparent px-1 py-3 shadow-none">
         <ChatMessage.Body className="pr-0">
-          <ChatMessage.Content className="flex flex-col gap-1 text-xs">
-            <span className="flex items-center gap-2 text-muted-foreground/80">
-              <ChatLoader.Dots
-                className="text-muted-foreground"
-                label={t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
-                size="sm"
-              />
-              <span className="shimmer">
-                {t(ASSISTANT_LIVE_STATUS_LABEL_KEY[liveStatus])}
+          <ChatMessage.Content className="flex items-center gap-3 text-xs">
+            <ThinkingOrb
+              aria-hidden
+              className="shrink-0 opacity-90"
+              size={64}
+              state={getAssistantLiveStatusOrbState(liveStatus)}
+            />
+            <div className="flex min-w-0 flex-col">
+              <span className="shimmer text-muted-foreground/80">
+                {statusLabel}
               </span>
-            </span>
-            <AssistantWorkTime liveStartedAt={requestStartedAt} />
+              <AssistantWorkTime
+                className="mt-1 mb-0"
+                liveStartedAt={requestStartedAt}
+              />
+            </div>
           </ChatMessage.Content>
         </ChatMessage.Body>
       </ChatMessage.Bubble>

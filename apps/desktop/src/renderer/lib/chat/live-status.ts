@@ -1,3 +1,5 @@
+import type { OrbState } from "thinking-orbs"
+
 import {
   ANT_THINKING_CLOSE_TAG,
   ANT_THINKING_OPEN_TAG
@@ -14,6 +16,16 @@ export type AssistantLiveStatusKind =
   | "thinking"
   | "tool-running"
   | "waiting"
+
+const ASSISTANT_LIVE_STATUS_ORB_STATE = {
+  "agent-turn": "working",
+  "memory-loading": "searching",
+  "model-start": "working",
+  receiving: "composing",
+  thinking: "solving",
+  "tool-running": "working",
+  waiting: "listening"
+} as const satisfies Record<AssistantLiveStatusKind, OrbState>
 
 interface LiveStatusMessagePart {
   input?: unknown
@@ -158,3 +170,7 @@ export const ASSISTANT_LIVE_STATUS_LABEL_KEY = {
   "tool-running": "chat.live.toolRunning",
   waiting: "chat.live.waiting"
 } as const satisfies Record<AssistantLiveStatusKind, string>
+
+export const getAssistantLiveStatusOrbState = (
+  status: AssistantLiveStatusKind
+): OrbState => ASSISTANT_LIVE_STATUS_ORB_STATE[status]

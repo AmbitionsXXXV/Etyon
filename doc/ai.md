@@ -175,6 +175,7 @@ const ChatComponent = () => {
 ## Chat Live Status 与 Work Time
 
 - 请求提交后、assistant 第一段内容到达前，chat viewport 会显示轻量 live 状态行，使用 [`tw-shimmer`](https://www.assistant-ui.com/tw-shimmer) 文本动画，而不是 spinner。
+- live 状态行使用 `thinking-orbs` 的 64 px canvas 动画作为进行中的视觉锚点；动画会随 `memory-loading`、`thinking`、`tool-running` 与 `receiving` 等实际阶段切换，并遵守系统的 reduced-motion 偏好。
 - live 状态会根据当前流式内容切换文案：`memory-loading`（长期 memory 检索）、`model-start`（连接模型）、`waiting`（已提交）、`thinking`（`reasoning` part 或未闭合的 `<antThinking>`）、`tool-running`（终端类 tool 正在执行）、`receiving`（正文流式输出）。
 - `/api/chat` 通过 `createUIMessageStream` 发送 transient `data-chat-request-phase` 事件；renderer 的 `useChat({ onData })` 接收后更新 live 状态，不再把 memory 准备时间算进「无反馈等待」。
 - 长期 memory 检索在 UI stream 开始后异步执行（`buildMemorySystemPrompt`），但仍必须在主模型调用前完成才能注入 system prompt；chat route 会给长期 memory 准备阶段设置短超时预算，超时或请求取消时跳过本轮长期 memory 注入，然后继续 `writer.merge(result.toUIMessageStream())`。
