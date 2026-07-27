@@ -69,6 +69,52 @@ const BrowserToolbarButton = ({
   </Button>
 )
 
+const BrowserImportPrompt = ({
+  onDismiss,
+  onImport
+}: {
+  onDismiss: () => void
+  onImport: () => void
+}) => {
+  const { t } = useI18n()
+
+  return (
+    <section className="flex min-h-15 shrink-0 items-center gap-3 border-b border-border bg-muted/25 px-3 py-2">
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-background text-muted-foreground ring-1 ring-border/70">
+        <HugeiconsIcon icon={GlobeIcon} size={18} strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-foreground">
+          {t("chat.projectPanel.cookieImportPromptTitle")}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+          {t("chat.projectPanel.cookieImportPromptDescription")}
+        </p>
+      </div>
+      <Button
+        className="shrink-0"
+        onPress={onImport}
+        size="sm"
+        type="button"
+        variant="secondary"
+      >
+        {t("chat.projectPanel.cookieImportConfirm")}
+      </Button>
+      <Button
+        aria-label={t("chat.projectPanel.cookieImportPromptDismiss")}
+        className="shrink-0"
+        isIconOnly
+        onPress={onDismiss}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={2} />
+      </Button>
+    </section>
+  )
+}
+
 /**
  * Embedded browser bound to a chat session. The page is a `WebContentsView`
  * owned by the main process (keyed by `sessionId`) and survives tab/session
@@ -90,9 +136,11 @@ const BrowserToolbarButton = ({
  * the host *moves* without resizing) behind a ≥100x48 measurable gate.
  */
 export const BrowserPanel = ({
+  chatSessionId,
   isBrowserSurfaceVisible,
   sessionId
 }: {
+  chatSessionId: string
   isBrowserSurfaceVisible: boolean
   sessionId: string
 }) => {
@@ -107,6 +155,8 @@ export const BrowserPanel = ({
   const [addressDraft, setAddressDraft] = useState<string | null>(null)
   const [isPickingElement, setPickingElement] = useState(false)
   const [isCookieImportOpen, setCookieImportOpen] = useState(false)
+  const [isCookieImportPromptVisible, setCookieImportPromptVisible] =
+    useState(true)
   const isReady = state.status === "ready"
 
   useEffect(() => {
@@ -127,7 +177,10 @@ export const BrowserPanel = ({
 
     const connect = async (): Promise<void> => {
       try {
-        const ensured = await rpcClient.browser.ensure({ sessionId })
+        const ensured = await rpcClient.browser.ensure({
+          chatSessionId,
+          sessionId
+        })
 
         if (isDisposed || hasReceivedPush) {
           return
@@ -147,7 +200,7 @@ export const BrowserPanel = ({
       isDisposed = true
       unsubscribe()
     }
-  }, [connectToken, sessionId])
+  }, [chatSessionId, connectToken, sessionId])
 
   // Keep the native view aligned with the host rectangle. The window is
   // frameless with a hidden title bar, so the viewport-relative rect is already
@@ -166,7 +219,11 @@ export const BrowserPanel = ({
 
     const sendBounds = async (bounds: BrowserSurfaceBounds): Promise<void> => {
       try {
-        await rpcClient.browser.setBounds({ bounds, sessionId })
+        await rpcClient.browser.setBounds({
+          bounds,
+          chatSessionId,
+          sessionId
+        })
       } catch {
         // A bounds race (the view is not ensured yet, or was evicted) must not
         // surface as an unhandled rejection; the next sync reconciles.
@@ -232,12 +289,13 @@ export const BrowserPanel = ({
       window.clearTimeout(throttleTimer)
       setSurfaceMeasurable(false)
     }
-  }, [isReady, sessionId])
+  }, [chatSessionId, isReady, sessionId])
 
   useEffect(() => {
     const applyVisibility = async (): Promise<void> => {
       try {
         await rpcClient.browser.setVisible({
+          chatSessionId,
           sessionId,
           // The native view paints above the DOM, so an open dialog would be
           // covered by the page; it is hidden for as long as one is up.
@@ -257,6 +315,7 @@ export const BrowserPanel = ({
     isBrowserSurfaceVisible,
     isCookieImportOpen,
     isSurfaceMeasurable,
+    chatSessionId,
     sessionId
   ])
 
@@ -266,10 +325,14 @@ export const BrowserPanel = ({
   useEffect(
     () => () => {
       void runBrowserCommand(() =>
-        rpcClient.browser.setVisible({ sessionId, visible: false })
+        rpcClient.browser.setVisible({
+          chatSessionId,
+          sessionId,
+          visible: false
+        })
       )
     },
-    [sessionId]
+    [chatSessionId, sessionId]
   )
 
   // A pick stays pending until the user clicks in the page, so the toggle owns
@@ -278,7 +341,7 @@ export const BrowserPanel = ({
   const togglePickElement = useCallback(async (): Promise<void> => {
     if (isPickingElement) {
       await runBrowserCommand(() =>
-        rpcClient.browser.cancelElementPick({ sessionId })
+        rpcClient.browser.cancelElementPick({ chatSessionId, sessionId })
       )
       return
     }
@@ -286,7 +349,10 @@ export const BrowserPanel = ({
     setPickingElement(true)
 
     try {
-      const { element } = await rpcClient.browser.pickElement({ sessionId })
+      const { element } = await rpcClient.browser.pickElement({
+        chatSessionId,
+        sessionId
+      })
 
       if (element) {
         publishPickedWebElement(createWebElementMention(element))
@@ -296,17 +362,17 @@ export const BrowserPanel = ({
     } finally {
       setPickingElement(false)
     }
-  }, [isPickingElement, sessionId])
+  }, [chatSessionId, isPickingElement, sessionId])
 
   // Unmount routes (tab switch, session switch) never reach the toggle, and a
   // pick left running would keep a lease on the view.
   useEffect(
     () => () => {
       void runBrowserCommand(() =>
-        rpcClient.browser.cancelElementPick({ sessionId })
+        rpcClient.browser.cancelElementPick({ chatSessionId, sessionId })
       )
     },
-    [sessionId]
+    [chatSessionId, sessionId]
   )
 
   const navigate = useCallback(
@@ -326,6 +392,7 @@ export const BrowserPanel = ({
         // The raw text goes over the wire: the main process owns URL
         // normalization and the http(s) allowlist.
         const next = await rpcClient.browser.navigate({
+          chatSessionId,
           input: value,
           sessionId
         })
@@ -335,7 +402,7 @@ export const BrowserPanel = ({
         dispatch({ type: "navigate-failed" })
       }
     },
-    [sessionId]
+    [chatSessionId, sessionId]
   )
 
   const addressValue = addressDraft ?? formatBrowserAddressForDisplay(state.url)
@@ -379,6 +446,8 @@ export const BrowserPanel = ({
   // import is usually to reach a site the user is not signed into yet.
   const cookieImportDialog = isCookieImportOpen ? (
     <BrowserCookieImportDialog
+      chatSessionId={chatSessionId}
+      onImported={() => setCookieImportPromptVisible(false)}
       onOpenChange={setCookieImportOpen}
       sessionId={sessionId}
     />
@@ -405,58 +474,7 @@ export const BrowserPanel = ({
     )
   }
 
-  if (state.status === "empty") {
-    return (
-      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-4 bg-card px-6">
-        <HugeiconsIcon
-          className="text-muted-foreground"
-          icon={GlobeIcon}
-          size={22}
-          strokeWidth={2}
-        />
-        <p className="max-w-xs text-center text-xs leading-5 text-muted-foreground">
-          {t("chat.projectPanel.browserEmptyHint")}
-        </p>
-        <div className="flex w-full max-w-sm items-center gap-2">
-          <TextField
-            aria-label={t("chat.projectPanel.browserAddressLabel")}
-            className="min-w-0 flex-1"
-            onChange={setAddressDraft}
-            value={addressValue}
-          >
-            <Input
-              onKeyDown={handleAddressKeyDown}
-              placeholder={t("chat.projectPanel.browserAddressPlaceholder")}
-              variant="secondary"
-            />
-          </TextField>
-          <Button
-            isDisabled={addressValue.trim() === ""}
-            onPress={() => void navigate(addressValue)}
-            size="sm"
-            type="button"
-            variant="secondary"
-          >
-            {t("chat.projectPanel.browserGo")}
-          </Button>
-        </div>
-        <Button
-          onPress={() => setCookieImportOpen(true)}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          <HugeiconsIcon
-            icon={DownloadCircle01Icon}
-            size={15}
-            strokeWidth={2}
-          />
-          {t("chat.projectPanel.cookieImportAction")}
-        </Button>
-        {cookieImportDialog}
-      </div>
-    )
-  }
+  const isEmpty = state.status === "empty"
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-card">
@@ -467,7 +485,7 @@ export const BrowserPanel = ({
           label={t("chat.projectPanel.browserBack")}
           onPress={() =>
             void runBrowserCommand(() =>
-              rpcClient.browser.goBack({ sessionId })
+              rpcClient.browser.goBack({ chatSessionId, sessionId })
             )
           }
         />
@@ -477,7 +495,7 @@ export const BrowserPanel = ({
           label={t("chat.projectPanel.browserForward")}
           onPress={() =>
             void runBrowserCommand(() =>
-              rpcClient.browser.goForward({ sessionId })
+              rpcClient.browser.goForward({ chatSessionId, sessionId })
             )
           }
         />
@@ -487,17 +505,18 @@ export const BrowserPanel = ({
             label={t("chat.projectPanel.browserStop")}
             onPress={() =>
               void runBrowserCommand(() =>
-                rpcClient.browser.stop({ sessionId })
+                rpcClient.browser.stop({ chatSessionId, sessionId })
               )
             }
           />
         ) : (
           <BrowserToolbarButton
             icon={ArrowReloadHorizontalIcon}
+            isDisabled={isEmpty}
             label={t("chat.projectPanel.browserReload")}
             onPress={() =>
               void runBrowserCommand(() =>
-                rpcClient.browser.reload({ sessionId })
+                rpcClient.browser.reload({ chatSessionId, sessionId })
               )
             }
           />
@@ -518,6 +537,7 @@ export const BrowserPanel = ({
         </TextField>
         <ToggleButton
           aria-label={t("chat.projectPanel.browserPickElement")}
+          isDisabled={isEmpty}
           isIconOnly
           isSelected={isPickingElement}
           onPress={() => void togglePickElement()}
@@ -547,12 +567,38 @@ export const BrowserPanel = ({
         ) : null}
       </div>
 
-      <div
-        aria-label={t("chat.projectPanel.browserLabel")}
-        className="min-h-0 w-full flex-1"
-        ref={hostRef}
-        role="application"
-      />
+      {isCookieImportPromptVisible ? (
+        <BrowserImportPrompt
+          onDismiss={() => setCookieImportPromptVisible(false)}
+          onImport={() => setCookieImportOpen(true)}
+        />
+      ) : null}
+
+      {isEmpty ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          <HugeiconsIcon
+            className="text-muted-foreground"
+            icon={GlobeIcon}
+            size={24}
+            strokeWidth={1.8}
+          />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">
+              {t("chat.projectPanel.browserEmptyTitle")}
+            </p>
+            <p className="max-w-xs text-xs leading-5 text-muted-foreground">
+              {t("chat.projectPanel.browserEmptyHint")}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div
+          aria-label={t("chat.projectPanel.browserLabel")}
+          className="min-h-0 w-full flex-1"
+          ref={hostRef}
+          role="application"
+        />
+      )}
       {cookieImportDialog}
     </div>
   )

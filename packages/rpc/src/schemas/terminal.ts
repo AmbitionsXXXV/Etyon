@@ -20,6 +20,7 @@ export const TerminalDisposeInputSchema = z.object({
 })
 
 export const TerminalEnsureInputSchema = z.object({
+  chatSessionId: TerminalSessionIdSchema.optional(),
   cols: TerminalColsSchema,
   rows: TerminalRowsSchema,
   sessionId: TerminalSessionIdSchema

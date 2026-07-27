@@ -1,6 +1,6 @@
 # Etyon 内置浏览器（Browser Tab）
 
-右侧 project-context 面板的 Browser surface（动态 tab session 之一，见 `doc/chat-project-context.md` 的「右侧面板动态 Tab Sessions」），一个由主进程持有的真实浏览器视图：用户可以直接浏览（地址栏、前进/后退、刷新），agent 也可以通过 `browser` 工具驱动**同一个**视图。设计与取舍见 `plans/browser-tab.md`。
+右侧 project-context 面板的 Browser surface（动态 tab session 类型之一，见 `doc/chat-project-context.md` 的「右侧面板动态 Tab Sessions」）可以重复创建。每个实例都是主进程持有的真实浏览器视图：用户可以直接浏览（地址栏、前进/后退、刷新）；该类型的主实例仍由 agent 的 `browser` 工具共同驱动，额外实例是用户独立浏览 session。设计与取舍见 `plans/browser-tab.md`。
 
 ## 1. 架构
 
@@ -30,6 +30,7 @@ URL 规范化与白名单是纯函数，放在 `src/main/browser/url-policy.ts`�
 
 - schemas：`packages/rpc/src/schemas/browser.ts`（`BrowserStateSchema = {canGoBack, canGoForward, faviconUrl?, isLoading, title, url}`）。
 - procedures（`src/main/rpc/router.ts` 的 `browser.*` 组）：`ensure`、`navigate`、`goBack`、`goForward`、`reload`、`stop`、`setBounds`、`setVisible`、`dispose`、`pickElement`、`cancelElementPick`（后两个见 §6）。
+- 输入里的 `sessionId` 是具体 runtime session；额外 tab 同时传 `chatSessionId`，router 用 owner chat session 做权限与存在性校验，再对独立 runtime ID 执行操作。旧的主实例调用不传该字段时仍以 `sessionId` 兼容。
 - **所有 `browser.*` 处理器拒绝 `context.transport === "http"`**：router 同时暴露在本机 HTTP 上，bearer token 是主防线，这里是纵深。
 - 推送：`browser:state` 通道，payload 为 `{initiator, sessionId, state}`，preload 侧 `onBrowserState(cb) → unsubscribe` 带运行时类型校验。`initiator: "agent"` 是 chat 路由自动切到 browser tab 并展开面板的唯一触发源（`routes/chat.$sessionId.tsx`）。
 
@@ -37,11 +38,12 @@ renderer 侧：`components/chat/browser-panel.tsx` 是工具条 + 被度量的�
 
 ## 3. 生命周期：租约 + LRU
 
-每个 chat session 一个 `WebContentsView`（agent run 是 per-session 的，共享单视图会让后台 session 的 agent 抢走用户正在看的页面）。每个视图是一个真实渲染进程，因此不能 leak-until-quit：
+每个 chat session 有一个与 agent 共享的主 `WebContentsView`，并可按右侧 tab 创建额外用户实例。每个视图是一个真实渲染进程，因此不能 leak-until-quit：
 
 - `BROWSER_VIEW_LRU_MAX = 3`；**驱逐资格 = 不可见 && 无进行中操作 && 非当前选中 session**（`src/main/browser/lru.ts`，纯函数 + 单测）。
 - **租约**：`withBrowserLease(sessionId, op)` 在 op 期间把视图钉住不可驱逐，并让 op 与"视图被销毁"竞速——销毁时所有挂起 promise 以 `BrowserViewDisposedError` reject，绝不悬挂。agent 工具的每个动作都跑在租约内。
 - 驱逐前记录 `lastUrl`，下次 `ensure` 时恢复 URL（SPA 内存态/表单/滚动位置不保证）。
+- 关闭 Browser tab 会显式 `dispose` 对应视图；切换 chat 或离开页面时释放额外实例。主实例继续保留原有跨 chat 切换恢复行为。
 - `before-quit` 调 `disposeAllBrowserViews()`（挂在 `disposeAllPtys` 旁边）。
 
 ## 4. Agent 工具 `browser`
@@ -101,15 +103,15 @@ supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
 
 ## 7. 登录态导入（用户侧）
 
-工具条与空态上的「导入登录态」（i18n `chat.projectPanel.cookieImportAction`）把本机 Chromium 系浏览器 profile 里的 cookie 导进 `persist:browser`，免去逐站重登。设计见 `plans/browser-cookie-import.md`，实现全在 `src/main/browser/cookie-import.ts`（renderer 只拿计数与源元数据）。
+地址栏下方的导入提示条与工具条上的「导入登录态」（i18n `chat.projectPanel.cookieImportAction`）把本机 Chromium 系浏览器 profile 里的 cookie 导进 `persist:browser`，免去逐站重登。提示条可关闭，导入成功后本 Browser tab 内不再显示；工具条入口始终保留。设计见 `plans/browser-cookie-import.md`，实现全在 `src/main/browser/cookie-import.ts`（renderer 只拿计数与源元数据）。
 
 - **平台与支持面**：仅 macOS + Chromium 系（Chrome / Edge / Brave / Arc / Chromium，常量表 `CHROMIUM_BROWSERS` 驱动）。其他平台抛类型化的 `unsupported-platform`。profile 枚举 = 根目录下 `Default` 与 `Profile N`（须有 `Cookies` 文件），显示名取 `Local State` 的 `profile.info_cache[dir].name`，读不到回退目录名。
 - **读取**：`Cookies` 先 `copyFile` 到 `app.getPath("temp")` 再用 `@libsql/client` 打开（运行中的浏览器持写锁；源 profile 只读、绝不写回），用完连副本的 `-wal`/`-shm` 一起删。客户端必须 `intMode: "bigint"` —— `expires_utc` 是 1601 起的微秒数，超过安全整数范围，默认 number 模式会直接抛。
 - **解密**：Keychain 口令经 `security find-generic-password -w -s "<Browser> Safe Storage" -a "<Browser>"` 读出（**首次会弹系统授权框**），PBKDF2-SHA1(`saltysalt`, 1003, 16B) 派生 key（按浏览器缓存在进程内存，不持久化）；`v10` 前缀 → AES-128-CBC（IV = 16 个空格）→ 手工剥 PKCS#7 → 前 32 字节等于 `SHA256(host_key)` 时再剥（Chrome 130+，比对而非假设，兼容旧格式）。非 `v10`（Windows DPAPI / app-bound）与坏填充逐条返回 null 并计入 `failed`。
 - **写入**：`session.fromPartition("persist:browser").cookies.set` 逐条；`host_key` 带前导点 → 传 `domain`（域 cookie），否则 host-only 不传；`expires_utc === 0` 保持 session cookie；`samesite -1/0/1/2 → unspecified/no_restriction/lax/strict`，其中 `no_restriction` 被 Electron 要求必须 secure，因此强制 secure 并按 https 拼 url。单条失败只计数不中断，返回 `{failed, imported, total}`。
-- **RPC**：`browser.listCookieSources({sessionId}) → {sources}`（**不碰 Keychain**，打开对话框零弹窗；`cookieCount` 读不到时为 null 而非丢掉该 profile）与 `browser.importCookies({domainFilter?, sessionId, sourceId})`，同样过 `assertBrowserRpcAccess`。`sourceId` 形如 `chrome:Default`，落地时重新枚举匹配，调用方给的路径永远不会进 fs。
+- **RPC**：`browser.listCookieSources({chatSessionId?, sessionId}) → {sources}`（**不碰 Keychain**，打开对话框零弹窗；`cookieCount` 读不到时为 null 而非丢掉该 profile）与 `browser.importCookies({chatSessionId?, domainFilter?, sessionId, sourceId})`，同样过 `assertBrowserRpcAccess`。`sourceId` 形如 `chrome:Default`，落地时重新枚举匹配，调用方给的路径永远不会进 fs。
 - **错误面**：`keychain-denied` / `keychain-missing` / `source-missing` / `unsupported-platform` 是类型化 reason。oRPC 会把普通 Error 抹成 "Internal server error"，所以 router 把它们翻成带 `data.reason` 的 `ORPCError`，renderer 侧 `lib/chat/cookie-import.ts`（node 可测）再翻成文案。
-- **对话框**（`components/chat/browser-cookie-import-dialog.tsx`）：源单选 + 可选域名过滤（`host_key` 子串），两条后果文案**不折叠**（导入后经批准 agent 可读这些登录内容；首次导入会请求钥匙串权限）。对话框打开期间面板把原生视图 `setVisible(false)` —— 视图压 DOM，否则弹窗会被页面盖住。
+- **对话框**（`components/chat/browser-cookie-import-dialog.tsx`）：按浏览器 / profile 分层显示源、cookie 数量与单选状态，并提供可选域名过滤（`host_key` 子串）；两条后果文案**不折叠**（导入后经批准 agent 可读这些登录内容；首次导入会请求钥匙串权限）。对话框打开期间面板把原生视图 `setVisible(false)` —— 视图压 DOM，否则弹窗会被页面盖住。
 
 ## 8. 不可回退的不变量
 
@@ -128,7 +130,7 @@ supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
 - agent 只能 navigate/read/screenshot，不能点击/输入/滚动（交互动作见 `plans/browser-tab.md` §8 延伸）。
 - 原生视图 z-order 压 DOM：与浏览区域重叠的 overlay 会被盖住。
 - 用户点进页面后键盘焦点在 `WebContentsView`，app 热键不触发。
-- agent 与用户争用同一视图：agent 导航会打断用户浏览（审批卡即是提示）。
+- agent 与用户争用 Browser 主实例：agent 导航会打断主实例里的用户浏览（审批卡即是提示）；额外 Browser tab 不受 agent 导航影响，但 agent 工具也不能指定它们。
 - 没有 per-origin"批准并记住"，也没有"清空浏览数据"入口。
 - 元素选取只覆盖主 frame（iframe 内元素取不到）；只拦 `click`，`mousedown` 驱动的页面控件仍会响应；不做元素区域截图、多选与持久标记。
 - 登录态导入只导 cookie（纯 localStorage token 的站点导入后仍未登录），且是一次性快照——源浏览器之后轮换 cookie 不会同步，可随时重导；Safari / Firefox / Windows 与「按站点清除已导入 cookie」的 UI 都不在本期。

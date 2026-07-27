@@ -616,10 +616,11 @@ const terminalEnsure = rpc
   .input(TerminalEnsureInputSchema)
   .output(TerminalEnsureOutputSchema)
   .handler(async ({ context, input }) => {
-    const session = await getChatSessionById(context.db, input.sessionId)
+    const chatSessionId = input.chatSessionId ?? input.sessionId
+    const session = await getChatSessionById(context.db, chatSessionId)
 
     if (!session) {
-      throw new Error(`Chat session not found: ${input.sessionId}`)
+      throw new Error(`Chat session not found: ${chatSessionId}`)
     }
 
     return ensurePtySession({
@@ -880,11 +881,16 @@ const assertBrowserRpcAccess = async (
   }
 }
 
+const getBrowserAccessSessionId = (input: {
+  chatSessionId?: string
+  sessionId: string
+}): string => input.chatSessionId ?? input.sessionId
+
 const browserCancelElementPick = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     cancelElementPick({ sessionId: input.sessionId })
     return { ok: true as const }
   })
@@ -893,7 +899,7 @@ const browserDispose = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     disposeBrowserView(input.sessionId)
     return { ok: true as const }
   })
@@ -902,7 +908,7 @@ const browserEnsure = rpc
   .input(BrowserEnsureInputSchema)
   .output(BrowserStateSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     return ensureBrowserView({ sessionId: input.sessionId, url: input.url })
   })
 
@@ -910,7 +916,7 @@ const browserGoBack = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     goBackBrowserView(input.sessionId)
     return { ok: true as const }
   })
@@ -919,7 +925,7 @@ const browserGoForward = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     goForwardBrowserView(input.sessionId)
     return { ok: true as const }
   })
@@ -944,7 +950,7 @@ const browserListCookieSources = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserCookieSourcesOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
 
     try {
       return { sources: await listCookieSources() }
@@ -957,7 +963,7 @@ const browserImportCookies = rpc
   .input(BrowserImportCookiesInputSchema)
   .output(BrowserImportCookiesOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
 
     try {
       return await importCookies({
@@ -975,7 +981,7 @@ const browserNavigate = rpc
   .input(BrowserNavigateInputSchema)
   .output(BrowserStateSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
 
     const normalizedUrl = normalizeBrowserUrlInput(input.input)
 
@@ -995,7 +1001,7 @@ const browserPickElement = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserPickElementOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
 
     return { element: await runElementPick({ sessionId: input.sessionId }) }
   })
@@ -1004,7 +1010,7 @@ const browserReload = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     reloadBrowserView(input.sessionId)
     return { ok: true as const }
   })
@@ -1013,7 +1019,7 @@ const browserSetBounds = rpc
   .input(BrowserSetBoundsInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     setBrowserViewBounds({ bounds: input.bounds, sessionId: input.sessionId })
     return { ok: true as const }
   })
@@ -1022,7 +1028,7 @@ const browserSetVisible = rpc
   .input(BrowserSetVisibleInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     setBrowserViewVisible({
       sessionId: input.sessionId,
       visible: input.visible
@@ -1034,7 +1040,7 @@ const browserStop = rpc
   .input(BrowserSessionInputSchema)
   .output(BrowserMutationOutputSchema)
   .handler(async ({ context, input }) => {
-    await assertBrowserRpcAccess(context, input.sessionId)
+    await assertBrowserRpcAccess(context, getBrowserAccessSessionId(input))
     stopBrowserView(input.sessionId)
     return { ok: true as const }
   })

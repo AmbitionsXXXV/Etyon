@@ -4,11 +4,24 @@ import {
   BrowserCookieImportErrorReasonSchema,
   BrowserCookieSourcesOutputSchema,
   BrowserCookieSourceSchema,
+  BrowserEnsureInputSchema,
   BrowserImportCookiesInputSchema,
   BrowserImportCookiesOutputSchema
 } from "../../src/schemas/browser"
 
 describe("browser cookie import schemas", () => {
+  it("accepts an isolated runtime session owned by a chat session", () => {
+    expect(
+      BrowserEnsureInputSchema.parse({
+        chatSessionId: "chat-1",
+        sessionId: "chat-1:panel:browser:2"
+      })
+    ).toEqual({
+      chatSessionId: "chat-1",
+      sessionId: "chat-1:panel:browser:2"
+    })
+  })
+
   it("parses a source whose cookie count could not be read", () => {
     const source = BrowserCookieSourceSchema.parse({
       browser: "Chrome",
@@ -48,8 +61,9 @@ describe("browser cookie import schemas", () => {
     ).toBeUndefined()
     expect(
       BrowserImportCookiesInputSchema.parse({
+        chatSessionId: "chat-1",
         domainFilter: "github.com",
-        sessionId: "session-1",
+        sessionId: "chat-1:panel:browser:2",
         sourceId: "chrome:Default"
       }).domainFilter
     ).toBe("github.com")

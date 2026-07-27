@@ -15,10 +15,6 @@ import type { Key } from "react"
  * and closes. The panel starts with zero tabs (the launcher empty state) and
  * only shows what has been opened.
  *
- * v1 allows at most one instance per surface, so a tab's id is its kind. Adding
- * multiple terminals/browsers later only means widening the id to
- * `kind:instanceKey` — the reducers below keep their shape.
- *
  * Pure module: no rpc/window imports, so it stays node-testable.
  */
 
@@ -30,19 +26,24 @@ export type PanelSurfaceKind =
   | "files"
   | "terminal"
 
+export type PanelTabId = string
+
 export interface ChatPanelTab {
-  id: PanelSurfaceKind
+  id: PanelTabId
+  instance: number
   kind: PanelSurfaceKind
 }
 
 export interface SidePanelTabsState {
-  activeTabId: PanelSurfaceKind | null
+  activeTabId: PanelTabId | null
+  nextTabOrdinal: number
   openTabs: readonly ChatPanelTab[]
 }
 
 /** A fresh session starts with no tabs, so the panel opens on the launcher. */
 export const EMPTY_SIDE_PANEL_TABS_STATE: SidePanelTabsState = {
   activeTabId: null,
+  nextTabOrdinal: 1,
   openTabs: []
 }
 
@@ -127,28 +128,64 @@ export const isPanelSurfaceKind = (value: Key): value is PanelSurfaceKind =>
 
 const findTabIndex = (
   openTabs: readonly ChatPanelTab[],
-  id: PanelSurfaceKind
+  id: PanelTabId
 ): number => openTabs.findIndex((tab) => tab.id === id)
 
-/** Opens the surface (appending it to the strip) or focuses it if already open. */
+const getNextSurfaceInstance = (
+  openTabs: readonly ChatPanelTab[],
+  kind: PanelSurfaceKind
+): number => {
+  const usedInstances = new Set(
+    openTabs.filter((tab) => tab.kind === kind).map((tab) => tab.instance)
+  )
+  let instance = 1
+
+  while (usedInstances.has(instance)) {
+    instance += 1
+  }
+
+  return instance
+}
+
+/** Creates a new session of a launchable surface and focuses it. */
+export const createPanelTab = (
+  state: SidePanelTabsState,
+  kind: PanelSurfaceKind
+): SidePanelTabsState => {
+  const id = `${kind}:${state.nextTabOrdinal}`
+
+  return {
+    activeTabId: id,
+    nextTabOrdinal: state.nextTabOrdinal + 1,
+    openTabs: [
+      ...state.openTabs,
+      {
+        id,
+        instance: getNextSurfaceInstance(state.openTabs, kind),
+        kind
+      }
+    ]
+  }
+}
+
+/** Focuses the primary instance of a surface, creating it when absent. */
 export const openPanelTab = (
   state: SidePanelTabsState,
   kind: PanelSurfaceKind
 ): SidePanelTabsState => {
-  if (findTabIndex(state.openTabs, kind) !== -1) {
-    return focusPanelTab(state, kind)
-  }
+  const primaryTab = state.openTabs.find(
+    (tab) => tab.kind === kind && tab.instance === 1
+  )
 
-  return {
-    activeTabId: kind,
-    openTabs: [...state.openTabs, { id: kind, kind }]
-  }
+  return primaryTab
+    ? focusPanelTab(state, primaryTab.id)
+    : createPanelTab(state, kind)
 }
 
 /** Focuses an already-open tab; unknown ids and no-op focuses keep the state. */
 export const focusPanelTab = (
   state: SidePanelTabsState,
-  id: PanelSurfaceKind
+  id: PanelTabId
 ): SidePanelTabsState => {
   if (state.activeTabId === id || findTabIndex(state.openTabs, id) === -1) {
     return state
@@ -156,6 +193,7 @@ export const focusPanelTab = (
 
   return {
     activeTabId: id,
+    nextTabOrdinal: state.nextTabOrdinal,
     openTabs: state.openTabs
   }
 }
@@ -168,7 +206,7 @@ export const focusPanelTab = (
  */
 export const closePanelTab = (
   state: SidePanelTabsState,
-  id: PanelSurfaceKind
+  id: PanelTabId
 ): SidePanelTabsState => {
   const closedIndex = findTabIndex(state.openTabs, id)
 
@@ -181,6 +219,7 @@ export const closePanelTab = (
   if (state.activeTabId !== id) {
     return {
       activeTabId: state.activeTabId,
+      nextTabOrdinal: state.nextTabOrdinal,
       openTabs
     }
   }
@@ -191,14 +230,23 @@ export const closePanelTab = (
 
   return {
     activeTabId: nextActiveTab?.id ?? null,
+    nextTabOrdinal: state.nextTabOrdinal,
     openTabs
   }
 }
 
-/** Launcher surfaces that are not open yet — the `+` menu's contents. */
-export const getUnopenedPanelSurfaces = (
-  openTabs: readonly ChatPanelTab[]
-): PanelSurfaceKind[] =>
-  PANEL_LAUNCHER_SURFACE_KINDS.filter(
-    (kind) => findTabIndex(openTabs, kind) === -1
-  )
+/** Resolves the active tab without leaking lookup logic into view components. */
+export const getActivePanelTab = (
+  state: SidePanelTabsState
+): ChatPanelTab | null =>
+  state.openTabs.find((tab) => tab.id === state.activeTabId) ?? null
+
+/**
+ * The first terminal/browser keeps the historical chat-session id used by the
+ * agent. Extra instances receive their own main-process resource key.
+ */
+export const getPanelTabRuntimeSessionId = (
+  chatSessionId: string,
+  tab: ChatPanelTab
+): string =>
+  tab.instance === 1 ? chatSessionId : `${chatSessionId}:panel:${tab.id}`

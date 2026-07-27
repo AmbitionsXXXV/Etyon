@@ -19,25 +19,30 @@ export const BrowserStateSchema = z.object({
 })
 
 export const BrowserEnsureInputSchema = z.object({
+  chatSessionId: BrowserSessionIdSchema.optional(),
   sessionId: BrowserSessionIdSchema,
   url: z.string().optional()
 })
 
 export const BrowserNavigateInputSchema = z.object({
+  chatSessionId: BrowserSessionIdSchema.optional(),
   input: z.string(),
   sessionId: BrowserSessionIdSchema
 })
 
 export const BrowserSessionInputSchema = z.object({
+  chatSessionId: BrowserSessionIdSchema.optional(),
   sessionId: BrowserSessionIdSchema
 })
 
 export const BrowserSetBoundsInputSchema = z.object({
   bounds: BrowserBoundsSchema,
+  chatSessionId: BrowserSessionIdSchema.optional(),
   sessionId: BrowserSessionIdSchema
 })
 
 export const BrowserSetVisibleInputSchema = z.object({
+  chatSessionId: BrowserSessionIdSchema.optional(),
   sessionId: BrowserSessionIdSchema,
   visible: z.boolean()
 })
@@ -91,6 +96,7 @@ export const BrowserCookieSourcesOutputSchema = z.object({
 // `domainFilter` is a plain substring match on the source cookie's host; empty
 // imports the whole profile.
 export const BrowserImportCookiesInputSchema = z.object({
+  chatSessionId: BrowserSessionIdSchema.optional(),
   domainFilter: z.string().optional(),
   sessionId: BrowserSessionIdSchema,
   sourceId: z.string().min(1)

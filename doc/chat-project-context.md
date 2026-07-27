@@ -124,15 +124,15 @@ type ChatMention =
 
 模型与 reducer 在 `apps/desktop/src/renderer/lib/chat/side-panel-tabs.ts`（纯逻辑，node 可测）：
 
-- `SidePanelTabsState = { activeTabId, openTabs }`，v1 每 kind 至多一个实例（`id === kind`）。
-- `openPanelTab`（已开则聚焦，未开则 append 并聚焦）、`closePanelTab`（关闭激活 tab 时聚焦右邻，无右邻取左邻，关到零回 launcher；next active 与移除原子完成，避免 `selectedKey` 悬空）、`focusPanelTab`。
+- `SidePanelTabsState = { activeTabId, nextTabOrdinal, openTabs }`。`kind` 只是 Files / Changes / Commit / Terminal / Browser / Artifact 类型；每次用户从 launcher 或 `+` 菜单选择五个可启动类型之一，`createPanelTab` 都创建独立 `id = kind:ordinal` 实例。同类型并存时 label 追加实例号。
+- `openPanelTab` 只供程序化入口使用：聚焦该类型的主实例（`instance === 1`），不存在才创建；`createPanelTab` 始终 append 新实例；`closePanelTab` 在关闭激活 tab 时聚焦右邻，无右邻取左邻，关到零回 launcher，next active 与移除原子完成，避免 `selectedKey` 悬空。
 - `PANEL_SURFACE_METADATA` 是 surface 展示元数据的唯一来源（icon / labelKey / badge / 快捷键提示），launcher、`+` 菜单、tab strip、折叠浮动条四处共用。
 
-Strip 交互：tab 条目 = icon + label（artifact tab 的 label 为 artifact 标题并截断）+ changed-count badge（Changes / Commit）+ close `×`。close 是 `role="presentation"` 的 span，在 `onPointerDown` 里 `stopPropagation` 后关闭（React Aria 的 `Tabs.Tab` 不能内嵌交互元素）；中键关闭走 `Tabs.Tab` 的 `onAuxClick`。chip 为真实浏览器 tab 风格：紧凑左对齐（`h-7 rounded-lg`，选中态 `bg-muted` + 中性前景色，无 underline indicator），`+`（HeroUI Dropdown，仅列未打开的 surface、全部已开时禁用）紧随最后一个 tab。strip 右端为控制钮：refresh（仅 activeTab ∈ {files, changes, commit} 时显示）+ 面板折叠按钮（`onCollapsePanel`）。注意 HeroUI 的 `.tabs__list-container` 自带 `bg-default` pill 且 `variant="secondary"` 的重置选择器要求它是 tabs 根的直接子级——strip 的自定义行结构不满足，因此 `ListContainer`/`List` 需显式 `bg-transparent`，`Tabs.Tab` 需 `w-auto` 抵消基类 `w-full` 才能得到 content-hugging chip。
+Strip 交互：tab 条目 = icon + label（artifact tab 的 label 为 artifact 标题并截断）+ changed-count badge（Changes / Commit）+ close `×`。close 是 `role="presentation"` 的 span，在 `onPointerDown` 里 `stopPropagation` 后关闭（React Aria 的 `Tabs.Tab` 不能内嵌交互元素）；中键关闭走 `Tabs.Tab` 的 `onAuxClick`。chip 为真实浏览器 tab 风格：紧凑左对齐（`h-7 rounded-lg`，选中态 `bg-muted` + 中性前景色，无 underline indicator）；tab 列表横向滚动，`+` 始终固定在列表后，并始终列出五个可重复创建的类型。strip 右端为控制钮：refresh（仅 active kind ∈ {files, changes, commit} 时显示）+ 面板折叠按钮（`onCollapsePanel`）。注意 HeroUI 的 `.tabs__list-container` 自带 `bg-default` pill 且 `variant="secondary"` 的重置选择器要求它是 tabs 根的直接子级——strip 的自定义行结构不满足，因此 `ListContainer`/`List` 需显式 `bg-transparent`，`Tabs.Tab` 需抵消基类 `w-full` 才能得到 content-hugging chip。
 
-挂载语义（与重构前逐字一致）：每个 open tab 一个 `Tabs.Panel`（无 `shouldForceMount`），非活动 tab 卸载、面板折叠不卸载；Terminal / Browser 关 tab = 组件卸载，main 侧 pty / WebContentsView 按既有规则存活，重开 tab 经 ensure 恢复（terminal 缓冲回放、browser 当前页面保持）。Browser 可见性派生为 `isBrowserSurfaceVisible = isProjectContextOpen && activeTabId === "browser"`。Artifact 由此从「整面板替换」变为一等 tab：`ArtifactPanel` 的 `onClose` 改为可选且不再传入（tab `×` 接管），`key={toolCallId}` 的 remount 语义保留。
+挂载语义：每个 open tab 一个 `Tabs.Panel`（无 `shouldForceMount`）；非活动 tab 不可见，面板折叠不卸载。Files / Changes / Commit 的 React 本地状态按 tab 实例隔离；Terminal / Browser 主实例继续使用 chat session ID，保证 `Mod+J`、agent browser 工具和历史行为兼容，额外实例使用 `${chatSessionId}:panel:${tabId}` runtime ID。RPC 额外携带可选 `chatSessionId` 作为权限与项目目录 owner。关闭 Terminal / Browser tab 会显式 dispose 对应 pty / `WebContentsView`；切换 chat 或离开页面时也会释放额外实例。Browser 可见性按精确 active tab ID 下发，防止多个原生视图重叠。Artifact 仍是一等 tab：`ArtifactPanel` 的 `key={toolCallId}` remount 语义保留。
 
-入口全部收敛到 `openPanelTab`：header 面板 trigger（纯图标 + 改动文件数角标，`Review` 文案已移除）只 toggle 面板开合；首页右上角的常驻 trigger 创建新会话并经 `lib/chat/panel-open-request.ts` 的 one-shot 请求在 chat 页 mount 后自动展开面板；文件 reveal 先开 files/changes tab 再下传 `revealTarget`；Mod+J 在 terminal tab 激活且展开时折叠面板，否则展开并开/聚焦 terminal；artifact 卡片与流中 artifact part 设置 `activeArtifact` 后开 artifact tab；agent 驱动的 browser 导航（`initiator: "agent"`）展开并开/聚焦 browser tab。折叠态浮动工具条只镜像 `openTabs`（点击 = 展开 + 聚焦），零 tab 时整条隐藏。tab 状态是 route `useState`，切换 session 即清零回 launcher。
+入口分成两类：launcher 与 `+` 菜单走 `createPanelTab`，每次都创建新 session；文件 reveal、`Mod+J`、artifact 卡片和 agent 驱动的 browser 导航走 `openPanelTab`，只开/聚焦主实例。header 面板 trigger 只 toggle 面板开合；首页右上角的常驻 trigger 创建新会话并经 `lib/chat/panel-open-request.ts` 的 one-shot 请求在 chat 页 mount 后自动展开面板。折叠态浮动工具条按精确 tab ID 镜像 `openTabs`，同类型用实例号区分，列表超高时内部滚动；零 tab 时整条隐藏。tab 状态是 route `useState`，切换 session 即清零回 launcher。
 
 ## Agent 编辑范围的 Git 对比
 

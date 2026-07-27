@@ -18,6 +18,8 @@ import {
   Spinner,
   TextField
 } from "@heroui/react"
+import { GlobeIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 
@@ -28,20 +30,29 @@ const CookieSourceOption = ({ source }: { source: BrowserCookieSource }) => {
   const { t } = useI18n()
 
   return (
-    <Radio value={source.id}>
-      <Radio.Control>
-        <Radio.Indicator />
-      </Radio.Control>
-      <Radio.Content>
-        <Label>{`${source.browser} · ${source.profileName}`}</Label>
-        <Description>
-          {source.cookieCount === null
-            ? t("chat.projectPanel.cookieImportCountUnknown")
-            : t("chat.projectPanel.cookieImportCount", {
-                count: source.cookieCount
-              })}
+    <Radio
+      className="group flex w-full flex-row items-center gap-3 rounded-md px-2.5 py-2 transition-colors hover:bg-muted/40 data-[focus-visible=true]:bg-muted/40 data-[selected=true]:bg-muted/60"
+      value={source.id}
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-background text-muted-foreground ring-1 ring-border/70">
+        <HugeiconsIcon icon={GlobeIcon} size={16} strokeWidth={2} />
+      </span>
+      <Radio.Content className="min-w-0 flex-1 flex-col items-start gap-0.5">
+        <Label className="truncate text-xs font-medium">{source.browser}</Label>
+        <Description className="truncate text-[11px]">
+          {source.profileName}
         </Description>
       </Radio.Content>
+      <span className="max-w-32 shrink-0 truncate text-[11px] text-muted-foreground tabular-nums">
+        {source.cookieCount === null
+          ? t("chat.projectPanel.cookieImportCountUnknown")
+          : t("chat.projectPanel.cookieImportCount", {
+              count: source.cookieCount
+            })}
+      </span>
+      <Radio.Control className="shrink-0">
+        <Radio.Indicator />
+      </Radio.Control>
     </Radio>
   )
 }
@@ -57,9 +68,13 @@ const CookieSourceOption = ({ source }: { source: BrowserCookieSource }) => {
  * `WebContentsView` paints above the DOM and would otherwise cover the dialog.
  */
 export const BrowserCookieImportDialog = ({
+  chatSessionId,
+  onImported,
   onOpenChange,
   sessionId
 }: {
+  chatSessionId: string
+  onImported?: () => void
   onOpenChange: (open: boolean) => void
   sessionId: string
 }) => {
@@ -70,7 +85,7 @@ export const BrowserCookieImportDialog = ({
   // retried: the failures here are permanent ones like an unsupported platform.
   const sourcesQuery = useQuery(
     orpc.browser.listCookieSources.queryOptions({
-      input: { sessionId },
+      input: { chatSessionId, sessionId },
       retry: false,
       staleTime: 0
     })
@@ -86,16 +101,18 @@ export const BrowserCookieImportDialog = ({
 
       return rpcClient.browser.importCookies({
         ...(trimmedFilter === "" ? {} : { domainFilter: trimmedFilter }),
+        chatSessionId,
         sessionId,
         sourceId: activeSourceId
       })
-    }
+    },
+    onSuccess: onImported
   })
   const result = importMutation.isSuccess ? importMutation.data : null
 
   return (
     <Dialog onOpenChange={onOpenChange} open>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t("chat.projectPanel.cookieImportTitle")}</DialogTitle>
           <DialogDescription>
@@ -105,14 +122,14 @@ export const BrowserCookieImportDialog = ({
 
         {result ? (
           <div className="space-y-1 text-xs">
-            <p className="font-medium text-emerald-600 dark:text-emerald-400">
+            <p className="font-medium text-success">
               {t("chat.projectPanel.cookieImportResult", {
                 imported: result.imported,
                 total: result.total
               })}
             </p>
             {result.failed > 0 ? (
-              <p className="text-amber-600 dark:text-amber-400">
+              <p className="text-warning">
                 {t("chat.projectPanel.cookieImportResultFailed", {
                   failed: result.failed
                 })}
@@ -140,11 +157,12 @@ export const BrowserCookieImportDialog = ({
             ) : null}
 
             {sources.length > 0 ? (
-              <div className="max-h-52 overflow-y-auto rounded-md border border-border/60 bg-background/50 p-2">
+              <div className="max-h-56 overflow-y-auto rounded-md border border-border/60 bg-background/40 p-1.5">
                 <RadioGroup
                   aria-label={t("chat.projectPanel.cookieImportSourcesLabel")}
                   onChange={setSelectedSourceId}
                   value={activeSourceId}
+                  variant="secondary"
                 >
                   {sources.map((source) => (
                     <CookieSourceOption key={source.id} source={source} />

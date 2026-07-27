@@ -79,13 +79,14 @@ import type { ProjectFileBuffersState } from "@/renderer/lib/chat/project-file-b
 import { requestProjectPanelReveal } from "@/renderer/lib/chat/project-panel-navigation"
 import type { ProjectPanelRevealRequest } from "@/renderer/lib/chat/project-panel-navigation"
 import {
-  getUnopenedPanelSurfaces,
+  getPanelTabRuntimeSessionId,
   isPanelSurfaceKind,
   PANEL_LAUNCHER_SURFACE_KINDS,
   PANEL_SURFACE_METADATA
 } from "@/renderer/lib/chat/side-panel-tabs"
 import type {
   ChatPanelTab,
+  PanelTabId,
   PanelSurfaceKind
 } from "@/renderer/lib/chat/side-panel-tabs"
 import {
@@ -1653,12 +1654,10 @@ const ProjectPanelLauncher = ({
   )
 }
 
-/** The strip's trailing `+`: opens any launchable surface that has no tab yet. */
+/** The strip's trailing `+`: creates another session of any surface type. */
 const ProjectPanelTabMenu = ({
-  availableKinds,
   onOpenTab
 }: {
-  availableKinds: readonly PanelSurfaceKind[]
   onOpenTab: (kind: PanelSurfaceKind) => void
 }) => {
   const { t } = useI18n()
@@ -1668,7 +1667,6 @@ const ProjectPanelTabMenu = ({
       <Button
         aria-label={t("chat.projectPanel.openTabMenu")}
         className="title-bar-no-drag"
-        isDisabled={availableKinds.length === 0}
         isIconOnly
         size="sm"
         type="button"
@@ -1684,8 +1682,8 @@ const ProjectPanelTabMenu = ({
             }
           }}
         >
-          {availableKinds.map((kind) => {
-            const { icon, labelKey, shortcutKey } = PANEL_SURFACE_METADATA[kind]
+          {PANEL_LAUNCHER_SURFACE_KINDS.map((kind) => {
+            const { icon, labelKey } = PANEL_SURFACE_METADATA[kind]
 
             return (
               <Dropdown.Item id={kind} key={kind} textValue={t(labelKey)}>
@@ -1696,10 +1694,6 @@ const ProjectPanelTabMenu = ({
                   strokeWidth={2}
                 />
                 <Label>{t(labelKey)}</Label>
-                <PanelSurfaceShortcutHint
-                  className="ms-auto"
-                  shortcutKey={shortcutKey}
-                />
               </Dropdown.Item>
             )
           })}
@@ -1777,9 +1771,9 @@ export const ProjectContextPanel = ({
   isTreeLoading,
   onCloseTab,
   onCollapsePanel,
+  onCreateTab,
   onFocusTab,
   onGitDiffScopeChange,
-  onOpenTab,
   onRefresh,
   openTabs,
   projectItems,
@@ -1787,7 +1781,7 @@ export const ProjectContextPanel = ({
   selectedSession
 }: {
   activeArtifact: ChatArtifactRef | null
-  activeTabId: PanelSurfaceKind | null
+  activeTabId: PanelTabId | null
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
   /**
@@ -1798,11 +1792,11 @@ export const ProjectContextPanel = ({
   isBrowserSurfaceVisible: boolean
   isDiffLoading: boolean
   isTreeLoading: boolean
-  onCloseTab: (kind: PanelSurfaceKind) => void
+  onCloseTab: (id: PanelTabId) => void
   onCollapsePanel: () => void
-  onFocusTab: (kind: PanelSurfaceKind) => void
+  onCreateTab: (kind: PanelSurfaceKind) => void
+  onFocusTab: (id: PanelTabId) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
-  onOpenTab: (kind: PanelSurfaceKind) => void
   onRefresh: () => void
   openTabs: readonly ChatPanelTab[]
   projectItems: ProjectSnapshotItem[]
@@ -1868,15 +1862,11 @@ export const ProjectContextPanel = ({
   }, [])
   const handleSelectionChange = useCallback(
     (key: Key) => {
-      if (isPanelSurfaceKind(key)) {
+      if (typeof key === "string" && openTabs.some((tab) => tab.id === key)) {
         onFocusTab(key)
       }
     },
-    [onFocusTab]
-  )
-  const unopenedSurfaces = useMemo(
-    () => getUnopenedPanelSurfaces(openTabs),
-    [openTabs]
+    [onFocusTab, openTabs]
   )
   // Only a chip the user just opened animates; the strip a session restores
   // with, and re-showing the strip after a collapse, stay still.
@@ -1885,20 +1875,34 @@ export const ProjectContextPanel = ({
     resetKey: selectedSession.id
   })
   const { changedFileCount } = diffSummary
+  const activeTab = openTabs.find((tab) => tab.id === activeTabId) ?? null
   // Terminal, browser, and artifact tabs carry their own controls; only the Git
   // surfaces are fed by the queries this button invalidates.
   const isRefreshVisible =
-    activeTabId === "changes" ||
-    activeTabId === "commit" ||
-    activeTabId === "files"
+    activeTab?.kind === "changes" ||
+    activeTab?.kind === "commit" ||
+    activeTab?.kind === "files"
 
-  const getTabLabel = (kind: PanelSurfaceKind): string =>
-    kind === "artifact" && activeArtifact
-      ? activeArtifact.title
-      : t(PANEL_SURFACE_METADATA[kind].labelKey)
+  const getTabLabel = (tab: ChatPanelTab): string => {
+    if (tab.kind === "artifact" && activeArtifact) {
+      return activeArtifact.title
+    }
 
-  const renderTabContent = (kind: PanelSurfaceKind): ReactNode => {
-    if (kind === "artifact") {
+    const label = t(PANEL_SURFACE_METADATA[tab.kind].labelKey)
+    const hasSibling = openTabs.some(
+      (candidate) => candidate.id !== tab.id && candidate.kind === tab.kind
+    )
+
+    return hasSibling ? `${label} ${tab.instance}` : label
+  }
+
+  const renderTabContent = (tab: ChatPanelTab): ReactNode => {
+    const runtimeSessionId = getPanelTabRuntimeSessionId(
+      selectedSession.id,
+      tab
+    )
+
+    if (tab.kind === "artifact") {
       return activeArtifact ? (
         <ArtifactPanel
           artifact={activeArtifact}
@@ -1908,26 +1912,30 @@ export const ProjectContextPanel = ({
       ) : null
     }
 
-    if (kind === "browser") {
+    if (tab.kind === "browser") {
       return (
         <BrowserPanel
-          isBrowserSurfaceVisible={isBrowserSurfaceVisible}
-          key={selectedSession.id}
-          sessionId={selectedSession.id}
+          chatSessionId={selectedSession.id}
+          isBrowserSurfaceVisible={
+            isBrowserSurfaceVisible && activeTabId === tab.id
+          }
+          key={runtimeSessionId}
+          sessionId={runtimeSessionId}
         />
       )
     }
 
-    if (kind === "terminal") {
+    if (tab.kind === "terminal") {
       return (
         <TerminalPanel
-          key={selectedSession.id}
-          sessionId={selectedSession.id}
+          chatSessionId={selectedSession.id}
+          key={runtimeSessionId}
+          sessionId={runtimeSessionId}
         />
       )
     }
 
-    if (kind === "changes") {
+    if (tab.kind === "changes") {
       return (
         <ProjectChangesPanel
           diffFiles={diffFiles}
@@ -1943,7 +1951,7 @@ export const ProjectContextPanel = ({
       )
     }
 
-    if (kind === "commit") {
+    if (tab.kind === "commit") {
       return (
         <ProjectCommitPanel
           changedFiles={changedFiles}
@@ -1971,7 +1979,7 @@ export const ProjectContextPanel = ({
       <aside className={PANEL_SHELL_CLASS_NAME}>
         <ProjectPanelLauncher
           changedFileCount={changedFileCount}
-          onOpenTab={onOpenTab}
+          onOpenTab={onCreateTab}
         />
       </aside>
     )
@@ -1993,15 +2001,15 @@ export const ProjectContextPanel = ({
             `variant="secondary"` cannot reset them because its overrides need
             the list container to be a direct child of the tabs root.
           */}
-          <Tabs.ListContainer className="title-bar-no-drag min-w-0 bg-transparent">
+          <Tabs.ListContainer className="title-bar-no-drag min-w-0 [scrollbar-width:none] overflow-x-auto bg-transparent [&::-webkit-scrollbar]:hidden">
             <Tabs.List
               aria-label={t("chat.projectPanel.viewsLabel")}
-              className="w-fit justify-start gap-1 bg-transparent p-0"
+              className="w-max shrink-0 justify-start gap-1 bg-transparent p-0"
             >
               {openTabs.map((tab) => (
                 <Tabs.Tab
                   className={cn(
-                    "group/tab h-7 w-auto gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground",
+                    "group/tab h-7 max-w-44 gap-1.5 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted data-[selected=true]:text-foreground",
                     isTabEntering(tab.id) && MOTION_SCALE_IN_CLASS
                   )}
                   id={tab.id}
@@ -2015,17 +2023,14 @@ export const ProjectContextPanel = ({
                   <ProjectPanelTabContent
                     changedFileCount={changedFileCount}
                     kind={tab.kind}
-                    label={getTabLabel(tab.kind)}
+                    label={getTabLabel(tab)}
                     onClose={() => onCloseTab(tab.id)}
                   />
                 </Tabs.Tab>
               ))}
             </Tabs.List>
           </Tabs.ListContainer>
-          <ProjectPanelTabMenu
-            availableKinds={unopenedSurfaces}
-            onOpenTab={onOpenTab}
-          />
+          <ProjectPanelTabMenu onOpenTab={onCreateTab} />
           <div className="flex-1" />
           {isRefreshVisible ? (
             <Button
@@ -2078,7 +2083,7 @@ export const ProjectContextPanel = ({
             id={tab.id}
             key={tab.id}
           >
-            {renderTabContent(tab.kind)}
+            {renderTabContent(tab)}
           </Tabs.Panel>
         ))}
       </Tabs>

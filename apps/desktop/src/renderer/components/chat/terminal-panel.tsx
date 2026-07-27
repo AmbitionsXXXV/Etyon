@@ -119,7 +119,13 @@ const resolveTerminalTheme = () => {
  * site keys this on `sessionId`, so a session switch remounts against the new
  * session's buffer.
  */
-export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
+export const TerminalPanel = ({
+  chatSessionId,
+  sessionId
+}: {
+  chatSessionId: string
+  sessionId: string
+}) => {
   const { t } = useI18n()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<TerminalPanelStatus>("connecting")
@@ -159,6 +165,7 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
     ): Promise<void> => {
       try {
         const { snapshot } = await rpcClient.terminal.ensure({
+          chatSessionId,
           cols: dimensions.cols,
           rows: dimensions.rows,
           sessionId
@@ -375,7 +382,7 @@ export const TerminalPanel = ({ sessionId }: { sessionId: string }) => {
         cleanup()
       }
     }
-  }, [sessionId])
+  }, [chatSessionId, sessionId])
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-card p-2">

@@ -118,13 +118,17 @@ import type {
 } from "@/renderer/lib/chat/prompt-input"
 import {
   closePanelTab,
+  createPanelTab,
   EMPTY_SIDE_PANEL_TABS_STATE,
   focusPanelTab,
+  getActivePanelTab,
+  getPanelTabRuntimeSessionId,
   openPanelTab,
   PANEL_SURFACE_METADATA
 } from "@/renderer/lib/chat/side-panel-tabs"
 import type {
   ChatPanelTab,
+  PanelTabId,
   PanelSurfaceKind,
   SidePanelTabsState
 } from "@/renderer/lib/chat/side-panel-tabs"
@@ -648,12 +652,12 @@ const RAIL_BADGE_MOTION = {
 const ProjectContextCollapsedToolbar = ({
   activeTabId,
   changedFileCount,
-  onOpenTab,
+  onFocusTab,
   openTabs
 }: {
-  activeTabId: PanelSurfaceKind | null
+  activeTabId: PanelTabId | null
   changedFileCount: number
-  onOpenTab: (kind: PanelSurfaceKind) => void
+  onFocusTab: (id: PanelTabId) => void
   openTabs: readonly ChatPanelTab[]
 }) => {
   const { t } = useI18n()
@@ -666,10 +670,14 @@ const ProjectContextCollapsedToolbar = ({
       initial={COLLAPSED_RAIL_MOTION.initial}
       transition={COLLAPSED_RAIL_MOTION.transition}
     >
-      <div className="flex flex-col items-center gap-2 rounded-full border border-border bg-card/70 p-2 shadow-sm">
+      <div className="flex max-h-full [scrollbar-width:none] flex-col items-center gap-2 overflow-y-auto rounded-full border border-border bg-card/70 p-2 shadow-sm [&::-webkit-scrollbar]:hidden">
         {openTabs.map((tab) => {
           const { badge, icon, labelKey } = PANEL_SURFACE_METADATA[tab.kind]
-          const label = t(labelKey)
+          const hasSibling = openTabs.some(
+            (candidate) =>
+              candidate.id !== tab.id && candidate.kind === tab.kind
+          )
+          const label = `${t(labelKey)}${hasSibling ? ` ${tab.instance}` : ""}`
           const isSelected = activeTabId === tab.id
           const showBadge = badge === "changedFileCount" && changedFileCount > 0
 
@@ -682,11 +690,16 @@ const ProjectContextCollapsedToolbar = ({
                 isSelected && "bg-primary/12 text-primary"
               )}
               key={tab.id}
-              onClick={() => onOpenTab(tab.kind)}
+              onClick={() => onFocusTab(tab.id)}
               title={label}
               type="button"
             >
               <HugeiconsIcon icon={icon} size={19} strokeWidth={2} />
+              {hasSibling ? (
+                <span className="absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-full bg-card text-[9px] font-semibold text-foreground ring-1 ring-border">
+                  {tab.instance}
+                </span>
+              ) : null}
               {showBadge ? (
                 <motion.span
                   animate={RAIL_BADGE_MOTION.animate}
@@ -716,6 +729,7 @@ const ChatProjectContextLayout = ({
   isOpen,
   isTreeLoading,
   onCloseTab,
+  onCreateTab,
   onFocusTab,
   onOpenChange,
   onGitDiffScopeChange,
@@ -726,15 +740,16 @@ const ChatProjectContextLayout = ({
   selectedSession
 }: {
   activeArtifact?: ChatArtifactRef | null
-  activeTabId: PanelSurfaceKind | null
+  activeTabId: PanelTabId | null
   children: ReactNode
   gitDiff?: GitProjectDiffOutput
   gitDiffScope: ProjectChangesScope
   isDiffLoading: boolean
   isOpen: boolean
   isTreeLoading: boolean
-  onCloseTab: (kind: PanelSurfaceKind) => void
-  onFocusTab: (kind: PanelSurfaceKind) => void
+  onCloseTab: (id: PanelTabId) => void
+  onCreateTab: (kind: PanelSurfaceKind) => void
+  onFocusTab: (id: PanelTabId) => void
   onOpenChange: (isOpen: boolean) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onOpenTab: (kind: PanelSurfaceKind) => void
@@ -746,12 +761,13 @@ const ChatProjectContextLayout = ({
   const { t } = useI18n()
   const projectContextPanelRef = useRef<PanelImperativeHandle | null>(null)
   const changedFileCount = selectedSession.gitStatus?.changedFileCount ?? 0
+  const activeTab = openTabs.find((tab) => tab.id === activeTabId) ?? null
   // The browser tab's page is a native view composited over the renderer, so it
   // cannot be hidden by CSS. Collapsing the panel keeps `BrowserPanel` mounted
   // (the Resizable panel only gets `hidden`), so visibility has to be derived
   // here and pushed down; closing the tab unmounts it outright, which the
   // component's own cleanup covers.
-  const isBrowserSurfaceVisible = isOpen && activeTabId === "browser"
+  const isBrowserSurfaceVisible = isOpen
 
   useEffect(() => {
     const projectContextPanel = projectContextPanelRef.current
@@ -774,14 +790,6 @@ const ChatProjectContextLayout = ({
       projectContextPanel.resize(PROJECT_CONTEXT_PANEL_DEFAULT_SIZE)
     }
   }, [isOpen])
-
-  const handleOpenTab = useCallback(
-    (kind: PanelSurfaceKind) => {
-      onOpenTab(kind)
-      onOpenChange(true)
-    },
-    [onOpenChange, onOpenTab]
-  )
 
   const revealRequest = useProjectPanelRevealRequest()
   const [revealTarget, setRevealTarget] =
@@ -895,7 +903,7 @@ const ChatProjectContextLayout = ({
             initial={false}
             transition={PANEL_CONTENT_TRANSITION}
             variants={
-              activeTabId === "browser"
+              activeTab?.kind === "browser"
                 ? PANEL_CONTENT_FADE_VARIANTS
                 : PANEL_CONTENT_VARIANTS
             }
@@ -910,9 +918,9 @@ const ChatProjectContextLayout = ({
               isTreeLoading={isTreeLoading}
               onCloseTab={onCloseTab}
               onCollapsePanel={() => onOpenChange(false)}
+              onCreateTab={onCreateTab}
               onFocusTab={onFocusTab}
               onGitDiffScopeChange={onGitDiffScopeChange}
-              onOpenTab={onOpenTab}
               onRefresh={onRefresh}
               openTabs={openTabs}
               projectItems={projectItems}
@@ -928,7 +936,10 @@ const ChatProjectContextLayout = ({
             activeTabId={activeTabId}
             changedFileCount={changedFileCount}
             key="project-context-rail"
-            onOpenTab={handleOpenTab}
+            onFocusTab={(id) => {
+              onFocusTab(id)
+              onOpenChange(true)
+            }}
             openTabs={openTabs}
           />
         )}
@@ -1556,6 +1567,7 @@ const ChatRuntime = ({
   initialMessages,
   onChatFinish,
   onClosePanelTab,
+  onCreatePanelTab,
   onEffortChange,
   onFocusPanelTab,
   onGitDiffScopeChange,
@@ -1596,12 +1608,13 @@ const ChatRuntime = ({
   modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
   onChatFinish: () => void
-  onClosePanelTab: (kind: PanelSurfaceKind) => void
+  onClosePanelTab: (id: PanelTabId) => void
+  onCreatePanelTab: (kind: PanelSurfaceKind) => void
   onEffortChange: (
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
-  onFocusPanelTab: (kind: PanelSurfaceKind) => void
+  onFocusPanelTab: (id: PanelTabId) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
@@ -1990,8 +2003,10 @@ const ChatRuntime = ({
   // collapsed), and collapses the panel when the terminal is already the active
   // tab — a VS Code-style terminal toggle. The terminal focuses itself once it
   // becomes visible.
+  const isTerminalPanelActive =
+    getActivePanelTab(sidePanelTabs)?.kind === "terminal"
   const handleToggleTerminal = useCallback(() => {
-    if (isProjectContextOpen && sidePanelTabs.activeTabId === "terminal") {
+    if (isProjectContextOpen && isTerminalPanelActive) {
       onToggleProjectContext()
       return
     }
@@ -2000,10 +2015,10 @@ const ChatRuntime = ({
     onProjectContextOpenChange(true)
   }, [
     isProjectContextOpen,
+    isTerminalPanelActive,
     onOpenPanelTab,
     onProjectContextOpenChange,
-    onToggleProjectContext,
-    sidePanelTabs.activeTabId
+    onToggleProjectContext
   ])
 
   useHotkey("Shift+Tab", handlePermissionModeCycle, {
@@ -2458,6 +2473,7 @@ const ChatRuntime = ({
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
       onCloseTab={onClosePanelTab}
+      onCreateTab={onCreatePanelTab}
       onFocusTab={onFocusPanelTab}
       onOpenChange={onProjectContextOpenChange}
       onGitDiffScopeChange={onGitDiffScopeChange}
@@ -2722,6 +2738,7 @@ const ChatPendingState = ({
   modelEffort,
   modelGroups,
   onClosePanelTab,
+  onCreatePanelTab,
   onEffortChange,
   onFocusPanelTab,
   onGitDiffScopeChange,
@@ -2750,12 +2767,13 @@ const ChatPendingState = ({
   isProjectDiffLoading: boolean
   modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
-  onClosePanelTab: (kind: PanelSurfaceKind) => void
+  onClosePanelTab: (id: PanelTabId) => void
+  onCreatePanelTab: (kind: PanelSurfaceKind) => void
   onEffortChange: (
     provider: EffortProviderId,
     level: AnthropicEffortLevel | OpenAiEffortLevel
   ) => void
-  onFocusPanelTab: (kind: PanelSurfaceKind) => void
+  onFocusPanelTab: (id: PanelTabId) => void
   onGitDiffScopeChange: (scope: ProjectChangesScope) => void
   onMentionQueryChange: (
     query: string | null,
@@ -2797,6 +2815,7 @@ const ChatPendingState = ({
       isOpen={isProjectContextOpen}
       isTreeLoading={isLoadingProjectTreeItems}
       onCloseTab={onClosePanelTab}
+      onCreateTab={onCreatePanelTab}
       onFocusTab={onFocusPanelTab}
       onOpenChange={onProjectContextOpenChange}
       onGitDiffScopeChange={onGitDiffScopeChange}
@@ -2930,6 +2949,39 @@ const ChatPendingState = ({
   )
 }
 
+const disposePanelTabRuntime = async ({
+  chatSessionId,
+  tab
+}: {
+  chatSessionId: string
+  tab: ChatPanelTab
+}): Promise<void> => {
+  const runtimeSessionId = getPanelTabRuntimeSessionId(chatSessionId, tab)
+
+  if (tab.kind === "browser") {
+    await rpcClient.browser.dispose({
+      chatSessionId,
+      sessionId: runtimeSessionId
+    })
+    return
+  }
+
+  if (tab.kind === "terminal") {
+    await rpcClient.terminal.dispose({ sessionId: runtimeSessionId })
+  }
+}
+
+const disposePanelTabRuntimeSafely = async (
+  input: Parameters<typeof disposePanelTabRuntime>[0]
+): Promise<void> => {
+  try {
+    await disposePanelTabRuntime(input)
+  } catch {
+    // Closing a tab is already complete in the renderer; a view evicted by the
+    // browser LRU or a shell that exited on its own needs no further cleanup.
+  }
+}
+
 const ChatSessionPage = () => {
   const { t } = useI18n()
   const navigate = useNavigate()
@@ -2939,6 +2991,9 @@ const ChatSessionPage = () => {
   const [sidePanelTabs, setSidePanelTabs] = useState<SidePanelTabsState>(
     EMPTY_SIDE_PANEL_TABS_STATE
   )
+  const panelSessionIdRef = useRef(sessionId)
+  const sidePanelTabsRef = useRef(sidePanelTabs)
+  sidePanelTabsRef.current = sidePanelTabs
   const [gitDiffScope, setGitDiffScope] = useState<ProjectChangesScope>(
     PROJECT_CHANGES_SCOPE_AGENT
   )
@@ -2947,6 +3002,21 @@ const ChatSessionPage = () => {
   )
   const [transport, setTransport] =
     useState<DefaultChatTransport<ChatUiMessage> | null>(null)
+
+  useEffect(
+    () => () => {
+      for (const tab of sidePanelTabsRef.current.openTabs) {
+        if (tab.instance > 1) {
+          void disposePanelTabRuntimeSafely({
+            chatSessionId: panelSessionIdRef.current,
+            tab
+          })
+        }
+      }
+    },
+    []
+  )
+
   const chatSessionsQuery = useQuery({
     ...chatSessionsQueryOptions,
     refetchInterval: CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
@@ -3280,11 +3350,25 @@ const ChatSessionPage = () => {
   const handleOpenPanelTab = useCallback((kind: PanelSurfaceKind) => {
     setSidePanelTabs((state) => openPanelTab(state, kind))
   }, [])
-  const handleClosePanelTab = useCallback((kind: PanelSurfaceKind) => {
-    setSidePanelTabs((state) => closePanelTab(state, kind))
+  const handleCreatePanelTab = useCallback((kind: PanelSurfaceKind) => {
+    setSidePanelTabs((state) => createPanelTab(state, kind))
   }, [])
-  const handleFocusPanelTab = useCallback((kind: PanelSurfaceKind) => {
-    setSidePanelTabs((state) => focusPanelTab(state, kind))
+  const handleClosePanelTab = useCallback(
+    (id: PanelTabId) => {
+      const tab = sidePanelTabs.openTabs.find(
+        (candidate) => candidate.id === id
+      )
+
+      if (tab) {
+        void disposePanelTabRuntimeSafely({ chatSessionId: sessionId, tab })
+      }
+
+      setSidePanelTabs((state) => closePanelTab(state, id))
+    },
+    [sessionId, sidePanelTabs.openTabs]
+  )
+  const handleFocusPanelTab = useCallback((id: PanelTabId) => {
+    setSidePanelTabs((state) => focusPanelTab(state, id))
   }, [])
   const handleOpenArtifact = useCallback((artifact: ChatArtifactRef) => {
     setActiveArtifact(artifact)
@@ -3298,6 +3382,18 @@ const ChatSessionPage = () => {
   // page's panel trigger creates a session and lands here, so its parked
   // request is consumed in the same pass.
   useEffect(() => {
+    const previousSessionId = panelSessionIdRef.current
+
+    for (const tab of sidePanelTabsRef.current.openTabs) {
+      if (tab.instance > 1) {
+        void disposePanelTabRuntimeSafely({
+          chatSessionId: previousSessionId,
+          tab
+        })
+      }
+    }
+
+    panelSessionIdRef.current = sessionId
     setActiveArtifact(null)
     setSidePanelTabs(EMPTY_SIDE_PANEL_TABS_STATE)
 
@@ -3385,6 +3481,7 @@ const ChatSessionPage = () => {
           modelGroups={modelGroups}
           onChatFinish={handleChatFinish}
           onClosePanelTab={handleClosePanelTab}
+          onCreatePanelTab={handleCreatePanelTab}
           onEffortChange={handleEffortChange}
           onFocusPanelTab={handleFocusPanelTab}
           onGitDiffScopeChange={handleGitDiffScopeChange}
@@ -3432,6 +3529,7 @@ const ChatSessionPage = () => {
           modelEffort={modelEffort}
           modelGroups={modelGroups}
           onClosePanelTab={handleClosePanelTab}
+          onCreatePanelTab={handleCreatePanelTab}
           onEffortChange={handleEffortChange}
           onFocusPanelTab={handleFocusPanelTab}
           onGitDiffScopeChange={handleGitDiffScopeChange}

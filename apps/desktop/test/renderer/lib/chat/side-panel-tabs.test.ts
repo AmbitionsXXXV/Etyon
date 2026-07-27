@@ -2,37 +2,94 @@ import { describe, expect, it } from "vite-plus/test"
 
 import {
   closePanelTab,
+  createPanelTab,
   EMPTY_SIDE_PANEL_TABS_STATE,
   focusPanelTab,
-  getUnopenedPanelSurfaces,
+  getActivePanelTab,
+  getPanelTabRuntimeSessionId,
   isPanelSurfaceKind,
   openPanelTab,
-  PANEL_LAUNCHER_SURFACE_KINDS,
   PANEL_SURFACE_METADATA
 } from "@/renderer/lib/chat/side-panel-tabs"
 import type {
+  ChatPanelTab,
+  PanelTabId,
   PanelSurfaceKind,
   SidePanelTabsState
 } from "@/renderer/lib/chat/side-panel-tabs"
 
 const buildState = (
   openKinds: readonly PanelSurfaceKind[],
-  activeTabId: PanelSurfaceKind | null
+  activeTabIndex: number | null
 ): SidePanelTabsState => ({
-  activeTabId,
-  openTabs: openKinds.map((kind) => ({ id: kind, kind }))
+  activeTabId:
+    activeTabIndex === null
+      ? null
+      : `${openKinds[activeTabIndex]}:${activeTabIndex + 1}`,
+  nextTabOrdinal: openKinds.length + 1,
+  openTabs: openKinds.map((kind, index) => ({
+    id: `${kind}:${index + 1}`,
+    instance:
+      openKinds.slice(0, index).filter((openKind) => openKind === kind).length +
+      1,
+    kind
+  }))
 })
 
 const getOpenKinds = (state: SidePanelTabsState): PanelSurfaceKind[] =>
-  state.openTabs.map((tab) => tab.id)
+  state.openTabs.map((tab) => tab.kind)
+
+const getTabId = (state: SidePanelTabsState, index: number): PanelTabId => {
+  const tab = state.openTabs[index]
+
+  if (!tab) {
+    throw new Error(`Missing tab at index ${index}`)
+  }
+
+  return tab.id
+}
+
+describe("createPanelTab", () => {
+  it("creates repeatable instances of the same surface", () => {
+    const firstState = createPanelTab(EMPTY_SIDE_PANEL_TABS_STATE, "browser")
+    const state = createPanelTab(firstState, "browser")
+
+    expect(state).toEqual({
+      activeTabId: "browser:2",
+      nextTabOrdinal: 3,
+      openTabs: [
+        { id: "browser:1", instance: 1, kind: "browser" },
+        { id: "browser:2", instance: 2, kind: "browser" }
+      ]
+    })
+  })
+
+  it("reuses a free display instance without reusing a tab id", () => {
+    const withTwoTabs = createPanelTab(
+      createPanelTab(EMPTY_SIDE_PANEL_TABS_STATE, "terminal"),
+      "terminal"
+    )
+    const state = createPanelTab(
+      closePanelTab(withTwoTabs, "terminal:1"),
+      "terminal"
+    )
+
+    expect(state.openTabs.at(-1)).toEqual({
+      id: "terminal:3",
+      instance: 1,
+      kind: "terminal"
+    })
+  })
+})
 
 describe("openPanelTab", () => {
   it("appends the first tab and focuses it", () => {
     const state = openPanelTab(EMPTY_SIDE_PANEL_TABS_STATE, "terminal")
 
     expect(state).toEqual({
-      activeTabId: "terminal",
-      openTabs: [{ id: "terminal", kind: "terminal" }]
+      activeTabId: "terminal:1",
+      nextTabOrdinal: 2,
+      openTabs: [{ id: "terminal:1", instance: 1, kind: "terminal" }]
     })
   })
 
@@ -43,27 +100,24 @@ describe("openPanelTab", () => {
     )
 
     expect(getOpenKinds(state)).toEqual(["files", "browser"])
-    expect(state.activeTabId).toBe("browser")
+    expect(state.activeTabId).toBe("browser:2")
   })
 
-  it("only focuses a surface that is already open", () => {
-    const state = openPanelTab(
-      buildState(["files", "browser"], "browser"),
-      "files"
-    )
+  it("focuses the primary surface without creating another tab", () => {
+    const state = openPanelTab(buildState(["files", "browser"], 1), "files")
 
     expect(getOpenKinds(state)).toEqual(["files", "browser"])
-    expect(state.activeTabId).toBe("files")
+    expect(state.activeTabId).toBe("files:1")
   })
 
   it("returns the same state when the open surface is already active", () => {
-    const state = buildState(["files"], "files")
+    const state = buildState(["files"], 0)
 
     expect(openPanelTab(state, "files")).toBe(state)
   })
 
   it("leaves the previous state untouched", () => {
-    const state = buildState(["files"], "files")
+    const state = buildState(["files"], 0)
 
     openPanelTab(state, "commit")
 
@@ -73,23 +127,21 @@ describe("openPanelTab", () => {
 
 describe("focusPanelTab", () => {
   it("moves focus to another open tab", () => {
-    const state = focusPanelTab(
-      buildState(["files", "commit"], "files"),
-      "commit"
-    )
+    const initialState = buildState(["files", "commit"], 0)
+    const state = focusPanelTab(initialState, getTabId(initialState, 1))
 
-    expect(state.activeTabId).toBe("commit")
+    expect(state.activeTabId).toBe("commit:2")
     expect(getOpenKinds(state)).toEqual(["files", "commit"])
   })
 
   it("returns the same state when the tab is already active", () => {
-    const state = buildState(["files"], "files")
+    const state = buildState(["files"], 0)
 
-    expect(focusPanelTab(state, "files")).toBe(state)
+    expect(focusPanelTab(state, "files:1")).toBe(state)
   })
 
   it("ignores a surface that is not open", () => {
-    const state = buildState(["files"], "files")
+    const state = buildState(["files"], 0)
 
     expect(focusPanelTab(state, "browser")).toBe(state)
   })
@@ -98,82 +150,94 @@ describe("focusPanelTab", () => {
 describe("closePanelTab", () => {
   it("focuses the right neighbour when the active tab closes", () => {
     const state = closePanelTab(
-      buildState(["files", "changes", "commit"], "changes"),
-      "changes"
+      buildState(["files", "changes", "commit"], 1),
+      "changes:2"
     )
 
     expect(getOpenKinds(state)).toEqual(["files", "commit"])
-    expect(state.activeTabId).toBe("commit")
+    expect(state.activeTabId).toBe("commit:3")
   })
 
   it("falls back to the left neighbour when the last tab closes", () => {
     const state = closePanelTab(
-      buildState(["files", "changes", "commit"], "commit"),
-      "commit"
+      buildState(["files", "changes", "commit"], 2),
+      "commit:3"
     )
 
     expect(getOpenKinds(state)).toEqual(["files", "changes"])
-    expect(state.activeTabId).toBe("changes")
+    expect(state.activeTabId).toBe("changes:2")
   })
 
   it("returns the launcher empty state when the only tab closes", () => {
-    const state = closePanelTab(buildState(["browser"], "browser"), "browser")
+    const state = closePanelTab(buildState(["browser"], 0), "browser:1")
 
-    expect(state).toEqual({ activeTabId: null, openTabs: [] })
+    expect(state).toEqual({
+      activeTabId: null,
+      nextTabOrdinal: 2,
+      openTabs: []
+    })
   })
 
   it("keeps the active tab when another tab closes", () => {
     const state = closePanelTab(
-      buildState(["files", "changes", "commit"], "commit"),
-      "files"
+      buildState(["files", "changes", "commit"], 2),
+      "files:1"
     )
 
     expect(getOpenKinds(state)).toEqual(["changes", "commit"])
-    expect(state.activeTabId).toBe("commit")
+    expect(state.activeTabId).toBe("commit:3")
   })
 
   it("ignores a surface that is not open", () => {
-    const state = buildState(["files"], "files")
+    const state = buildState(["files"], 0)
 
     expect(closePanelTab(state, "terminal")).toBe(state)
   })
 
   it("leaves the previous state untouched", () => {
-    const state = buildState(["files", "commit"], "commit")
+    const state = buildState(["files", "commit"], 1)
 
-    closePanelTab(state, "commit")
+    closePanelTab(state, "commit:2")
 
     expect(getOpenKinds(state)).toEqual(["files", "commit"])
   })
 })
 
-describe("getUnopenedPanelSurfaces", () => {
-  it("lists every launcher surface when nothing is open", () => {
-    expect(getUnopenedPanelSurfaces([])).toEqual([
-      ...PANEL_LAUNCHER_SURFACE_KINDS
-    ])
+describe("getActivePanelTab", () => {
+  it("returns the exact active instance", () => {
+    const state = createPanelTab(
+      createPanelTab(EMPTY_SIDE_PANEL_TABS_STATE, "browser"),
+      "browser"
+    )
+
+    expect(getActivePanelTab(state)).toEqual(state.openTabs[1])
   })
 
-  it("drops the surfaces that already have a tab", () => {
-    expect(
-      getUnopenedPanelSurfaces(
-        buildState(["files", "browser"], "files").openTabs
-      )
-    ).toEqual(["changes", "commit", "terminal"])
+  it("returns null for the launcher state", () => {
+    expect(getActivePanelTab(EMPTY_SIDE_PANEL_TABS_STATE)).toBeNull()
+  })
+})
+
+describe("getPanelTabRuntimeSessionId", () => {
+  const primaryTab: ChatPanelTab = {
+    id: "browser:1",
+    instance: 1,
+    kind: "browser"
+  }
+  const secondaryTab: ChatPanelTab = {
+    id: "browser:2",
+    instance: 2,
+    kind: "browser"
+  }
+
+  it("keeps the primary instance on the chat session", () => {
+    expect(getPanelTabRuntimeSessionId("chat-1", primaryTab)).toBe("chat-1")
   })
 
-  it("returns nothing once every launcher surface is open", () => {
-    expect(
-      getUnopenedPanelSurfaces(
-        buildState([...PANEL_LAUNCHER_SURFACE_KINDS], "files").openTabs
-      )
-    ).toEqual([])
-  })
-
-  it("ignores the artifact tab, which the launcher never offers", () => {
-    expect(
-      getUnopenedPanelSurfaces(buildState(["artifact"], "artifact").openTabs)
-    ).toEqual([...PANEL_LAUNCHER_SURFACE_KINDS])
+  it("isolates additional instances", () => {
+    expect(getPanelTabRuntimeSessionId("chat-1", secondaryTab)).toBe(
+      "chat-1:panel:browser:2"
+    )
   })
 })
 
