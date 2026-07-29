@@ -586,6 +586,7 @@
   "menu": {
     "app": {
       "about": "关于 {appName}",
+      "checkForUpdates": "检查更新...",
       "hide": "隐藏 {appName}",
       "hideOthers": "隐藏其他",
       "quit": "退出 {appName}",
@@ -625,6 +626,47 @@
     }
   },
   "settings": {
+    "about": {
+      "app": {
+        "developmentBadge": "开发版",
+        "title": "应用",
+        "version": "版本"
+      },
+      "updates": {
+        "actions": {
+          "check": "检查更新",
+          "checking": "检查中...",
+          "download": "下载 DMG",
+          "downloadWithSize": "下载 DMG（{size}）",
+          "releasePage": "发布页"
+        },
+        "autoCheck": {
+          "description": "在后台检查 GitHub 上的新版本，每个版本只提醒一次。",
+          "label": "自动检查更新"
+        },
+        "available": {
+          "heading": "Etyon {version} 已发布",
+          "published": "发布于 {date}"
+        },
+        "error": {
+          "http": "GitHub 返回了异常响应，请稍后重试。",
+          "invalidResponse": "无法解析 GitHub 返回的发布信息。",
+          "network": "无法连接 GitHub，请检查网络后重试。"
+        },
+        "status": {
+          "available": "有可用的新版本。",
+          "checking": "正在检查更新...",
+          "idle": "尚未检查过更新。",
+          "lastChecked": "上次检查 {time}",
+          "upToDate": "当前 {version} 已是最新版本。"
+        },
+        "title": "更新",
+        "toast": {
+          "action": "查看",
+          "title": "Etyon {version} 已发布"
+        }
+      }
+    },
     "appIcon": {
       "alt": "白色",
       "default": "深色",
@@ -982,6 +1024,7 @@
       "title": "语言"
     },
     "nav": {
+      "about": "关于",
       "agents": "Agents",
       "channels": "频道",
       "chat": "Chat",

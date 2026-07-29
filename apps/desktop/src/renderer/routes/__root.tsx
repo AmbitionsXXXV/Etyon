@@ -31,6 +31,7 @@ import { AppSidebar } from "@/renderer/components/app-sidebar"
 import { TITLE_BAR_HEIGHT, TitleBar } from "@/renderer/components/title-bar"
 import { useChatSessionActions } from "@/renderer/lib/sidebar/use-chat-session-actions"
 import { useProjectSidebarState } from "@/renderer/lib/sidebar/use-project-sidebar-state"
+import { useUpdateToast } from "@/renderer/lib/updates/use-update-toast"
 
 const TRAFFIC_LIGHT_CLEARANCE = "pl-[76px]"
 type TanStackDevtoolsPlugin = NonNullable<
@@ -145,6 +146,8 @@ const RootComponent = () => {
     window.electron.ipcRenderer.send("open-settings")
   })
 
+  useUpdateToast({ enabled: isAppShellRoute })
+
   return (
     <TooltipProvider>
       {isAppShellRoute ? (
@@ -177,10 +180,10 @@ const RootComponent = () => {
           <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
             <Outlet />
           </div>
-
-          <Toaster />
         </>
       )}
+
+      <Toaster />
 
       <TanStackDevtools
         plugins={[

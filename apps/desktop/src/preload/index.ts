@@ -1,10 +1,31 @@
 import { electronAPI } from "@electron-toolkit/preload"
+import type { AvailableUpdate, UpdateStatus } from "@etyon/rpc"
 import type { IpcRendererEvent } from "electron"
 import { contextBridge, ipcRenderer } from "electron"
 
 const BROWSER_STATE_CHANNEL = "browser:state"
 const TERMINAL_DATA_CHANNEL = "terminal:data"
 const TERMINAL_INPUT_CHANNEL = "terminal:input"
+const UPDATES_STATUS_CHANNEL = "updates:status-changed"
+
+const UPDATE_BUILD_IDENTIFIERS = new Set<UpdateStatus["buildIdentifier"]>([
+  "development",
+  "release"
+])
+const UPDATE_CHECK_ERROR_CODES = new Set<
+  NonNullable<UpdateStatus["errorCode"]>
+>(["http", "invalid-response", "network"])
+const UPDATE_CHECK_REASONS = new Set<NonNullable<UpdateStatus["checkReason"]>>([
+  "auto",
+  "manual"
+])
+const UPDATE_STATES = new Set<UpdateStatus["state"]>([
+  "available",
+  "checking",
+  "error",
+  "idle",
+  "up-to-date"
+])
 
 export interface TerminalDataPayload {
   data: string
@@ -37,9 +58,18 @@ export interface BrowserPreloadApi {
   ) => () => void
 }
 
+export interface UpdatesPreloadApi {
+  onUpdatesStatusChanged: (
+    callback: (payload: UpdateStatus) => void
+  ) => () => void
+}
+
+type UpdatesStatusListener = UpdatesPreloadApi["onUpdatesStatusChanged"]
+
 export type EtyonElectronApi = typeof electronAPI &
   BrowserPreloadApi &
-  TerminalPreloadApi
+  TerminalPreloadApi &
+  UpdatesPreloadApi
 
 const isTerminalDataPayload = (
   payload: unknown
@@ -87,6 +117,55 @@ const isBrowserStatePayload = (
   )
 }
 
+const isAvailableUpdate = (value: unknown): value is AvailableUpdate => {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  const candidate = value as Partial<AvailableUpdate>
+
+  return (
+    (candidate.dmgSizeBytes === null ||
+      (typeof candidate.dmgSizeBytes === "number" &&
+        Number.isSafeInteger(candidate.dmgSizeBytes) &&
+        candidate.dmgSizeBytes >= 0)) &&
+    (candidate.dmgUrl === null || typeof candidate.dmgUrl === "string") &&
+    typeof candidate.htmlUrl === "string" &&
+    (candidate.notes === null || typeof candidate.notes === "string") &&
+    (candidate.publishedAt === null ||
+      typeof candidate.publishedAt === "string") &&
+    typeof candidate.tagName === "string" &&
+    typeof candidate.version === "string" &&
+    candidate.version.length > 0
+  )
+}
+
+const isUpdateStatusPayload = (payload: unknown): payload is UpdateStatus => {
+  if (!payload || typeof payload !== "object") {
+    return false
+  }
+
+  const candidate = payload as Partial<UpdateStatus>
+
+  return (
+    typeof candidate.buildIdentifier === "string" &&
+    UPDATE_BUILD_IDENTIFIERS.has(candidate.buildIdentifier) &&
+    (candidate.checkReason === null ||
+      (typeof candidate.checkReason === "string" &&
+        UPDATE_CHECK_REASONS.has(candidate.checkReason))) &&
+    (candidate.errorCode === null ||
+      (typeof candidate.errorCode === "string" &&
+        UPDATE_CHECK_ERROR_CODES.has(candidate.errorCode))) &&
+    (candidate.lastCheckedAt === null ||
+      (typeof candidate.lastCheckedAt === "number" &&
+        Number.isFinite(candidate.lastCheckedAt))) &&
+    typeof candidate.state === "string" &&
+    UPDATE_STATES.has(candidate.state) &&
+    typeof candidate.currentVersion === "string" &&
+    (candidate.available === null || isAvailableUpdate(candidate.available))
+  )
+}
+
 // eslint-disable-next-line promise/prefer-await-to-callbacks -- Electron IPC subscriptions are callback-driven.
 const onTerminalData: TerminalPreloadApi["onTerminalData"] = (callback) => {
   const listener = (_event: IpcRendererEvent, payload: unknown): void => {
@@ -126,10 +205,27 @@ const onBrowserState: BrowserPreloadApi["onBrowserState"] = (callback) => {
   }
 }
 
+// eslint-disable-next-line promise/prefer-await-to-callbacks -- Electron IPC subscriptions are callback-driven.
+const onUpdatesStatusChanged: UpdatesStatusListener = (callback) => {
+  const listener = (_event: IpcRendererEvent, payload: unknown): void => {
+    if (isUpdateStatusPayload(payload)) {
+      // eslint-disable-next-line promise/prefer-await-to-callbacks -- Delivering an Electron IPC event is synchronous.
+      callback(payload)
+    }
+  }
+
+  ipcRenderer.on(UPDATES_STATUS_CHANNEL, listener)
+
+  return () => {
+    ipcRenderer.removeListener(UPDATES_STATUS_CHANNEL, listener)
+  }
+}
+
 const etyonElectronAPI: EtyonElectronApi = {
   ...electronAPI,
   onBrowserState,
   onTerminalData,
+  onUpdatesStatusChanged,
   sendTerminalInput
 }
 

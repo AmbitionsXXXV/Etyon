@@ -20,10 +20,21 @@ const BUMP_KEYWORDS = new Set([
 const EXPLICIT_VERSION_PATTERN =
   /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u
 
+// Release gate: the JS workspace must be green before the version is bumped.
+// The Rust workspace is not part of the desktop artifact, so it stays out.
+const RELEASE_CHECKS = [
+  { args: ["run", "typecheck"], command: "vp" },
+  { args: ["run", "check"], command: "vp" },
+  { args: ["test", "run"], command: "vp" }
+]
+
+const formatCheckCommand = (check) => `${check.command} ${check.args.join(" ")}`
+
 const HELP_TEXT = `Usage: vp run release -- <patch|minor|major|X.Y.Z> [options]
 
-Bump the product version (root etyon + @etyon/desktop), refresh CHANGELOG.md
-with git-cliff, then create a release commit and annotated tag.
+Run the release checks, bump the product version (root etyon + @etyon/desktop),
+refresh CHANGELOG.md with git-cliff, then create a release commit and annotated
+tag.
 
 Uses Vite+ package-manager forwarding (vp pm version → packageManager pnpm).
 Does not introduce Changesets.
@@ -36,6 +47,7 @@ Options:
   --dry-run           Print the plan without changing files or git state
   --push              Push the release commit and tag to origin
   --skip-changelog    Skip regenerating CHANGELOG.md
+  --skip-checks       Skip the pre-release typecheck/lint/test gate
   --help              Show this help message
 
 Examples:
@@ -274,10 +286,12 @@ const main = () => {
   const dryRun = hasFlag(argv, "--dry-run")
   const push = hasFlag(argv, "--push")
   const skipChangelog = hasFlag(argv, "--skip-changelog")
+  const skipChecks = hasFlag(argv, "--skip-checks")
   const positional = removeFlags(argv, [
     "--dry-run",
     "--push",
     "--skip-changelog",
+    "--skip-checks",
     "--help",
     "-h"
   ])
@@ -305,6 +319,11 @@ const main = () => {
   console.log(`  tag      : ${tagName}`)
   console.log(`  commit   : ${commitMessage}`)
   console.log(
+    `  checks   : ${
+      skipChecks ? "skip" : RELEASE_CHECKS.map(formatCheckCommand).join(", ")
+    }`
+  )
+  console.log(
     `  changelog: ${
       skipChangelog ? "skip" : `git-cliff --tag ${tagName} -o CHANGELOG.md`
     }`
@@ -328,6 +347,15 @@ const main = () => {
 
   if (tagExists(tagName)) {
     fail(`tag ${tagName} already exists`)
+  }
+
+  if (skipChecks) {
+    console.log("\nSkipping release checks (--skip-checks).")
+  } else {
+    for (const check of RELEASE_CHECKS) {
+      console.log(`\n> ${formatCheckCommand(check)}`)
+      runInherit(check.command, check.args)
+    }
   }
 
   const versionArgs = [

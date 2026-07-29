@@ -346,6 +346,11 @@ const SKILLS_SETTINGS_DEFAULT = {
   maxContextSkills: 4
 } as const
 
+const UPDATES_SETTINGS_DEFAULT = {
+  autoCheck: true,
+  lastNotifiedVersion: null
+} as const
+
 export const TelegramSettingsSchema = z.object({
   allowedChatIds: z.string().default(""),
   allowedUserIds: z.string().default(""),
@@ -354,6 +359,13 @@ export const TelegramSettingsSchema = z.object({
   defaultModel: z.string().default(""),
   enabled: z.boolean().default(false),
   requireMentionInGroups: z.boolean().default(true)
+})
+
+// In-app update preferences. Distinct from `UpdateSettingsSchema` below, which
+// is the settings-patch schema and unrelated to the updater.
+export const UpdatesSettingsSchema = z.object({
+  autoCheck: z.boolean().default(true),
+  lastNotifiedVersion: z.string().nullable().default(null)
 })
 
 export const AutoCompactSettingsSchema = z.object({
@@ -469,7 +481,8 @@ export const AppSettingsSchema = z.object({
   skills: SkillsSettingsSchema.default(SKILLS_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
   telegram: TelegramSettingsSchema.default(TELEGRAM_SETTINGS_DEFAULT),
-  theme: ThemeSchema.default("system")
+  theme: ThemeSchema.default("system"),
+  updates: UpdatesSettingsSchema.default(UPDATES_SETTINGS_DEFAULT)
 })
 
 export const UpdateSettingsSchema = z.object({
@@ -493,7 +506,8 @@ export const UpdateSettingsSchema = z.object({
   skills: SkillsSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
   telegram: TelegramSettingsSchema.optional(),
-  theme: ThemeSchema.optional()
+  theme: ThemeSchema.optional(),
+  updates: UpdatesSettingsSchema.optional()
 })
 
 export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>
@@ -531,3 +545,4 @@ export type StreamdownAnimation = z.infer<typeof StreamdownAnimationSchema>
 export type StreamdownSettings = z.infer<typeof StreamdownSettingsSchema>
 export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>
 export type Theme = z.infer<typeof ThemeSchema>
+export type UpdatesSettings = z.infer<typeof UpdatesSettingsSchema>

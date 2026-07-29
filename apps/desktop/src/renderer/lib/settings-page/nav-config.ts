@@ -5,6 +5,7 @@ import {
   ChartLineData02Icon,
   CloudServerIcon,
   ComputerIcon,
+  InformationCircleIcon,
   InternetIcon,
   PackageOpenIcon,
   PaintBrush01Icon,
@@ -15,6 +16,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 export type SettingsSectionId =
+  | "about"
   | "agents"
   | "channels"
   | "chat"
@@ -29,6 +31,7 @@ export type SettingsSectionId =
   | "user-interface"
 
 export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
+  about: "settings.nav.about",
   agents: "settings.nav.agents",
   channels: "settings.nav.channels",
   chat: "settings.nav.chat",
@@ -94,5 +97,9 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   {
     icon: InternetIcon,
     id: "network"
+  },
+  {
+    icon: InformationCircleIcon,
+    id: "about"
   }
 ]
