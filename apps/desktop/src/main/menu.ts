@@ -1,8 +1,9 @@
 import { platform } from "@electron-toolkit/utils"
 import { Menu } from "electron"
 
+import { openUpdatesSettings } from "@/main/updates"
+
 import { t } from "./localization"
-import { openUpdatesSettings } from "./updates"
 import { createSettingsWindow } from "./window"
 
 export const setupMenu = (appName: string) => {

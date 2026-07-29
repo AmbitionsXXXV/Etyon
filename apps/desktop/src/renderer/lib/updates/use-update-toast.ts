@@ -13,22 +13,40 @@ const ABOUT_SETTINGS_TAB = "about"
  * background check, then records the version so a later check stays quiet.
  * Manual checks and every failure mode report inside the About tab instead.
  */
-export const useUpdateToast = (): void => {
+export const useUpdateToast = ({ enabled }: { enabled: boolean }): void => {
   const { t } = useI18n()
 
   useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    let isActive = true
+    const claimedVersions = new Set<string>()
+
     const handleStatus = async (status: UpdateStatus): Promise<void> => {
+      const version = status.available?.version
+
+      if (
+        !version ||
+        status.checkReason !== "auto" ||
+        status.state !== "available" ||
+        claimedVersions.has(version)
+      ) {
+        return
+      }
+
+      claimedVersions.add(version)
+
       try {
         const settings = await rpcClient.settings.get()
 
         if (
-          !status.available ||
+          !isActive ||
           !shouldNotify(status, settings.updates.lastNotifiedVersion)
         ) {
           return
         }
-
-        const { version } = status.available
 
         toast(t("settings.about.updates.toast.title", { version }), {
           action: {
@@ -46,13 +64,33 @@ export const useUpdateToast = (): void => {
           updates: { ...settings.updates, lastNotifiedVersion: version }
         })
       } catch {
-        // A failed settings read or write only costs this one notification; the
-        // next scheduled check retries.
+        claimedVersions.delete(version)
       }
     }
 
-    return window.electron.onUpdatesStatusChanged((status) => {
-      void handleStatus(status)
-    })
-  }, [t])
+    const removeStatusListener = window.electron.onUpdatesStatusChanged(
+      (status) => {
+        void handleStatus(status)
+      }
+    )
+
+    const replayCachedStatus = async (): Promise<void> => {
+      try {
+        const status = await rpcClient.updates.status()
+        await handleStatus(status)
+      } catch {
+        // A later scheduled check or remount retries.
+      }
+    }
+
+    // Replaying the cached status covers release builds that completed their
+    // first automatic check while startup intentionally kept the main window
+    // closed. Register the listener first so a concurrent check cannot be lost.
+    void replayCachedStatus()
+
+    return () => {
+      isActive = false
+      removeStatusListener()
+    }
+  }, [enabled, t])
 }

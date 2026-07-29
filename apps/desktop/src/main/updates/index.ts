@@ -10,6 +10,7 @@ import {
   isRuntimeReleaseBuild
 } from "@/main/app-paths"
 import { logger } from "@/main/logger"
+import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { getSettings } from "@/main/settings"
 import { createSettingsWindow } from "@/main/window"
 import { isAllowedReleaseUrl, parseLatestRelease } from "@/shared/updates/core"
@@ -60,13 +61,17 @@ const writeStatus = (next: UpdateStatus): UpdateStatus => {
 export const getUpdateStatus = (): UpdateStatus => readStatus()
 
 // The whole network surface of this feature: one unauthenticated GET against
-// the public repository, issued from the main process through Chromium's stack
-// so it inherits the app proxy settings. The renderer never sees a URL.
+// the public repository, issued from the main process through the configured
+// app proxy when enabled and Chromium's stack otherwise. The renderer never
+// sees a URL.
 const fetchLatestRelease = async (): Promise<ReleaseFetchResult> => {
   let response: Response
 
   try {
-    response = await net.fetch(LATEST_RELEASE_ENDPOINT, {
+    const { proxy } = getSettings()
+    const updateFetch = proxy.enabled ? createProxyAwareFetch(proxy) : net.fetch
+
+    response = await updateFetch(LATEST_RELEASE_ENDPOINT, {
       headers: {
         Accept: "application/vnd.github+json",
         "User-Agent": `Etyon/${app.getVersion()}`

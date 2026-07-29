@@ -8,11 +8,53 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useEffect } from "react"
+import type { ComponentPropsWithoutRef } from "react"
+import type { Components, ExtraProps } from "streamdown"
 
 import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
+import { resolveReleaseNotesUrl } from "@/renderer/lib/updates/release-notes"
 import { queryClient } from "@/renderer/query-client"
+
+type ReleaseNotesLinkProps = ComponentPropsWithoutRef<"a"> & ExtraProps
+
+const ReleaseNotesLink = ({
+  children,
+  href,
+  node: _node,
+  onClick,
+  ...props
+}: ReleaseNotesLinkProps) => (
+  <a
+    {...props}
+    href={href}
+    onClick={(event) => {
+      onClick?.(event)
+
+      if (event.defaultPrevented || !href) {
+        return
+      }
+
+      event.preventDefault()
+
+      const externalUrl = resolveReleaseNotesUrl(href)
+
+      if (externalUrl) {
+        void window.electron.ipcRenderer.invoke(
+          "open-external-url",
+          externalUrl
+        )
+      }
+    }}
+  >
+    {children}
+  </a>
+)
+
+const RELEASE_NOTES_COMPONENTS = {
+  a: ReleaseNotesLink
+} satisfies Components
 
 // Compact markdown styling for remote release notes, sized for the boxed
 // preview inside the update card.
@@ -117,6 +159,7 @@ const AvailableUpdateDetails = ({ status }: { status: UpdateStatus }) => {
           <AgentMarkdown
             animated={false}
             className={RELEASE_NOTES_CLASS_NAME}
+            components={RELEASE_NOTES_COMPONENTS}
             isAnimating={false}
           >
             {available.notes}

@@ -8,6 +8,17 @@ const TERMINAL_DATA_CHANNEL = "terminal:data"
 const TERMINAL_INPUT_CHANNEL = "terminal:input"
 const UPDATES_STATUS_CHANNEL = "updates:status-changed"
 
+const UPDATE_BUILD_IDENTIFIERS = new Set<UpdateStatus["buildIdentifier"]>([
+  "development",
+  "release"
+])
+const UPDATE_CHECK_ERROR_CODES = new Set<
+  NonNullable<UpdateStatus["errorCode"]>
+>(["http", "invalid-response", "network"])
+const UPDATE_CHECK_REASONS = new Set<NonNullable<UpdateStatus["checkReason"]>>([
+  "auto",
+  "manual"
+])
 const UPDATE_STATES = new Set<UpdateStatus["state"]>([
   "available",
   "checking",
@@ -114,9 +125,18 @@ const isAvailableUpdate = (value: unknown): value is AvailableUpdate => {
   const candidate = value as Partial<AvailableUpdate>
 
   return (
-    typeof candidate.version === "string" &&
+    (candidate.dmgSizeBytes === null ||
+      (typeof candidate.dmgSizeBytes === "number" &&
+        Number.isSafeInteger(candidate.dmgSizeBytes) &&
+        candidate.dmgSizeBytes >= 0)) &&
+    (candidate.dmgUrl === null || typeof candidate.dmgUrl === "string") &&
+    typeof candidate.htmlUrl === "string" &&
+    (candidate.notes === null || typeof candidate.notes === "string") &&
+    (candidate.publishedAt === null ||
+      typeof candidate.publishedAt === "string") &&
     typeof candidate.tagName === "string" &&
-    typeof candidate.htmlUrl === "string"
+    typeof candidate.version === "string" &&
+    candidate.version.length > 0
   )
 }
 
@@ -128,6 +148,17 @@ const isUpdateStatusPayload = (payload: unknown): payload is UpdateStatus => {
   const candidate = payload as Partial<UpdateStatus>
 
   return (
+    typeof candidate.buildIdentifier === "string" &&
+    UPDATE_BUILD_IDENTIFIERS.has(candidate.buildIdentifier) &&
+    (candidate.checkReason === null ||
+      (typeof candidate.checkReason === "string" &&
+        UPDATE_CHECK_REASONS.has(candidate.checkReason))) &&
+    (candidate.errorCode === null ||
+      (typeof candidate.errorCode === "string" &&
+        UPDATE_CHECK_ERROR_CODES.has(candidate.errorCode))) &&
+    (candidate.lastCheckedAt === null ||
+      (typeof candidate.lastCheckedAt === "number" &&
+        Number.isFinite(candidate.lastCheckedAt))) &&
     typeof candidate.state === "string" &&
     UPDATE_STATES.has(candidate.state) &&
     typeof candidate.currentVersion === "string" &&

@@ -100,11 +100,11 @@ git push origin vX.Y.Z
 
 任何 bump 之前必须过三关，闸门只覆盖 JS 工作区（Rust 工作区与桌面发版产物无关，不拖慢发版）：
 
-| 命令 | 作用 |
-| --- | --- |
+| 命令               | 作用                        |
+| ------------------ | --------------------------- |
 | `vp run typecheck` | 全 workspace `tsc --noEmit` |
-| `vp run check` | Oxlint + Oxfmt |
-| `vp test run` | Vitest（desktop + rpc） |
+| `vp run check`     | Oxlint + Oxfmt              |
+| `vp test run`      | Vitest（desktop + rpc）     |
 
 任一失败即中止，不会改动任何文件或 git 状态。`--dry-run` 会把闸门计划一并打印出来：
 

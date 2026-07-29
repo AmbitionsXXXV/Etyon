@@ -121,6 +121,16 @@ describe("pickDmgAsset", () => {
     ).toEqual({ sizeBytes: null, url: DMG_URL })
   })
 
+  it("normalizes invalid asset sizes to null", () => {
+    for (const size of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        pickDmgAsset([
+          { browser_download_url: DMG_URL, name: "etyon.dmg", size }
+        ])
+      ).toEqual({ sizeBytes: null, url: DMG_URL })
+    }
+  })
+
   it("skips assets hosted outside the repository", () => {
     expect(
       pickDmgAsset([

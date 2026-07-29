@@ -107,7 +107,12 @@ export const pickDmgAsset = (assets: unknown): null | ReleaseDmgAsset => {
       continue
     }
 
-    return { sizeBytes: typeof size === "number" ? size : null, url }
+    const sizeBytes =
+      typeof size === "number" && Number.isSafeInteger(size) && size >= 0
+        ? size
+        : null
+
+    return { sizeBytes, url }
   }
 
   return null

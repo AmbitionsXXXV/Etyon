@@ -146,7 +146,7 @@ const RootComponent = () => {
     window.electron.ipcRenderer.send("open-settings")
   })
 
-  useUpdateToast()
+  useUpdateToast({ enabled: isAppShellRoute })
 
   return (
     <TooltipProvider>

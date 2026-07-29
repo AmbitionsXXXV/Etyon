@@ -13,7 +13,7 @@
 
 ## 2. 设计决策（D1）
 
-1. **更新源 = GitHub Releases latest API**。主进程 `net.fetch`（Chromium 栈，继承应用代理设置），headers：`User-Agent: Etyon/<version>`、`Accept: application/vnd.github+json`；`AbortSignal.timeout(10_000)`；并发去重（in-flight 复用同一 promise）。检查只发生在主进程，renderer CSP 零改动。
+1. **更新源 = GitHub Releases latest API**。主进程在应用代理启用时复用 `createProxyAwareFetch`，否则使用 `net.fetch`（Chromium 栈），headers：`User-Agent: Etyon/<version>`、`Accept: application/vnd.github+json`；`AbortSignal.timeout(10_000)`；并发去重（in-flight 复用同一 promise）。检查只发生在主进程，renderer CSP 零改动。
 2. **状态机**：`idle → checking → up-to-date | available | error`。单一事实源在主进程内存；oRPC 拉取 + `updates:status-changed` 推送。`errorCode ∈ network | http | invalid-response`（文案由 renderer 侧 i18n 映射）。
 3. **通知策略**：只有 **auto** 检查发现新版、且 `version !== settings.updates.lastNotifiedVersion` 时 toast 一次（sonner 的首个消费者）；manual 检查只在 About 区内联反馈；错误永不 toast（auto 失败静默，manual 失败内联）。
 4. **auto-check**：仅 `isRuntimeReleaseBuild() && settings.updates.autoCheck`（默认 true）；ready 后延迟 15s 首查，之后每 6h 重查。dev build 允许 manual 检查（UI 显示 development 徽标）。`lastCheckedAt` 仅内存，不持久化。
@@ -61,7 +61,7 @@ UpdatesSettingsSchema = { autoCheck: boolean = true, lastNotifiedVersion: string
 5. `apps/desktop/src/main/menu.ts`：app 子菜单 about 之后加 `menu.app.checkForUpdates`（「检查更新…」）→ `openUpdatesSettings()`。
 6. `apps/desktop/src/preload/index.ts`：`onUpdatesStatusChanged`。
 7. renderer 设置页四件套：`lib/settings-page/nav-config.ts`（`about` 放 nav 最后，Hugeicons 信息类 stroke 图标，用 hugeicons MCP 选型）→ `settings-page.tsx` 的 `SETTINGS_SECTION_IDS` + 渲染分支 → `components/settings/about-tab.tsx`（新）→ i18n ×3。
-8. `routes/__root.tsx`：`<Toaster />` 移出条件分支（app-shell 分支目前根本没挂，不修 toast 必挂空）；app-shell 侧挂 status 监听 → available && auto && 未通知过 → sonner toast（标题「Etyon vX.Y.Z 已发布」+ action 查看 → 打开设置 about tab）+ `settings.update` 写 `lastNotifiedVersion`。
+8. `routes/__root.tsx`：`<Toaster />` 移出条件分支（app-shell 分支目前根本没挂，不修 toast 必挂空）；app-shell 侧挂 status 监听并在挂载时回放主进程缓存状态 → available && auto && 未通知过 → sonner toast（标题「Etyon vX.Y.Z 已发布」+ action 查看 → 打开设置 about tab）+ `settings.update` 写 `lastNotifiedVersion`。
 9. `script/release.mjs`：checks 闸门 + `--skip-checks` + help/dry-run 文案同步。
 10. 文档：`doc/packaging.md`、`doc/release.md` 增补（更新检查 + 闸门说明）；本 plan 文件随 PR 提交。
 
