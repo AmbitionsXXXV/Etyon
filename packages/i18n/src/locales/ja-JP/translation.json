@@ -596,6 +596,7 @@
   "menu": {
     "app": {
       "about": "{appName} について",
+      "checkForUpdates": "アップデートを確認...",
       "hide": "{appName} を隠す",
       "hideOthers": "ほかを隠す",
       "quit": "{appName} を終了",
@@ -635,6 +636,47 @@
     }
   },
   "settings": {
+    "about": {
+      "app": {
+        "developmentBadge": "開発ビルド",
+        "title": "アプリ",
+        "version": "バージョン"
+      },
+      "updates": {
+        "actions": {
+          "check": "アップデートを確認",
+          "checking": "確認中...",
+          "download": "DMG をダウンロード",
+          "downloadWithSize": "DMG をダウンロード（{size}）",
+          "releasePage": "リリースページ"
+        },
+        "autoCheck": {
+          "description": "バックグラウンドで GitHub の新しいリリースを確認し、バージョンごとに 1 回だけ通知します。",
+          "label": "アップデートを自動で確認"
+        },
+        "available": {
+          "heading": "Etyon {version} が公開されました",
+          "published": "{date} に公開"
+        },
+        "error": {
+          "http": "GitHub から予期しない応答が返されました。しばらくしてから再試行してください。",
+          "invalidResponse": "GitHub のリリース情報を読み取れませんでした。",
+          "network": "GitHub に接続できませんでした。接続を確認して再試行してください。"
+        },
+        "status": {
+          "available": "新しいバージョンがあります。",
+          "checking": "アップデートを確認しています...",
+          "idle": "まだアップデートを確認していません。",
+          "lastChecked": "最終確認 {time}",
+          "upToDate": "バージョン {version} は最新です。"
+        },
+        "title": "アップデート",
+        "toast": {
+          "action": "表示",
+          "title": "Etyon {version} が公開されました"
+        }
+      }
+    },
     "appIcon": {
       "alt": "ホワイト",
       "default": "ダーク",
@@ -992,6 +1034,7 @@
       "title": "言語"
     },
     "nav": {
+      "about": "情報",
       "agents": "Agents",
       "channels": "Channels",
       "chat": "Chat",

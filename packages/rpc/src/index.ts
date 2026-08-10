@@ -479,7 +479,8 @@ export {
   StreamdownSettingsSchema,
   TelegramSettingsSchema,
   ThemeSchema,
-  UpdateSettingsSchema
+  UpdateSettingsSchema,
+  UpdatesSettingsSchema
 } from "./schemas/settings"
 export type {
   AgentApprovalSettings,
@@ -511,7 +512,8 @@ export type {
   StreamdownAnimation,
   StreamdownSettings,
   TelegramSettings,
-  Theme
+  Theme,
+  UpdatesSettings
 } from "./schemas/settings"
 export {
   TelegramBotConnectionSchema,
@@ -539,3 +541,21 @@ export type {
   RtkTokenSavingsRuntime,
   RtkTokenSavingsSummary
 } from "./schemas/token-savings"
+export {
+  AvailableUpdateSchema,
+  OpenUpdateLinkOutputSchema,
+  UpdateBuildIdentifierSchema,
+  UpdateCheckErrorCodeSchema,
+  UpdateCheckReasonSchema,
+  UpdateStateSchema,
+  UpdateStatusSchema
+} from "./schemas/updates"
+export type {
+  AvailableUpdate,
+  OpenUpdateLinkOutput,
+  UpdateBuildIdentifier,
+  UpdateCheckErrorCode,
+  UpdateCheckReason,
+  UpdateState,
+  UpdateStatus
+} from "./schemas/updates"

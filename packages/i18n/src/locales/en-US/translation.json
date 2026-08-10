@@ -596,6 +596,7 @@
   "menu": {
     "app": {
       "about": "About {appName}",
+      "checkForUpdates": "Check for Updates...",
       "hide": "Hide {appName}",
       "hideOthers": "Hide Others",
       "quit": "Quit {appName}",
@@ -635,6 +636,47 @@
     }
   },
   "settings": {
+    "about": {
+      "app": {
+        "developmentBadge": "Development build",
+        "title": "Application",
+        "version": "Version"
+      },
+      "updates": {
+        "actions": {
+          "check": "Check for updates",
+          "checking": "Checking...",
+          "download": "Download DMG",
+          "downloadWithSize": "Download DMG ({size})",
+          "releasePage": "Release page"
+        },
+        "autoCheck": {
+          "description": "Check GitHub for new releases in the background and notify you once per version.",
+          "label": "Check for updates automatically"
+        },
+        "available": {
+          "heading": "Etyon {version} is available",
+          "published": "Released {date}"
+        },
+        "error": {
+          "http": "GitHub returned an unexpected response. Try again later.",
+          "invalidResponse": "The release information from GitHub could not be read.",
+          "network": "Could not reach GitHub. Check your connection and try again."
+        },
+        "status": {
+          "available": "A newer version is available.",
+          "checking": "Checking for updates...",
+          "idle": "No update check has run yet.",
+          "lastChecked": "Last checked {time}",
+          "upToDate": "Etyon {version} is the latest version."
+        },
+        "title": "Updates",
+        "toast": {
+          "action": "View",
+          "title": "Etyon {version} is available"
+        }
+      }
+    },
     "appIcon": {
       "alt": "Light",
       "default": "Dark",
@@ -992,6 +1034,7 @@
       "title": "Language"
     },
     "nav": {
+      "about": "About",
       "agents": "Agents",
       "channels": "Channels",
       "chat": "Chat",

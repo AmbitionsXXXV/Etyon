@@ -60,6 +60,12 @@ vp run release -- 0.2.0
 vp run release -- patch -- --skip-changelog
 ```
 
+跳过发版前检查（仅用于救火，正常发版不要用）：
+
+```bash
+vp run release -- patch -- --skip-checks
+```
+
 完成后直接 push 触发 CI：
 
 ```bash
@@ -80,14 +86,31 @@ git push origin vX.Y.Z
 1. 校验根与 `@etyon/desktop` 当前版本一致
 2. 要求工作区干净
 3. 确认目标 tag 不存在
-4. `vp pm version … -r --filter etyon --filter @etyon/desktop`
-5. 再次校验两包版本与计划一致
-6. `git-cliff --tag vX.Y.Z -o CHANGELOG.md`（可用 `--skip-changelog` 跳过）
-7. `git commit`：`chore(release): vX.Y.Z`（`cliff.toml` 会 skip 这类 commit）
-8. `git tag -a vX.Y.Z`
-9. 可选 `--push`
+4. 依次跑发版闸门 `vp run typecheck` / `vp run check` / `vp test run`（可用 `--skip-checks` 跳过）
+5. `vp pm version … -r --filter etyon --filter @etyon/desktop`
+6. 再次校验两包版本与计划一致
+7. `git-cliff --tag vX.Y.Z -o CHANGELOG.md`（可用 `--skip-changelog` 跳过）
+8. `git commit`：`chore(release): vX.Y.Z`（`cliff.toml` 会 skip 这类 commit）
+9. `git tag -a vX.Y.Z`
+10. 可选 `--push`
 
 依赖本机已安装 `git-cliff`（与现有 `vp run changelog` 相同）。
+
+## 发版闸门
+
+任何 bump 之前必须过三关，闸门只覆盖 JS 工作区（Rust 工作区与桌面发版产物无关，不拖慢发版）：
+
+| 命令               | 作用                        |
+| ------------------ | --------------------------- |
+| `vp run typecheck` | 全 workspace `tsc --noEmit` |
+| `vp run check`     | Oxlint + Oxfmt              |
+| `vp test run`      | Vitest（desktop + rpc）     |
+
+任一失败即中止，不会改动任何文件或 git 状态。`--dry-run` 会把闸门计划一并打印出来：
+
+```
+  checks   : vp run typecheck, vp run check, vp test run
+```
 
 ## 与 GitHub Release 的关系
 

@@ -33,6 +33,7 @@ import {
 import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
+import { AboutTab } from "./settings/about-tab"
 import { AgentsTab } from "./settings/agents-tab"
 import { ChannelsTab } from "./settings/channels-tab"
 import { ChatTab } from "./settings/chat-tab"
@@ -71,6 +72,7 @@ interface SettingsNavItem {
 }
 
 const SETTINGS_SECTION_IDS = new Set<string>([
+  "about",
   "agents",
   "channels",
   "chat",
@@ -83,6 +85,12 @@ const SETTINGS_SECTION_IDS = new Set<string>([
   "skills",
   "token-savings",
   "user-interface"
+])
+
+// Sections whose content owns the scroll area instead of the page shell.
+const FULL_HEIGHT_SECTION_IDS = new Set<SettingsSectionId>([
+  "plugins",
+  "providers"
 ])
 
 const resolveInitialSection = (): SettingsSectionId => {
@@ -251,8 +259,7 @@ export const SettingsPage = ({
     () => buildLightColorSchemaOptions(t),
     [t]
   )
-  const isFullHeightSection =
-    activeSection === "providers" || activeSection === "plugins"
+  const isFullHeightSection = FULL_HEIGHT_SECTION_IDS.has(activeSection)
   const layoutStyle = useMemo(
     () => getSettingsPageLayoutStyle(isStandaloneWindow),
     [isStandaloneWindow]
@@ -584,6 +591,8 @@ export const SettingsPage = ({
                   telegram={draft.telegram}
                 />
               )}
+
+              {activeSection === "about" && <AboutTab />}
             </div>
           </div>
         </div>
