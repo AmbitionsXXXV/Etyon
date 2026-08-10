@@ -161,6 +161,12 @@
     "messageScroll": {
       "toBottom": "Back to bottom"
     },
+    "sessionIndicator": {
+      "label": "Conversation turns",
+      "turn": "Turn {number}",
+      "viewTurn": "Jump to turn {number}",
+      "waitingResponse": "Waiting for the model response…"
+    },
     "missing": {
       "action": "Back Home",
       "description": "This chat session does not exist or has not synced into the local list yet.",

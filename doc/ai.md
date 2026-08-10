@@ -185,6 +185,7 @@ const ChatComponent = () => {
 
 ## Chat Timeline 布局
 
+- Chat viewport 左侧有垂直居中的 session 级轮次指示器，仅在消息内容达到视口高度的 1.5 倍时展示：每个刻度对应一组 user input 与其后的 model response；当前阅读轮次与 hover/focus 轮次使用鱼眼式相邻刻度强调，hover/focus 卡片展示输入标题和回复摘要，点击刻度会跳到该轮 user input。消息滚动区使用 shadcn `ScrollArea` 相同的细轨道、圆角 thumb 和主题 token 样式。该导航只由现有消息投影生成，不进入消息数据或持久化。
 - assistant 消息按 `message.parts` 顺序渲染（`AssistantMessageTimeline`），不再把 tool trace 汇总到底部暂存区。
 - assistant `text` part 使用 `streamdown` 解析 Markdown，支持流式未闭合 Markdown 的补全、GFM 表格 / 列表 / code fence 渲染，以及响应期间的 caret / 动画。
 - assistant code fence 保留 `streamdown` 的复制 / 下载 action，但只展示一层 code block 外框；language header 与 code body 共用同一个容器，右侧 action 在 hover / focus 时显示，避免返回内容里再出现双层卡片。

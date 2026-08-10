@@ -161,6 +161,12 @@
     "messageScroll": {
       "toBottom": "一番下へ戻る"
     },
+    "sessionIndicator": {
+      "label": "会話ターン",
+      "turn": "ターン {number}",
+      "viewTurn": "ターン {number} に移動",
+      "waitingResponse": "モデルの応答を待っています…"
+    },
     "missing": {
       "action": "ホームに戻る",
       "description": "この chat session は存在しないか、まだローカル一覧に同期されていません。",

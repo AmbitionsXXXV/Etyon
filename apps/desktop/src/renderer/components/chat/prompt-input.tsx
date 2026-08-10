@@ -1640,7 +1640,7 @@ export const PromptInput = ({
       editable: !(disabled || isSubmitting),
       editorProps: {
         attributes: {
-          class: "min-h-32 whitespace-pre-wrap break-words text-sm outline-none"
+          class: "min-h-10 whitespace-pre-wrap break-words text-sm outline-none"
         }
       },
       extensions: [
@@ -2235,9 +2235,9 @@ export const PromptInput = ({
           ) : null}
           <div
             className={cn(
-              "min-h-32 cursor-text text-sm",
+              "min-h-10 cursor-text text-sm",
               "data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50",
-              "[&_.ProseMirror]:min-h-32 [&_.ProseMirror]:outline-none",
+              "[&_.ProseMirror]:min-h-10 [&_.ProseMirror]:outline-none",
               "[&_.ProseMirror_p]:my-0",
               "[&_.ProseMirror_p.is-editor-empty:first-child::before]:pointer-events-none",
               "[&_.ProseMirror_p.is-editor-empty:first-child::before]:float-left",

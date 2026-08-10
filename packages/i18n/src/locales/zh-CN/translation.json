@@ -161,6 +161,12 @@
     "messageScroll": {
       "toBottom": "回到底部"
     },
+    "sessionIndicator": {
+      "label": "对话轮次",
+      "turn": "第 {number} 轮",
+      "viewTurn": "跳转到第 {number} 轮",
+      "waitingResponse": "正在等待模型回复…"
+    },
     "missing": {
       "action": "返回首页",
       "description": "这个 chat session 不存在，或者还没有同步到本地列表。",

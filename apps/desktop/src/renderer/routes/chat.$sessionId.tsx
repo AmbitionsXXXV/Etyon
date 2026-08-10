@@ -40,7 +40,7 @@ import type { DefaultChatTransport, FileUIPart } from "ai"
 import { getToolName, isToolUIPart } from "ai"
 import { AnimatePresence, motion } from "motion/react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ReactNode, UIEvent } from "react"
+import type { ReactNode, RefObject, UIEvent } from "react"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
@@ -55,10 +55,14 @@ import { MessageAttachmentImages } from "@/renderer/components/chat/message-atta
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
+import { ChatSessionTurnIndicator } from "@/renderer/components/chat/session-turn-indicator"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
 import { collectPublishedArtifactRefs } from "@/renderer/lib/chat/artifact-panel"
 import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
-import { messageHasWorkSection } from "@/renderer/lib/chat/assistant-message-timeline"
+import {
+  getAssistantBodyText,
+  messageHasWorkSection
+} from "@/renderer/lib/chat/assistant-message-timeline"
 import { getImageFileParts } from "@/renderer/lib/chat/attachments"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
@@ -117,6 +121,10 @@ import type {
   PromptSkillMentionItem,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  buildChatSessionTurns,
+  shouldShowSessionTurnIndicator
+} from "@/renderer/lib/chat/session-turn-indicator"
 import {
   closePanelTab,
   createPanelTab,
@@ -343,6 +351,57 @@ const PROJECT_CONTEXT_PANEL_MAX_SIZE = 74
 const PROJECT_CONTEXT_PANEL_MIN_SIZE = 22
 const PROJECT_TREE_ITEM_LIMIT = 5000
 const CHAT_LAYOUT_CLASS_NAME = "flex h-svh min-h-0 flex-1 overflow-hidden"
+const CHAT_MESSAGES_SCROLL_CLASS_NAME =
+  "h-full py-5 pr-2.5 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:bg-clip-padding [&::-webkit-scrollbar-thumb:hover]:bg-muted-foreground/60 [&::-webkit-scrollbar-track]:bg-transparent"
+
+const getChatMessagesScrollClassName = (
+  isSessionTurnIndicatorVisible: boolean
+): string =>
+  cn(CHAT_MESSAGES_SCROLL_CLASS_NAME, isSessionTurnIndicatorVisible && "pl-16")
+
+const useChatSessionTurnIndicatorVisibility = ({
+  messages,
+  scrollContainerRef,
+  sessionId,
+  turnCount
+}: {
+  messages: readonly ChatUiMessage[]
+  scrollContainerRef: RefObject<HTMLDivElement | null>
+  sessionId: string
+  turnCount: number
+}): boolean => {
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    const scrollElement = scrollContainerRef.current
+
+    if (!scrollElement) {
+      setIsVisible(false)
+      return
+    }
+
+    const updateVisibility = () => {
+      setIsVisible(
+        turnCount > 0 &&
+          shouldShowSessionTurnIndicator(
+            scrollElement.scrollHeight,
+            scrollElement.clientHeight
+          )
+      )
+    }
+    const resizeObserver = new ResizeObserver(updateVisibility)
+
+    resizeObserver.observe(scrollElement)
+    if (scrollElement.firstElementChild) {
+      resizeObserver.observe(scrollElement.firstElementChild)
+    }
+    updateVisibility()
+
+    return () => resizeObserver.disconnect()
+  }, [messages, scrollContainerRef, sessionId, turnCount])
+
+  return isVisible
+}
 
 const getMessageText = (message: ChatUiMessage): string =>
   message.parts
@@ -350,6 +409,15 @@ const getMessageText = (message: ChatUiMessage): string =>
     .map((part) => part.text)
     .join("")
     .trim()
+
+const toChatSessionTurnSourceMessage = (message: ChatUiMessage) => ({
+  id: message.id,
+  role: message.role,
+  text:
+    message.role === "assistant"
+      ? getAssistantBodyText(message)
+      : getMessageText(message)
+})
 
 const toRuntimeChatMessage = (
   message: PersistedChatUiMessage
@@ -1493,6 +1561,7 @@ const ChatMessageItem = memo(
             "min-w-0",
             isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
           )}
+          data-chat-message-id={message.id}
           initial={isEntering ? MOTION_RISE_IN.initial : false}
           transition={MOTION_RISE_IN.transition}
         >
@@ -1883,6 +1952,17 @@ const ChatRuntime = ({
       selectedSession.id
     ]
   )
+
+  const sessionTurns = useMemo(
+    () => buildChatSessionTurns(messages.map(toChatSessionTurnSourceMessage)),
+    [messages]
+  )
+  const isSessionTurnIndicatorVisible = useChatSessionTurnIndicatorVisibility({
+    messages,
+    scrollContainerRef: messagesScrollRef,
+    sessionId: selectedSession.id,
+    turnCount: sessionTurns.length
+  })
 
   const updateScrollToBottomVisibility = useCallback(
     (scrollElement: HTMLDivElement | null) => {
@@ -2494,8 +2574,16 @@ const ChatRuntime = ({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="relative min-h-0 flex-1">
+            <ChatSessionTurnIndicator
+              isVisible={isSessionTurnIndicatorVisible}
+              key={selectedSession.id}
+              scrollContainerRef={messagesScrollRef}
+              turns={sessionTurns}
+            />
             <ScrollShadow
-              className="h-full py-5 pr-2.5"
+              className={getChatMessagesScrollClassName(
+                isSessionTurnIndicatorVisible
+              )}
               onScroll={handleMessagesScroll}
               ref={messagesScrollRef}
             >

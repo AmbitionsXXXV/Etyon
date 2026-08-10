@@ -6,6 +6,7 @@ The desktop chat surface uses HeroUI Pro AI primitives around the existing chat 
 
 - `PromptInput` is the composer shell.
 - The TipTap editor remains inside `PromptInput.Content` so `@` project mentions, `$` skill mentions, `/prompt` templates, and `/plan` shortcuts keep their existing behavior.
+- The empty TipTap editor defaults to a two-line (`min-h-10`) text area and grows with content, keeping the desktop composer compact without clipping longer prompts.
 - The component passes the extracted plain prompt text to `PromptInput.value`. This keeps `PromptInput.Send` disabled, stop, and submit behavior aligned with the editor state.
 - `lockInputOnRun={false}` and `allowSubmitWhileRunning` keep the composer editable while `useChat` is `submitted` or `streaming`.
 - The toolbar start renders a left-aligned `Chat` / `Agent` mode control with HeroUI `ToggleButtonGroup`; `Mod+Shift+Tab` is registered through TanStack Hotkeys and the selected mode is sent as request body `agentMode`. Bare `Shift+Tab` cycles the permission mode (`default` → `acceptEdits` → `bypass`) and is disabled while the composer is in chat mode.
