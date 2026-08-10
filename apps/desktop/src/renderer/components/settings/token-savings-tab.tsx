@@ -6,7 +6,7 @@ import type {
   RtkTokenSavingsOutput,
   RtkTokenSavingsRecentCommand
 } from "@etyon/rpc"
-import { BarChart } from "@heroui-pro/react"
+import { BarChart } from "@heroui-pro/react/bar-chart"
 import {
   Button,
   Card,

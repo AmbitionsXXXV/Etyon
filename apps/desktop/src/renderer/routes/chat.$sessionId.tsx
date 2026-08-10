@@ -12,8 +12,9 @@ import type {
   StreamdownAnimation
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { ChatMessage, Resizable } from "@heroui-pro/react"
-import type { PanelImperativeHandle } from "@heroui-pro/react"
+import { ChatMessage } from "@heroui-pro/react"
+import { Resizable } from "@heroui-pro/react/resizable"
+import type { PanelImperativeHandle } from "@heroui-pro/react/resizable"
 import {
   Button,
   Chip,

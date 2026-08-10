@@ -1,5 +1,5 @@
 import type { AgentCommandApprovalRule, ChatMention } from "@etyon/rpc"
-import type { ToolPartState } from "@heroui-pro/react"
+import type { ToolPartState } from "@heroui-pro/react/chat-tool"
 import type {
   ChatAddToolApproveResponseFunction,
   ChatRequestOptions,

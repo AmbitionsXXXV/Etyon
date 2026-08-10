@@ -8,7 +8,7 @@ import type {
   ReadProjectFileOutput
 } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
-import { Resizable } from "@heroui-pro/react"
+import { Resizable } from "@heroui-pro/react/resizable"
 import {
   Button,
   Checkbox,

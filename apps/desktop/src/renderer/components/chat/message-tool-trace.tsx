@@ -1,7 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import { cn } from "@etyon/ui/lib/utils"
-import { ChatTool } from "@heroui-pro/react"
-import type { ToolPartState } from "@heroui-pro/react"
+import { ChatTool } from "@heroui-pro/react/chat-tool"
+import type { ToolPartState } from "@heroui-pro/react/chat-tool"
 import { Button, Chip, Disclosure, Tooltip } from "@heroui/react"
 import {
   ArrowTurnBackwardIcon,

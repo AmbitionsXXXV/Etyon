@@ -14,7 +14,7 @@ versioning:
     - "@etyon/ui"
 
 catalog:
-  "@heroui/react": ^3.2.2
+  "@heroui/react": ^3.2.4
   "@hugeicons/core-free-icons": ^4.2.2
   "@hugeicons/react": ^1.1.9
   "@tailwindcss/vite": ^4.3.3
@@ -109,7 +109,7 @@ minimumReleaseAgeExclude:
   - "@tiptap/starter-kit@3.23.5"
   - font-list@2.0.4
   - shiki@4.1.0
-  - "@heroui-pro/react@1.0.0-beta.5 || 1.0.0-beta.6"
+  - "@heroui-pro/react@1.0.0-beta.8"
   - "@turbo/darwin-64@2.9.16 || 2.10.4"
   - "@turbo/darwin-arm64@2.9.16 || 2.10.4"
   - "@turbo/gen@2.9.16"
@@ -121,10 +121,10 @@ minimumReleaseAgeExclude:
   - "@internationalized/date@3.12.2"
   - "@internationalized/number@3.6.7"
   - "@internationalized/string@3.2.9"
-  - "@react-types/shared@3.35.0"
-  - react-aria-components@1.18.0
-  - react-aria@3.49.0
-  - react-stately@3.47.0
+  - "@react-types/shared@3.36.1"
+  - react-aria-components@1.20.0
+  - react-aria@3.51.0
+  - react-stately@3.49.0
   - "@voidzero-dev/vite-plus-core@0.1.23 || 0.2.5"
   - "@voidzero-dev/vite-plus-darwin-arm64@0.1.23 || 0.2.5"
   - "@voidzero-dev/vite-plus-darwin-x64@0.1.23 || 0.2.5"
@@ -145,8 +145,8 @@ minimumReleaseAgeExclude:
   - "@ai-sdk/react@3.0.200 || 3.0.231 || 4.0.34"
   - "@pierre/diffs@1.2.8"
   - ai@6.0.198 || 6.0.229 || 7.0.31
-  - "@heroui/react@3.2.0 || 3.2.2"
-  - "@heroui/styles@3.2.0 || 3.2.2"
+  - "@heroui/react@3.2.4"
+  - "@heroui/styles@3.2.4"
   - ultracite@7.9.2
   - "@tailwindcss/node@4.3.3"
   - "@tailwindcss/oxide-android-arm64@4.3.3"
