@@ -33,6 +33,12 @@ import {
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useMutation, useQuery } from "@tanstack/react-query"
+import type { CellContext } from "@tanstack/react-table"
+import {
+  createColumnHelper,
+  tableFeatures,
+  useTable
+} from "@tanstack/react-table"
 import { motion } from "motion/react"
 import { useMemo } from "react"
 
@@ -66,6 +72,42 @@ interface ToolDesignCardConfig {
 const DAILY_CHART_LIMIT = 30
 const MAX_COMMAND_ROWS = 8
 const MAX_RECENT_ROWS = 10
+const RECENT_COMMAND_TABLE_FEATURES = tableFeatures({})
+const recentCommandColumnHelper = createColumnHelper<
+  typeof RECENT_COMMAND_TABLE_FEATURES,
+  RtkTokenSavingsRecentCommand
+>()
+type RecentCommandNumberCellContext = CellContext<
+  typeof RECENT_COMMAND_TABLE_FEATURES,
+  RtkTokenSavingsRecentCommand,
+  number
+>
+type RecentCommandStringCellContext = CellContext<
+  typeof RECENT_COMMAND_TABLE_FEATURES,
+  RtkTokenSavingsRecentCommand,
+  string
+>
+
+const RECENT_COMMAND_CELL_CLASS_NAMES: Readonly<Record<string, string>> = {
+  command: "min-w-0 text-xs font-medium",
+  reductionPercent: "text-right text-xs text-primary",
+  savedTokens: "text-right text-xs text-muted-foreground",
+  timestampLabel:
+    "w-30 min-w-30 text-xs whitespace-nowrap text-muted-foreground"
+}
+
+const RECENT_COMMAND_COLUMN_CLASS_NAMES: Readonly<Record<string, string>> = {
+  command: "",
+  reductionPercent: "text-right",
+  savedTokens: "text-right",
+  timestampLabel: "w-30 min-w-30 whitespace-nowrap"
+}
+
+const RECENT_COMMAND_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  command: 500,
+  reductionPercent: 104,
+  savedTokens: 96
+}
 
 const TOOL_DESIGN_CARDS = [
   {
@@ -483,18 +525,28 @@ const CommandSavingsList = ({
   )
 }
 
-const RecentCommandCell = ({ command }: { command: string }) => (
-  <Table.Cell className="min-w-0 text-xs font-medium">
-    <Tooltip>
-      <Tooltip.Trigger className="block w-full min-w-0 cursor-default truncate text-left">
-        {command}
-      </Tooltip.Trigger>
-      <Tooltip.Content className="max-w-lg break-all">
-        {command}
-      </Tooltip.Content>
-    </Tooltip>
-  </Table.Cell>
+const RecentCommandCell = ({ getValue }: RecentCommandStringCellContext) => (
+  <Tooltip>
+    <Tooltip.Trigger className="block w-full min-w-0 cursor-default truncate text-left">
+      {getValue()}
+    </Tooltip.Trigger>
+    <Tooltip.Content className="max-w-lg break-all">
+      {getValue()}
+    </Tooltip.Content>
+  </Tooltip>
 )
+
+const RecentCommandReductionCell = ({
+  getValue
+}: RecentCommandNumberCellContext) => formatPercent(getValue())
+
+const RecentCommandSavedTokensCell = ({
+  getValue
+}: RecentCommandNumberCellContext) => formatCompactTokens(getValue())
+
+const RecentCommandTimestampCell = ({
+  getValue
+}: RecentCommandStringCellContext) => getValue()
 
 const RecentCommandsTable = ({
   commands
@@ -502,7 +554,38 @@ const RecentCommandsTable = ({
   commands: RtkTokenSavingsRecentCommand[]
 }) => {
   const { t } = useI18n()
-  const visibleCommands = commands.slice(0, MAX_RECENT_ROWS)
+  const columns = useMemo(
+    () =>
+      recentCommandColumnHelper.columns([
+        recentCommandColumnHelper.accessor("timestampLabel", {
+          cell: RecentCommandTimestampCell,
+          header: t("settings.tokenSavings.recent.time")
+        }),
+        recentCommandColumnHelper.accessor("command", {
+          cell: RecentCommandCell,
+          header: t("settings.tokenSavings.recent.command")
+        }),
+        recentCommandColumnHelper.accessor("savedTokens", {
+          cell: RecentCommandSavedTokensCell,
+          header: t("settings.tokenSavings.recent.saved")
+        }),
+        recentCommandColumnHelper.accessor("reductionPercent", {
+          cell: RecentCommandReductionCell,
+          header: t("settings.tokenSavings.recent.reduction")
+        })
+      ]),
+    [t]
+  )
+  const visibleCommands = useMemo(
+    () => commands.slice(0, MAX_RECENT_ROWS),
+    [commands]
+  )
+  const table = useTable({
+    columns,
+    data: visibleCommands,
+    features: RECENT_COMMAND_TABLE_FEATURES,
+    getRowId: (command) => `${command.timestampLabel}-${command.command}`
+  })
 
   return (
     <motion.section
@@ -529,38 +612,37 @@ const RecentCommandsTable = ({
               className="min-w-205"
             >
               <Table.Header className="**:data-[slot=table-column]:text-foreground [&_[data-slot=table-column]:first-child]:rounded-l-none [&_[data-slot=table-column]:last-child]:rounded-r-none">
-                <Table.Column
-                  className="w-30 min-w-30 whitespace-nowrap"
-                  isRowHeader
-                >
-                  {t("settings.tokenSavings.recent.time")}
-                </Table.Column>
-                <Table.Column minWidth={500}>
-                  {t("settings.tokenSavings.recent.command")}
-                </Table.Column>
-                <Table.Column className="text-right" minWidth={96}>
-                  {t("settings.tokenSavings.recent.saved")}
-                </Table.Column>
-                <Table.Column className="text-right" minWidth={104}>
-                  {t("settings.tokenSavings.recent.reduction")}
-                </Table.Column>
+                {table.getHeaderGroups()[0]?.headers.map((header) => (
+                  <Table.Column
+                    className={
+                      RECENT_COMMAND_COLUMN_CLASS_NAMES[header.column.id] ?? ""
+                    }
+                    id={header.column.id}
+                    isRowHeader={header.column.id === "timestampLabel"}
+                    key={header.id}
+                    minWidth={
+                      RECENT_COMMAND_COLUMN_MIN_WIDTHS[header.column.id]
+                    }
+                  >
+                    {header.isPlaceholder ? null : (
+                      <table.FlexRender header={header} />
+                    )}
+                  </Table.Column>
+                ))}
               </Table.Header>
               <Table.Body>
-                {visibleCommands.map((command) => (
-                  <Table.Row
-                    id={`${command.timestampLabel}-${command.command}`}
-                    key={`${command.timestampLabel}-${command.command}`}
-                  >
-                    <Table.Cell className="w-30 min-w-30 text-xs whitespace-nowrap text-muted-foreground">
-                      {command.timestampLabel}
-                    </Table.Cell>
-                    <RecentCommandCell command={command.command} />
-                    <Table.Cell className="text-right text-xs text-muted-foreground">
-                      {formatCompactTokens(command.savedTokens)}
-                    </Table.Cell>
-                    <Table.Cell className="text-right text-xs text-primary">
-                      {formatPercent(command.reductionPercent)}
-                    </Table.Cell>
+                {table.getRowModel().rows.map((row) => (
+                  <Table.Row id={row.id} key={row.id}>
+                    {row.getAllCells().map((cell) => (
+                      <Table.Cell
+                        className={
+                          RECENT_COMMAND_CELL_CLASS_NAMES[cell.column.id] ?? ""
+                        }
+                        key={cell.id}
+                      >
+                        <table.FlexRender cell={cell} />
+                      </Table.Cell>
+                    ))}
                   </Table.Row>
                 ))}
               </Table.Body>
