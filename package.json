@@ -35,17 +35,17 @@
     "typecheck": "turbo run typecheck && tsc -p tsconfig.root.json"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.1",
-    "@commitlint/config-conventional": "^21.2.0",
-    "cz-git": "^1.13.1",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "cz-git": "^1.14.0",
     "sherif": "^1.13.0",
-    "turbo": "^2.10.5",
+    "turbo": "^2.10.11",
     "typescript": "catalog:",
-    "ultracite": "7.9.4",
+    "ultracite": "7.10.6",
     "vite-plus": "catalog:"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "packageManager": "pnpm@11.15.1"
+  "packageManager": "pnpm@11.23.0"
 }

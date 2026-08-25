@@ -483,42 +483,42 @@ export const BrowserPanel = ({
           icon={ArrowLeft01Icon}
           isDisabled={!state.canGoBack}
           label={t("chat.projectPanel.browserBack")}
-          onPress={() =>
-            void runBrowserCommand(() =>
+          onPress={() => {
+            runBrowserCommand(() =>
               rpcClient.browser.goBack({ chatSessionId, sessionId })
             )
-          }
+          }}
         />
         <BrowserToolbarButton
           icon={ArrowRight01Icon}
           isDisabled={!state.canGoForward}
           label={t("chat.projectPanel.browserForward")}
-          onPress={() =>
-            void runBrowserCommand(() =>
+          onPress={() => {
+            runBrowserCommand(() =>
               rpcClient.browser.goForward({ chatSessionId, sessionId })
             )
-          }
+          }}
         />
         {state.isLoading ? (
           <BrowserToolbarButton
             icon={Cancel01Icon}
             label={t("chat.projectPanel.browserStop")}
-            onPress={() =>
-              void runBrowserCommand(() =>
+            onPress={() => {
+              runBrowserCommand(() =>
                 rpcClient.browser.stop({ chatSessionId, sessionId })
               )
-            }
+            }}
           />
         ) : (
           <BrowserToolbarButton
             icon={ArrowReloadHorizontalIcon}
             isDisabled={isEmpty}
             label={t("chat.projectPanel.browserReload")}
-            onPress={() =>
-              void runBrowserCommand(() =>
+            onPress={() => {
+              runBrowserCommand(() =>
                 rpcClient.browser.reload({ chatSessionId, sessionId })
               )
-            }
+            }}
           />
         )}
         <TextField
@@ -540,7 +540,9 @@ export const BrowserPanel = ({
           isDisabled={isEmpty}
           isIconOnly
           isSelected={isPickingElement}
-          onPress={() => void togglePickElement()}
+          onPress={() => {
+            togglePickElement()
+          }}
           size="sm"
           variant="ghost"
         >

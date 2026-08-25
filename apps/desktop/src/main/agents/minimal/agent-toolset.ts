@@ -101,7 +101,9 @@ Images (when the imagen tool is available):
 - Generate one image per call; call again for variations or alternatives.
 - After generating, describe in one sentence what you made — do not repeat the full prompt.`
 
-export const buildAgentSystemPrompt = (profile: ResolvedAgentProfile): string =>
+export const buildAgentSystemPrompt = (
+  profile: ResolvedAgentProfile
+): string =>
   profile.instructions.length > 0
     ? `${AGENT_BASE_INSTRUCTIONS}\n\n${profile.instructions}`
     : AGENT_BASE_INSTRUCTIONS

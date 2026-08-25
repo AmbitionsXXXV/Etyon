@@ -241,8 +241,9 @@ const getSessionButtonTitle = ({
   projectPath: string
 }): string => (diffLabel ? `${projectPath} - ${diffLabel}` : projectPath)
 
-const getSessionMainButtonPaddingClassName = (showPinAction: boolean): string =>
-  showPinAction ? "pl-1 pr-0" : "px-0"
+const getSessionMainButtonPaddingClassName = (
+  showPinAction: boolean
+): string => (showPinAction ? "pl-1 pr-0" : "px-0")
 
 const getSessionRowPaddingClassName = (showPinAction: boolean): string =>
   showPinAction ? "px-0" : "px-3"

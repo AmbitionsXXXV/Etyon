@@ -233,6 +233,10 @@ export const setupUpdates = (): void => {
     return
   }
 
-  setTimeout(() => void runAutoCheck(), FIRST_CHECK_DELAY_MS)
-  setInterval(() => void runAutoCheck(), CHECK_INTERVAL_MS)
+  setTimeout(() => {
+    runAutoCheck()
+  }, FIRST_CHECK_DELAY_MS)
+  setInterval(() => {
+    runAutoCheck()
+  }, CHECK_INTERVAL_MS)
 }

@@ -45,13 +45,11 @@ const xmlStep = (
 ): LanguageModelV3StreamPart[] => [
   { type: "stream-start", warnings: [] },
   { id: "text-1", type: "text-start" },
-  ...deltas.map(
-    (delta): LanguageModelV3StreamPart => ({
-      delta,
-      id: "text-1",
-      type: "text-delta"
-    })
-  ),
+  ...deltas.map((delta): LanguageModelV3StreamPart => ({
+    delta,
+    id: "text-1",
+    type: "text-delta"
+  })),
   { id: "text-1", type: "text-end" },
   {
     finishReason: { raw: finishUnified, unified: finishUnified },

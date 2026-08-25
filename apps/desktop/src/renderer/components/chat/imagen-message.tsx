@@ -344,7 +344,9 @@ export const ImagenLightbox = ({
           className={isCopied ? "text-emerald-400 hover:text-emerald-300" : ""}
           icon={isCopied ? Tick02Icon : Copy01Icon}
           label={isCopied ? t("copied") : t("copy")}
-          onPress={() => void handleCopy()}
+          onPress={() => {
+            handleCopy()
+          }}
         />
         <LightboxActionButton
           icon={Download01Icon}

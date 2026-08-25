@@ -120,9 +120,11 @@ const textBlock = (
   deltas: readonly string[]
 ): LanguageModelV4StreamPart[] => [
   { id, type: "text-start" },
-  ...deltas.map(
-    (delta): LanguageModelV4StreamPart => ({ delta, id, type: "text-delta" })
-  ),
+  ...deltas.map((delta): LanguageModelV4StreamPart => ({
+    delta,
+    id,
+    type: "text-delta"
+  })),
   { id, type: "text-end" }
 ]
 
