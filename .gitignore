@@ -90,6 +90,9 @@ typings/
 
 # Electron-Forge
 out/
+apps/desktop/resources/screen-awareness/
+native/screen-awareness-macos/.build/
+native/screen-awareness-macos/.swiftpm/
 
 # Turborepo
 .turbo/

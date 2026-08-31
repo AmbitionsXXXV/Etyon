@@ -600,6 +600,7 @@
       "hide": "隐藏 {appName}",
       "hideOthers": "隐藏其他",
       "quit": "退出 {appName}",
+      "sendFocusedWindowToAi": "将当前窗口发送给 AI",
       "settings": "设置...",
       "showAll": "全部显示"
     },

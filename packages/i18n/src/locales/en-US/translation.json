@@ -600,6 +600,7 @@
       "hide": "Hide {appName}",
       "hideOthers": "Hide Others",
       "quit": "Quit {appName}",
+      "sendFocusedWindowToAi": "Send Focused Window to AI",
       "settings": "Settings...",
       "showAll": "Show All"
     },

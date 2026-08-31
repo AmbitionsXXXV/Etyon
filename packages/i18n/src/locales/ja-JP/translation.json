@@ -600,6 +600,7 @@
       "hide": "{appName} を隠す",
       "hideOthers": "ほかを隠す",
       "quit": "{appName} を終了",
+      "sendFocusedWindowToAi": "現在のウインドウを AI に送る",
       "settings": "設定...",
       "showAll": "すべてを表示"
     },

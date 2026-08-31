@@ -11,6 +11,10 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses"
 
 import { resolveBuildIdentifier } from "./forge/build-identifier"
 import { copyPackagedRuntimeDependencies } from "./forge/packaged-dependencies"
+import {
+  buildScreenAwarenessHelper,
+  signPackagedScreenAwarenessApp
+} from "./forge/screen-awareness-helper"
 
 const APP_CATEGORY_TYPE = "public.app-category.utilities"
 const APP_COPYRIGHT_OWNER = "etcetera"
@@ -70,6 +74,7 @@ const config: ForgeConfig = {
       "resources/icon.icns",
       "resources/icon.ico",
       "resources/icon-light.png",
+      "resources/screen-awareness",
       "resources/tray.png"
     ],
     helperBundleId,
@@ -121,6 +126,27 @@ const config: ForgeConfig = {
     })
   ],
   hooks: {
+    postPackage: (_forgeConfig, packageResult) => {
+      signPackagedScreenAwarenessApp({
+        outputPaths: packageResult.outputPaths,
+        platform: packageResult.platform
+      })
+
+      return Promise.resolve()
+    },
+    prePackage: (_forgeConfig, platform) => {
+      buildScreenAwarenessHelper({ isRelease, platform })
+
+      return Promise.resolve()
+    },
+    preStart: () => {
+      buildScreenAwarenessHelper({
+        isRelease,
+        platform: process.platform
+      })
+
+      return Promise.resolve()
+    },
     // pnpm's hoisted layout defeats @electron/packager's dependency walker;
     // see forge/packaged-dependencies.ts for the how and why.
     packageAfterCopy: (

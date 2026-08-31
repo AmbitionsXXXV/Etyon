@@ -24,6 +24,11 @@ import { logger } from "@/main/logger"
 import { setupMenu } from "@/main/menu"
 import { registerNativeIpcHandlers } from "@/main/native-ipc"
 import { registerRpcHandler } from "@/main/rpc"
+import {
+  registerScreenAwarenessIpcHandlers,
+  startScreenAwarenessHelper,
+  stopScreenAwarenessHelper
+} from "@/main/screen-awareness"
 import { startServer, stopServer } from "@/main/server"
 import { getSettings } from "@/main/settings"
 import {
@@ -63,6 +68,7 @@ registerAttachmentProtocolScheme()
 registerNativeIpcHandlers()
 registerTerminalIpcHandlers()
 registerBrowserIpcHandlers()
+registerScreenAwarenessIpcHandlers()
 
 const handleAppReady = async (): Promise<void> => {
   // Install the renderer CSP before any window can load a document.
@@ -100,6 +106,7 @@ const handleAppReady = async (): Promise<void> => {
   setupMenu(appDisplayName)
   setupTray()
   setupUpdates()
+  startScreenAwarenessHelper()
 
   ipcMain.on("open-settings", (_event, tab?: string) => {
     createSettingsWindow(tab)
@@ -148,6 +155,7 @@ app.on("before-quit", () => {
   disposeAllPtys()
   disposeAllBrowserViews()
   stopServer()
+  stopScreenAwarenessHelper()
   stopTelegramBridge()
   destroyTray()
 })
