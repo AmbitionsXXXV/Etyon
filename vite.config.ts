@@ -73,6 +73,7 @@ export default defineConfig({
       "**/routeTree.gen.ts",
       "**/cursor-auth/proto/**"
     ],
+    jsPlugins: ["@shadcn/lint"],
     overrides: withoutDisabledPluginOverrides([
       ...(ultraciteCoreConfig.overrides ?? []),
       ...(ultraciteTanstackConfig.overrides ?? [])
@@ -90,18 +91,26 @@ export default defineConfig({
       "eslint/sort-keys": "off",
       "eslint-plugin-unicorn/number-literal-case": "off",
       "unicorn/numeric-separators-style": "off",
-      // ultracite 7.9 newly enables these rules; they flag long-standing
-      // patterns across the codebase (sequential DB transactions, sync setState
-      // in effects, ref writes during render, unnamed regex groups). Disabled
-      // to match the pre-7.9 baseline. Re-enable and migrate incrementally;
-      // react/react-compiler in particular flags real issues worth revisiting.
+      // Newer Ultracite and Oxlint releases surface these rules against
+      // long-standing patterns across the codebase. Keep the pre-upgrade
+      // baseline stable and re-enable them through focused migrations.
       "eslint/no-await-in-loop": "off",
       "eslint/no-nested-ternary": "off",
       "eslint/prefer-named-capture-group": "off",
+      "import/consistent-type-specifier-style": "off",
       "node/callback-return": "off",
+      "promise/prefer-await-to-callbacks": "off",
+      "react/exhaustive-effect-dependencies": "off",
+      "react/function-component-definition": "off",
       "react/hook-use-state": "off",
+      "react/memo-dependencies": "off",
       "react/no-clone-element": "off",
-      "react/react-compiler": "off",
+      "react/no-deriving-state-in-effects": "off",
+      "react/preserve-manual-memoization": "off",
+      "react/refs": "off",
+      "react/set-state-in-effect": "off",
+      "react/static-components": "off",
+      "react/todo": "off",
       "typescript/method-signature-style": "off",
       "unicorn/no-nested-ternary": "off",
       "unicorn/prefer-export-from": "off",

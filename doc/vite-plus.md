@@ -8,11 +8,13 @@
 - `fmt` / `lint` 配置已经从旧的 `.oxfmtrc.jsonc`、`.oxlintrc.json` 合并进根配置
 - 保留 `Ultracite` 作为规则来源，`Vite+` 通过 `extends` 继续复用它的 `Oxlint` 规则
 - `pnpm-workspace.yaml` 里允许 `vite` / `vitest` peer 版本透传；项目自身测试 API 和配置入口统一使用 `vite-plus`
+- `@shadcn/lint` 通过 `lint.jsPlugins` 注册到 Oxlint，作为 Tailwind v4 设计系统规则的扩展点
 
 ## 常用命令
 
 - 安装依赖：`vp install`
 - 全仓检查：`vp check`
+- 仅运行 Lint：`vp lint`
 - 自动修复：`vp run fix`
 - 清理依赖与缓存：`vp run clean:cache`
 - 产品发版（version bump + changelog + tag）：`vp run release -- patch`（见 [release.md](./release.md)；底层 `vp pm version`）
@@ -31,6 +33,12 @@
 - `pre-commit`：先运行 `vp staged`（按 `vite.config.ts` 的 `staged` 块对暂存文件执行 `vp check --fix`），再运行 `vp run typecheck` 做全量类型检查
 - `commit-msg`：运行 `commitlint` 校验提交信息格式
 - `prepare` 脚本从 `lefthook install` 改为 `vp config`，`pnpm install` 后自动安装 hooks
+
+## Tailwind 设计系统 Lint
+
+`@shadcn/lint` 已注册到根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `lint.jsPlugins`，因此会随 `vp lint` 和 `vp check` 加载。项目使用 Vite+ `0.3.2` 内置的 Oxlint `1.82.0`，满足该插件对 Oxlint `1.80+` 的要求；对工具链升级新显示的存量规则违规，根配置保持原有 Lint 基线，后续再通过聚焦迁移逐项启用。
+
+插件接入本身不启用具体规则；设计系统允许范围应在根 `vite.config.ts` 的 `lint.rules` 中明确定义。可选规则包括 `shadcn/no-restyle`、`shadcn/no-raw-colors`、`shadcn/no-arbitrary-values`、`shadcn/no-inline-styles`、`shadcn/no-unknown-classes` 和 `shadcn/require-static-classes`。在启用任何规则前，先用当前代码库跑一次基线扫描，再决定错误级别与例外范围。
 
 ## Electron 说明
 
