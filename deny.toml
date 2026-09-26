@@ -26,8 +26,7 @@ deny = []
 highlight = "all"
 multiple-versions = "warn"
 skip = [
-  { crate = "core-foundation@0.9.4", reason = "transitive split from native TLS dependencies; revisit when the TLS stack changes" },
-  { crate = "wit-bindgen@0.46.0", reason = "transitive WASI split from tempfile dependencies; revisit on dependency refresh" }
+  { crate = "core-foundation@0.9.4", reason = "transitive split from native TLS dependencies; revisit when the TLS stack changes" }
 ]
 wildcards = "deny"
 workspace-default-features = "allow"

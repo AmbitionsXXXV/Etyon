@@ -420,27 +420,27 @@ describe("resolveModel", () => {
   })
 })
 
-describe("resolveEffortProviderOptionsForSelection", () => {
-  const buildAiSettings = (overrides?: {
-    anthropicEffort?: AppSettings["ai"]["modelEffort"]["anthropic"]
-    openai?: Partial<AppSettings["ai"]["providers"]["openai"]>
-    openaiEffort?: AppSettings["ai"]["modelEffort"]["openai"]
-  }): AppSettings["ai"] => {
-    const { ai } = createSettings()
+const buildAiSettings = (overrides?: {
+  anthropicEffort?: AppSettings["ai"]["modelEffort"]["anthropic"]
+  openai?: Partial<AppSettings["ai"]["providers"]["openai"]>
+  openaiEffort?: AppSettings["ai"]["modelEffort"]["openai"]
+}): AppSettings["ai"] => {
+  const { ai } = createSettings()
 
-    return {
-      ...ai,
-      modelEffort: {
-        anthropic: overrides?.anthropicEffort ?? ai.modelEffort.anthropic,
-        openai: overrides?.openaiEffort ?? ai.modelEffort.openai
-      },
-      providers: {
-        ...ai.providers,
-        openai: { ...ai.providers.openai, ...overrides?.openai }
-      }
+  return {
+    ...ai,
+    modelEffort: {
+      anthropic: overrides?.anthropicEffort ?? ai.modelEffort.anthropic,
+      openai: overrides?.openaiEffort ?? ai.modelEffort.openai
+    },
+    providers: {
+      ...ai.providers,
+      openai: { ...ai.providers.openai, ...overrides?.openai }
     }
   }
+}
 
+describe("resolveEffortProviderOptionsForSelection", () => {
   it("requests a reasoning summary for openai responses-mode reasoning models", () => {
     const aiSettings = buildAiSettings({ openaiEffort: "xhigh" })
 
@@ -543,6 +543,34 @@ describe("resolveEffortProviderOptionsForSelection", () => {
   })
 })
 
+const settingsWithCapability = (
+  functionCalling: boolean | undefined
+): AppSettings => {
+  const settings = createSettings()
+
+  return {
+    ...settings,
+    ai: {
+      ...settings.ai,
+      providers: {
+        ...settings.ai.providers,
+        moonshot: {
+          ...settings.ai.providers.moonshot,
+          models: [
+            {
+              capabilities:
+                functionCalling === undefined ? undefined : { functionCalling },
+              id: "kimi-k2.6",
+              isManual: undefined,
+              name: "kimi-k2.6"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+
 describe("resolveModel XML tool middleware activation", () => {
   // A v4-shaped instance the mocked provider returns so the middleware's v4
   // guard can fire (plain `{ modelId, transport }` mocks stay unwrapped).
@@ -551,36 +579,6 @@ describe("resolveModel XML tool middleware activation", () => {
     provider: "moonshot",
     specificationVersion: "v4",
     transport: "chat-completions"
-  }
-
-  const settingsWithCapability = (
-    functionCalling: boolean | undefined
-  ): AppSettings => {
-    const settings = createSettings()
-
-    return {
-      ...settings,
-      ai: {
-        ...settings.ai,
-        providers: {
-          ...settings.ai.providers,
-          moonshot: {
-            ...settings.ai.providers.moonshot,
-            models: [
-              {
-                capabilities:
-                  functionCalling === undefined
-                    ? undefined
-                    : { functionCalling },
-                id: "kimi-k2.6",
-                isManual: undefined,
-                name: "kimi-k2.6"
-              }
-            ]
-          }
-        }
-      }
-    }
   }
 
   beforeEach(() => {

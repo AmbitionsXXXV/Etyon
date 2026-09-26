@@ -420,33 +420,33 @@ describe("createXmlToolStreamTransform", () => {
   })
 })
 
-describe("createXmlToolMiddleware wrapStream", () => {
-  const runWrapStream = async (
-    prompt: LanguageModelV4Prompt,
-    parts: readonly LanguageModelV4StreamPart[]
-  ): Promise<LanguageModelV4StreamPart[]> => {
-    const middleware = createXmlToolMiddleware()
-    const { wrapStream } = middleware
+const runWrapStream = async (
+  prompt: LanguageModelV4Prompt,
+  parts: readonly LanguageModelV4StreamPart[]
+): Promise<LanguageModelV4StreamPart[]> => {
+  const middleware = createXmlToolMiddleware()
+  const { wrapStream } = middleware
 
-    if (!wrapStream) {
-      throw new Error("wrapStream missing")
-    }
-
-    const result = await wrapStream({
-      doGenerate: () => Promise.reject(new Error("unused")),
-      doStream: () => Promise.resolve({ stream: makeReadable(parts) }),
-      model: {
-        modelId: "m",
-        provider: "p",
-        specificationVersion: "v3",
-        supportedUrls: {}
-      } as never,
-      params: { prompt } as LanguageModelV4CallOptions
-    })
-
-    return collect(result.stream)
+  if (!wrapStream) {
+    throw new Error("wrapStream missing")
   }
 
+  const result = await wrapStream({
+    doGenerate: () => Promise.reject(new Error("unused")),
+    doStream: () => Promise.resolve({ stream: makeReadable(parts) }),
+    model: {
+      modelId: "m",
+      provider: "p",
+      specificationVersion: "v3",
+      supportedUrls: {}
+    } as never,
+    params: { prompt } as LanguageModelV4CallOptions
+  })
+
+  return collect(result.stream)
+}
+
+describe("createXmlToolMiddleware wrapStream", () => {
   const streamWithCall: LanguageModelV4StreamPart[] = [
     ...textBlock("t1", ['<tool_call name="ping">{}</tool_call>']),
     finishPart("stop")

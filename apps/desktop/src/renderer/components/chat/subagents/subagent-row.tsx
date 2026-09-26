@@ -364,7 +364,7 @@ const SubagentRowView = memo(({ model }: { model: SubagentRowViewModel }) => {
           </span>
           <span className="flex shrink-0 items-center gap-1.5">
             {isRunning && model.activity && !hasApproval ? (
-              <span className="max-w-40 shimmer truncate text-[0.625rem] text-muted-foreground">
+              <span className="shimmer max-w-40 truncate text-[0.625rem] text-muted-foreground">
                 {model.activity}
               </span>
             ) : null}

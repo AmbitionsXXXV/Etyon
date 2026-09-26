@@ -1,4 +1,4 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 
 import PackageDescription
 
@@ -16,7 +16,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/jaywcjlove/PermissionFlow.git",
-      from: "1.0.0"
+      from: "2.11.2"
     ),
   ],
   targets: [

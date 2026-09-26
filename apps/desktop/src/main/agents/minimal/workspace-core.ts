@@ -394,6 +394,74 @@ const runRipgrep = async ({
   }
 }
 
+const assertNonSecretPath = (requestedPath: string): WorkspaceResult<void> => {
+  if (isSecretWorkspacePath(requestedPath)) {
+    return createFileError({
+      code: "secret-path",
+      message: "Path looks like a secret file and cannot be accessed.",
+      requestedPath
+    })
+  }
+
+  return { ok: true, value: undefined }
+}
+
+const findExistingAncestorPath = async ({
+  absolutePath,
+  requestedPath
+}: {
+  absolutePath: string
+  requestedPath: string
+}): Promise<WorkspaceResult<string>> => {
+  let currentPath = absolutePath
+
+  while (true) {
+    try {
+      await fs.lstat(currentPath)
+
+      return { ok: true, value: currentPath }
+    } catch (error) {
+      if (getNodeErrorCode(error) !== "ENOENT") {
+        return toFileSystemError({ error, requestedPath })
+      }
+
+      const parentPath = path.dirname(currentPath)
+
+      if (parentPath === currentPath) {
+        return toFileSystemError({ error, requestedPath })
+      }
+
+      currentPath = parentPath
+    }
+  }
+}
+
+const ensureWritableFileTarget = async ({
+  absolutePath,
+  requestedPath
+}: {
+  absolutePath: string
+  requestedPath: string
+}): Promise<WorkspaceResult<void>> => {
+  try {
+    const stats = await fs.lstat(absolutePath)
+
+    if (!stats.isFile()) {
+      return createFileError({
+        code: "not-file",
+        message: "Path is not a file.",
+        requestedPath
+      })
+    }
+  } catch (error) {
+    if (getNodeErrorCode(error) !== "ENOENT") {
+      return toFileSystemError({ error, requestedPath })
+    }
+  }
+
+  return { ok: true, value: undefined }
+}
+
 const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
   const normalizedProjectPath = path.resolve(projectPath)
   const realProjectPath = realpathIfExists(normalizedProjectPath)
@@ -421,50 +489,6 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
       value: {
         absolutePath,
         relativePath: normalizeWorkspacePath(relativePath) || "."
-      }
-    }
-  }
-
-  const assertNonSecretPath = (
-    requestedPath: string
-  ): WorkspaceResult<void> => {
-    if (isSecretWorkspacePath(requestedPath)) {
-      return createFileError({
-        code: "secret-path",
-        message: "Path looks like a secret file and cannot be accessed.",
-        requestedPath
-      })
-    }
-
-    return { ok: true, value: undefined }
-  }
-
-  const findExistingAncestorPath = async ({
-    absolutePath,
-    requestedPath
-  }: {
-    absolutePath: string
-    requestedPath: string
-  }): Promise<WorkspaceResult<string>> => {
-    let currentPath = absolutePath
-
-    while (true) {
-      try {
-        await fs.lstat(currentPath)
-
-        return { ok: true, value: currentPath }
-      } catch (error) {
-        if (getNodeErrorCode(error) !== "ENOENT") {
-          return toFileSystemError({ error, requestedPath })
-        }
-
-        const parentPath = path.dirname(currentPath)
-
-        if (parentPath === currentPath) {
-          return toFileSystemError({ error, requestedPath })
-        }
-
-        currentPath = parentPath
       }
     }
   }
@@ -517,32 +541,6 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
       absolutePath: path.dirname(resolvedPath.absolutePath),
       requestedPath
     })
-  }
-
-  const ensureWritableFileTarget = async ({
-    absolutePath,
-    requestedPath
-  }: {
-    absolutePath: string
-    requestedPath: string
-  }): Promise<WorkspaceResult<void>> => {
-    try {
-      const stats = await fs.lstat(absolutePath)
-
-      if (!stats.isFile()) {
-        return createFileError({
-          code: "not-file",
-          message: "Path is not a file.",
-          requestedPath
-        })
-      }
-    } catch (error) {
-      if (getNodeErrorCode(error) !== "ENOENT") {
-        return toFileSystemError({ error, requestedPath })
-      }
-    }
-
-    return { ok: true, value: undefined }
   }
 
   const fileStat = async (

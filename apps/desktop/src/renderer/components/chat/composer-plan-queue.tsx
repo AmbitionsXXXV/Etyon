@@ -280,7 +280,7 @@ export const ComposerPlanQueue = ({
               : t("chat.workSection.todos")}
           </span>
           {activeLabel ? (
-            <span className="min-w-0 flex-1 shimmer truncate text-xs text-muted-foreground">
+            <span className="shimmer min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {activeLabel}
             </span>
           ) : null}

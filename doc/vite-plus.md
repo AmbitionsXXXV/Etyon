@@ -36,7 +36,7 @@
 
 ## Tailwind 设计系统 Lint
 
-`@shadcn/lint` 已注册到根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `lint.jsPlugins`，因此会随 `vp lint` 和 `vp check` 加载。项目使用 Vite+ `0.3.2` 内置的 Oxlint `1.82.0`，满足该插件对 Oxlint `1.80+` 的要求；对工具链升级新显示的存量规则违规，根配置保持原有 Lint 基线，后续再通过聚焦迁移逐项启用。
+`@shadcn/lint` 已注册到根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `lint.jsPlugins`，因此会随 `vp lint` 和 `vp check` 加载。项目使用 Vite+ `1.0.0-rc.0` 内置的 Oxlint `1.85.0`，配套 `@shadcn/lint 0.2.0`。本次升级修复了新增的函数作用域检查与格式差异，未放宽 Lint 规则；详见 [2026-09-26 依赖升级](./dependency-upgrade-2026-09-26.md)。
 
 插件接入本身不启用具体规则；设计系统允许范围应在根 `vite.config.ts` 的 `lint.rules` 中明确定义。可选规则包括 `shadcn/no-restyle`、`shadcn/no-raw-colors`、`shadcn/no-arbitrary-values`、`shadcn/no-inline-styles`、`shadcn/no-unknown-classes` 和 `shadcn/require-static-classes`。在启用任何规则前，先用当前代码库跑一次基线扫描，再决定错误级别与例外范围。
 
@@ -52,7 +52,7 @@
 
 ## Vite DevTools（2026-07-18 接入）
 
-`@vitejs/devtools`（0.3.x，满足 `@voidzero-dev/vite-plus-core` 的可选 peer）只挂在 renderer——它是仓库里唯一真实的 Vite dev server；main/preload 是无 dev server 的 rolldown lib 构建，无处可挂。
+`@vitejs/devtools`（2026-09-26 升级到 0.7.6）只挂在 renderer——它是仓库里唯一真实的 Vite dev server；main/preload 是无 dev server 的 rolldown lib 构建，无处可挂。
 
 - 接入点：[`apps/desktop/vite.renderer.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/apps/desktop/vite.renderer.config.ts) 中 `...(command === "serve" ? [DevTools()] : [])`，serve 门控保证 `package`/`make` 产物零变化（已用 renderer 生产构建验证）
 - dev 启动后 forge 日志会打印 DevTools 的独立入口与一次性授权 URL（`http://localhost:5173/__devtools/auth?id=…`）；应用窗口内会出现 dock 按钮，首次使用需通过授权 URL 信任该浏览器客户端

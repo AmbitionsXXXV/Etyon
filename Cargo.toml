@@ -31,7 +31,14 @@ etyon-types = { path = "crates/etyon-types", version = "0.1.0" }
 eventsource-stream = "0.2"
 futures-util = "0.3"
 ignore = "0.4"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "charset",
+  "http2",
+  "json",
+  "native-tls-no-alpn",
+  "stream",
+  "system-proxy"
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tempfile = "3.10"

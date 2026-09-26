@@ -278,17 +278,17 @@ printf '%s' "$*"
   })
 })
 
-describe("bash tool approval policy", () => {
-  const callNeedsApproval = (
-    command: string,
-    settings = makeAgentSettings({ rtk: { autoRewrite: false } })
-  ): boolean =>
-    buildBashToolApproval(
-      getWorkspaceCore(projectPath),
-      "default",
-      settings
-    )({ command }, {}) === "user-approval"
+const callNeedsApproval = (
+  command: string,
+  settings = makeAgentSettings({ rtk: { autoRewrite: false } })
+): boolean =>
+  buildBashToolApproval(
+    getWorkspaceCore(projectPath),
+    "default",
+    settings
+  )({ command }, {}) === "user-approval"
 
+describe("bash tool approval policy", () => {
   it("requires approval when no allowlist entry matches", async () => {
     expect(await callNeedsApproval("vp test")).toBe(true)
   })
@@ -608,18 +608,18 @@ describe("matchesCommandAllowlist", () => {
   })
 })
 
-describe("agent toolset wiring", () => {
-  const buildToolsetFor = (profile: ResolvedAgentProfile) =>
-    buildAgentToolset({
-      agentMode: "agent",
-      agentRunId: null,
-      chatSessionId: null,
-      modelId: null,
-      permissionMode: "default",
-      profile,
-      projectPath
-    })
+const buildToolsetFor = (profile: ResolvedAgentProfile) =>
+  buildAgentToolset({
+    agentMode: "agent",
+    agentRunId: null,
+    chatSessionId: null,
+    modelId: null,
+    permissionMode: "default",
+    profile,
+    projectPath
+  })
 
+describe("agent toolset wiring", () => {
   it("offers bash to writable profiles", () => {
     const toolset = buildToolsetFor(makeProfile())
 

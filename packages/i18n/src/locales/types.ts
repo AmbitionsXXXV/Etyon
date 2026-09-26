@@ -11,8 +11,9 @@ export type NestedTranslationKey<TTranslationTree> =
   TTranslationTree extends string
     ? never
     : {
-        [Key in keyof TTranslationTree &
-          string]: TTranslationTree[Key] extends string
+        [
+          Key in keyof TTranslationTree & string
+        ]: TTranslationTree[Key] extends string
           ? Key
           : NestedTranslationKeyPrefix<
               Key,
