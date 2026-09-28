@@ -8,6 +8,7 @@
 - `fmt` / `lint` 配置已经从旧的 `.oxfmtrc.jsonc`、`.oxlintrc.json` 合并进根配置
 - 保留 `Ultracite` 作为规则来源，`Vite+` 通过 `extends` 继续复用它的 `Oxlint` 规则
 - `pnpm-workspace.yaml` 里允许 `vite` / `vitest` peer 版本透传；项目自身测试 API 和配置入口统一使用 `vite-plus`
+- `pnpm-workspace.yaml` 显式设置 `enableGlobalVirtualStore: false`，与 hoisted 安装状态一致，避免 `vp run` 执行包内脚本时重复安装依赖
 - `@shadcn/lint` 通过 `lint.jsPlugins` 注册到 Oxlint，作为 Tailwind v4 设计系统规则的扩展点
 
 ## 常用命令
@@ -36,7 +37,7 @@
 
 ## Tailwind 设计系统 Lint
 
-`@shadcn/lint` 已注册到根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `lint.jsPlugins`，因此会随 `vp lint` 和 `vp check` 加载。项目使用 Vite+ `1.0.0-rc.0` 内置的 Oxlint `1.85.0`，配套 `@shadcn/lint 0.2.0`。本次升级修复了新增的函数作用域检查与格式差异，未放宽 Lint 规则；详见 [2026-09-26 依赖升级](./dependency-upgrade-2026-09-26.md)。
+`@shadcn/lint` 已注册到根 [`vite.config.ts`](/Users/jiantianjianghui/Web_Project/Etyon/vite.config.ts) 的 `lint.jsPlugins`，因此会随 `vp lint` 和 `vp check` 加载。项目使用 Vite+ `1.0.0` 稳定版，配套 `@shadcn/lint 0.2.0`。此前 RC 升级时修复的函数作用域检查与格式差异记录见 [2026-09-26 依赖升级](./dependency-upgrade-2026-09-26.md)。
 
 插件接入本身不启用具体规则；设计系统允许范围应在根 `vite.config.ts` 的 `lint.rules` 中明确定义。可选规则包括 `shadcn/no-restyle`、`shadcn/no-raw-colors`、`shadcn/no-arbitrary-values`、`shadcn/no-inline-styles`、`shadcn/no-unknown-classes` 和 `shadcn/require-static-classes`。在启用任何规则前，先用当前代码库跑一次基线扫描，再决定错误级别与例外范围。
 
