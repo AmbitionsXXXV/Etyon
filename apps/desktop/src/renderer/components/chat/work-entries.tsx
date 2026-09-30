@@ -240,6 +240,7 @@ export const TodoStatusIndicator = ({ status }: { status: ChatTodoStatus }) => {
 }
 
 export const TodoItemRow = ({ todo }: { todo: ChatTodoItem }) => {
+  const { t } = useI18n()
   const isActive = todo.status === "in_progress"
   const label = isActive && todo.activeForm ? todo.activeForm : todo.content
 
@@ -254,14 +255,26 @@ export const TodoItemRow = ({ todo }: { todo: ChatTodoItem }) => {
         )}
       >
         {label}
+        {todo.owner && (
+          <span className="mt-0.5 block text-muted-foreground">
+            {t("chat.workSection.taskOwner", { owner: todo.owner })}
+          </span>
+        )}
+        {todo.blockedBy && todo.blockedBy.length > 0 && (
+          <span className="mt-0.5 block text-muted-foreground">
+            {t("chat.workSection.taskBlockedBy", {
+              tasks: todo.blockedBy.join(", ")
+            })}
+          </span>
+        )}
       </span>
     </li>
   )
 }
 
-// Live task checklist maintained by the `todo_write` tool. Reads the run's live
+// Live task checklist maintained by the task tools. Reads the run's live
 // snapshot from the transient store; once the turn settles and that store is
-// cleared, it falls back to the persisted tool-call input so a re-expanded fold
+// cleared, it falls back to the persisted snapshot so a re-expanded fold
 // still shows the final list. Collapsed to a "completed/total" header line.
 export const WorkTodoEntry = ({
   parentRunId,
@@ -340,7 +353,10 @@ export const WorkTodoEntry = ({
         <Disclosure.Body className="px-2 pt-1 pb-1.5">
           <ul className="flex flex-col gap-1">
             {todos.map((todo, index) => (
-              <TodoItemRow key={`${index}-${todo.content}`} todo={todo} />
+              <TodoItemRow
+                key={todo.id ?? `${index}-${todo.content}`}
+                todo={todo}
+              />
             ))}
           </ul>
         </Disclosure.Body>

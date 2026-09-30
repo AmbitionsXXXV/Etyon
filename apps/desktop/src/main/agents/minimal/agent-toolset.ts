@@ -1,9 +1,12 @@
+import path from "node:path"
+
 import type {
   ToolApprovalConfiguration,
   ToolSet,
   UIMessage,
   UIMessageStreamWriter
 } from "ai"
+import { app } from "electron"
 
 import { buildArtifactTool } from "@/main/agents/minimal/artifact-tool"
 import { buildAskUserTool } from "@/main/agents/minimal/ask-user-tool"
@@ -27,13 +30,16 @@ import {
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
 import { buildProposePlanTool } from "@/main/agents/minimal/propose-plan-tool"
-import { buildTodoTool } from "@/main/agents/minimal/todo-tool"
+import { buildSkillTool } from "@/main/agents/minimal/skill-tool"
+import { buildTaskTools } from "@/main/agents/minimal/task-tools"
 import {
   buildWorkflowTool,
   buildWorkflowToolApproval
 } from "@/main/agents/minimal/workflow/workflow-tool"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { createTaskStore } from "@/main/agents/task-store"
 import { PARENT_WRITE_HOLDER } from "@/main/agents/write-claims"
+import { getAppConfigDir } from "@/main/app-paths"
 import { getDb } from "@/main/db"
 import { isImageGenerationAvailable } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
@@ -57,7 +63,8 @@ export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You
 - read: read a text file (line-numbered, supports offset/limit)
 - ls: list a directory
 - grep: search file contents with ripgrep
-- todo_write: maintain a task checklist for the run — write the plan up front and update statuses as you go (full-replace: send the whole list each call)
+- task_create / task_get / task_update / task_list: durable tasks with dependencies and ownership, shared across this chat's turns and delegates
+- skill: discover relevant skills and load their instructions or supporting files on demand
 - bash: run a shell command from the project root (each command needs user approval unless previously remembered for this project)
 - workflow: orchestrate many READ-ONLY investigator sub-agents from a small JS script to research, review, or understand across many files at once; the sub-agents cannot modify files
 - edit: apply exact text replacements to a file (requires user approval)
@@ -67,7 +74,7 @@ export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You
 - browser: drive this session's embedded browser — navigate to a page, read its text, or screenshot it (each call needs user approval)
 
 Guidelines:
-- Paths are relative to the project root. You cannot access files outside it or secret files such as .env or keys.
+- Project file paths are relative to the project root and cannot access files outside it. The skill tool separately accepts catalogued skill paths and references confined to their skill directory. Neither surface can read secret files such as .env or keys.
 - Read a file before editing or overwriting it; edits are rejected if the file changed since it was read.
 - Keep edits minimal and targeted. Prefer edit over write for existing files.
 - After changing files, briefly summarize what changed and why.
@@ -76,7 +83,8 @@ Guidelines:
 - Never use bash to print or copy secret files (.env, keys, credentials); the file tools already refuse them.
 - Reach for workflow only when a task genuinely fans out across many files or areas that reward parallel read-only investigation; for a single scoped question investigate directly or use one delegate, and never use it to make changes since its sub-agents are read-only.
 - delegate hands a bounded task to a specialist sub-agent: a read-only specialist investigates and reports, while a writable specialist can edit/write/run commands (you approve each change). When you run writable sub-agents in parallel, give each a DISJOINT set of files or modules — two sub-agents writing the same file conflict, and the tool rejects the second. Keep cross-cutting or shared-file edits for yourself.
-- On multi-step work (roughly three or more steps), keep a task list with todo_write: seed it with the plan (one item per step) before you start, keep exactly one item in_progress, and mark items completed as you finish them. When you leave plan mode after the user approves a plan, turning that plan into todos should be your first step.
+- Work directly on small or self-contained requests; a number of steps alone does not require task tracking. Use task tools when dependencies, parallel ownership, or continuity across turns make shared state useful. Read existing tasks before creating duplicates, update only changed fields using the current revision, and mark completion only after verification. Independent tasks can progress together. Task ownership is coordination metadata, not permission to edit files or delegate.
+- Skills are instructions, not executable commands. Discover and load a relevant skill through skill when useful, then read referenced files relative to that skill. A slash command is an optional user shortcut. Loading a skill never grants tools, permissions, or permission to spawn sub-agents; honor the current profile and approvals.
 
 Turn discipline:
 - Keep working until the user's request is fully handled; end your turn only when the task is done or you are genuinely blocked on the user.
@@ -211,10 +219,24 @@ export const buildAgentToolset = ({
 
   return {
     ...fileTools,
-    // Pure run metadata (a task checklist), never gated — offered on every
-    // profile like read/ls. It emits a transient live part keyed by run id and
-    // its call is replayed from agent_tool_calls, so it needs no write access.
-    todo_write: buildTodoTool({ agentRunId, writer }),
+    // Coordination metadata lives outside the project and never grants writes.
+    ...(chatSessionId
+      ? buildTaskTools({
+          agentRunId,
+          store: createTaskStore({
+            chatSessionId,
+            projectPath,
+            storageRoot: path.join(
+              getAppConfigDir(app.getPath("home")),
+              "agent-tasks"
+            )
+          }),
+          writer
+        })
+      : {}),
+    ...(settings.skills?.enabled
+      ? { skill: buildSkillTool({ projectPath, settings: settings.skills }) }
+      : {}),
     // Input-required tools (defined without execute) exist only in plan mode:
     // ask_user forks the plan on the user's answer, propose_plan is the plan's
     // exit gate. A call suspends the run until the chat UI supplies the result.

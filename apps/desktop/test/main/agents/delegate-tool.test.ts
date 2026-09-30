@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import path from "node:path"
 
 import { AgentSettingsSchema } from "@etyon/rpc"
 import type * as Ai from "ai"
@@ -8,6 +9,8 @@ import { afterAll, describe, expect, it, vi } from "vite-plus/test"
 import { startAgentRun } from "@/main/agents/agent-event-store"
 import { buildDelegateTool } from "@/main/agents/minimal/delegation"
 import type { DelegateToolContext } from "@/main/agents/minimal/delegation"
+import { createTaskStore } from "@/main/agents/task-store"
+import { getAppConfigDir } from "@/main/app-paths"
 import { createChatSession } from "@/main/chat-sessions"
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
@@ -155,6 +158,43 @@ const callDelegate = (
 describe("buildDelegateTool execute path", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
+  })
+
+  it("lets a read-only delegate update the parent's durable tasks without project writes", async () => {
+    getSettingsMock.mockReturnValue({ agents: agentSettings(2) })
+    const ctx = await buildCtx()
+    const store = createTaskStore({
+      chatSessionId: ctx.chatSessionId,
+      projectPath: ctx.projectPath,
+      storageRoot: path.join(getAppConfigDir(mockedHomeDir), "agent-tasks")
+    })
+    const task = store.create({ owner: "explore", subject: "Investigate" })
+    streamTextMock.mockImplementationOnce(
+      ({ tools }: { tools: Ai.ToolSet }) => ({
+        text: (async () => {
+          expect(tools.edit).toBeUndefined()
+          expect(tools.bash).toBeUndefined()
+          await tools.task_update?.execute?.(
+            { id: task.id, revision: task.revision, status: "completed" },
+            {
+              context: undefined as never,
+              messages: [],
+              toolCallId: "child-task"
+            }
+          )
+          return "Investigated"
+        })(),
+        toUIMessageStream: () => emptyUiStream()
+      })
+    )
+    await callDelegate(buildDelegateTool(ctx), {
+      profileId: "explore",
+      task: "Investigate and update the shared task"
+    })
+    expect(store.get(task.id)).toMatchObject({
+      revision: 2,
+      status: "completed"
+    })
   })
 
   it("respects maxConcurrentSubagents=1: rejects a second concurrent call", async () => {

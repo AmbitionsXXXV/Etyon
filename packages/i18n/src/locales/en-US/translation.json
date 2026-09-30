@@ -528,7 +528,9 @@
       "exploredProject": "Explored the project",
       "ranWorkflow": "Ran a workflow",
       "todos": "Todos",
-      "todoProgressLabel": "{completed} of {total} done"
+      "todoProgressLabel": "{completed} of {total} done",
+      "taskOwner": "Owner: {owner}",
+      "taskBlockedBy": "Waiting for: {tasks}"
     },
     "workTime": {
       "label": "Worked for {duration}"

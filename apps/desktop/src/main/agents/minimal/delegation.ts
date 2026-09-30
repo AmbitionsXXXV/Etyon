@@ -1,3 +1,5 @@
+import nodePath from "node:path"
+
 import type { AgentSettings } from "@etyon/rpc"
 import type {
   ToolSet,
@@ -12,6 +14,7 @@ import {
   tool,
   toUIMessageStream
 } from "ai"
+import { app } from "electron"
 import { z } from "zod"
 
 import {
@@ -39,14 +42,18 @@ import {
   runWorkspaceWrite,
   WriteInputSchema
 } from "@/main/agents/minimal/file-tools"
+import { buildSkillTool } from "@/main/agents/minimal/skill-tool"
+import { buildTaskTools } from "@/main/agents/minimal/task-tools"
 import { clampText } from "@/main/agents/minimal/text-clamp"
 import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import type { WorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { createTaskStore } from "@/main/agents/task-store"
 import {
   childWriteHolder,
   claimWrite,
   writeClaimConflictMessage
 } from "@/main/agents/write-claims"
+import { getAppConfigDir } from "@/main/app-paths"
 import { getDb } from "@/main/db"
 import type { AppDatabase } from "@/main/db"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
@@ -197,17 +204,81 @@ const releaseChildSlot = (parentRunId: string): void => {
 
 const childSystemPrompt = (
   profile: ResolvedAgentProfile,
-  canWrite: boolean
+  canWrite: boolean,
+  hasCoordination = false
 ): string => {
+  const coordination = hasCoordination
+    ? "\n\nTask tools share this chat's durable list with the parent. Use them only when coordination needs it; read existing tasks before updating, use the current revision, and verify work before completion. Ownership grants no permissions. The skill tool, when available, loads instructions and referenced files without executing them or expanding permissions."
+    : ""
   if (!canWrite) {
     return `You are a read-only delegated sub-agent (profile: ${profile.name}). ${profile.instructions}
 
-You can only read, list, and search files. You cannot modify anything. Investigate the task, then reply with a concise summary: what you found (with file:line references) and, if changes are needed, the exact edits you recommend so the parent agent can apply them under approval.`
+You can only read, list, and search project files. You cannot modify project files. Investigate the task, then reply with a concise summary: what you found (with file:line references) and, if changes are needed, the exact edits you recommend so the parent agent can apply them under approval.${coordination}`
   }
 
   return `You are a delegated sub-agent (profile: ${profile.name}). ${profile.instructions}
 
-You can read, list, and search files, and — within the bounds of your assigned task — modify files with edit/write and run shell commands with bash. Each edit, write, and shell command is approved by the user one at a time: the call blocks until they approve or deny, so continue working after an approval, and if a call is denied, adapt your plan or hand that change back to the parent instead of retrying it. Only touch files your task covers; if a write is rejected because another sub-task already owns that file, stop and report it rather than forcing it. When you finish, reply with a concise summary of what you changed (with file:line references) and anything you could not complete.`
+You can read, list, and search files, and — within the bounds of your assigned task — modify files with edit/write and run shell commands with bash. Each edit, write, and shell command is approved by the user one at a time: the call blocks until they approve or deny, so continue working after an approval, and if a call is denied, adapt your plan or hand that change back to the parent instead of retrying it. Only touch files your task covers; if a write is rejected because another sub-task already owns that file, stop and report it rather than forcing it. When you finish, reply with a concise summary of what you changed (with file:line references) and anything you could not complete.${coordination}`
+}
+
+const buildChildCoordinationTools = ({
+  chatSessionId,
+  childRunId,
+  parentRunId,
+  projectPath,
+  toolCalls,
+  writer
+}: {
+  chatSessionId?: string
+  childRunId?: string
+  parentRunId?: string
+  projectPath: string
+  toolCalls: DelegatedToolCallRecord[]
+  writer?: UIMessageStreamWriter<UIMessage>
+}): ToolSet => {
+  if (!chatSessionId) {
+    return {}
+  }
+  const coordinationTools: ToolSet = buildTaskTools({
+    agentRunId: parentRunId ?? childRunId ?? null,
+    store: createTaskStore({
+      chatSessionId,
+      projectPath,
+      storageRoot: nodePath.join(
+        getAppConfigDir(app.getPath("home")),
+        "agent-tasks"
+      )
+    }),
+    writer
+  })
+  const skillSettings = getSettings().skills
+  if (skillSettings?.enabled) {
+    coordinationTools.skill = buildSkillTool({
+      projectPath,
+      settings: skillSettings
+    })
+  }
+  const tools: ToolSet = {}
+  for (const [toolName, definition] of Object.entries(coordinationTools)) {
+    const { execute } = definition
+    if (!execute) {
+      continue
+    }
+    tools[toolName] = {
+      ...definition,
+      execute: async (input, options) => {
+        const output = await execute(input, options)
+        toolCalls.push({
+          input,
+          output,
+          toolCallId: options.toolCallId,
+          toolName
+        })
+        return output
+      }
+    }
+  }
+  return tools
 }
 
 /**
@@ -685,6 +756,7 @@ export interface DelegatedRunResult {
  */
 export const runDelegatedAgent = async ({
   abortSignal,
+  chatSessionId,
   childRunId,
   context,
   childProfile,
@@ -699,6 +771,7 @@ export const runDelegatedAgent = async ({
   writer
 }: {
   abortSignal?: AbortSignal
+  chatSessionId?: string
   childProfile: ResolvedAgentProfile
   childRunId?: string
   context?: string
@@ -722,7 +795,17 @@ export const runDelegatedAgent = async ({
     : `Task:\n${task}`
 
   let structured: unknown
-  const tools: ToolSet = buildChildTools(workspace, filesRead, toolCalls)
+  const tools: ToolSet = {
+    ...buildChildTools(workspace, filesRead, toolCalls),
+    ...buildChildCoordinationTools({
+      chatSessionId,
+      childRunId,
+      parentRunId,
+      projectPath,
+      toolCalls,
+      writer
+    })
+  }
   // A writable delegate gets edit/write/bash only when the parent passed a
   // permission mode AND a top-level run to scope claims to, the child profile is
   // writable, and there is a live parent stream to surface approvals on. Workflow
@@ -770,7 +853,11 @@ export const runDelegatedAgent = async ({
     model: resolveModel(modelId ?? undefined),
     prompt,
     stopWhen: isStepCount(maxSteps ?? CHILD_MAX_STEPS),
-    instructions: childSystemPrompt(childProfile, canChildWrite),
+    instructions: childSystemPrompt(
+      childProfile,
+      canChildWrite,
+      Boolean(chatSessionId)
+    ),
     tools,
     ...(abortSignal ? { abortSignal } : {})
   })
@@ -883,6 +970,7 @@ export const buildDelegateTool = ({
           })
         )
         const run = await runDelegatedAgent({
+          chatSessionId,
           childProfile,
           childRunId,
           maxSteps: settings.maxSubagentSteps,

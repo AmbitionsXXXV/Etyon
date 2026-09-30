@@ -528,7 +528,9 @@
       "exploredProject": "浏览了项目",
       "ranWorkflow": "运行了工作流",
       "todos": "待办",
-      "todoProgressLabel": "已完成 {completed}/{total}"
+      "todoProgressLabel": "已完成 {completed}/{total}",
+      "taskOwner": "负责人：{owner}",
+      "taskBlockedBy": "等待完成：{tasks}"
     },
     "workTime": {
       "label": "用时 {duration}"

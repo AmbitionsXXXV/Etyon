@@ -1,4 +1,4 @@
-import { AgentSettingsSchema } from "@etyon/rpc"
+import { AgentSettingsSchema, SkillsSettingsSchema } from "@etyon/rpc"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import {
@@ -52,7 +52,8 @@ vi.mock("@/main/db", () => ({
 
 const settingsFixture = () => ({
   agents: AgentSettingsSchema.parse({ allowSubagentDelegation: true }),
-  memory: { enabled: false }
+  memory: { enabled: false },
+  skills: SkillsSettingsSchema.parse({})
 })
 
 const writableProfile = (): ResolvedAgentProfile => ({
@@ -93,7 +94,11 @@ describe("buildAgentToolset plan-mode policy", () => {
         "read",
         "ls",
         "grep",
-        "todo_write",
+        "task_create",
+        "task_get",
+        "task_list",
+        "task_update",
+        "skill",
         "ask_user",
         "propose_plan"
       ])
@@ -130,6 +135,7 @@ describe("buildAgentToolset plan-mode policy", () => {
     )
     expect(names).not.toContain("ask_user")
     expect(names).not.toContain("propose_plan")
+    expect(names).not.toContain("todo_write")
   })
 })
 

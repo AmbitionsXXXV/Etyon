@@ -95,13 +95,16 @@ export type ChatTodoStatus = "completed" | "in_progress" | "pending"
 export interface ChatTodoItem {
   /** Present-tense label shown while the item is in progress ("Writing tests"). */
   activeForm?: string
+  blockedBy?: string[]
   content: string
+  id?: string
+  owner?: string
   status: ChatTodoStatus
 }
 
 /**
  * Transient (non-persisted) snapshot of the agent's task checklist, streamed by
- * the `todo_write` tool on every update. Full-replace: each part carries the
+ * task tools (or legacy `todo_write`) on every update. Each part carries the
  * ENTIRE list, so the renderer store — keyed by `runId` — always holds the
  * latest snapshot. The part `id` is `todo:<runId>`, stable per run.
  */

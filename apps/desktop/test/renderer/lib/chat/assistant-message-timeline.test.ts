@@ -40,6 +40,66 @@ const groupItem = (
 ): ChainToolGroupItem =>
   ({ part: toolPart(overrides), repeatCount }) as unknown as ChainToolGroupItem
 
+describe("durable task snapshots", () => {
+  it("replays the latest successful snapshot and retains failed updates as errors", () => {
+    const todos = [
+      {
+        blockedBy: ["Implement"],
+        content: "Review",
+        id: "task-1",
+        owner: "reviewer",
+        status: "pending"
+      }
+    ]
+    const grouped = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({
+            output: { todos: [] },
+            toolCallId: "create",
+            toolName: "task_create"
+          }),
+          toolPart({
+            output: { todos },
+            toolCallId: "update",
+            toolName: "task_update"
+          }),
+          toolPart({
+            errorText: "Task changed",
+            state: "output-error",
+            toolCallId: "failed",
+            toolName: "task_update"
+          })
+        ])
+      )
+    )
+    const entry = grouped.find((candidate) => candidate.kind === "todo")
+    expect(entry).toMatchObject({
+      key: "todo-create",
+      part: { toolCallId: "update" }
+    })
+    if (entry?.kind !== "todo") {
+      throw new Error("Missing task snapshot")
+    }
+    expect(getTodoPartTodos(entry.part)).toEqual(todos)
+    expect(grouped.map((candidate) => candidate.kind)).toEqual([
+      "todo",
+      "tool-group"
+    ])
+  })
+
+  it("does not interpret task mutation input as the persisted task list", () => {
+    expect(
+      getTodoPartTodos(
+        toolPart({
+          input: { subject: "Review" },
+          toolName: "task_create"
+        }) as unknown as ChatToolPart
+      )
+    ).toEqual([])
+  })
+})
+
 describe("buildAssistantChainEntries tail split", () => {
   it("keeps intermediate text in the chain and the trailing text in the body", () => {
     const source = message([

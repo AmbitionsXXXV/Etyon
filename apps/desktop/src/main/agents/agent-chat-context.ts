@@ -1,6 +1,6 @@
 import type { AppSettings, ChatMention } from "@etyon/rpc"
 import type { ModelMessage, UIMessage } from "ai"
-import { convertToModelMessages } from "ai"
+import { convertToModelMessages, getToolName, isToolUIPart } from "ai"
 
 import { completeUnresolvedToolCallsInModelMessages } from "@/main/agents/minimal/model-message-continuity"
 import { resolveAttachmentsForModelMessages } from "@/main/attachments"
@@ -101,6 +101,32 @@ export const buildAgentChatMemoryQuery = (messages: UIMessage[]): string =>
 const isSystemPrompt = (prompt: string | undefined): prompt is string =>
   typeof prompt === "string" && prompt.length > 0
 
+// UI snapshots are durable for replay; models only need the changed task or
+// task_list's details, rather than the full presentation snapshot on each turn.
+const withoutTaskDisplaySnapshots = (messages: UIMessage[]): UIMessage[] =>
+  messages.map((message) => ({
+    ...message,
+    parts: message.parts.map((part) => {
+      if (
+        !isToolUIPart(part) ||
+        part.state !== "output-available" ||
+        !["task_create", "task_update", "task_list"].includes(
+          getToolName(part)
+        ) ||
+        typeof part.output !== "object" ||
+        part.output === null ||
+        Array.isArray(part.output)
+      ) {
+        return part
+      }
+      const { todos: _todos, ...output } = part.output as Record<
+        string,
+        unknown
+      >
+      return { ...part, output }
+    })
+  }))
+
 export const prepareAgentChatContext = async ({
   db,
   mentions,
@@ -119,7 +145,9 @@ export const prepareAgentChatContext = async ({
     // Persisted image inputs arrive as `etyon-attachment://` refs; read their
     // bytes back into inline data URLs so the model receives the images
     // (fresh `data:` URLs from this turn pass through untouched).
-    resolveAttachmentsForModelMessages(messages).then(convertToModelMessages)
+    resolveAttachmentsForModelMessages(
+      withoutTaskDisplaySnapshots(messages)
+    ).then(convertToModelMessages)
   ])
   const { system } = buildMentionContext({
     mentions,
@@ -128,6 +156,7 @@ export const prepareAgentChatContext = async ({
   const sessionMemorySystem = buildSessionMemorySystemPrompt(memory)
   const digestSystem = buildProjectDigestSystemPrompt(projectDigest)
   const skillsSystem = buildSkillsSystemPrompt({
+    loadOnDemand: settings.agents.enabled,
     projectPath,
     query: memoryQuery,
     selectedSkills,
