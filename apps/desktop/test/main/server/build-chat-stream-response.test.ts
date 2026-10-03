@@ -46,6 +46,7 @@ vi.mock("@/main/agents/minimal/workspace-core", () => ({
 }))
 
 vi.mock("@/main/server/lib/providers", () => ({
+  resolveModelContextWindow: () => 128_000,
   resolveEffortProviderOptionsForSelection: vi.fn(),
   resolveModel: vi.fn(() => ({ modelId: "profile-preferred" }))
 }))

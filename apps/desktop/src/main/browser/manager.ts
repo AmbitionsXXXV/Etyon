@@ -1,6 +1,6 @@
 import type { BrowserState } from "@etyon/rpc"
 import { session, WebContentsView } from "electron"
-import type { Session } from "electron"
+import type { BrowserWindow, Session } from "electron"
 
 import type { BrowserLruEntry } from "@/main/browser/lru"
 import { selectBrowserViewToEvict } from "@/main/browser/lru"
@@ -41,6 +41,7 @@ interface BrowserSession {
   lastUrl: string
   lastUsedAt: number
   leaseCount: number
+  ownerWindow: BrowserWindow | null
   pendingRejects: Set<(error: Error) => void>
   view: WebContentsView
 }
@@ -311,7 +312,8 @@ const createBrowserSession = (sessionId: string): BrowserSession => {
   })
 
   view.setVisible(false)
-  getMainWindow()?.contentView.addChildView(view)
+  const ownerWindow = getMainWindow()
+  ownerWindow?.contentView.addChildView(view)
 
   const browserSession: BrowserSession = {
     hasBounds: false,
@@ -320,6 +322,7 @@ const createBrowserSession = (sessionId: string): BrowserSession => {
     lastUrl: "",
     lastUsedAt: Date.now(),
     leaseCount: 0,
+    ownerWindow,
     pendingRejects: new Set(),
     view
   }
@@ -466,7 +469,9 @@ export const disposeBrowserView = (sessionId: string): void => {
   }
   browserSession.pendingRejects.clear()
 
-  getMainWindow()?.contentView.removeChildView(browserSession.view)
+  if (browserSession.ownerWindow && !browserSession.ownerWindow.isDestroyed()) {
+    browserSession.ownerWindow.contentView.removeChildView(browserSession.view)
+  }
 
   const { webContents } = browserSession.view
 
@@ -527,7 +532,10 @@ export const withBrowserLease = async <T>(
  */
 export const withPaintableBrowserView = async <T>(
   sessionId: string,
-  capture: (view: WebContentsView) => Promise<T>
+  capture: (
+    view: WebContentsView,
+    ownerWindow: BrowserWindow | null
+  ) => Promise<T>
 ): Promise<T> => {
   const browserSession = getBrowserSession(sessionId)
   const { view } = browserSession
@@ -539,14 +547,14 @@ export const withPaintableBrowserView = async <T>(
     previousBounds.height >= MIN_PAINTABLE_VIEW_SIZE_PX
 
   if (isPaintable) {
-    return await capture(view)
+    return await capture(view, browserSession.ownerWindow)
   }
 
   view.setBounds(OFFSCREEN_CAPTURE_BOUNDS)
   view.setVisible(true)
 
   try {
-    return await capture(view)
+    return await capture(view, browserSession.ownerWindow)
   } finally {
     view.setBounds(previousBounds)
     applyBrowserViewVisibility(browserSession)

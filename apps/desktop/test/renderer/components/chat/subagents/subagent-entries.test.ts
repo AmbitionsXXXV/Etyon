@@ -5,21 +5,32 @@ import type { AgentRunTraceRun } from "@etyon/rpc"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { QueryKey } from "@tanstack/react-query"
 import type { DynamicToolUIPart } from "ai"
-import { createElement } from "react"
+import { act, createElement } from "react"
 import type { ReactElement, ReactNode } from "react"
+import { createRoot } from "react-dom/client"
 import { renderToStaticMarkup } from "react-dom/server"
 import { afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { WorkSubagentEntry } from "@/renderer/components/chat/subagents/subagent-entries"
 import type {
   ChatToolPart,
-  GroupedChainEntry
+  GroupedChainEntry,
+  SubagentToolName
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import {
+  applySubagentApproval,
   clearSubagents,
   setSubagentStart
 } from "@/renderer/lib/chat/subagent-stream-store"
 import { orpc } from "@/renderer/lib/rpc"
+
+const { respondToApproval } = vi.hoisted(() => ({
+  respondToApproval: vi.fn(() => Promise.resolve({ ok: true }))
+}))
+const reactActGlobal = globalThis as typeof globalThis & {
+  IS_REACT_ACT_ENVIRONMENT?: boolean
+}
+reactActGlobal.IS_REACT_ACT_ENVIRONMENT = true
 
 // The renderer rpc client touches window/electron at import time; the entries
 // wiring only needs the listRuns query (workflow history children) plus the two
@@ -47,7 +58,7 @@ vi.mock("@/renderer/lib/rpc", () => ({
       },
       respondToApproval: {
         mutationOptions: () => ({
-          mutationFn: () => Promise.resolve({ ok: true })
+          mutationFn: respondToApproval
         })
       }
     }
@@ -68,7 +79,7 @@ const listRunsKey = (parentRunId: string): QueryKey =>
 
 const subagentEntry = (
   part: ChatToolPart,
-  toolName: "delegate" | "workflow"
+  toolName: SubagentToolName
 ): Extract<GroupedChainEntry, { kind: "subagent-call" }> => ({
   key: `subagent-${part.toolCallId}`,
   kind: "subagent-call",
@@ -117,6 +128,7 @@ const traceRun = (
 describe("WorkSubagentEntry", () => {
   afterEach(() => {
     clearSubagents()
+    respondToApproval.mockClear()
   })
 
   it("renders the live delegate row while its child is streaming", () => {
@@ -329,5 +341,190 @@ describe("WorkSubagentEntry", () => {
     )
 
     expect(html).not.toContain("explore")
+  })
+
+  it("renders every live Best-of-N child and exposes its real pending approval action", async () => {
+    const toolCallId = "best-of-n:live-request"
+    setSubagentStart({
+      childRunId: "best-child-one",
+      parentToolCallId: toolCallId,
+      profileId: "coder",
+      task: "Implement model one"
+    })
+    setSubagentStart({
+      childRunId: "best-child-two",
+      parentToolCallId: toolCallId,
+      profileId: "coder",
+      task: "Implement model two"
+    })
+    setSubagentStart({
+      childRunId: "unrelated-child",
+      parentToolCallId: "other-call",
+      profileId: "coder",
+      task: "Unrelated task"
+    })
+    applySubagentApproval({
+      approvalId: "best-edit-approval",
+      canRemember: false,
+      childRunId: "best-child-two",
+      commandOrPath: "src/feature.ts",
+      dangerous: false,
+      toolName: "edit"
+    })
+    const part = {
+      input: {
+        models: [{ modelId: "one" }, { modelId: "two" }],
+        prompt: "Implement feature"
+      },
+      state: "input-available",
+      toolCallId,
+      toolName: "best_of_n",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const container = document.createElement("div")
+    document.body.append(container)
+    const root = createRoot(container)
+    const queryClient = makeClient()
+    try {
+      await act(async () => {
+        root.render(
+          createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            createElement(
+              TestI18nProvider,
+              { locale: "en-US" },
+              createElement(WorkSubagentEntry, {
+                entry: subagentEntry(part, "best_of_n"),
+                isApprovalActionDisabled: false,
+                onApprovalResponse: vi.fn(),
+                parentRunId: "parent"
+              })
+            )
+          )
+        )
+        await Promise.resolve()
+      })
+      expect(container.textContent).toContain("Best-of-N")
+      expect(container.textContent).toContain("Implement model one")
+      expect(container.textContent).toContain("Implement model two")
+      expect(container.textContent).not.toContain("Unrelated task")
+      expect(container.textContent).toContain("edit needs your approval")
+      const approve = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent?.trim() === "Approve"
+      )
+      if (!approve) {
+        throw new Error("Expected the actual child approval button.")
+      }
+      await act(async () => {
+        approve.click()
+        await Promise.resolve()
+      })
+      expect(respondToApproval).toHaveBeenCalledWith(
+        {
+          approvalId: "best-edit-approval",
+          approved: true
+        },
+        expect.anything()
+      )
+    } finally {
+      act(() => {
+        root.unmount()
+      })
+      container.remove()
+      queryClient.clear()
+    }
+  })
+
+  it("restores tagged Best-of-N children from runs and ignores delegate-shaped output and other tool calls", () => {
+    const toolCallId = "best-of-n:history-request"
+    const part = {
+      input: {
+        models: [{ modelId: "one" }, { modelId: "two" }],
+        prompt: "task"
+      },
+      output: { childRunId: "fake-delegate-output", candidates: [] },
+      state: "output-available",
+      toolCallId,
+      toolName: "best_of_n",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const queryClient = makeClient()
+    queryClient.setQueryData(listRunsKey("parent"), {
+      runs: [
+        traceRun({
+          id: "best-newer",
+          parentToolCallId: toolCallId,
+          profileId: "best-profile-two",
+          startedAt: "2026-10-03T01:00:02Z"
+        }),
+        traceRun({
+          id: "best-older",
+          parentToolCallId: toolCallId,
+          profileId: "best-profile-one",
+          startedAt: "2026-10-03T01:00:01Z"
+        }),
+        traceRun({
+          id: "sibling",
+          parentToolCallId: "other-call",
+          profileId: "unrelated-profile",
+          startedAt: "2026-10-03T01:00:00Z"
+        }),
+        traceRun({
+          id: "legacy",
+          parentToolCallId: null,
+          profileId: "legacy-explore",
+          startedAt: "2026-10-03T00:59:00Z"
+        })
+      ]
+    })
+    const html = renderEntry(
+      queryClient,
+      subagentEntry(part, "best_of_n"),
+      "parent"
+    )
+    expect(html).toContain("Best-of-N")
+    expect(html).toContain("best-profile-one")
+    expect(html).toContain("best-profile-two")
+    expect(html).not.toContain("unrelated-profile")
+    expect(html).not.toContain("legacy-explore")
+    const parsed = document.createElement("div")
+    parsed.innerHTML = html
+    const childList = parsed.querySelector('div[aria-label="Best-of-N"]')
+    expect(childList?.textContent).not.toContain("fake-delegate-output")
+    expect(html.indexOf("best-profile-one")).toBeLessThan(
+      html.indexOf("best-profile-two")
+    )
+    queryClient.clear()
+  })
+
+  it("does not use the workflow legacy fallback for an untagged Best-of-N comparison", () => {
+    const part = {
+      input: { prompt: "task" },
+      output: { candidates: [] },
+      state: "output-available",
+      toolCallId: "best-without-children",
+      toolName: "best_of_n",
+      type: "dynamic-tool"
+    } satisfies DynamicToolUIPart
+    const queryClient = makeClient()
+    queryClient.setQueryData(listRunsKey("parent"), {
+      runs: [
+        traceRun({
+          id: "legacy-child",
+          parentToolCallId: null,
+          profileId: "explore",
+          startedAt: "2026-10-03T01:00:00Z"
+        })
+      ]
+    })
+    const html = renderEntry(
+      queryClient,
+      subagentEntry(part, "best_of_n"),
+      "parent"
+    )
+    expect(html).toContain("Best-of-N")
+    expect(html).not.toContain("explore")
+    queryClient.clear()
   })
 })

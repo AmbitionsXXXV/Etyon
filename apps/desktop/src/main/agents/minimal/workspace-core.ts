@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import fsSync from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -38,6 +39,7 @@ export interface WorkspaceFileInfo {
 
 export interface WorkspaceFileView {
   content: string
+  contentHash: string
   info: WorkspaceFileInfo
 }
 
@@ -48,6 +50,7 @@ export interface WorkspaceRules {
 
 export interface WorkspaceWriteFileOptions {
   createParentDirectories?: boolean
+  expectedContentHash?: string
   expectedMtimeMs?: number
   requireReadSnapshot?: boolean
   signal?: AbortSignal
@@ -127,6 +130,11 @@ const WORKSPACE_RULES_TRUNCATION_MARKER =
 const execFileAsync = promisify(execFile)
 const workspaceWriteQueues = new Map<string, Promise<void>>()
 const workspaceCores = new Map<string, WorkspaceCore>()
+const PUBLIC_APP_WORKSPACE_DIRECTORIES = [
+  "artifacts",
+  "generated-images"
+] as const
+let privateDirectories: { canonical: string; configured: string }[] = []
 
 export const isSecretWorkspacePath = (requestedPath: string): boolean => {
   const normalizedPath = requestedPath.replaceAll("\\", "/").toLowerCase()
@@ -236,6 +244,142 @@ const realpathIfExists = (targetPath: string): string => {
   }
 }
 
+const canonicalPathIncludingMissing = (targetPath: string): string => {
+  const absolutePath = path.resolve(targetPath)
+  let ancestor = absolutePath
+  while (true) {
+    try {
+      return path.resolve(
+        fsSync.realpathSync.native(ancestor),
+        path.relative(ancestor, absolutePath)
+      )
+    } catch (error) {
+      if (
+        getNodeErrorCode(error) !== "ENOENT" ||
+        path.dirname(ancestor) === ancestor
+      ) {
+        throw error
+      }
+      ancestor = path.dirname(ancestor)
+    }
+  }
+}
+
+export const configureWorkspacePrivateDirectory = (
+  configDir: string | readonly string[] | null
+): void => {
+  const directories =
+    configDir === null
+      ? []
+      : typeof configDir === "string"
+        ? [configDir]
+        : configDir
+  privateDirectories = directories.map((directory) => ({
+    canonical: canonicalPathIncludingMissing(directory),
+    configured: path.resolve(directory)
+  }))
+}
+
+const privatePathAllowed = (root: string, target: string): boolean => {
+  if (!isPathInsideRoot(root, target)) {
+    return true
+  }
+  const relative = path.relative(root, target)
+  if (relative === "") {
+    return true
+  }
+  return PUBLIC_APP_WORKSPACE_DIRECTORIES.some((directory) =>
+    isPathInsideRoot(path.join(root, directory), target)
+  )
+}
+
+const assertNonPrivatePath = (
+  absolutePath: string,
+  requestedPath: string
+): WorkspaceResult<void> => {
+  if (privateDirectories.length === 0) {
+    return { ok: true, value: undefined }
+  }
+  try {
+    const canonical = canonicalPathIncludingMissing(absolutePath)
+    if (
+      privateDirectories.some(
+        (directory) =>
+          !privatePathAllowed(directory.configured, absolutePath) ||
+          !privatePathAllowed(directory.canonical, canonical)
+      )
+    ) {
+      return createFileError({
+        code: "secret-path",
+        message:
+          "Private application storage cannot be accessed as project files.",
+        requestedPath
+      })
+    }
+  } catch (error) {
+    return toFileSystemError({ error, requestedPath })
+  }
+  return { ok: true, value: undefined }
+}
+
+const escapeSearchGlob = (value: string): string =>
+  normalizeWorkspacePath(value).replaceAll(/[!*?[\]{}\\]/gu, "\\$&")
+const SECRET_SEARCH_GLOBS = [
+  ...[...SECRET_BASENAMES].map((name) => `!**/${name}`),
+  ...[...SECRET_EXTENSIONS].map((extension) => `!**/*${extension}`),
+  ...[...SECRET_SEGMENTS].flatMap((segment) => [
+    `!**/${segment}`,
+    `!**/${segment}/**`
+  ])
+]
+
+interface PrivateSearchPlan {
+  exclusions: string[]
+  roots: string[]
+}
+const privateSearchPlan = (
+  absolutePath: string,
+  projectPath: string
+): PrivateSearchPlan => {
+  const plan: PrivateSearchPlan = {
+    exclusions: [],
+    roots: [
+      normalizeWorkspacePath(path.relative(projectPath, absolutePath)) || "."
+    ]
+  }
+  if (privateDirectories.length === 0) {
+    return plan
+  }
+  const canonical = canonicalPathIncludingMissing(absolutePath)
+  for (const { canonical: privateRoot } of privateDirectories) {
+    if (canonical === privateRoot) {
+      plan.roots = PUBLIC_APP_WORKSPACE_DIRECTORIES.map((directory) =>
+        path.join(absolutePath, directory)
+      )
+        .filter((directory) => fsSync.existsSync(directory))
+        .filter(
+          (directory) =>
+            assertNonPrivatePath(directory, directory).ok &&
+            fsSync.lstatSync(directory).isDirectory()
+        )
+        .map((directory) =>
+          normalizeWorkspacePath(path.relative(projectPath, directory))
+        )
+      continue
+    }
+    if (!isPathInsideRoot(canonical, privateRoot)) {
+      continue
+    }
+    const relativePrivateRoot = path.relative(canonical, privateRoot)
+    const visiblePrivateRoot = path.join(absolutePath, relativePrivateRoot)
+    const prefix = escapeSearchGlob(
+      path.relative(projectPath, visiblePrivateRoot)
+    )
+    plan.exclusions.push(`!${prefix}`, `!${prefix}/**`)
+  }
+  return plan
+}
+
 const getFileInfoKind = (stats: fsSync.Stats): WorkspaceFileInfo["kind"] => {
   if (stats.isSymbolicLink()) {
     return "symlink"
@@ -287,12 +431,14 @@ const withWorkspaceWriteLock = async <TValue>(
 
 const checkStaleWriteGuards = ({
   currentInfo,
-  expectedReadMtimeMs,
+  currentContentHash,
+  expectedReadSnapshot,
   options,
   requestedPath
 }: {
   currentInfo: WorkspaceResult<WorkspaceFileInfo>
-  expectedReadMtimeMs: number | undefined
+  currentContentHash: string | undefined
+  expectedReadSnapshot: { contentHash: string; mtimeMs: number } | undefined
   options: WorkspaceWriteFileOptions | undefined
   requestedPath: string
 }): WorkspaceResult<void> => {
@@ -303,8 +449,16 @@ const checkStaleWriteGuards = ({
     requestedPath
   })
 
+  if (
+    options?.requireReadSnapshot &&
+    expectedReadSnapshot !== undefined &&
+    !fileExists
+  ) {
+    return changedError
+  }
+
   if (options?.requireReadSnapshot && fileExists) {
-    if (expectedReadMtimeMs === undefined) {
+    if (expectedReadSnapshot === undefined) {
       return createFileError({
         code: "stale-write",
         message: `${requestedPath} must be read before overwriting; read it before writing.`,
@@ -312,9 +466,19 @@ const checkStaleWriteGuards = ({
       })
     }
 
-    if (currentInfo.value.mtimeMs !== expectedReadMtimeMs) {
+    if (
+      currentInfo.value.mtimeMs !== expectedReadSnapshot.mtimeMs ||
+      currentContentHash !== expectedReadSnapshot.contentHash
+    ) {
       return changedError
     }
+  }
+
+  if (
+    options?.expectedContentHash !== undefined &&
+    (!fileExists || currentContentHash !== options.expectedContentHash)
+  ) {
+    return changedError
   }
 
   if (options?.expectedMtimeMs !== undefined) {
@@ -462,10 +626,39 @@ const ensureWritableFileTarget = async ({
   return { ok: true, value: undefined }
 }
 
-const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
+const getWriteLockKey = async (
+  absolutePath: string
+): Promise<WorkspaceResult<string>> => {
+  const ancestor = await findExistingAncestorPath({
+    absolutePath,
+    requestedPath: absolutePath
+  })
+  if (!ancestor.ok) {
+    return ancestor
+  }
+  try {
+    const realAncestor = await fs.realpath(ancestor.value)
+    return {
+      ok: true,
+      value: path.resolve(
+        realAncestor,
+        path.relative(ancestor.value, absolutePath)
+      )
+    }
+  } catch (error) {
+    return toFileSystemError({ error, requestedPath: absolutePath })
+  }
+}
+
+// Each model actor keeps its own read versions. Filesystem write locks remain
+// global, so isolated actors still serialize writes to the same canonical path.
+export const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
   const normalizedProjectPath = path.resolve(projectPath)
   const realProjectPath = realpathIfExists(normalizedProjectPath)
-  const readSnapshots = new Map<string, number>()
+  const readSnapshots = new Map<
+    string,
+    { contentHash: string; mtimeMs: number }
+  >()
 
   const resolveProjectPath = (
     requestedPath: string
@@ -482,6 +675,11 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
         message: "Path is outside project root.",
         requestedPath
       })
+    }
+
+    const privateCheck = assertNonPrivatePath(absolutePath, requestedPath)
+    if (!privateCheck.ok) {
+      return privateCheck
     }
 
     return {
@@ -511,6 +709,17 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
 
     try {
       const realAncestorPath = await fs.realpath(existingAncestorPath.value)
+
+      const privateCheck = assertNonPrivatePath(
+        path.resolve(
+          realAncestorPath,
+          path.relative(existingAncestorPath.value, absolutePath)
+        ),
+        requestedPath
+      )
+      if (!privateCheck.ok) {
+        return privateCheck
+      }
 
       if (!isPathInsideRoot(realProjectPath, realAncestorPath)) {
         return createFileError({
@@ -585,9 +794,6 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
       return toFileSystemError({ error, requestedPath })
     }
   }
-
-  const getWriteLockKey = (absolutePath: string): string =>
-    `${normalizedProjectPath}\0${path.resolve(absolutePath)}`
 
   const readWorkspaceRules = async (): Promise<WorkspaceRules | null> => {
     for (const requestedPath of WORKSPACE_RULES_CANDIDATES) {
@@ -734,6 +940,20 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
         return Promise.resolve(resolvedPath)
       }
 
+      let plan: PrivateSearchPlan
+      try {
+        plan = privateSearchPlan(
+          resolvedPath.value.absolutePath,
+          normalizedProjectPath
+        )
+      } catch (error) {
+        return Promise.resolve(
+          toFileSystemError({ error, requestedPath: searchRoot })
+        )
+      }
+      if (plan.roots.length === 0) {
+        return Promise.resolve({ ok: true, value: "" })
+      }
       const args = [
         "--line-number",
         "--color",
@@ -746,11 +966,12 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
         ...(literal ? ["--fixed-strings"] : []),
         ...(context ? ["--context", String(context)] : []),
         ...(glob ? ["--glob", glob] : []),
+        ...SECRET_SEARCH_GLOBS.flatMap((exclusion) => ["--glob", exclusion]),
+        ...plan.exclusions.flatMap((exclusion) => ["--glob", exclusion]),
         "--",
         pattern,
-        resolvedPath.value.relativePath
+        ...plan.roots
       ]
-
       return runRipgrep({
         args,
         cwd: normalizedProjectPath,
@@ -802,15 +1023,21 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
           "utf-8"
         )
 
-        readSnapshots.set(
-          getWriteLockKey(resolvedPath.value.absolutePath),
-          stats.mtimeMs
-        )
+        const contentHash = createHash("sha256").update(content).digest("hex")
+        const lockKey = await getWriteLockKey(resolvedPath.value.absolutePath)
+        if (!lockKey.ok) {
+          return lockKey
+        }
+        readSnapshots.set(lockKey.value, {
+          contentHash,
+          mtimeMs: stats.mtimeMs
+        })
 
         return {
           ok: true,
           value: {
             content,
+            contentHash,
             info: {
               isSymlink: stats.isSymbolicLink(),
               kind: getFileInfoKind(stats),
@@ -821,6 +1048,14 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
           }
         }
       } catch (error) {
+        if (getNodeErrorCode(error) === "ENOENT") {
+          const lockKey = await getWriteLockKey(resolvedPath.value.absolutePath)
+          if (lockKey.ok) {
+            // An explicit read of absence supersedes this actor's old view.
+            // A concurrently recreated file still requires a fresh read.
+            readSnapshots.delete(lockKey.value)
+          }
+        }
         return toFileSystemError({ error, requestedPath })
       }
     },
@@ -846,7 +1081,13 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
         return resolvedPath
       }
 
-      const lockKey = getWriteLockKey(resolvedPath.value.absolutePath)
+      const canonicalKey = await getWriteLockKey(
+        resolvedPath.value.absolutePath
+      )
+      if (!canonicalKey.ok) {
+        return canonicalKey
+      }
+      const lockKey = canonicalKey.value
 
       return await withWorkspaceWriteLock(lockKey, async () => {
         if (options?.createParentDirectories) {
@@ -876,9 +1117,28 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
           return currentInfo
         }
 
+        let currentContentHash: string | undefined
+        if (
+          currentInfo.ok &&
+          (options?.requireReadSnapshot || options?.expectedContentHash)
+        ) {
+          try {
+            const currentContent = await fs.readFile(
+              resolvedPath.value.absolutePath,
+              "utf-8"
+            )
+            currentContentHash = createHash("sha256")
+              .update(currentContent)
+              .digest("hex")
+          } catch (error) {
+            return toFileSystemError({ error, requestedPath })
+          }
+        }
+
         const staleCheck = checkStaleWriteGuards({
+          currentContentHash,
           currentInfo,
-          expectedReadMtimeMs: readSnapshots.get(lockKey),
+          expectedReadSnapshot: readSnapshots.get(lockKey),
           options,
           requestedPath
         })
@@ -953,7 +1213,13 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
         return resolvedPath
       }
 
-      const lockKey = getWriteLockKey(resolvedPath.value.absolutePath)
+      const canonicalKey = await getWriteLockKey(
+        resolvedPath.value.absolutePath
+      )
+      if (!canonicalKey.ok) {
+        return canonicalKey
+      }
+      const lockKey = canonicalKey.value
 
       return await withWorkspaceWriteLock(lockKey, async () => {
         const parentCheck = await ensureExistingAncestorInsideProject({
@@ -992,15 +1258,19 @@ const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
   }
 }
 
-export const getWorkspaceCore = (projectPath: string): WorkspaceCore => {
-  const key = path.resolve(projectPath)
+export const getWorkspaceCore = (
+  projectPath: string,
+  actorId?: string
+): WorkspaceCore => {
+  const normalizedProjectPath = path.resolve(projectPath)
+  const key = JSON.stringify([normalizedProjectPath, actorId ?? null])
   const existing = workspaceCores.get(key)
 
   if (existing) {
     return existing
   }
 
-  const core = createWorkspaceCore(key)
+  const core = createWorkspaceCore(normalizedProjectPath)
 
   workspaceCores.set(key, core)
 
@@ -1021,5 +1291,10 @@ export const getWorkspaceCore = (projectPath: string): WorkspaceCore => {
  * invalidate the cached core so it is rebuilt against the resolvable realpath.
  */
 export const invalidateWorkspaceCore = (projectPath: string): void => {
-  workspaceCores.delete(path.resolve(projectPath))
+  const normalizedProjectPath = path.resolve(projectPath)
+  for (const [key, core] of workspaceCores) {
+    if (core.projectPath === normalizedProjectPath) {
+      workspaceCores.delete(key)
+    }
+  }
 }

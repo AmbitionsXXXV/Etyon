@@ -26,10 +26,10 @@ const makeCheckpoint = (
 })
 
 describe("isRestoreCandidateToolName", () => {
-  it("accepts write and edit, rejects bash and read", () => {
+  it("accepts write, edit and bash, rejects read", () => {
     expect(isRestoreCandidateToolName("write")).toBe(true)
     expect(isRestoreCandidateToolName("edit")).toBe(true)
-    expect(isRestoreCandidateToolName("bash")).toBe(false)
+    expect(isRestoreCandidateToolName("bash")).toBe(true)
     expect(isRestoreCandidateToolName("read")).toBe(false)
   })
 })

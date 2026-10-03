@@ -102,7 +102,7 @@ export type ToolGroupLabel =
   | { kind: "usedTool" }
 
 /** Tool names that spawn nested sub-agent runs and get their own live row. */
-export type SubagentToolName = "delegate" | "workflow"
+export type SubagentToolName = "best_of_n" | "delegate" | "workflow"
 
 export type GroupedChainEntry =
   | {
@@ -461,9 +461,13 @@ export const groupChainEntries = (
         continue
       }
 
-      // delegate/workflow spawn nested sub-agents — pull them out of the generic
+      // These tools spawn nested sub-agents — pull them out of the generic
       // Ran/Explored buckets into their own live rows.
-      if (toolName === "delegate" || toolName === "workflow") {
+      if (
+        toolName === "delegate" ||
+        toolName === "workflow" ||
+        toolName === "best_of_n"
+      ) {
         flushToolRun()
         grouped.push({
           key: `subagent-${entry.part.toolCallId}`,

@@ -3,6 +3,14 @@ import type { AvailableUpdate, UpdateStatus } from "@etyon/rpc"
 import type { IpcRendererEvent } from "electron"
 import { contextBridge, ipcRenderer } from "electron"
 
+import {
+  isScreenAwarenessCapturePayload,
+  SCREEN_AWARENESS_CAPTURE_CHANNEL,
+  SCREEN_AWARENESS_ERROR_CHANNEL,
+  type ScreenAwarenessCaptureError,
+  type ScreenAwarenessCapturePayload
+} from "@/shared/screen-awareness"
+
 const BROWSER_STATE_CHANNEL = "browser:state"
 const TERMINAL_DATA_CHANNEL = "terminal:data"
 const TERMINAL_INPUT_CHANNEL = "terminal:input"
@@ -64,10 +72,32 @@ export interface UpdatesPreloadApi {
   ) => () => void
 }
 
+export interface ScreenAwarenessPreloadApi {
+  clearScreenAwarenessCaptures: () => Promise<void>
+  assignScreenAwarenessCapture: (
+    id: string,
+    sessionId: string
+  ) => Promise<ScreenAwarenessCapturePayload>
+  captureFocusedWindow: () => Promise<boolean>
+  dismissScreenAwarenessCapture: (id: string) => Promise<void>
+  listScreenAwarenessCaptures: () => Promise<ScreenAwarenessCapturePayload[]>
+  removeScreenAwarenessCaptureContent: (
+    id: string,
+    part: "image" | "text"
+  ) => Promise<void>
+  onScreenAwarenessError: (
+    callback: (payload: ScreenAwarenessCaptureError) => void
+  ) => () => void
+  onScreenAwarenessCapture: (
+    callback: (payload: ScreenAwarenessCapturePayload) => void
+  ) => () => void
+}
+
 type UpdatesStatusListener = UpdatesPreloadApi["onUpdatesStatusChanged"]
 
 export type EtyonElectronApi = typeof electronAPI &
   BrowserPreloadApi &
+  ScreenAwarenessPreloadApi &
   TerminalPreloadApi &
   UpdatesPreloadApi
 
@@ -221,11 +251,79 @@ const onUpdatesStatusChanged: UpdatesStatusListener = (callback) => {
   }
 }
 
+// eslint-disable-next-line promise/prefer-await-to-callbacks -- Electron IPC subscriptions are callback-driven.
+const onScreenAwarenessCapture: ScreenAwarenessPreloadApi["onScreenAwarenessCapture"] =
+  (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: unknown): void => {
+      if (isScreenAwarenessCapturePayload(payload)) {
+        // eslint-disable-next-line promise/prefer-await-to-callbacks -- Delivering an Electron IPC event is synchronous.
+        callback(payload)
+      }
+    }
+
+    ipcRenderer.on(SCREEN_AWARENESS_CAPTURE_CHANNEL, listener)
+
+    return () => {
+      ipcRenderer.removeListener(SCREEN_AWARENESS_CAPTURE_CHANNEL, listener)
+    }
+  }
+
+// eslint-disable-next-line promise/prefer-await-to-callbacks -- Electron IPC subscriptions are callback-driven.
+const onScreenAwarenessError: ScreenAwarenessPreloadApi["onScreenAwarenessError"] =
+  (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: unknown): void => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "code" in payload &&
+        "id" in payload &&
+        typeof payload.code === "string" &&
+        typeof payload.id === "string"
+      ) {
+        callback(payload as ScreenAwarenessCaptureError)
+      }
+    }
+    ipcRenderer.on(SCREEN_AWARENESS_ERROR_CHANNEL, listener)
+    return () => {
+      ipcRenderer.removeListener(SCREEN_AWARENESS_ERROR_CHANNEL, listener)
+    }
+  }
+
 const etyonElectronAPI: EtyonElectronApi = {
   ...electronAPI,
+  assignScreenAwarenessCapture: async (id, sessionId) => {
+    const value: unknown = await ipcRenderer.invoke(
+      "screen-awareness:assign",
+      id,
+      sessionId
+    )
+    if (!isScreenAwarenessCapturePayload(value)) {
+      throw new Error("Invalid capture assignment response")
+    }
+    return value
+  },
+  captureFocusedWindow: async () =>
+    Boolean(await ipcRenderer.invoke("screen-awareness:capture")),
+  clearScreenAwarenessCaptures: async () => {
+    await ipcRenderer.invoke("screen-awareness:clear")
+  },
+  dismissScreenAwarenessCapture: async (id) => {
+    await ipcRenderer.invoke("screen-awareness:dismiss", id)
+  },
+  listScreenAwarenessCaptures: async () => {
+    const value: unknown = await ipcRenderer.invoke("screen-awareness:list")
+    return Array.isArray(value)
+      ? value.filter(isScreenAwarenessCapturePayload)
+      : []
+  },
   onBrowserState,
+  onScreenAwarenessCapture,
+  onScreenAwarenessError,
   onTerminalData,
   onUpdatesStatusChanged,
+  removeScreenAwarenessCaptureContent: async (id, part) => {
+    await ipcRenderer.invoke("screen-awareness:remove-content", id, part)
+  },
   sendTerminalInput
 }
 

@@ -1,20 +1,38 @@
 // @vitest-environment happy-dom
 
+import { setTimeout as delay } from "node:timers/promises"
+
 import { I18nProvider } from "@etyon/i18n/react"
 import type { AgentRunTraceRun, AgentRunTraceToolCall } from "@etyon/rpc"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { QueryKey } from "@tanstack/react-query"
 import type { DynamicToolUIPart } from "ai"
-import { createElement } from "react"
+import { act, createElement } from "react"
 import type { ReactElement, ReactNode } from "react"
+import { createRoot } from "react-dom/client"
 import { renderToStaticMarkup } from "react-dom/server"
-import { describe, expect, it, vi } from "vite-plus/test"
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { SubagentRowView } from "@/renderer/components/chat/subagents/subagent-row"
 import type { ChatUiMessage } from "@/renderer/lib/chat/assistant-message-timeline"
 import type { SubagentRowViewModel } from "@/renderer/lib/chat/subagent-view-model"
 import { orpc } from "@/renderer/lib/rpc"
 import type { ChatSubagentApprovalData } from "@/shared/chat/stream-data"
+
+const { respondToApproval } = vi.hoisted(() => ({
+  respondToApproval:
+    vi.fn<
+      (input: {
+        approvalId: string
+        approved: boolean
+        rememberCommand?: boolean
+      }) => Promise<{ ok: boolean }>
+    >()
+}))
+const reactActGlobal = globalThis as typeof globalThis & {
+  IS_REACT_ACT_ENVIRONMENT?: boolean
+}
+reactActGlobal.IS_REACT_ACT_ENVIRONMENT = true
 
 // The renderer rpc client pulls in window/electron globals at import time, so the
 // component tests replace it with just the query/mutation option factories the
@@ -37,7 +55,7 @@ vi.mock("@/renderer/lib/rpc", () => ({
       },
       respondToApproval: {
         mutationOptions: () => ({
-          mutationFn: () => Promise.resolve({ ok: true })
+          mutationFn: respondToApproval
         })
       }
     }
@@ -118,6 +136,86 @@ const traceRun = (runId: string): AgentRunTraceRun => ({
 })
 
 describe("SubagentRowView", () => {
+  beforeEach(() => {
+    respondToApproval.mockReset().mockResolvedValue({ ok: true })
+  })
+
+  it("restores approval actions after an RPC failure and keeps a successful retry submitted", async () => {
+    respondToApproval.mockRejectedValueOnce(new Error("Connection stopped"))
+    const container = document.createElement("div")
+    document.body.append(container)
+    const root = createRoot(container)
+    const client = makeClient()
+    try {
+      await act(async () => {
+        root.render(
+          createElement(
+            QueryClientProvider,
+            { client },
+            createElement(
+              TestI18nProvider,
+              { locale: "en-US" },
+              createElement(SubagentRowView, {
+                model: baseModel({
+                  approvals: [approval({ canRemember: true })]
+                })
+              })
+            )
+          )
+        )
+        await Promise.resolve()
+      })
+      const buttons = [...container.querySelectorAll("button")].filter(
+        (button) =>
+          ["Approve", "Approve and remember", "Deny"].includes(
+            button.textContent?.trim() ?? ""
+          )
+      )
+      const remember = buttons.find(
+        (button) => button.textContent?.trim() === "Approve and remember"
+      )
+      if (!remember) {
+        throw new Error("Expected the child approval action.")
+      }
+      expect(buttons).toHaveLength(3)
+
+      await act(async () => {
+        remember.click()
+        await delay(10)
+      })
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "Connection stopped"
+      )
+      expect(buttons.every((button) => !button.disabled)).toBe(true)
+
+      await act(async () => {
+        remember.click()
+        await delay(10)
+      })
+      expect(respondToApproval).toHaveBeenCalledTimes(2)
+      expect(respondToApproval.mock.calls.map(([input]) => input)).toEqual([
+        {
+          approvalId: "approval-1",
+          approved: true,
+          rememberCommand: true
+        },
+        {
+          approvalId: "approval-1",
+          approved: true,
+          rememberCommand: true
+        }
+      ])
+      expect(container.querySelector('[role="alert"]')).toBeNull()
+      expect(buttons.every((button) => button.disabled)).toBe(true)
+    } finally {
+      act(() => {
+        root.unmount()
+      })
+      container.remove()
+      client.clear()
+    }
+  })
+
   it("renders a running row with its task, pulsing dot, and live activity", () => {
     const html = renderRow(
       makeClient(),

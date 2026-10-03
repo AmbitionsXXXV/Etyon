@@ -7,8 +7,16 @@ import {
   getImageFileParts,
   isAcceptedAttachmentMediaType,
   MAX_ATTACHMENT_BYTES,
-  MAX_ATTACHMENTS_PER_MESSAGE
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  mergeComposerAttachments
 } from "@/renderer/lib/chat/attachments"
+
+const buildAttachment = (id: string) => ({
+  dataUrl: `data:image/png;base64,${id}`,
+  id,
+  mediaType: "image/png",
+  name: `${id}.png`
+})
 
 describe("isAcceptedAttachmentMediaType", () => {
   it("accepts png/jpeg/webp/gif (case-insensitive) and rejects others", () => {
@@ -90,6 +98,31 @@ describe("attachmentToFilePart", () => {
       type: "file",
       url: "data:image/png;base64,AAAA"
     })
+  })
+})
+
+describe("mergeComposerAttachments", () => {
+  it("deduplicates incoming captures and preserves existing order", () => {
+    const current = [buildAttachment("one")]
+
+    expect(
+      mergeComposerAttachments(current, [
+        buildAttachment("one"),
+        buildAttachment("two")
+      ]).map((attachment) => attachment.id)
+    ).toEqual(["one", "two"])
+  })
+
+  it("caps externally staged captures at the composer attachment limit", () => {
+    const current = [buildAttachment("one"), buildAttachment("two")]
+    const merged = mergeComposerAttachments(current, [
+      buildAttachment("three"),
+      buildAttachment("four"),
+      buildAttachment("five")
+    ])
+
+    expect(merged).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE)
+    expect(merged.at(-1)?.id).toBe("four")
   })
 })
 

@@ -305,6 +305,47 @@ const authorizeRequest = (request: Request): Request => {
 }
 
 describe("hono app", () => {
+  it("rejects an overlapping chat before it checkpoints or starts another model call", async () => {
+    const stream = Promise.withResolvers<ReadableStreamDefaultController>()
+    const sessionId = "session-1"
+    const source = new ReadableStream({
+      start(controller) {
+        stream.resolve(controller)
+      }
+    })
+    streamTextMock.mockReturnValueOnce({
+      toUIMessageStream: vi.fn(() => source)
+    })
+    const request = () =>
+      app.request("/api/chat", {
+        body: JSON.stringify({ messages: [], sessionId }),
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${getLocalConnectionToken()}`
+        },
+        method: "POST"
+      })
+    const first = await request()
+    let overlap: Response | undefined
+    try {
+      overlap = await request()
+      expect(overlap.status).toBe(409)
+      expect(await overlap.json()).toMatchObject({ error: "chat_session_busy" })
+      expect(persistSubmittedChatMessagesMock).toHaveBeenCalledTimes(1)
+      expect(streamTextMock).toHaveBeenCalledTimes(1)
+    } finally {
+      const controller = await stream.promise
+      controller.close()
+      await consumeChatResponse(first)
+      if (overlap?.status === 200) {
+        await consumeChatResponse(overlap)
+      }
+    }
+    const next = await request()
+    expect(next.status).toBe(200)
+    await consumeChatResponse(next)
+  })
+
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
   })
@@ -477,6 +518,7 @@ describe("hono app", () => {
       "/tmp/project-a"
     )
     expect(buildSkillsSystemPromptMock).toHaveBeenCalledWith({
+      loadOnDemand: false,
       projectPath: "/tmp/project-a",
       query: "",
       selectedSkills: [],

@@ -94,7 +94,12 @@ const SubagentApprovalCard = ({
 }) => {
   const { t } = useI18n()
   const [submitted, setSubmitted] = useState(false)
-  const mutation = useMutation(orpc.agents.respondToApproval.mutationOptions())
+  const mutation = useMutation({
+    ...orpc.agents.respondToApproval.mutationOptions(),
+    onError: () => {
+      setSubmitted(false)
+    }
+  })
   const isDisabled = submitted || mutation.isPending
 
   const respond = (approved: boolean, rememberCommand?: boolean): void => {
@@ -124,6 +129,13 @@ const SubagentApprovalCard = ({
       {approval.dangerous ? (
         <p className="text-[0.7rem] text-danger">
           {t("chat.subagent.approvalDanger")}
+        </p>
+      ) : null}
+      {mutation.isError ? (
+        <p className="text-[0.7rem] text-danger" role="alert">
+          {mutation.error instanceof Error
+            ? mutation.error.message
+            : t("chat.invocations.failed")}
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
@@ -328,10 +340,12 @@ const SubagentRowView = memo(({ model }: { model: SubagentRowViewModel }) => {
   })
   const durationText =
     elapsedMs === undefined ? "" : formatElapsedDuration(elapsedMs)
-  const fallbackTitle =
-    model.origin === "workflow"
-      ? t("chat.workSection.ranWorkflow")
-      : t("chat.workSection.delegatedTask")
+  let fallbackTitle = t("chat.workSection.delegatedTask")
+  if (model.origin === "workflow") {
+    fallbackTitle = t("chat.workSection.ranWorkflow")
+  } else if (model.origin === "best_of_n") {
+    fallbackTitle = t("chat.bestOfN.title")
+  }
 
   return (
     <Disclosure

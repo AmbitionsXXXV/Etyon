@@ -53,6 +53,7 @@ vi.mock("ai", async (importOriginal) => {
 })
 
 vi.mock("@/main/server/lib/providers", () => ({
+  resolveModelContextWindow: () => 128_000,
   resolveModel: resolveModelMock
 }))
 

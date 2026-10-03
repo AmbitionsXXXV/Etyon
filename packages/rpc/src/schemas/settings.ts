@@ -1,6 +1,7 @@
 import { LocalePreferenceSchema } from "@etyon/i18n"
 import * as z from "zod"
 
+import { McpSettingsSchema } from "./mcp"
 import { MemorySettingsSchema } from "./memory"
 import {
   BuiltInProviderIdSchema,
@@ -9,6 +10,7 @@ import {
   StoredProviderModelSchema
 } from "./providers"
 import { SkillsSettingsSchema } from "./skills"
+import { WebToolsSettingsSchema } from "./web-tools"
 
 export const CustomThemeTypeSchema = z.enum(["dark", "light"])
 
@@ -275,9 +277,12 @@ const AGENT_SETTINGS_DEFAULT = {
   allowSubagentDelegation: false,
   approvals: AGENT_APPROVAL_SETTINGS_DEFAULT,
   autoLoadWorkspaceRules: true,
+  checkpoints: { maxAgeDays: 14, maxTotalMb: 512 },
+  contextBudget: { maxInputTokens: 64000, reserveOutputTokens: 4096 },
   defaultPermissionMode: "default",
   defaultProfileId: "general-purpose",
   enabled: false,
+  hooks: { enabled: false },
   lsp: AGENT_LSP_SETTINGS_DEFAULT,
   maxConcurrentSubagents: 2,
   maxSubagentSteps: 24,
@@ -430,9 +435,24 @@ export const AgentSettingsSchema = z.object({
     AGENT_APPROVAL_SETTINGS_DEFAULT
   ),
   autoLoadWorkspaceRules: z.boolean().default(true),
+  checkpoints: z
+    .object({
+      maxAgeDays: z.number().int().min(1).max(365).default(14),
+      maxTotalMb: z.number().int().min(16).max(8192).default(512)
+    })
+    .default({ maxAgeDays: 14, maxTotalMb: 512 }),
+  contextBudget: z
+    .object({
+      maxInputTokens: z.number().int().min(1024).max(2000000).default(64000),
+      reserveOutputTokens: z.number().int().min(256).max(64000).default(4096)
+    })
+    .default({ maxInputTokens: 64000, reserveOutputTokens: 4096 }),
   defaultPermissionMode: AgentPermissionModeSchema.default("default"),
   defaultProfileId: z.string().default("general-purpose"),
   enabled: z.boolean().default(false),
+  hooks: z
+    .object({ enabled: z.boolean().default(false) })
+    .default({ enabled: false }),
   lsp: AgentLspSettingsSchema.default(AGENT_LSP_SETTINGS_DEFAULT),
   maxConcurrentSubagents: z.number().int().min(1).max(4).default(2),
   // Per-delegated-child step cap (delegate and workflow investigators alike).
@@ -446,6 +466,10 @@ export const AgentSettingsSchema = z.object({
   retry: AgentRetrySettingsSchema.default(AGENT_RETRY_SETTINGS_DEFAULT),
   rtk: AgentRtkSettingsSchema.default(AGENT_RTK_SETTINGS_DEFAULT),
   sandbox: AgentSandboxSettingsSchema.default(AGENT_SANDBOX_SETTINGS_DEFAULT)
+})
+
+export const ScreenAwarenessSettingsSchema = z.object({
+  enabled: z.boolean().default(true)
 })
 
 export const AppSettingsSchema = z.object({
@@ -473,16 +497,23 @@ export const AppSettingsSchema = z.object({
   fontSize: z.number().min(12).max(24).default(16),
   lightColorSchema: LightColorSchemaSchema.default("default"),
   locale: LocalePreferenceSchema.default("system"),
+  mcp: McpSettingsSchema.default({ servers: [] }),
   memory: MemorySettingsSchema.default(MEMORY_SETTINGS_DEFAULT),
   minimizeToTray: z.boolean().default(false),
   onboardedAt: z.string().nullable().default(null),
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
+  screenAwareness: ScreenAwarenessSettingsSchema.default({ enabled: true }),
   sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
   skills: SkillsSettingsSchema.default(SKILLS_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
   telegram: TelegramSettingsSchema.default(TELEGRAM_SETTINGS_DEFAULT),
   theme: ThemeSchema.default("system"),
-  updates: UpdatesSettingsSchema.default(UPDATES_SETTINGS_DEFAULT)
+  updates: UpdatesSettingsSchema.default(UPDATES_SETTINGS_DEFAULT),
+  webTools: WebToolsSettingsSchema.default({
+    enabled: false,
+    searchApiKey: "",
+    searchProvider: "brave"
+  })
 })
 
 export const UpdateSettingsSchema = z.object({
@@ -498,16 +529,19 @@ export const UpdateSettingsSchema = z.object({
   fontSize: z.number().min(12).max(24).optional(),
   lightColorSchema: LightColorSchemaSchema.optional(),
   locale: LocalePreferenceSchema.optional(),
+  mcp: McpSettingsSchema.optional(),
   memory: MemorySettingsSchema.optional(),
   minimizeToTray: z.boolean().optional(),
   onboardedAt: z.string().nullable().optional(),
   proxy: ProxySettingsSchema.optional(),
+  screenAwareness: ScreenAwarenessSettingsSchema.optional(),
   sidebar: SidebarSettingsSchema.optional(),
   skills: SkillsSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
   telegram: TelegramSettingsSchema.optional(),
   theme: ThemeSchema.optional(),
-  updates: UpdatesSettingsSchema.optional()
+  updates: UpdatesSettingsSchema.optional(),
+  webTools: WebToolsSettingsSchema.optional()
 })
 
 export type AiProviderConfig = z.infer<typeof AiProviderConfigSchema>

@@ -96,6 +96,11 @@ const config: ForgeConfig = {
       // If you are familiar with Vite configuration, it will look really familiar.
       build: [
         {
+          config: "vite.workflow.config.ts",
+          entry: "src/main/agents/minimal/workflow/workflow-worker.ts",
+          target: "main"
+        },
+        {
           config: "vite.main.config.ts",
           entry: "src/main/index.ts",
           target: "main"

@@ -1,7 +1,7 @@
 import { platform } from "@electron-toolkit/utils"
 import { Menu } from "electron"
 
-import { showScreenAwarenessOnboarding } from "@/main/screen-awareness"
+import { captureFocusedWindow } from "@/main/screen-awareness"
 import { openUpdatesSettings } from "@/main/updates"
 
 import { t } from "./localization"
@@ -29,7 +29,7 @@ export const setupMenu = (appName: string) => {
                 label: t("menu.app.settings")
               },
               {
-                click: () => showScreenAwarenessOnboarding(),
+                click: () => captureFocusedWindow(),
                 label: t("menu.app.sendFocusedWindowToAi")
               },
               { type: "separator" as const },

@@ -46,7 +46,9 @@
       "countError": "You can attach up to 4 images.",
       "image": "Attached image",
       "nonVisionHint": "The selected model can't see images. Remove them or switch to a vision model to send.",
+      "ready": "Images ready to send",
       "remove": "Remove image",
+      "screenAwareness": "Screen Awareness",
       "sizeError": "Each image must be 8 MB or smaller.",
       "typeError": "Unsupported type — use PNG, JPEG, WebP, or GIF.",
       "unsupported": "The selected model can't see images"
@@ -56,7 +58,11 @@
       "navigate": "Browse page",
       "read": "Read page",
       "screenshot": "Capture page",
-      "screenshotAlt": "Screenshot of {{url}}"
+      "screenshotAlt": "Screenshot of {{url}}",
+      "click": "Click page element",
+      "press": "Press page key",
+      "scroll": "Scroll page",
+      "type": "Fill page field"
     },
     "imageMode": {
       "label": "Image",
@@ -213,7 +219,10 @@
       "resultRestored": "Restored {{count}} files.",
       "resultSkipped": "Skipped {{count}} files that were blocked or outside the workspace.",
       "successTitle": "Restore complete",
-      "title": "Restore to before this change?"
+      "title": "Restore to before this change?",
+      "gitScope": "The tracked files below will be restored. Current state is saved first; untracked files and the index are preserved.",
+      "previewLoading": "Calculating restore changes…",
+      "previewFailed": "Could not read restore changes. Try again."
     },
     "planHint": {
       "dismiss": "Dismiss",
@@ -545,6 +554,76 @@
       "running": "Running…",
       "succeeded": "Done",
       "viewDetails": "View details"
+    },
+    "screenAwareness": {
+      "capture": "Capture focused window",
+      "clear": "Clear unsent captures",
+      "failed": "Window capture did not complete",
+      "image": "Screenshot",
+      "removeImage": "Remove screenshot",
+      "removeText": "Remove text",
+      "text": "Accessible text",
+      "selected": "Selected text",
+      "partial": "Some content is unavailable",
+      "errors": {
+        "accessibility-permission-required": "Accessibility permission is required to read text.",
+        "capture-limit": "Up to 4 captures can be staged. Send or remove one first.",
+        "capture-unavailable": "The window could not be captured. Retry and check system permissions.",
+        "protected-surface": "This app or password field cannot be captured.",
+        "routing-failed": "Could not stage the capture in chat. It is still stored locally; retry.",
+        "screen-permission-required": "Screen Recording permission is required for screenshots.",
+        "screenshot-unavailable": "Screenshot unavailable. Accessible text was preserved.",
+        "storage-failed": "Could not save the capture. Check local disk space.",
+        "text-truncated": "The text limit was reached. Only part of the content is included.",
+        "text-unavailable": "The app did not provide accessible text. The screenshot was preserved.",
+        "window-unavailable": "The original window closed or is unavailable. Capture it again.",
+        "cleanup-failed": "Message submitted, but the local capture cache could not be removed. Clear it in Settings."
+      }
+    },
+    "invocations": {
+      "title": "{{count}} operations need verification",
+      "description": "The app stopped before recording an outcome. Check the files, process, or target page first. Confirmation updates the record without repeating the operation.",
+      "completed": "Verified: completed",
+      "notCompleted": "Verified: not completed",
+      "failed": "Could not update the record. Try again."
+    },
+    "bestOfN": {
+      "applied": "Applied",
+      "apply": "Apply this candidate",
+      "cancel": "Cancel run",
+      "cancelDiscard": "Keep candidates",
+      "confirmDiscard": "Confirm discard",
+      "conflicts": "These files changed in the primary workspace. Resolve them and preview again.",
+      "discard": "Discard candidates",
+      "discardConfirmation": "This removes the isolated workspaces and changes that were not selected.",
+      "empty": "Choose 2–4 models to complete the same task, then compare their results.",
+      "failed": "Failed",
+      "modelLimit": "Choose 2–4 models.",
+      "models": "Candidate models",
+      "noChanges": "No file changes",
+      "pending": "Pending",
+      "preview": "Preview changes",
+      "prompt": "Task",
+      "ready": "Complete",
+      "recommendation": "Review",
+      "recommended": "Recommended",
+      "running": "Running",
+      "start": "Generate candidates",
+      "title": "Best-of-N",
+      "view": "View candidates",
+      "unavailable": "Enable subagent delegation in Agent settings and select a profile that allows writable delegates.",
+      "discarded": "Discarded",
+      "files": "files"
+    },
+    "worktrees": {
+      "apply": "Apply to primary workspace",
+      "confirmDiscard": "Confirm workspace removal",
+      "discard": "Remove isolated workspace",
+      "empty": "This chat has no retained isolated workspaces.",
+      "orphaned": "Run interrupted; changes retained",
+      "preview": "Preview changes",
+      "title": "Isolated workspaces",
+      "files": "files"
     }
   },
   "firstLight": {
@@ -845,7 +924,27 @@
         "title": "Crew roster",
         "writeCapable": "Write-capable"
       },
-      "title": "Agents"
+      "title": "Agents",
+      "checkpoints": {
+        "title": "File restore and checkpoints",
+        "description": "Keep recoverable state before changes. Old checkpoints expire or are removed at the storage limit; Git snapshots also depend on Git object retention.",
+        "days": "Retention in days",
+        "storage": "File content storage (MB)"
+      },
+      "hooks": {
+        "title": "Hooks",
+        "description": "Run configured local scripts before and after tools and when a turn ends.",
+        "empty": "No hooks are configured.",
+        "enabled": "Enable hooks",
+        "global": "Global configuration",
+        "scope": "Hooks configuration scope"
+      },
+      "contextBudget": {
+        "title": "Model context budget",
+        "description": "Bound input before each model call while retaining the current task and pending tool calls.",
+        "input": "Maximum input budget",
+        "output": "Output reserve"
+      }
     },
     "chat": {
       "autoCompact": {
@@ -1049,7 +1148,11 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
-      "userInterface": "User Interface"
+      "userInterface": "User Interface",
+      "screenAwareness": "Screen Awareness",
+      "mcp": "MCP servers",
+      "automation": "Background tasks",
+      "webTools": "Web tools"
     },
     "memory": {
       "description": "Store compact long-term memory outside the model context so chat sessions, projects, and the Telegram bridge can share relevant recall.",
@@ -1517,6 +1620,121 @@
       "description": "Choose whether minimize and close actions should hide the app to the system tray.",
       "minimizeToTray": "Minimize to system tray",
       "title": "Window Behavior"
+    },
+    "screenAwareness": {
+      "title": "Screen Awareness",
+      "description": "Press both Command keys or capture manually. Review and remove window content before sending. Nothing is sent automatically.",
+      "enabled": "Enable Screen Awareness",
+      "accessibility": "Accessibility",
+      "screenRecording": "Screen Recording",
+      "granted": "Granted",
+      "missing": "Not granted",
+      "permissions": "Set up system permissions",
+      "clear": "Clear unsent captures",
+      "privacy": "Unsent content stays locally for 10 minutes. Password managers, system security screens, and password fields cannot be captured. Text is limited to content exposed by the app.",
+      "unsupported": "Screen Awareness currently supports macOS only.",
+      "cleared": "Unsent captures cleared",
+      "failed": "Operation failed. Try again."
+    },
+    "mcp": {
+      "title": "MCP servers",
+      "description": "Connect local or remote tools. Enabling a server opens its connection; each agent call still follows approval policy.",
+      "addStdio": "Add local server",
+      "addHttp": "Add HTTP server",
+      "configuration": "Server configuration (JSON)",
+      "enabled": "Enable server",
+      "connect": "Connect / refresh tools",
+      "edit": "Edit",
+      "remove": "Remove",
+      "invalid": "Invalid configuration. Check the name, command or URL, and JSON syntax.",
+      "largeCatalog": "Tool descriptions use model context. Disable servers you do not need for this task.",
+      "tools": "Tools ({{count}})",
+      "catalogTruncated": "The server discovered {{count}} tools. Only tools within the catalog and description budgets are loaded.",
+      "clearCredentials": "Clear credentials",
+      "credentials": "Environment variables and HTTP headers are encrypted and hidden when editing. New values replace all saved credentials; empty values preserve them. Use Clear credentials to remove them.",
+      "disconnect": "Disconnect",
+      "empty": "Add a stdio or HTTP MCP server, enable it, then connect to inspect its tools.",
+      "loading": "Loading MCP configuration…",
+      "newServer": "New MCP server",
+      "status": {
+        "connected": "Connected",
+        "connecting": "Connecting",
+        "disconnected": "Disconnected",
+        "error": "Connection failed"
+      }
+    },
+    "webTools": {
+      "apiKey": "Search API key",
+      "clearKey": "Clear API key",
+      "credentials": "The API key is encrypted with system secure storage. Fetching needs no key; search uses the saved provider and key.",
+      "description": "Let the agent fetch public pages and search with inspectable sources. Requests follow the app's HTTP(S) proxy settings and reject local or private targets.",
+      "enabled": "Enable web tools",
+      "keyPlaceholder": "Enter the selected provider's API key",
+      "keySaved": "Securely saved; leave blank to keep it",
+      "noResults": "Search completed with no results.",
+      "openFailed": "Unable to open the source link.",
+      "provider": "Search provider",
+      "providerChanged": "Changing providers clears the previous key. Enter and save the new provider's key.",
+      "query": "Search query",
+      "source": "Page source",
+      "testFetch": "Test page fetch",
+      "testSearch": "Test search",
+      "testing": "Testing…",
+      "title": "Web tools",
+      "truncated": "The document is long. The tool returned the first 24,000 characters.",
+      "url": "Public page URL"
+    },
+    "automation": {
+      "add": "New task",
+      "approvalNotice": "Open the chat in Etyon to review the pending approval or question.",
+      "cancel": "Cancel run",
+      "confirmDelete": "Delete this task and its run history?",
+      "cron": "Cron expression",
+      "cronHint": "Five fields: minute, hour, day, month, weekday. Example: 0 9 * * 1-5.",
+      "defaultProfile": "Default profile",
+      "delete": "Delete",
+      "description": "Run agents in the background while Etyon is open. Tasks pause for approvals and questions; missed runs are not replayed after a restart.",
+      "desktopNotification": "Desktop notifications",
+      "empty": "No background tasks yet. Choose a chat, add a prompt, and run it once or set a schedule.",
+      "edit": "Edit",
+      "enabled": "Schedule enabled",
+      "error": "Unable to load background tasks.",
+      "history": "Recent runs",
+      "interval": "Interval in minutes",
+      "loading": "Loading background tasks…",
+      "model": "Model ID (optional)",
+      "modelHint": "Leave empty to use the chat model. A profile's preferred model takes precedence.",
+      "name": "Task name",
+      "nextRun": "Next run",
+      "noHistory": "No runs recorded yet.",
+      "openChat": "Open chat",
+      "permission": "Permissions",
+      "permissionAcceptEdits": "Allow project file edits; ask for commands",
+      "permissionDefault": "Ask for edits and commands",
+      "profile": "Agent profile",
+      "prompt": "What should the agent do?",
+      "resultNotice": "Open the chat in Etyon to review the result.",
+      "runNow": "Run now",
+      "schedule": "Schedule",
+      "scheduleCron": "Cron with time zone",
+      "scheduleInterval": "Every interval",
+      "scheduleManual": "Manual only",
+      "session": "Chat",
+      "started": "Started",
+      "status": {
+        "cancelled": "Cancelled",
+        "failed": "Failed",
+        "interrupted": "Interrupted — review needed",
+        "running": "Running",
+        "skipped": "Skipped — chat unavailable",
+        "succeeded": "Completed",
+        "suspended": "Waiting for your response"
+      },
+      "telegramHint": "Uses only the allowed chat IDs in Channels. Notification failures are shown in run history.",
+      "telegramNotification": "Telegram notifications",
+      "timeZone": "Time zone",
+      "timeout": "Time limit in minutes",
+      "title": "Background tasks"
     }
   },
   "tray": {

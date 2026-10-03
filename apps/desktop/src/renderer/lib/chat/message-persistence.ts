@@ -6,4 +6,4 @@ export const shouldSyncPersistedMessagesAfterFinish = ({
 }: {
   agentMode: ChatAgentMode
   isError: boolean
-}): boolean => agentMode === "agent" && !isError
+}): boolean => ["agent", "chat", "plan"].includes(agentMode) && !isError

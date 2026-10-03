@@ -9,6 +9,9 @@ import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 
+import { useRuntimeNavigation } from "@/renderer/lib/chat/use-runtime-navigation"
+import { useScreenAwareness } from "@/renderer/lib/chat/use-screen-awareness"
+
 import { App } from "./app"
 import { FirstLightGate } from "./components/first-light/first-light-overlay"
 import { SettingsPage } from "./components/settings-page"
@@ -52,6 +55,18 @@ const loadInitialSettings = async (): Promise<AppSettings> => {
 }
 
 const root = document.querySelector("#root")
+
+const RuntimeListeners = ({
+  isSettingsWindowMode,
+  screenAwarenessEnabled
+}: {
+  isSettingsWindowMode: boolean
+  screenAwarenessEnabled: boolean
+}) => {
+  useScreenAwareness(!isSettingsWindowMode && screenAwarenessEnabled)
+  useRuntimeNavigation(!isSettingsWindowMode)
+  return null
+}
 
 const RendererRoot = ({
   firstLightModeValue,
@@ -136,7 +151,13 @@ const RendererRoot = ({
 
   return (
     <I18nProvider locale={locale}>
-      <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <RuntimeListeners
+          isSettingsWindowMode={isSettingsWindowMode}
+          screenAwarenessEnabled={settings.screenAwareness.enabled}
+        />
+        {content}
+      </QueryClientProvider>
     </I18nProvider>
   )
 }

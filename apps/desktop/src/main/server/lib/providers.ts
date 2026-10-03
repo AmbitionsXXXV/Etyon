@@ -438,3 +438,20 @@ export const resolveEffortProviderOptionsForSelection = (
 
   return base
 }
+
+export const resolveModelContextWindow = (
+  selectedModelId: string | null
+): number | null => {
+  const settings = getSettings().ai
+  if (!selectedModelId) {
+    return null
+  }
+  const { model, provider } = parseModelId(
+    selectedModelId,
+    settings.defaultProvider
+  )
+  return (
+    findStoredModel(settings, provider, model)?.capabilities?.contextWindow ??
+    null
+  )
+}

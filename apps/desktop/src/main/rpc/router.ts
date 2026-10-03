@@ -41,6 +41,17 @@ import {
   GitProjectDiffInputSchema,
   GitProjectDiffOutputSchema,
   ListCheckpointsInputSchema,
+  ListInvocationsInputSchema,
+  McpServerInputSchema,
+  McpStatusOutputSchema,
+  WebFetchInputSchema,
+  WebFetchOutputSchema,
+  WebSearchInputSchema,
+  WebSearchOutputSchema,
+  ListInvocationsOutputSchema,
+  ResolveInvocationInputSchema,
+  PreviewCheckpointInputSchema,
+  PreviewCheckpointOutputSchema,
   ListCheckpointsOutputSchema,
   RestoreCheckpointInputSchema,
   RestoreCheckpointOutputSchema,
@@ -108,16 +119,35 @@ import {
   readAgentArtifact
 } from "@/main/agents/agent-run-inspection"
 import { readArtifactFileWithRecovery } from "@/main/agents/artifact-recovery"
+import { automationRouter } from "@/main/agents/automation/rpc"
 import {
+  configureCheckpointRetention,
+  getCheckpoint,
   listCheckpoints,
+  previewBashCheckpoint,
+  restoreBashCheckpoint,
   restoreFileCheckpoint
 } from "@/main/agents/checkpoints"
 import { respondToChildApproval } from "@/main/agents/child-approval"
 import type { RememberableChildCommand } from "@/main/agents/child-approval"
 import {
+  listInvocations,
+  resolveInvocationOutcome
+} from "@/main/agents/invocation-ledger"
+import {
+  connectMcpServer,
+  disconnectMcpServer,
+  listMcpStatuses,
+  syncMcpConnections
+} from "@/main/agents/mcp/client-manager"
+import { protectMcpCredentials } from "@/main/agents/mcp/credentials"
+import {
   getSessionPlan,
   setSessionPlanStatus
 } from "@/main/agents/session-plans"
+import { protectWebToolsCredentials } from "@/main/agents/web/credentials"
+import { fetchPublicText } from "@/main/agents/web/fetch"
+import { searchWeb } from "@/main/agents/web/web-tools"
 import { syncRuntimeIcon } from "@/main/app-metadata"
 import {
   BrowserCookieImportError,
@@ -192,7 +222,17 @@ import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
 import type { AppRpcContext } from "@/main/rpc/context"
+import { withRpcSessionMutation } from "@/main/rpc/session-mutation"
+import {
+  bestOfNRouter,
+  hooksRouter,
+  worktreesRouter
+} from "@/main/rpc/worktree-procedures"
 import { getRtkTokenSavings } from "@/main/rtk-token-savings"
+import {
+  startScreenAwarenessHelper,
+  stopScreenAwarenessHelper
+} from "@/main/screen-awareness"
 import { getServerUrl } from "@/main/server/server-url"
 import { getSettings, updateSettings } from "@/main/settings"
 import {
@@ -235,11 +275,19 @@ const broadcastSidebarState = (state: ReturnType<typeof getSidebarUiState>) => {
   }
 }
 
-const applySettingsUpdate = (
+const applySettingsUpdate = async (
   input: Parameters<typeof updateSettings>[0]
-): ReturnType<typeof updateSettings> => {
+): Promise<ReturnType<typeof updateSettings>> => {
   const previousSettings = getSettings()
-  const result = updateSettings(input)
+  const result = updateSettings({
+    ...input,
+    ...(input.mcp ? { mcp: protectMcpCredentials(input.mcp) } : {}),
+    ...(input.webTools
+      ? { webTools: protectWebToolsCredentials(input.webTools) }
+      : {})
+  })
+  configureCheckpointRetention(result.agents.checkpoints)
+  void syncMcpConnections()
 
   if (!startupSettingsEqual(previousSettings, result)) {
     syncStartupSettings(result)
@@ -249,6 +297,18 @@ const applySettingsUpdate = (
     syncRuntimeIcon(result.appIcon)
   }
 
+  if (
+    previousSettings.screenAwareness.enabled !== result.screenAwareness.enabled
+  ) {
+    if (result.screenAwareness.enabled) {
+      startScreenAwarenessHelper()
+    } else {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send("settings-changed", result)
+      }
+      await stopScreenAwarenessHelper()
+    }
+  }
   refreshLocalizedAppShell()
   syncTelegramBridge(result)
   for (const win of BrowserWindow.getAllWindows()) {
@@ -264,10 +324,10 @@ const applySettingsUpdate = (
 // applySettingsUpdate so the settings UI stays in sync. The dangerous-command
 // guard already ran in respondToChildApproval, which only returns a command here
 // when it is safe to remember.
-const rememberChildBashCommand = ({
+const rememberChildBashCommand = async ({
   command,
   projectPath
-}: RememberableChildCommand): void => {
+}: RememberableChildCommand): Promise<void> => {
   const settings = getSettings()
   const rule = {
     command,
@@ -285,7 +345,7 @@ const rememberChildBashCommand = ({
     rule
   ]
 
-  applySettingsUpdate({
+  await applySettingsUpdate({
     agents: {
       ...settings.agents,
       approvals: {
@@ -371,21 +431,116 @@ const checkpointsList = rpc
     }
   })
 
-const checkpointsRestore = rpc
-  .input(RestoreCheckpointInputSchema)
-  .output(RestoreCheckpointOutputSchema)
+const webToolsFetch = rpc
+  .input(WebFetchInputSchema)
+  .output(WebFetchOutputSchema)
+  .handler(async ({ input }) => {
+    const settings = getSettings()
+    if (!settings.webTools.enabled) {
+      throw new Error("Web tools are disabled")
+    }
+    return await fetchPublicText(input.url, settings.proxy)
+  })
+const webToolsSearch = rpc
+  .input(WebSearchInputSchema)
+  .output(WebSearchOutputSchema)
+  .handler(async ({ input }) => {
+    if (!getSettings().webTools.enabled) {
+      throw new Error("Web tools are disabled")
+    }
+    return await searchWeb(input.query)
+  })
+
+const mcpStatuses = rpc
+  .output(McpStatusOutputSchema)
+  .handler(() => ({ statuses: listMcpStatuses() }))
+const mcpConnect = rpc
+  .input(McpServerInputSchema)
+  .output(McpStatusOutputSchema)
+  .handler(async ({ input }) => {
+    await connectMcpServer(input.serverId, true)
+    return { statuses: listMcpStatuses() }
+  })
+const mcpDisconnect = rpc
+  .input(McpServerInputSchema)
+  .handler(async ({ input }) => {
+    await disconnectMcpServer(input.serverId)
+  })
+
+const invocationsList = rpc
+  .input(ListInvocationsInputSchema)
+  .output(ListInvocationsOutputSchema)
+  .handler(async ({ context, input }) => {
+    if (!(await getChatSessionById(context.db, input.sessionId))) {
+      throw new Error("Chat session not found")
+    }
+    return { invocations: await listInvocations(context.db, input.sessionId) }
+  })
+const invocationsResolve = rpc
+  .input(ResolveInvocationInputSchema)
+  .handler(async ({ context, input }) => {
+    if (!(await getChatSessionById(context.db, input.sessionId))) {
+      throw new Error("Chat session not found")
+    }
+    await resolveInvocationOutcome(
+      context.db,
+      input.sessionId,
+      input.id,
+      input.completed
+    )
+  })
+
+const checkpointsPreview = rpc
+  .input(PreviewCheckpointInputSchema)
+  .output(PreviewCheckpointOutputSchema)
   .handler(async ({ context, input }) => {
     const session = await getChatSessionById(context.db, input.sessionId)
-
     if (!session) {
-      throw new Error(`Chat session not found: ${input.sessionId}`)
+      throw new Error("Chat session not found")
     }
-
-    return restoreFileCheckpoint({
+    return await previewBashCheckpoint({
       checkpointId: input.checkpointId,
       projectPath: session.projectPath
     })
   })
+
+const checkpointsRestore = rpc
+  .input(RestoreCheckpointInputSchema)
+  .output(RestoreCheckpointOutputSchema)
+  .handler(
+    async ({ context, input }) =>
+      await withRpcSessionMutation(input.sessionId, async () => {
+        const session = await getChatSessionById(context.db, input.sessionId)
+
+        if (!session) {
+          throw new Error(`Chat session not found: ${input.sessionId}`)
+        }
+
+        const checkpoint = await getCheckpoint(input.checkpointId)
+        if (checkpoint?.origin === "bash") {
+          if (!input.expectedFingerprint) {
+            throw new Error("Preview the Git restore before confirming it")
+          }
+          const preview = await previewBashCheckpoint({
+            checkpointId: input.checkpointId,
+            projectPath: session.projectPath
+          })
+          const result = await restoreBashCheckpoint({
+            checkpointId: input.checkpointId,
+            expectedFingerprint: input.expectedFingerprint,
+            projectPath: session.projectPath
+          })
+          if (!result.ok) {
+            throw new Error(`Git restore failed: ${result.reason}`)
+          }
+          return { missingBlobs: [], restored: preview.paths, skipped: [] }
+        }
+        return restoreFileCheckpoint({
+          checkpointId: input.checkpointId,
+          projectPath: session.projectPath
+        })
+      })
+  )
 
 const memoryList = rpc
   .input(ListMemoryEntriesInputSchema)
@@ -845,7 +1000,7 @@ const agentsRespondToApproval = rpc
     })
 
     if (result.rememberableCommand) {
-      rememberChildBashCommand(result.rememberableCommand)
+      await rememberChildBashCommand(result.rememberableCommand)
     }
 
     return result.ok
@@ -1070,6 +1225,10 @@ const browserStop = rpc
   })
 
 export const router = {
+  bestOfN: bestOfNRouter,
+  hooks: hooksRouter,
+  worktrees: worktreesRouter,
+  automation: automationRouter,
   agents: {
     getSessionPlan: agentsGetSessionPlan,
     inspectRun: agentsInspectRun,
@@ -1109,6 +1268,7 @@ export const router = {
   },
   checkpoints: {
     list: checkpointsList,
+    preview: checkpointsPreview,
     restore: checkpointsRestore
   },
   cursorAuth: {
@@ -1125,6 +1285,13 @@ export const router = {
     commit: gitCommit,
     diff: gitProjectDiff
   },
+  webTools: { fetch: webToolsFetch, search: webToolsSearch },
+  mcp: {
+    connect: mcpConnect,
+    disconnect: mcpDisconnect,
+    statuses: mcpStatuses
+  },
+  invocations: { list: invocationsList, resolve: invocationsResolve },
   logger: {
     emit: loggerEmit
   },

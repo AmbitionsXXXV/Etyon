@@ -8,6 +8,7 @@ export default defineProject({
   },
   test: {
     environment: "node",
+    globalSetup: ["./test/workflow-worker-setup.ts"],
     include: ["test/**/*.test.ts"],
     name: "desktop"
   }

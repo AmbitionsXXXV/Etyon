@@ -32,6 +32,53 @@ describe("getNextPermissionMode", () => {
 })
 
 describe("isDangerousShellCommand", () => {
+  it("classifies quoted or escaped executable arguments without treating text as code", () => {
+    for (const command of [
+      "git reset '--hard'",
+      'git -C . reset "--hard"',
+      "git re'set' --'hard'",
+      "'git' '-C' '.' 'reset' '--hard'",
+      'git clean "-fd"',
+      "git checkout '--' .",
+      'git push "--force" origin main',
+      String.raw`git reset --h\ard`,
+      'rm "-r" "-f" build',
+      "printf ok; git -C . reset '--hard'"
+    ]) {
+      expect(isDangerousShellCommand(command), command).toBe(true)
+      for (const mode of ["default", "acceptEdits"] as const) {
+        expect(
+          needsShellApproval({ command, isRemembered: true, mode }),
+          command
+        ).toBe(true)
+      }
+    }
+    expect(isDangerousShellCommand('echo "git reset --hard"')).toBe(false)
+    expect(
+      isDangerousShellCommand('git -c alias.msg="reset --hard" status')
+    ).toBe(false)
+    expect(isDangerousShellCommand('git status -- "reset" "--hard"')).toBe(
+      false
+    )
+    expect(isDangerousShellCommand("rm -- '-rf'")).toBe(false)
+  })
+
+  it("recognizes destructive git commands after global flags", () => {
+    for (const command of [
+      "git -C . reset --hard",
+      "git -C 'repo path' clean -fd",
+      "git -c color.ui=false --no-pager push --force origin main",
+      "git --git-dir=.git --work-tree=. checkout -- .",
+      "/usr/bin/git -C. reset --hard"
+    ]) {
+      expect(isDangerousShellCommand(command)).toBe(true)
+      expect(
+        needsShellApproval({ command, isRemembered: true, mode: "default" })
+      ).toBe(true)
+    }
+    expect(isDangerousShellCommand("git -C . status")).toBe(false)
+    expect(isDangerousShellCommand("echo 'git -C . reset --hard'")).toBe(false)
+  })
   it("flags rm with recursive+force in any flag arrangement", () => {
     expect(isDangerousShellCommand("rm -rf build")).toBe(true)
     expect(isDangerousShellCommand("rm -fr build")).toBe(true)

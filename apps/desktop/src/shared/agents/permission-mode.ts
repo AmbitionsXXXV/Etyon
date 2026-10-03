@@ -1,3 +1,5 @@
+import { tokenizeShellCommands } from "@/shared/agents/shell-command"
+
 /**
  * Agent permission modes — an axis orthogonal to chat/agent/plan agent-mode.
  *
@@ -12,8 +14,9 @@
  * - bypass:      nothing is gated (yolo)
  *
  * Destructive shell commands (rm -rf, git reset --hard, sudo, …) are gated in
- * every mode except bypass, and cannot be silenced by the remembered-command
- * allowlist — so an accidental "remember" never disarms a wipe.
+ * every mode except bypass. A remembered-command rule cannot silence these
+ * known signatures.
+ * This is a backstop, not a complete shell sandbox.
  */
 
 export const PERMISSION_MODES = ["default", "acceptEdits", "bypass"] as const
@@ -37,65 +40,93 @@ export const getNextPermissionMode = (
   return PERMISSION_MODES[nextIndex] ?? DEFAULT_PERMISSION_MODE
 }
 
-// Destructive command signatures other than `rm` (handled separately). Each is
-// anchored to a command token (start of string, or after a shell separator or
-// `sudo`) so a substring inside a path or string literal does not trip the
-// classifier. Intentionally high-signal, not exhaustive: the goal is to force
-// approval on the obviously-irreversible, not to sandbox.
-const COMMAND_BOUNDARY = String.raw`(?:^|[\n;&|]|\bsudo\s+)\s*`
-const DESTRUCTIVE_COMMAND_PATTERNS: readonly RegExp[] = [
-  // git history/worktree wipes.
-  new RegExp(`${COMMAND_BOUNDARY}git\\s+reset\\s+(?:.*\\s)?--hard\\b`, "u"),
-  new RegExp(`${COMMAND_BOUNDARY}git\\s+clean\\s+(?:.*\\s)?-\\S*f`, "u"),
-  new RegExp(
-    `${COMMAND_BOUNDARY}git\\s+checkout\\s+(?:.*\\s)?--(?:\\s|$)`,
-    "u"
-  ),
-  new RegExp(
-    `${COMMAND_BOUNDARY}git\\s+push\\s+(?:.*\\s)?(?:--force\\b|-\\S*f)`,
-    "u"
-  ),
-  // Privilege escalation and disk/system-level operations.
-  new RegExp(`${COMMAND_BOUNDARY}sudo\\b`, "u"),
-  new RegExp(`${COMMAND_BOUNDARY}(?:shutdown|reboot|halt|poweroff)\\b`, "u"),
-  new RegExp(`${COMMAND_BOUNDARY}mkfs\\b`, "u"),
-  new RegExp(`${COMMAND_BOUNDARY}dd\\s+(?:.*\\s)?of=`, "u"),
-  // Fork bomb.
-  /:\s*\(\s*\)\s*\{/u
-]
+const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/u
+const GIT_VALUE_OPTIONS = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--config-env",
+  "--super-prefix"
+])
+const SHORT_FLAGS = /^-[a-z]+$/iu
+const FORK_BOMB_PATTERN = /:\s*\(\s*\)\s*\{/u
 
-// `rm` is dangerous when its flags request BOTH recursive and force. Flags may
-// be combined (`-rf`, `-fr`) or split (`-r -f`), long (`--recursive --force`),
-// and appear after a boundary. Parsed rather than regex'd for legibility.
-const RM_TOKEN_PATTERN = /(?:^|[\n;&|]|\bsudo\s+)\s*rm\b([^\n;&|]*)/u
-
-const rmRequestsRecursiveForce = (argsSegment: string): boolean => {
-  let recursive = false
-  let force = false
-
-  for (const token of argsSegment.split(/\s+/u).filter(Boolean)) {
-    if (token === "--recursive") {
-      recursive = true
-    } else if (token === "--force") {
-      force = true
-    } else if (/^-[a-z]*$/iu.test(token)) {
-      if (token.includes("r") || token.includes("R")) {
-        recursive = true
-      }
-
-      if (token.includes("f")) {
-        force = true
-      }
-    }
+const getGitArguments = (tokens: string[]): string[] => {
+  let index = 1
+  while (tokens[index]?.startsWith("-")) {
+    const token = tokens[index] as string
+    index += GIT_VALUE_OPTIONS.has(token) ? 2 : 1
   }
-
-  return recursive && force
+  return tokens.slice(index)
 }
 
-const isDangerousRmCommand = (command: string): boolean => {
-  const match = command.match(RM_TOKEN_PATTERN)
+const hasShortFlag = (tokens: string[], flag: string): boolean =>
+  tokens.some((token) => SHORT_FLAGS.test(token) && token.includes(flag))
 
-  return match ? rmRequestsRecursiveForce(match[1] ?? "") : false
+const beforeEndOfOptions = (tokens: string[]): string[] => {
+  const end = tokens.indexOf("--")
+  return end === -1 ? tokens : tokens.slice(0, end)
+}
+
+const isDangerousGitCommand = (command: string[]): boolean => {
+  const [subcommand, ...gitArgs] = getGitArguments(command)
+  const gitOptions = beforeEndOfOptions(gitArgs)
+  switch (subcommand) {
+    case "reset": {
+      return gitOptions.includes("--hard")
+    }
+    case "clean": {
+      return gitOptions.includes("--force") || hasShortFlag(gitOptions, "f")
+    }
+    case "checkout": {
+      return gitArgs.includes("--")
+    }
+    case "push": {
+      return (
+        gitOptions.some(
+          (arg) =>
+            arg === "--force" ||
+            arg.startsWith("--force-with-lease") ||
+            arg === "--force-if-includes"
+        ) || hasShortFlag(gitOptions, "f")
+      )
+    }
+    default: {
+      return false
+    }
+  }
+}
+
+const isDangerousSimpleCommand = (tokens: string[]): boolean => {
+  const executableIndex = tokens.findIndex(
+    (token) => !ENV_ASSIGNMENT_PATTERN.test(token)
+  )
+  const command = tokens.slice(
+    executableIndex === -1 ? tokens.length : executableIndex
+  )
+  const binary = command[0]?.split("/").at(-1)
+  const args = command.slice(1)
+  const optionArgs = beforeEndOfOptions(args)
+  if (binary === "rm") {
+    const recursive =
+      optionArgs.includes("--recursive") ||
+      hasShortFlag(optionArgs, "r") ||
+      hasShortFlag(optionArgs, "R")
+    const force =
+      optionArgs.includes("--force") || hasShortFlag(optionArgs, "f")
+    return recursive && force
+  }
+  if (binary === "git") {
+    return isDangerousGitCommand(command)
+  }
+  return (
+    binary === "sudo" ||
+    ["shutdown", "reboot", "halt", "poweroff", "mkfs"].includes(binary ?? "") ||
+    binary?.startsWith("mkfs.") === true ||
+    (binary === "dd" && args.some((arg) => arg.startsWith("of=")))
+  )
 }
 
 /**
@@ -110,9 +141,13 @@ export const isDangerousShellCommand = (command: string): boolean => {
     return false
   }
 
+  const parsed = tokenizeShellCommands(normalized)
+  // Dynamic shell syntax cannot be classified as a harmless remembered call.
+  // This intentionally requires approval rather than pretending to evaluate it.
   return (
-    isDangerousRmCommand(normalized) ||
-    DESTRUCTIVE_COMMAND_PATTERNS.some((pattern) => pattern.test(normalized))
+    parsed === null ||
+    FORK_BOMB_PATTERN.test(normalized) ||
+    parsed.commands.some(isDangerousSimpleCommand)
   )
 }
 

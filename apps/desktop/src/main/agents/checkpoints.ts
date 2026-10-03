@@ -20,6 +20,17 @@ import { logger } from "@/main/logger"
 export const CHECKPOINT_MAX_AGE_DAYS = 14
 export const CHECKPOINT_MAX_TOTAL_MB = 512
 
+let checkpointRetention = {
+  maxAgeDays: CHECKPOINT_MAX_AGE_DAYS,
+  maxTotalMb: CHECKPOINT_MAX_TOTAL_MB
+}
+export const configureCheckpointRetention = (value: {
+  maxAgeDays: number
+  maxTotalMb: number
+}): void => {
+  checkpointRetention = { ...value }
+}
+
 const CHECKPOINT_FILE_MAX_BYTES = 5 * 1024 * 1024
 const CHECKPOINT_LIST_DEFAULT_LIMIT = 100
 const CHECKPOINT_LIST_MAX_LIMIT = 1000
@@ -75,6 +86,8 @@ export type RestoreBashCheckpointResult =
         | "not-bash"
         | "not-found"
         | "snapshot-missing"
+        | "safety-capture-failed"
+        | "worktree-changed"
     }
 
 export type SingleFileRestoreResult =
@@ -550,7 +563,17 @@ const createGitSnapshot = async (
   })
   const snapshotRef = String(stdout).trim()
 
-  return snapshotRef || null
+  if (snapshotRef) {
+    return snapshotRef
+  }
+  const head = await execFileAsync("git", ["rev-parse", "HEAD"], {
+    cwd: projectPath,
+    encoding: "utf-8",
+    maxBuffer: GIT_COMMAND_MAX_BUFFER,
+    timeout: GIT_COMMAND_TIMEOUT_MS,
+    windowsHide: true
+  })
+  return String(head.stdout).trim()
 }
 
 export const captureBashCheckpoint = async ({
@@ -635,11 +658,55 @@ const getGitCommandStderr = (error: unknown): string => {
     : String(stderr ?? "").trim()
 }
 
-export const restoreBashCheckpoint = async ({
+export const previewBashCheckpoint = async ({
   checkpointId,
   projectPath
 }: {
   checkpointId: string
+  projectPath: string
+}): Promise<{ fingerprint: string; paths: string[] }> => {
+  const project = await resolveProject(projectPath)
+  const checkpoint = await getCheckpoint(checkpointId)
+  if (
+    !checkpoint ||
+    checkpoint.projectHash !== project.projectHash ||
+    checkpoint.origin !== "bash" ||
+    !checkpoint.gitSnapshotRef
+  ) {
+    throw new Error("Bash checkpoint is unavailable for this project")
+  }
+  const options = {
+    cwd: project.normalizedPath,
+    encoding: "utf-8" as const,
+    maxBuffer: GIT_COMMAND_MAX_BUFFER,
+    timeout: GIT_COMMAND_TIMEOUT_MS,
+    windowsHide: true
+  }
+  const patch = await execFileAsync(
+    "git",
+    ["diff", "--binary", checkpoint.gitSnapshotRef, "--", "."],
+    options
+  )
+  const paths = await execFileAsync(
+    "git",
+    ["diff", "--name-only", "-z", checkpoint.gitSnapshotRef, "--", "."],
+    options
+  )
+  return {
+    fingerprint: createHash("sha256")
+      .update(String(patch.stdout))
+      .digest("hex"),
+    paths: String(paths.stdout).split("\u0000").filter(Boolean)
+  }
+}
+
+export const restoreBashCheckpoint = async ({
+  checkpointId,
+  expectedFingerprint,
+  projectPath
+}: {
+  checkpointId: string
+  expectedFingerprint?: string
   projectPath: string
 }): Promise<RestoreBashCheckpointResult> => {
   const project = await resolveProject(projectPath)
@@ -729,6 +796,13 @@ export const restoreBashCheckpoint = async ({
       return { ok: false, reason: "snapshot-missing" }
     }
 
+    if (expectedFingerprint !== undefined) {
+      const preview = await previewBashCheckpoint({ checkpointId, projectPath })
+      if (preview.fingerprint !== expectedFingerprint) {
+        return { ok: false, reason: "worktree-changed" }
+      }
+    }
+
     let safetyCheckpointId: string | null = null
 
     try {
@@ -743,12 +817,13 @@ export const restoreBashCheckpoint = async ({
       })
       safetyCheckpointId = safetyCheckpoint.id
     } catch (error) {
-      // Restore proceeds fail-open; the target snapshot is still applied.
+      // A recoverable safety checkpoint is required before replacing tracked files.
       logger.error("checkpoint_bash_restore_safety_capture_failed", {
         checkpoint_id: checkpoint.id,
         error,
         project_path: project.normalizedPath
       })
+      return { ok: false, reason: "safety-capture-failed" }
     }
 
     try {
@@ -1252,7 +1327,8 @@ export const pruneCheckpoints = async ({
       .where(eq(agentCheckpoints.projectHash, project.projectHash))
       .orderBy(agentCheckpoints.createdAt, sql`rowid`)
     const checkpoints = rows.map(toCheckpoint)
-    const cutoffMs = Date.now() - CHECKPOINT_MAX_AGE_DAYS * MILLISECONDS_PER_DAY
+    const cutoffMs =
+      Date.now() - checkpointRetention.maxAgeDays * MILLISECONDS_PER_DAY
     const evictedIds = new Set(
       checkpoints
         .filter((checkpoint) => Date.parse(checkpoint.createdAt) < cutoffMs)
@@ -1281,7 +1357,7 @@ export const pruneCheckpoints = async ({
       totalBytes += size
     }
 
-    const maxTotalBytes = CHECKPOINT_MAX_TOTAL_MB * 1024 * 1024
+    const maxTotalBytes = checkpointRetention.maxTotalMb * 1024 * 1024
 
     for (const checkpoint of activeCheckpoints) {
       if (totalBytes <= maxTotalBytes) {

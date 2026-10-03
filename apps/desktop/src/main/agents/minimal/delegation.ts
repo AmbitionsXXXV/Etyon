@@ -29,6 +29,17 @@ import {
   captureBashCheckpoint,
   captureFileCheckpoint
 } from "@/main/agents/checkpoints"
+import { buildDelegatedModelPolicy } from "@/main/agents/delegated-model-policy"
+import {
+  createRuntimeHookRunner,
+  isHookConfigurationPath
+} from "@/main/agents/hook-runtime"
+import type { HookRunner } from "@/main/agents/hooks/runner"
+import { wrapToolsWithHooks } from "@/main/agents/hooks/tool-wrapper"
+import {
+  protectToolInvocations,
+  runPersistedInvocation
+} from "@/main/agents/invocation-ledger"
 import {
   BASH_TOOL_NAME,
   BashInputSchema,
@@ -45,9 +56,10 @@ import {
 import { buildSkillTool } from "@/main/agents/minimal/skill-tool"
 import { buildTaskTools } from "@/main/agents/minimal/task-tools"
 import { clampText } from "@/main/agents/minimal/text-clamp"
-import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import { createWorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import type { WorkspaceCore } from "@/main/agents/minimal/workspace-core"
 import { createTaskStore } from "@/main/agents/task-store"
+import { buildReadToolResultTool } from "@/main/agents/tool-result-store"
 import {
   childWriteHolder,
   claimWrite,
@@ -183,7 +195,10 @@ const forwardSubagentStream = async ({
 // parallel within one step.
 const activeChildCounts = new Map<string, number>()
 
-const tryAcquireChildSlot = (parentRunId: string, limit: number): boolean => {
+export const tryAcquireChildSlot = (
+  parentRunId: string,
+  limit: number
+): boolean => {
   const active = activeChildCounts.get(parentRunId) ?? 0
 
   if (active >= limit) {
@@ -195,7 +210,7 @@ const tryAcquireChildSlot = (parentRunId: string, limit: number): boolean => {
   return true
 }
 
-const releaseChildSlot = (parentRunId: string): void => {
+export const releaseChildSlot = (parentRunId: string): void => {
   activeChildCounts.set(
     parentRunId,
     Math.max(0, (activeChildCounts.get(parentRunId) ?? 1) - 1)
@@ -205,10 +220,11 @@ const releaseChildSlot = (parentRunId: string): void => {
 const childSystemPrompt = (
   profile: ResolvedAgentProfile,
   canWrite: boolean,
-  hasCoordination = false
+  hasCoordination = false,
+  isolatedCoordination = false
 ): string => {
   const coordination = hasCoordination
-    ? "\n\nTask tools share this chat's durable list with the parent. Use them only when coordination needs it; read existing tasks before updating, use the current revision, and verify work before completion. Ownership grants no permissions. The skill tool, when available, loads instructions and referenced files without executing them or expanding permissions."
+    ? `${isolatedCoordination ? "\n\nTask tools maintain a separate durable list for this isolated candidate; they do not change the parent chat task list." : "\n\nTask tools share this chat's durable list with the parent."} Use them only when coordination needs it; read existing tasks before updating, use the current revision, and verify work before completion. Ownership grants no permissions. The skill tool, when available, loads instructions and referenced files without executing them or expanding permissions.`
     : ""
   if (!canWrite) {
     return `You are a read-only delegated sub-agent (profile: ${profile.name}). ${profile.instructions}
@@ -226,6 +242,7 @@ const buildChildCoordinationTools = ({
   childRunId,
   parentRunId,
   projectPath,
+  skillProjectPath,
   toolCalls,
   writer
 }: {
@@ -233,6 +250,7 @@ const buildChildCoordinationTools = ({
   childRunId?: string
   parentRunId?: string
   projectPath: string
+  skillProjectPath?: string
   toolCalls: DelegatedToolCallRecord[]
   writer?: UIMessageStreamWriter<UIMessage>
 }): ToolSet => {
@@ -254,7 +272,7 @@ const buildChildCoordinationTools = ({
   const skillSettings = getSettings().skills
   if (skillSettings?.enabled) {
     coordinationTools.skill = buildSkillTool({
-      projectPath,
+      projectPath: skillProjectPath ?? projectPath,
       settings: skillSettings
     })
   }
@@ -399,9 +417,11 @@ export const buildChildTools = (
  * surfaces on.
  */
 export interface ChildWriteContext {
+  chatSessionId?: string
   childRunId: string
   db: AppDatabase
   holder: string
+  hooksConfigProjectPath?: string
   permissionMode: AgentPermissionMode
   topRunId: string
   writer: UIMessageStreamWriter<UIMessage>
@@ -416,6 +436,53 @@ const deniedChildToolResult = (toolName: string): ChildToolDenial => ({
   error: `The user denied this ${toolName} call. Do not retry it; adjust your approach or leave this change for the parent agent.`,
   status: "denied"
 })
+
+const runApprovedChildTool = async <T>({
+  chatSessionId,
+  childRunId,
+  db,
+  execute,
+  effectScope,
+  input,
+  runner,
+  signal,
+  toolCallId,
+  toolName
+}: {
+  chatSessionId?: string
+  childRunId: string
+  db: AppDatabase
+  execute: () => Promise<T>
+  effectScope: string
+  input: unknown
+  runner: HookRunner
+  signal?: AbortSignal
+  toolCallId: string
+  toolName: string
+}): Promise<T> => {
+  const invoke = async () =>
+    await runner.invoke({
+      execute,
+      input,
+      runId: childRunId,
+      sessionId: chatSessionId ?? null,
+      signal,
+      toolCallId,
+      toolName
+    })
+  return chatSessionId
+    ? await runPersistedInvocation({
+        db,
+        execute: invoke,
+        effectScope,
+        input,
+        runId: childRunId,
+        sessionId: chatSessionId,
+        toolCallId,
+        toolName
+      })
+    : await invoke()
+}
 
 /**
  * Blocks the child's tool execute until the gated call is approved. When no
@@ -527,9 +594,11 @@ const gateChildToolCall = async ({
  * workspace edit/write/shell primitives so behavior stays identical.
  */
 export const buildChildWriteTools = ({
+  chatSessionId,
   childRunId,
   db,
   holder,
+  hooksConfigProjectPath,
   permissionMode,
   toolCalls,
   topRunId,
@@ -538,202 +607,256 @@ export const buildChildWriteTools = ({
 }: ChildWriteContext & {
   toolCalls: DelegatedToolCallRecord[]
   workspace: WorkspaceCore
-}): ToolSet => ({
-  bash: tool({
-    description:
-      "Run a shell command from the project root (each command needs user approval unless previously remembered for this project). Returns stdout/stderr tails, exit code, and duration.",
-    execute: async (
-      { command, timeoutSeconds },
-      { abortSignal, toolCallId }
-    ) => {
-      const { approvals } = getSettings().agents
-      const isRemembered = matchesCommandAllowlist({
-        allowlist: approvals.commandAllowlist,
-        approvalTtlMs: approvals.approvalTtlMs,
-        command,
-        nowMs: Date.now(),
-        projectPath: workspace.projectPath,
-        toolName: BASH_TOOL_NAME
-      })
-      const dangerous = isDangerousShellCommand(command)
-      const approved = await gateChildToolCall({
-        approvalNeeded: needsShellApproval({
-          command,
-          isRemembered,
-          mode: permissionMode
-        }),
-        canRemember: !dangerous,
-        childRunId,
-        dangerous,
-        db,
-        input: { command, timeoutSeconds },
-        preview: clampText(command, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
-        signal: abortSignal,
-        toolCallId,
-        toolName: BASH_TOOL_NAME,
-        writer
-      })
-
-      if (!approved) {
-        return deniedChildToolResult(BASH_TOOL_NAME)
-      }
-
-      // bash is exempt from write claims: shell writes cannot be identified from
-      // the command statically. The claim system guards edit/write only.
-      await captureBashCheckpoint({
-        projectPath: workspace.projectPath,
-        runId: childRunId,
-        toolCallId
-      })
-      const output = await runShellCommand({
-        command,
-        cwd: workspace.projectPath,
-        signal: abortSignal,
-        timeoutSeconds: timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS
-      })
-
-      toolCalls.push({
-        input: { command, timeoutSeconds },
-        output,
-        toolCallId,
-        toolName: BASH_TOOL_NAME
-      })
-
-      return output
-    },
-    inputSchema: BashInputSchema
-  }),
-  edit: tool({
-    description:
-      "Apply one or more exact text replacements to a file (requires user approval). Read the file first.",
-    execute: async (inputData, { abortSignal, toolCallId }) => {
-      const approved = await gateChildToolCall({
-        approvalNeeded: needsFileEditApproval(permissionMode),
-        canRemember: false,
-        childRunId,
-        dangerous: false,
-        db,
-        input: inputData,
-        preview: clampText(inputData.path, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
-        signal: abortSignal,
-        toolCallId,
-        toolName: "edit",
-        writer
-      })
-
-      if (!approved) {
-        return deniedChildToolResult("edit")
-      }
-
-      const claim = claimWrite({ holder, path: inputData.path, topRunId })
-
-      if (!claim.ok) {
-        const conflict = {
-          error: writeClaimConflictMessage(inputData.path, claim.holder),
-          path: inputData.path,
-          status: "conflict" as const
-        }
-        toolCalls.push({
-          input: inputData,
-          output: conflict,
-          toolCallId,
-          toolName: "edit"
-        })
-
-        return conflict
-      }
-
-      await captureFileCheckpoint({
-        origin: "edit",
-        paths: [inputData.path],
-        projectPath: workspace.projectPath,
-        runId: childRunId,
-        toolCallId
-      })
-      const output = await runWorkspaceEdit({
-        edits: inputData.edits,
-        requestedPath: inputData.path,
-        workspace,
-        ...(abortSignal ? { signal: abortSignal } : {})
-      })
-
-      toolCalls.push({
-        input: inputData,
-        output,
-        toolCallId,
-        toolName: "edit"
-      })
-
-      return output
-    },
-    inputSchema: EditInputSchema
-  }),
-  write: tool({
-    description:
-      "Create or overwrite a file with the given content (requires user approval). Overwriting requires reading the file first.",
-    execute: async (inputData, { abortSignal, toolCallId }) => {
-      const approved = await gateChildToolCall({
-        approvalNeeded: needsFileEditApproval(permissionMode),
-        canRemember: false,
-        childRunId,
-        dangerous: false,
-        db,
-        input: inputData,
-        preview: clampText(inputData.path, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
-        signal: abortSignal,
-        toolCallId,
-        toolName: "write",
-        writer
-      })
-
-      if (!approved) {
-        return deniedChildToolResult("write")
-      }
-
-      const claim = claimWrite({ holder, path: inputData.path, topRunId })
-
-      if (!claim.ok) {
-        const conflict = {
-          error: writeClaimConflictMessage(inputData.path, claim.holder),
-          path: inputData.path,
-          status: "conflict" as const
-        }
-        toolCalls.push({
-          input: inputData,
-          output: conflict,
-          toolCallId,
-          toolName: "write"
-        })
-
-        return conflict
-      }
-
-      await captureFileCheckpoint({
-        origin: "write",
-        paths: [inputData.path],
-        projectPath: workspace.projectPath,
-        runId: childRunId,
-        toolCallId
-      })
-      const output = await runWorkspaceWrite({
-        content: inputData.content,
-        requestedPath: inputData.path,
-        workspace,
-        ...(abortSignal ? { signal: abortSignal } : {})
-      })
-
-      toolCalls.push({
-        input: inputData,
-        output,
-        toolCallId,
-        toolName: "write"
-      })
-
-      return output
-    },
-    inputSchema: WriteInputSchema
+}): ToolSet => {
+  const runner = createRuntimeHookRunner(workspace.projectPath, {
+    configProjectPath: hooksConfigProjectPath
   })
-})
+  const invoke = <T>(
+    toolName: string,
+    input: unknown,
+    toolCallId: string,
+    signal: AbortSignal | undefined,
+    execute: () => Promise<T>
+  ) =>
+    runApprovedChildTool({
+      chatSessionId,
+      childRunId,
+      db,
+      effectScope: workspace.projectPath,
+      execute,
+      input,
+      runner,
+      signal,
+      toolCallId,
+      toolName
+    })
+  return {
+    bash: tool({
+      description:
+        "Run a shell command from the project root (each command needs user approval unless previously remembered for this project). Returns stdout/stderr tails, exit code, and duration.",
+      execute: async (
+        { command, timeoutSeconds },
+        { abortSignal, toolCallId }
+      ) => {
+        const { approvals } = getSettings().agents
+        const isRemembered = matchesCommandAllowlist({
+          allowlist: approvals.commandAllowlist,
+          approvalTtlMs: approvals.approvalTtlMs,
+          command,
+          nowMs: Date.now(),
+          projectPath: workspace.projectPath,
+          toolName: BASH_TOOL_NAME
+        })
+        const dangerous = isDangerousShellCommand(command)
+        const approved = await gateChildToolCall({
+          approvalNeeded: needsShellApproval({
+            command,
+            isRemembered,
+            mode: permissionMode
+          }),
+          canRemember: !dangerous,
+          childRunId,
+          dangerous,
+          db,
+          input: { command, timeoutSeconds },
+          preview: clampText(command, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
+          signal: abortSignal,
+          toolCallId,
+          toolName: BASH_TOOL_NAME,
+          writer
+        })
+
+        if (!approved) {
+          return deniedChildToolResult(BASH_TOOL_NAME)
+        }
+
+        return await invoke(
+          BASH_TOOL_NAME,
+          { command, timeoutSeconds },
+          toolCallId,
+          abortSignal,
+          async () => {
+            // bash is exempt from write claims: shell writes cannot be identified from
+            // the command statically. The claim system guards edit/write only.
+            await captureBashCheckpoint({
+              projectPath: workspace.projectPath,
+              runId: childRunId,
+              toolCallId
+            })
+            const output = await runShellCommand({
+              command,
+              cwd: workspace.projectPath,
+              signal: abortSignal,
+              timeoutSeconds: timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS
+            })
+
+            toolCalls.push({
+              input: { command, timeoutSeconds },
+              output,
+              toolCallId,
+              toolName: BASH_TOOL_NAME
+            })
+
+            return output
+          }
+        )
+      },
+      inputSchema: BashInputSchema
+    }),
+    edit: tool({
+      description:
+        "Apply one or more exact text replacements to a file (requires user approval). Read the file first.",
+      execute: async (inputData, { abortSignal, toolCallId }) => {
+        const approved = await gateChildToolCall({
+          approvalNeeded:
+            needsFileEditApproval(permissionMode) ||
+            (permissionMode !== "bypass" &&
+              isHookConfigurationPath(inputData, workspace.projectPath)),
+          canRemember: false,
+          childRunId,
+          dangerous: false,
+          db,
+          input: inputData,
+          preview: clampText(inputData.path, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
+          signal: abortSignal,
+          toolCallId,
+          toolName: "edit",
+          writer
+        })
+
+        if (!approved) {
+          return deniedChildToolResult("edit")
+        }
+
+        return await invoke(
+          "edit",
+          inputData,
+          toolCallId,
+          abortSignal,
+          async () => {
+            const claim = claimWrite({ holder, path: inputData.path, topRunId })
+
+            if (!claim.ok) {
+              const conflict = {
+                error: writeClaimConflictMessage(inputData.path, claim.holder),
+                path: inputData.path,
+                status: "conflict" as const
+              }
+              toolCalls.push({
+                input: inputData,
+                output: conflict,
+                toolCallId,
+                toolName: "edit"
+              })
+
+              return conflict
+            }
+
+            await captureFileCheckpoint({
+              origin: "edit",
+              paths: [inputData.path],
+              projectPath: workspace.projectPath,
+              runId: childRunId,
+              toolCallId
+            })
+            const output = await runWorkspaceEdit({
+              edits: inputData.edits,
+              requestedPath: inputData.path,
+              workspace,
+              ...(abortSignal ? { signal: abortSignal } : {})
+            })
+
+            toolCalls.push({
+              input: inputData,
+              output,
+              toolCallId,
+              toolName: "edit"
+            })
+
+            return output
+          }
+        )
+      },
+      inputSchema: EditInputSchema
+    }),
+    write: tool({
+      description:
+        "Create or overwrite a file with the given content (requires user approval). Overwriting requires reading the file first.",
+      execute: async (inputData, { abortSignal, toolCallId }) => {
+        const approved = await gateChildToolCall({
+          approvalNeeded:
+            needsFileEditApproval(permissionMode) ||
+            (permissionMode !== "bypass" &&
+              isHookConfigurationPath(inputData, workspace.projectPath)),
+          canRemember: false,
+          childRunId,
+          dangerous: false,
+          db,
+          input: inputData,
+          preview: clampText(inputData.path, CHILD_APPROVAL_PREVIEW_MAX_CHARS),
+          signal: abortSignal,
+          toolCallId,
+          toolName: "write",
+          writer
+        })
+
+        if (!approved) {
+          return deniedChildToolResult("write")
+        }
+
+        return await invoke(
+          "write",
+          inputData,
+          toolCallId,
+          abortSignal,
+          async () => {
+            const claim = claimWrite({ holder, path: inputData.path, topRunId })
+
+            if (!claim.ok) {
+              const conflict = {
+                error: writeClaimConflictMessage(inputData.path, claim.holder),
+                path: inputData.path,
+                status: "conflict" as const
+              }
+              toolCalls.push({
+                input: inputData,
+                output: conflict,
+                toolCallId,
+                toolName: "write"
+              })
+
+              return conflict
+            }
+
+            await captureFileCheckpoint({
+              origin: "write",
+              paths: [inputData.path],
+              projectPath: workspace.projectPath,
+              runId: childRunId,
+              toolCallId
+            })
+            const output = await runWorkspaceWrite({
+              content: inputData.content,
+              requestedPath: inputData.path,
+              workspace,
+              ...(abortSignal ? { signal: abortSignal } : {})
+            })
+
+            toolCalls.push({
+              input: inputData,
+              output,
+              toolCallId,
+              toolName: "write"
+            })
+
+            return output
+          }
+        )
+      },
+      inputSchema: WriteInputSchema
+    })
+  }
+}
 
 export interface DelegatedRunResult {
   filesRead: string[]
@@ -754,27 +877,13 @@ export interface DelegatedRunResult {
  * it stays fully headless; either way the run drives to completion and returns
  * the same collected text/tool-calls/structured/filesRead as before.
  */
-export const runDelegatedAgent = async ({
-  abortSignal,
-  chatSessionId,
-  childRunId,
-  context,
-  childProfile,
-  maxSteps,
-  modelId,
-  parentRunId,
-  parentToolCallId,
-  permissionMode,
-  projectPath,
-  schema,
-  task,
-  writer
-}: {
+export interface DelegatedRunOptions {
   abortSignal?: AbortSignal
   chatSessionId?: string
   childProfile: ResolvedAgentProfile
   childRunId?: string
   context?: string
+  hooksConfigProjectPath?: string
   maxSteps?: number
   modelId: string | null
   /** Top-level run id that scopes write claims (the parent run). */
@@ -785,89 +894,51 @@ export const runDelegatedAgent = async ({
   projectPath: string
   schema?: unknown
   task: string
+  writeClaimRunId?: string
+  writer?: UIMessageStreamWriter<UIMessage>
+}
+
+const consumeDelegatedStream = async ({
+  abortSignal,
+  childRunId,
+  filesRead,
+  parentToolCallId,
+  profileId,
+  result,
+  getStructured,
+  task,
+  toolCalls,
+  writer
+}: {
+  abortSignal?: AbortSignal
+  childRunId?: string
+  filesRead: Set<string>
+  parentToolCallId?: string
+  profileId: string
+  result: Pick<
+    ReturnType<typeof streamText>,
+    "text" | "stream" | "finishReason"
+  >
+  getStructured: () => unknown
+  task: string
+  toolCalls: DelegatedToolCallRecord[]
   writer?: UIMessageStreamWriter<UIMessage>
 }): Promise<DelegatedRunResult> => {
-  const workspace = getWorkspaceCore(projectPath)
-  const filesRead = new Set<string>()
-  const toolCalls: DelegatedToolCallRecord[] = []
-  const prompt = context
-    ? `Task:\n${task}\n\nContext:\n${context}`
-    : `Task:\n${task}`
-
-  let structured: unknown
-  const tools: ToolSet = {
-    ...buildChildTools(workspace, filesRead, toolCalls),
-    ...buildChildCoordinationTools({
-      chatSessionId,
-      childRunId,
-      parentRunId,
-      projectPath,
-      toolCalls,
-      writer
-    })
-  }
-  // A writable delegate gets edit/write/bash only when the parent passed a
-  // permission mode AND a top-level run to scope claims to, the child profile is
-  // writable, and there is a live parent stream to surface approvals on. Workflow
-  // never passes these, so its investigators stay structurally read-only.
-  let canChildWrite = false
-  if (
-    permissionMode &&
-    parentRunId &&
-    writer &&
-    childRunId &&
-    !childProfile.readonly
-  ) {
-    canChildWrite = true
-    Object.assign(
-      tools,
-      buildChildWriteTools({
-        childRunId,
-        db: getDb(),
-        holder: childWriteHolder(childRunId, childProfile.id),
-        permissionMode,
-        toolCalls,
-        topRunId: parentRunId,
-        workspace,
-        writer
-      })
-    )
-  }
-  if (schema) {
-    tools.submit_findings = tool({
-      description: "Submit the structured findings.",
-      execute: (input: unknown, { toolCallId }) => {
-        structured = input
-        toolCalls.push({
-          input,
-          output: "ack",
-          toolCallId,
-          toolName: "submit_findings"
-        })
-        return "Findings submitted."
-      },
-      inputSchema: jsonSchema(schema as Parameters<typeof jsonSchema>[0])
-    })
-  }
-  const result = streamText({
-    model: resolveModel(modelId ?? undefined),
-    prompt,
-    stopWhen: isStepCount(maxSteps ?? CHILD_MAX_STEPS),
-    instructions: childSystemPrompt(
-      childProfile,
-      canChildWrite,
-      Boolean(chatSessionId)
-    ),
-    tools,
-    ...(abortSignal ? { abortSignal } : {})
-  })
-
   if (!(writer && childRunId)) {
     // Headless: `result.text` self-consumes the stream to completion, so tool
     // executions run and errors reject exactly like the old generateText call.
     const text = await result.text
+    if ((await result.finishReason) === "error") {
+      throw new Error("Delegated model run failed")
+    }
+    abortSignal?.throwIfAborted()
 
-    return { filesRead: [...filesRead], structured, text, toolCalls }
+    return {
+      filesRead: [...filesRead],
+      structured: getStructured(),
+      text,
+      toolCalls
+    }
   }
 
   const startedAtMs = Date.now()
@@ -876,7 +947,7 @@ export const runDelegatedAgent = async ({
     data: {
       childRunId,
       ...(parentToolCallId ? { parentToolCallId } : {}),
-      profileId: childProfile.id,
+      profileId,
       task: clampText(task, SUBAGENT_TASK_MAX_CHARS)
     },
     id: childRunId,
@@ -894,8 +965,17 @@ export const runDelegatedAgent = async ({
       writer
     })
     const text = await result.text
+    if ((await result.finishReason) === "error") {
+      throw new Error("Delegated model run failed")
+    }
+    abortSignal?.throwIfAborted()
 
-    return { filesRead: [...filesRead], structured, text, toolCalls }
+    return {
+      filesRead: [...filesRead],
+      structured: getStructured(),
+      text,
+      toolCalls
+    }
   } catch (error) {
     endState = abortSignal?.aborted ? "aborted" : "failed"
     errorMessage = error instanceof Error ? error.message : String(error)
@@ -912,6 +992,192 @@ export const runDelegatedAgent = async ({
       transient: true,
       type: "data-subagent-end"
     })
+  }
+}
+
+const buildWritableDelegatedTools = (
+  options: DelegatedRunOptions,
+  toolCalls: DelegatedToolCallRecord[],
+  workspace: WorkspaceCore
+): { canWrite: boolean; tools: ToolSet } => {
+  const {
+    chatSessionId,
+    childProfile,
+    childRunId,
+    hooksConfigProjectPath,
+    parentRunId,
+    permissionMode,
+    writeClaimRunId,
+    writer
+  } = options
+  if (
+    !permissionMode ||
+    !parentRunId ||
+    !writer ||
+    !childRunId ||
+    childProfile.readonly
+  ) {
+    return { canWrite: false, tools: {} }
+  }
+  return {
+    canWrite: true,
+    tools: buildChildWriteTools({
+      chatSessionId,
+      childRunId,
+      db: getDb(),
+      holder: childWriteHolder(childRunId, childProfile.id),
+      hooksConfigProjectPath,
+      permissionMode,
+      toolCalls,
+      topRunId: writeClaimRunId ?? parentRunId,
+      workspace,
+      writer
+    })
+  }
+}
+
+export const runDelegatedAgent = async (
+  options: DelegatedRunOptions
+): Promise<DelegatedRunResult> => {
+  const {
+    abortSignal,
+    chatSessionId,
+    childRunId,
+    context,
+    childProfile,
+    hooksConfigProjectPath,
+    maxSteps,
+    modelId,
+    parentRunId,
+    parentToolCallId,
+    projectPath,
+    schema,
+    task,
+    writer
+  } = options
+
+  const workspace = createWorkspaceCore(projectPath)
+  const isolatedCoordination = Boolean(
+    hooksConfigProjectPath &&
+    nodePath.resolve(hooksConfigProjectPath) !== nodePath.resolve(projectPath)
+  )
+  const filesRead = new Set<string>()
+  const toolCalls: DelegatedToolCallRecord[] = []
+  const prompt = context
+    ? `Task:\n${task}\n\nContext:\n${context}`
+    : `Task:\n${task}`
+
+  let structured: unknown
+  const tools: ToolSet = {
+    ...(chatSessionId
+      ? {
+          read_tool_result: buildReadToolResultTool({
+            sessionId: chatSessionId,
+            storageRoot: nodePath.join(
+              getAppConfigDir(app.getPath("home")),
+              "tool-results"
+            )
+          })
+        }
+      : {}),
+    ...buildChildTools(workspace, filesRead, toolCalls),
+    ...buildChildCoordinationTools({
+      chatSessionId,
+      childRunId,
+      parentRunId,
+      projectPath,
+      skillProjectPath: hooksConfigProjectPath,
+      toolCalls,
+      writer: isolatedCoordination ? undefined : writer
+    })
+  }
+  const hookRunner = createRuntimeHookRunner(projectPath, {
+    configProjectPath: hooksConfigProjectPath
+  })
+  const writable = buildWritableDelegatedTools(options, toolCalls, workspace)
+  Object.assign(tools, writable.tools)
+  if (schema) {
+    tools.submit_findings = tool({
+      description: "Submit the structured findings.",
+      execute: (input: unknown, { toolCallId }) => {
+        structured = input
+        toolCalls.push({
+          input,
+          output: "ack",
+          toolCallId,
+          toolName: "submit_findings"
+        })
+        return "Findings submitted."
+      },
+      inputSchema: jsonSchema(schema as Parameters<typeof jsonSchema>[0])
+    })
+  }
+  const ungatedTools = Object.fromEntries(
+    Object.entries(tools).filter(
+      ([name]) => !["bash", "edit", "write"].includes(name)
+    )
+  )
+  Object.assign(
+    tools,
+    protectToolInvocations(
+      wrapToolsWithHooks(ungatedTools, {
+        runner: hookRunner,
+        runId: childRunId ?? null,
+        sessionId: chatSessionId ?? null
+      }),
+      {
+        effectScope: workspace.projectPath,
+        protectAll: getSettings().agents.hooks?.enabled ?? false,
+        runId: childRunId,
+        sessionId: chatSessionId
+      }
+    )
+  )
+  const policy = await buildDelegatedModelPolicy({
+    childRunId,
+    configProjectPath: hooksConfigProjectPath,
+    instructions: childSystemPrompt(
+      childProfile,
+      writable.canWrite,
+      Boolean(chatSessionId),
+      isolatedCoordination
+    ),
+    modelId,
+    projectPath,
+    sessionId: chatSessionId,
+    tools
+  })
+  const result = streamText({
+    model: resolveModel(modelId ?? undefined),
+    prompt,
+    stopWhen: isStepCount(maxSteps ?? CHILD_MAX_STEPS),
+    ...policy,
+    tools,
+    ...(abortSignal ? { abortSignal } : {})
+  })
+
+  try {
+    return await consumeDelegatedStream({
+      abortSignal,
+      childRunId,
+      filesRead,
+      parentToolCallId,
+      profileId: childProfile.id,
+      result,
+      getStructured: () => structured,
+      task,
+      toolCalls,
+      writer
+    })
+  } finally {
+    try {
+      await hookRunner.run("Stop", {
+        runId: childRunId ?? null,
+        sessionId: chatSessionId ?? null
+      })
+    } catch (error) {
+      logger.error("delegated_stop_hook_failed", { error })
+    }
   }
 }
 

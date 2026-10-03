@@ -61,7 +61,7 @@ describe("getBrowserToolAction", () => {
     ).toBeNull()
     expect(
       getBrowserToolAction(
-        asPart({ input: { action: "click" }, state: "input-available" })
+        asPart({ input: { action: "eval" }, state: "input-available" })
       )
     ).toBeNull()
   })

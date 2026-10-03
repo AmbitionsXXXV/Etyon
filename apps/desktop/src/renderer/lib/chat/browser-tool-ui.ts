@@ -10,9 +10,24 @@ import { getNumber, getString, isRecord } from "@/renderer/lib/utils"
 
 const BROWSER_TOOL_NAME = "browser"
 
-export type BrowserToolAction = "navigate" | "read" | "screenshot"
+export type BrowserToolAction =
+  | "click"
+  | "navigate"
+  | "press"
+  | "read"
+  | "screenshot"
+  | "scroll"
+  | "type"
 
-const BROWSER_TOOL_ACTIONS = new Set<string>(["navigate", "read", "screenshot"])
+const BROWSER_TOOL_ACTIONS = new Set<string>([
+  "click",
+  "navigate",
+  "press",
+  "read",
+  "screenshot",
+  "scroll",
+  "type"
+])
 
 const TEXT_PREVIEW_MAX_LENGTH = 220
 

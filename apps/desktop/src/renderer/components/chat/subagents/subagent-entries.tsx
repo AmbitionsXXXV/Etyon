@@ -6,7 +6,8 @@ import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool
 import { SubagentRowView } from "@/renderer/components/chat/subagents/subagent-row"
 import type {
   ChatToolPart,
-  GroupedChainEntry
+  GroupedChainEntry,
+  SubagentToolName
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import {
   useSubagentApprovals,
@@ -17,7 +18,7 @@ import {
   delegatePartViewModel,
   isUnsettledRunStatus,
   liveSubagentViewModel,
-  selectWorkflowChildRuns,
+  selectSubagentChildRuns,
   workflowChildRunViewModel
 } from "@/renderer/lib/chat/subagent-view-model"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
@@ -29,20 +30,31 @@ const UNSETTLED_RUN_REFETCH_MS = 2000
 // Live delegated/workflow child row. A primitive `childRunId` prop keeps the row
 // memoized so a parent card's stream re-renders don't cascade into it — each
 // child subscribes to just its own live state.
-const SubagentLiveRow = memo(({ childRunId }: { childRunId: string }) => {
-  const live = useSubagentLive(childRunId)
-  const approvals = useSubagentApprovals(childRunId)
-  const model = useMemo(
-    () => (live === undefined ? null : liveSubagentViewModel(live, approvals)),
-    [live, approvals]
-  )
+const SubagentLiveRow = memo(
+  ({
+    childRunId,
+    origin = "delegate"
+  }: {
+    childRunId: string
+    origin?: SubagentToolName
+  }) => {
+    const live = useSubagentLive(childRunId)
+    const approvals = useSubagentApprovals(childRunId)
+    const model = useMemo(
+      () =>
+        live === undefined
+          ? null
+          : liveSubagentViewModel(live, approvals, origin),
+      [live, approvals, origin]
+    )
 
-  if (model === null) {
-    return null
+    if (model === null) {
+      return null
+    }
+
+    return <SubagentRowView model={model} />
   }
-
-  return <SubagentRowView model={model} />
-})
+)
 SubagentLiveRow.displayName = "SubagentLiveRow"
 
 // Settled delegate tool part → row. Everything comes from the recorded input and
@@ -57,13 +69,15 @@ const DelegateHistoryRow = ({ part }: { part: ChatToolPart }) => {
 // per parent run (shared across the parent's workflow cards) and scopes it to
 // this card's tool call through `selectWorkflowChildRuns`, which falls back to
 // the workflow profile for legacy runs recorded before parentToolCallId existed.
-const WorkflowHistoryChildren = memo(
+const MultiRunHistoryChildren = memo(
   ({
     parentRunId,
-    workflowToolCallId
+    toolCallId,
+    toolName
   }: {
     parentRunId: string
-    workflowToolCallId: string
+    toolCallId: string
+    toolName: Exclude<SubagentToolName, "delegate">
   }) => {
     const { t } = useI18n()
     const query = useQuery({
@@ -81,7 +95,7 @@ const WorkflowHistoryChildren = memo(
       return null
     }
 
-    const runs = selectWorkflowChildRuns(query.data.runs, workflowToolCallId)
+    const runs = selectSubagentChildRuns(query.data.runs, toolCallId, toolName)
 
     if (runs.length === 0) {
       return null
@@ -89,27 +103,32 @@ const WorkflowHistoryChildren = memo(
 
     return (
       <div
-        aria-label={t("chat.workSection.ranWorkflow")}
+        aria-label={t(
+          toolName === "best_of_n"
+            ? "chat.bestOfN.title"
+            : "chat.workSection.ranWorkflow"
+        )}
         className="flex flex-col gap-1"
       >
         {runs.map((run) => (
           <SubagentRowView
             key={run.id}
-            model={workflowChildRunViewModel(run)}
+            model={workflowChildRunViewModel(run, toolName)}
           />
         ))}
       </div>
     )
   }
 )
-WorkflowHistoryChildren.displayName = "WorkflowHistoryChildren"
+MultiRunHistoryChildren.displayName = "MultiRunHistoryChildren"
 
-const WorkflowSubagentEntry = ({
+const MultiRunSubagentEntry = ({
   isApprovalActionDisabled,
   liveChildIds,
   onApprovalResponse,
   parentRunId,
-  part
+  part,
+  toolName
 }: {
   isApprovalActionDisabled: boolean
   liveChildIds: string[]
@@ -120,11 +139,15 @@ const WorkflowSubagentEntry = ({
   ) => void
   parentRunId?: string
   part: ChatToolPart
+  toolName: Exclude<SubagentToolName, "delegate">
 }) => {
   const { t } = useI18n()
 
   return (
     <div className="flex flex-col gap-1">
+      {toolName === "best_of_n" && (
+        <h3 className="px-2 text-xs font-medium">{t("chat.bestOfN.title")}</h3>
+      )}
       <StructuredToolTraceCard
         isApprovalActionDisabled={isApprovalActionDisabled}
         onApprovalResponse={(toolPart, approved, options) => {
@@ -134,18 +157,27 @@ const WorkflowSubagentEntry = ({
       />
       {liveChildIds.length > 0 ? (
         <div
-          aria-label={t("chat.workSection.ranWorkflow")}
+          aria-label={t(
+            toolName === "best_of_n"
+              ? "chat.bestOfN.title"
+              : "chat.workSection.ranWorkflow"
+          )}
           className="flex flex-col gap-1 pl-3"
         >
           {liveChildIds.map((childRunId) => (
-            <SubagentLiveRow childRunId={childRunId} key={childRunId} />
+            <SubagentLiveRow
+              childRunId={childRunId}
+              key={childRunId}
+              origin={toolName}
+            />
           ))}
         </div>
       ) : parentRunId ? (
         <div className="pl-3">
-          <WorkflowHistoryChildren
+          <MultiRunHistoryChildren
             parentRunId={parentRunId}
-            workflowToolCallId={part.toolCallId}
+            toolCallId={part.toolCallId}
+            toolName={toolName}
           />
         </div>
       ) : null}
@@ -170,14 +202,15 @@ export const WorkSubagentEntry = ({
 }) => {
   const liveChildIds = useSubagentChildIds(entry.part.toolCallId)
 
-  if (entry.toolName === "workflow") {
+  if (entry.toolName === "workflow" || entry.toolName === "best_of_n") {
     return (
-      <WorkflowSubagentEntry
+      <MultiRunSubagentEntry
         isApprovalActionDisabled={isApprovalActionDisabled}
         liveChildIds={liveChildIds}
         onApprovalResponse={onApprovalResponse}
         parentRunId={parentRunId}
         part={entry.part}
+        toolName={entry.toolName}
       />
     )
   }

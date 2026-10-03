@@ -376,6 +376,10 @@ const CommandToolCallCard = ({
 }
 
 const BROWSER_ACTION_TITLE_KEYS = {
+  click: "chat.browserTool.click",
+  press: "chat.browserTool.press",
+  scroll: "chat.browserTool.scroll",
+  type: "chat.browserTool.type",
   navigate: "chat.browserTool.navigate",
   read: "chat.browserTool.read",
   screenshot: "chat.browserTool.screenshot"

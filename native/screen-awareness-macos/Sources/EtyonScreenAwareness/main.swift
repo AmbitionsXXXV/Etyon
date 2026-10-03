@@ -28,15 +28,21 @@ private struct PermissionSnapshot: Codable, Equatable {
 private struct PermissionStatusRecord: Codable {
   let accessibility: PermissionState
   let screenRecording: PermissionState
+  let captureEnabled: Bool
+  let instanceId: String
   let updatedAt: String
 }
 
 @MainActor
 private final class PermissionStatusReporter {
+  private let captureEnabled: Bool
+  private let instanceId: String
   private let fileURL: URL
   private var timer: Timer?
 
-  init?(path: String?) {
+  init?(path: String?, captureEnabled: Bool, instanceId: String) {
+    self.captureEnabled = captureEnabled
+    self.instanceId = instanceId
     guard let path, !path.isEmpty else {
       return nil
     }
@@ -58,6 +64,7 @@ private final class PermissionStatusReporter {
   func stop() {
     timer?.invalidate()
     timer = nil
+    if let data = try? Data(contentsOf: fileURL), let record = try? JSONDecoder().decode(PermissionStatusRecord.self, from: data), record.instanceId == instanceId { try? FileManager.default.removeItem(at: fileURL) }
   }
 
   private func writeCurrentStatus() {
@@ -65,6 +72,8 @@ private final class PermissionStatusReporter {
     let record = PermissionStatusRecord(
       accessibility: snapshot.accessibility,
       screenRecording: snapshot.screenRecording,
+      captureEnabled: captureEnabled,
+      instanceId: instanceId,
       updatedAt: ISO8601DateFormatter().string(from: Date())
     )
     guard let data = try? JSONEncoder().encode(record) else {
@@ -79,45 +88,59 @@ private final class PermissionStatusReporter {
   }
 }
 
+private struct HelperCommandRecord: Decodable {
+  let command: String
+  let id: String
+  let issuedAt: Double
+  let targetInstanceId: String?
+}
+
 @MainActor
 private final class HelperControlMonitor {
-  private let fileURL: URL
+  var onCommand: ((String) -> Void)?
+  private let directoryURL: URL
+  private let instanceId: String
+  private let startedAt = Date().timeIntervalSince1970 * 1000
   private var timer: Timer?
 
-  init?(path: String?) {
-    guard let path, !path.isEmpty else {
-      return nil
-    }
-
-    fileURL = URL(fileURLWithPath: path)
+  init?(path: String?, instanceId: String) {
+    guard let path, !path.isEmpty else { return nil }
+    directoryURL = URL(fileURLWithPath: path + ".commands", isDirectory: true)
+    self.instanceId = instanceId
   }
 
   func start() {
     timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) {
-      [weak self] _ in
-      Task { @MainActor in
-        self?.readCommand()
+    timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+      Task { @MainActor in self?.readCommands() }
+    }
+  }
+
+  func stop() { timer?.invalidate(); timer = nil }
+
+  private func readCommands() {
+    let files = (try? FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+    for fileURL in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).prefix(128) {
+      guard fileURL.pathExtension == "json",
+        let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
+        (values.fileSize ?? 4097) <= 4096,
+        let data = try? Data(contentsOf: fileURL),
+        let record = try? JSONDecoder().decode(HelperCommandRecord.self, from: data),
+        UUID(uuidString: record.id) != nil
+      else { continue }
+      let now = Date().timeIntervalSince1970 * 1000
+      if now - record.issuedAt > 600_000 { try? FileManager.default.removeItem(at: fileURL); continue }
+      guard HelperCommandPolicy.accepts(command: record.command, issuedAt: record.issuedAt,
+        targetInstanceId: record.targetInstanceId, instanceId: instanceId, startedAt: startedAt, now: now)
+      else { continue }
+      if record.command == "terminate" {
+        // Retain broadcast termination for any older helper instance.
+        NSApp.terminate(nil)
+        return
       }
+      try? FileManager.default.removeItem(at: fileURL)
+      onCommand?(record.command)
     }
-  }
-
-  func stop() {
-    timer?.invalidate()
-    timer = nil
-  }
-
-  private func readCommand() {
-    guard
-      let command = try? String(contentsOf: fileURL, encoding: .utf8)
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-      command == "terminate"
-    else {
-      return
-    }
-
-    try? FileManager.default.removeItem(at: fileURL)
-    NSApp.terminate(nil)
   }
 }
 
@@ -1016,9 +1039,7 @@ private final class DualCommandMonitor: @unchecked Sendable {
       rightCommandIsDown: rightCommandIsDown
     ) {
       let onChord = onChord
-      Task { @MainActor in
-        onChord()
-      }
+      MainActor.assumeIsolated { onChord() }
     }
   }
 }
@@ -1026,48 +1047,112 @@ private final class DualCommandMonitor: @unchecked Sendable {
 @MainActor
 private final class ScreenAwarenessAppDelegate: NSObject, NSApplicationDelegate {
   private let language: AppLanguage
+  private let captureEnabled: Bool
+  private let hostProcessId: pid_t?
+  private let instanceId: String
+  private let controlStateURL: URL?
   private let appearance: NSAppearance.Name?
+  private let captureService: WindowCaptureService?
   private let controlMonitor: HelperControlMonitor?
   private let statusReporter: PermissionStatusReporter?
   private var monitor: DualCommandMonitor?
+  private var foregroundTimer: Timer?
+  private var foregroundObserver: NSObjectProtocol?
+  private var lastExternalApplication: NSRunningApplication?
+  private var lastExternalAt = Date.distantPast
   private var windowController: PermissionWindowController?
 
   init(
     appearance: NSAppearance.Name?,
+    captureDirectoryPath: String?,
+    captureEnabled: Bool,
+    hostProcessId: pid_t?,
+    instanceId: String,
     controlFilePath: String?,
     language: AppLanguage,
     statusFilePath: String?
   ) {
     self.appearance = appearance
     self.language = language
-    controlMonitor = HelperControlMonitor(path: controlFilePath)
-    statusReporter = PermissionStatusReporter(path: statusFilePath)
+    self.captureEnabled = captureEnabled
+    self.hostProcessId = hostProcessId
+    self.instanceId = instanceId
+    controlStateURL = controlFilePath.map { URL(fileURLWithPath: $0 + ".state") }
+    captureService = WindowCaptureService(path: captureDirectoryPath)
+    controlMonitor = HelperControlMonitor(path: controlFilePath, instanceId: instanceId)
+    statusReporter = PermissionStatusReporter(path: statusFilePath, captureEnabled: captureEnabled, instanceId: instanceId)
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
+    captureService?.isCaptureAllowed = { [weak self] in self?.captureStateIsEnabled() == true }
+    if captureEnabled {
+    foregroundObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+      let processId = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+      MainActor.assumeIsolated {
+        if let processId, let application = NSRunningApplication(processIdentifier: processId) { self?.rememberForegroundApplication(application) }
+      }
+    }
+    rememberForegroundApplication()
+    foregroundTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+      Task { @MainActor in self?.rememberForegroundApplication() }
+    }
+    }
+    controlMonitor?.onCommand = { [weak self] command in
+      if command == "capture" { self?.captureForegroundWindow() }
+      if command == "onboard" { self?.presentOnboarding() }
+    }
     controlMonitor?.start()
     statusReporter?.start()
+    if captureEnabled {
     let monitor = DualCommandMonitor { [weak self] in
       guard let self else {
         return
       }
 
-      if !PermissionSnapshot.current().allGranted {
-        self.presentOnboarding()
-      } else {
-        DistributedNotificationCenter.default().postNotificationName(
-          Notification.Name("com.etcetera.etyon.screen-awareness.triggered"),
-          object: nil
-        )
-      }
+      self.captureForegroundWindow()
     }
     self.monitor = monitor
     _ = monitor.start()
+    }
 
     if CommandLine.arguments.contains("--onboard") {
       presentOnboarding()
     }
+
+    if CommandLine.arguments.contains("--capture-once") { captureForegroundWindow() }
+  }
+
+  private func rememberForegroundApplication(_ activatedApplication: NSRunningApplication? = nil) {
+    if let application = activatedApplication ?? NSWorkspace.shared.frontmostApplication,
+      application.processIdentifier != hostProcessId,
+      application.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+      application.bundleIdentifier?.hasPrefix("com.etcetera.etyon") != true
+    { lastExternalApplication = application; lastExternalAt = Date() }
+  }
+
+  private func captureStateIsEnabled() -> Bool {
+    guard captureEnabled else { return false }
+    guard let controlStateURL else { return true }
+    guard let data = try? Data(contentsOf: controlStateURL), let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+    return state["captureEnabled"] as? Bool == true && state["instanceId"] as? String == instanceId
+  }
+
+  private func captureForegroundWindow() {
+    guard captureStateIsEnabled() else { return }
+    let permissions = PermissionSnapshot.current()
+    guard permissions.accessibility == .granted || permissions.screenRecording == .granted else {
+      captureService?.reportError(code: "screen-permission-required")
+      presentOnboarding()
+      return
+    }
+    let frontmost = NSWorkspace.shared.frontmostApplication
+    let isHost = frontmost?.processIdentifier == hostProcessId || frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier || frontmost?.bundleIdentifier?.hasPrefix("com.etcetera.etyon") == true
+    guard let target = isHost ? (Date().timeIntervalSince(lastExternalAt) <= 60 ? lastExternalApplication : nil) : frontmost else {
+      captureService?.reportError(code: "window-unavailable")
+      return
+    }
+    captureService?.capture(application: target)
   }
 
   func applicationShouldHandleReopen(
@@ -1082,6 +1167,10 @@ private final class ScreenAwarenessAppDelegate: NSObject, NSApplicationDelegate 
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    foregroundTimer?.invalidate()
+    if let foregroundObserver { NSWorkspace.shared.notificationCenter.removeObserver(foregroundObserver) }
+    foregroundObserver = nil
+    captureService?.cancel()
     controlMonitor?.stop()
     statusReporter?.stop()
     monitor?.stop()
@@ -1167,8 +1256,20 @@ private enum ScreenAwarenessMain {
       } else {
         nil
       }
+    let captureDirectoryPath: String? =
+      if let captureDirectoryIndex = arguments.firstIndex(
+        of: "--capture-directory"
+      ), arguments.indices.contains(captureDirectoryIndex + 1) {
+        arguments[captureDirectoryIndex + 1]
+      } else {
+        nil
+      }
     let appDelegate = ScreenAwarenessAppDelegate(
       appearance: appearance,
+      captureDirectoryPath: captureDirectoryPath,
+      captureEnabled: !arguments.contains("--permission-only"),
+      hostProcessId: arguments.firstIndex(of: "--host-pid").flatMap { arguments.indices.contains($0 + 1) ? pid_t(arguments[$0 + 1]) : nil },
+      instanceId: arguments.firstIndex(of: "--instance-id").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? UUID().uuidString,
       controlFilePath: controlFilePath,
       language: AppLanguage.resolve(arguments: arguments),
       statusFilePath: statusFilePath

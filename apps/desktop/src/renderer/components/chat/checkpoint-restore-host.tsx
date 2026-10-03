@@ -171,9 +171,20 @@ const CheckpointRestoreDialog = ({
 }) => {
   const { locale, t } = useI18n()
   const queryClient = useQueryClient()
+  const isGitRestore = checkpoint.origin === "bash"
+  const previewQuery = useQuery(
+    orpc.checkpoints.preview.queryOptions({
+      enabled: isGitRestore,
+      input: { checkpointId: checkpoint.id, sessionId }
+    })
+  )
   const restoreMutation = useMutation({
     mutationFn: () =>
-      rpcClient.checkpoints.restore({ checkpointId: checkpoint.id, sessionId }),
+      rpcClient.checkpoints.restore({
+        checkpointId: checkpoint.id,
+        expectedFingerprint: previewQuery.data?.fingerprint,
+        sessionId
+      }),
     onSuccess: () => {
       // Mirror the Commit tab's onRefresh: restoring rewrites files on disk, so
       // git diff, the file tree, the snapshot, and sidebar status go stale.
@@ -193,8 +204,14 @@ const CheckpointRestoreDialog = ({
     }
   })
   const plan = useMemo(
-    () => planCheckpointRestore(checkpoint.files),
-    [checkpoint.files]
+    () =>
+      isGitRestore
+        ? (previewQuery.data?.paths ?? []).map((path) => ({
+            direction: "restore" as const,
+            path
+          }))
+        : planCheckpointRestore(checkpoint.files),
+    [checkpoint.files, isGitRestore, previewQuery.data]
   )
   const capturedAt = useMemo(
     () =>
@@ -244,6 +261,19 @@ const CheckpointRestoreDialog = ({
             <p className="text-xs font-medium text-muted-foreground">
               {t("chat.checkpoints.filesHeading")}
             </p>
+            {isGitRestore ? (
+              <p className="text-xs text-muted-foreground">
+                {t("chat.checkpoints.gitScope")}
+              </p>
+            ) : null}
+            {previewQuery.isLoading ? (
+              <p>{t("chat.checkpoints.previewLoading")}</p>
+            ) : null}
+            {previewQuery.isError ? (
+              <p className="text-xs text-destructive">
+                {t("chat.checkpoints.previewFailed")}
+              </p>
+            ) : null}
             <RestorePlanList plan={plan} />
           </div>
         )}
@@ -267,7 +297,13 @@ const CheckpointRestoreDialog = ({
                 {t("chat.checkpoints.cancel")}
               </Button>
               <Button
-                isDisabled={restoreMutation.isPending}
+                isDisabled={
+                  restoreMutation.isPending ||
+                  (isGitRestore &&
+                    (!previewQuery.data ||
+                      previewQuery.isError ||
+                      previewQuery.data.paths.length === 0))
+                }
                 isPending={restoreMutation.isPending}
                 onPress={() => restoreMutation.mutate()}
                 type="button"

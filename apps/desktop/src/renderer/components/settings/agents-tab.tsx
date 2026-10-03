@@ -6,6 +6,9 @@ import type { Key } from "@heroui/react"
 import { motion } from "motion/react"
 import { useCallback, useMemo } from "react"
 
+import { CheckpointSettings } from "@/renderer/components/settings/checkpoint-settings"
+import { ContextBudgetSettings } from "@/renderer/components/settings/context-budget-settings"
+import { HooksSettings } from "@/renderer/components/settings/hooks-settings"
 import {
   AGENT_CONCURRENT_SUBAGENTS_MAX,
   AGENT_CONCURRENT_SUBAGENTS_MIN,
@@ -488,6 +491,9 @@ export const AgentsTab = ({ agents, onChange }: AgentsTabProps) => {
           </NumberField>
         </div>
       </motion.section>
+      <CheckpointSettings agents={agents} onChange={onChange} />
+      <ContextBudgetSettings agents={agents} onChange={onChange} />
+      <HooksSettings agents={agents} onChange={onChange} />
     </div>
   )
 }

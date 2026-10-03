@@ -9,8 +9,27 @@ import {
   expireStaleApprovals,
   recoverInterruptedAgentRuns
 } from "@/main/agents/agent-event-store"
+import {
+  startAutomationService,
+  stopAutomationService
+} from "@/main/agents/automation/service"
+import { configureCheckpointRetention } from "@/main/agents/checkpoints"
+import {
+  startRuntimeHooks,
+  stopRuntimeHooks
+} from "@/main/agents/hooks/lifecycle"
+import { recoverInterruptedInvocations } from "@/main/agents/invocation-ledger"
+import {
+  disposeMcpConnections,
+  syncMcpConnections
+} from "@/main/agents/mcp/client-manager"
+import { configureWorkspacePrivateDirectory } from "@/main/agents/minimal/workspace-core"
+import {
+  cancelRuntimeWorktrees,
+  recoverRuntimeWorktrees
+} from "@/main/agents/worktree-runtime"
 import { getAppDisplayName, syncRuntimeIcon } from "@/main/app-metadata"
-import { getElectronUserDataDir } from "@/main/app-paths"
+import { getAppConfigDir, getElectronUserDataDir } from "@/main/app-paths"
 import {
   registerAttachmentProtocol,
   registerAttachmentProtocolScheme
@@ -23,6 +42,7 @@ import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
 import { setupMenu } from "@/main/menu"
 import { registerNativeIpcHandlers } from "@/main/native-ipc"
+import { disposeProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { registerRpcHandler } from "@/main/rpc"
 import {
   registerScreenAwarenessIpcHandlers,
@@ -76,6 +96,12 @@ const handleAppReady = async (): Promise<void> => {
 
   const appDisplayName = getAppDisplayName()
   const settings = getSettings()
+  configureWorkspacePrivateDirectory([
+    getAppConfigDir(app.getPath("home"), "development"),
+    getAppConfigDir(app.getPath("home"), "release")
+  ])
+  startRuntimeHooks()
+  configureCheckpointRetention(settings.agents.checkpoints)
 
   app.setName(appDisplayName)
   syncRuntimeIcon(settings.appIcon)
@@ -85,6 +111,8 @@ const handleAppReady = async (): Promise<void> => {
   }
 
   await ensureDatabaseReady()
+  await recoverInterruptedInvocations(getDb())
+  await recoverRuntimeWorktrees()
 
   // Close runs orphaned by a previous crash and expire stale approvals.
   try {
@@ -102,6 +130,22 @@ const handleAppReady = async (): Promise<void> => {
   registerAttachmentProtocol()
   registerRpcHandler()
   await startServer()
+  await startAutomationService({
+    openSession: (sessionId) => {
+      const window = focusOrCreateMainWindow()
+      const navigate = (): void => {
+        if (!window.isDestroyed()) {
+          window.webContents.send("automation-open-session", sessionId)
+        }
+      }
+      if (window.webContents.isLoadingMainFrame()) {
+        window.webContents.once("did-finish-load", navigate)
+      } else {
+        navigate()
+      }
+    }
+  })
+  void syncMcpConnections()
   syncTelegramBridge(settings)
   setupMenu(appDisplayName)
   setupTray()
@@ -150,14 +194,36 @@ app.on("window-all-closed", () => {
   }
 })
 
-app.on("before-quit", () => {
+let shutdownStarted = false
+let shutdownComplete = false
+app.on("before-quit", (event) => {
   setAppQuitting(true)
-  disposeAllPtys()
-  disposeAllBrowserViews()
-  stopServer()
-  stopScreenAwarenessHelper()
-  stopTelegramBridge()
-  destroyTray()
+  if (shutdownComplete) {
+    return
+  }
+  event.preventDefault()
+  if (shutdownStarted) {
+    return
+  }
+  shutdownStarted = true
+  void (async () => {
+    try {
+      await stopRuntimeHooks()
+      await stopAutomationService()
+      await cancelRuntimeWorktrees()
+      await disposeMcpConnections()
+      await disposeProxyAwareFetch()
+      disposeAllPtys()
+      disposeAllBrowserViews()
+      stopServer()
+      await stopScreenAwarenessHelper()
+      stopTelegramBridge()
+      destroyTray()
+    } finally {
+      shutdownComplete = true
+      app.quit()
+    }
+  })()
 })
 
 app.on("activate", () => {

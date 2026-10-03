@@ -42,6 +42,7 @@ vi.mock("@/main/settings", () => ({
 }))
 
 vi.mock("@/main/server/lib/providers", () => ({
+  resolveModelContextWindow: () => 128_000,
   isImageGenerationAvailable: isImageGenerationAvailableMock,
   resolveModel: vi.fn(() => ({}))
 }))
@@ -164,3 +165,7 @@ describe("resolveToolsetProfile", () => {
     expect(resolved.allowedDelegateProfileIds).toEqual(["explore"])
   })
 })
+
+vi.mock("@/main/agents/mcp/client-manager", () => ({ getMcpTools: () => ({}) }))
+
+vi.mock("@/main/agents/web/web-tools", () => ({ buildWebTools: () => ({}) }))
