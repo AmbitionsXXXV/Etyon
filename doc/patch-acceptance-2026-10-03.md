@@ -45,8 +45,6 @@ Best-of-N 两个候选初次运行均被私有路径保护拒绝，因为受管 
 
 入口文件改名为 `screen-awareness-main.swift`，文件内容及运行行为不变。全新 scratch 目录的 release 冷构建成功（8.41 秒），另一个全新目录的 10 项原生测试通过。本地编译器为 Swift 6.4；CI runner 为 macos-26-arm64，发布仍需以 CI 结果和 Release assets 读回作为最终证据。
 
-## 发布边界
-
 ## 最终发布确认
 
 `v0.1.10` 已于 2026-10-04 00:15:55（JST）发布，非 draft / prerelease；GitHub 的 latest 端点已返回该版本。发布提交为 `a4a509ef7d9878c2b904ac4811851b146fc3ceeb`；[发布 CI](https://github.com/AmbitionsXXXV/Etyon/actions/runs/37132398540) 全部成功。Release 说明已补齐自上一正式版本 `v0.1.8` 以来的完整功能与修复，包含原生冷构建兼容性修复。
@@ -59,6 +57,8 @@ Best-of-N 两个候选初次运行均被私有路径保护拒绝，因为受管 
 实际下载线上 ZIP，SHA-256 与 GitHub 摘要一致，ZIP 完整性与 deep / strict codesign 检查通过。解包读回版本 `0.1.10`、arm64 主程序、生产 app / helper identity，以及 ASAR 中的主入口、preload、独立 workflow worker、0015 / 0016 migrations 均通过。本地最终 DMG 的只读镜像校验通过。
 
 原工作区已同步到最终发布代码与 `0.1.10` 产品版本；原有依赖升级、编辑器设置、未发布 changelog 草稿与素材等 11 个无关文件的改动已保留。
+
+## 发布边界
 
 当前系统将普通域名解析为 `198.18.0.0/15` 的 Fake IP 保留地址。网页工具保持拒绝这类地址，不绕过私网保护；实际正常请求使用 `https://8.8.8.8/resolve?name=example.com&type=A` 验证。未修改用户的代理或 DNS 设置。
 
