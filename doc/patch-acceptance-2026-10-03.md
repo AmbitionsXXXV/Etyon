@@ -1,6 +1,6 @@
-# 0.1.9 Patch 验收与发布
+# Patch 验收与发布
 
-本轮继续验收 `852b3ef` 的完整功能范围，完成后发布下一个 patch。根包与桌面端当前版本为 `0.1.8`，目标为 `0.1.9`。原工作区已有的依赖升级、编辑器配置、旧 changelog 和素材改动保持独立；发布代码使用 `/private/tmp/etyon-patch-acceptance-20261003/` 的干净副本。
+本轮继续验收 `852b3ef` 的完整功能范围，完成后发布下一个 patch。本轮开始时根包与桌面端版本为 `0.1.8`；首次计划为 `0.1.9`，CI 兼容性修复后的最终目标为 `0.1.10`。原工作区已有的依赖升级、编辑器配置、旧 changelog 和素材改动保持独立；发布代码使用 `/private/tmp/etyon-patch-acceptance-20261003/` 的干净副本。
 
 ## 实机环境
 
@@ -37,7 +37,13 @@ Best-of-N 两个候选初次运行均被私有路径保护拒绝，因为受管 
 
 干净发布副本的全量 typecheck、格式 / lint 检查均通过；186 个测试文件 / 1,552 项测试全部通过。原生 helper 10 项通过；三处新增回归均先在原实现中失败，再在修复后通过。
 
-产品版本同步目标为 `0.1.9`，发布记录见 [v0.1.9](https://github.com/AmbitionsXXXV/Etyon/releases/tag/v0.1.9)。
+产品版本同步目标为 `0.1.10`，发布记录见 [v0.1.10](https://github.com/AmbitionsXXXV/Etyon/releases/tag/v0.1.10)。
+
+## CI 入口兼容性修复
+
+`v0.1.9` 的首轮 CI 在原生 prePackage 阶段失败：Swift 将名为 `main.swift` 的文件按顶层入口处理，与同文件的 `@main` 声明冲突。该 tag 已推送，保留为失败发布尝试，未生成 GitHub Release。
+
+入口文件改名为 `screen-awareness-main.swift`，文件内容及运行行为不变。全新 scratch 目录的 release 冷构建成功（8.41 秒），另一个全新目录的 10 项原生测试通过。本地编译器为 Swift 6.4；CI runner 为 macos-26-arm64，发布仍需以 CI 结果和 Release assets 读回作为最终证据。
 
 ## 发布边界
 
