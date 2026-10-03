@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.10] - 2026-10-03
+
+### Bug Fixes
+- Avoid swift entrypoint filename ambiguity (503ee39)
+
+### Other
+- Merge pull request #3 from AmbitionsXXXV/codex/patch-0-1-10-release-fix
+
+fix(desktop): avoid swift entrypoint filename ambiguity (64088e6)
+
 ## [0.1.9] - 2026-10-03
 
 ### Features
