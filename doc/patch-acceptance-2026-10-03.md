@@ -47,6 +47,19 @@ Best-of-N 两个候选初次运行均被私有路径保护拒绝，因为受管 
 
 ## 发布边界
 
+## 最终发布确认
+
+`v0.1.10` 已于 2026-10-04 00:15:55（JST）发布，非 draft / prerelease；GitHub 的 latest 端点已返回该版本。发布提交为 `a4a509ef7d9878c2b904ac4811851b146fc3ceeb`；[发布 CI](https://github.com/AmbitionsXXXV/Etyon/actions/runs/37132398540) 全部成功。Release 说明已补齐自上一正式版本 `v0.1.8` 以来的完整功能与修复，包含原生冷构建兼容性修复。
+
+| 线上文件 | 字节数 | GitHub SHA-256 |
+| --- | --: | --- |
+| Etyon-0.1.10-arm64.dmg | 140724288 | aca6be2c7a7b4f352c9378d074fd101361d3d5dd8158cdf65f18571c2bc947e3 |
+| Etyon-darwin-arm64-0.1.10.zip | 140371181 | c458dfc9c63b6a834806f04a738354b2eec632664d6667fce513c3ee888134a5 |
+
+实际下载线上 ZIP，SHA-256 与 GitHub 摘要一致，ZIP 完整性与 deep / strict codesign 检查通过。解包读回版本 `0.1.10`、arm64 主程序、生产 app / helper identity，以及 ASAR 中的主入口、preload、独立 workflow worker、0015 / 0016 migrations 均通过。本地最终 DMG 的只读镜像校验通过。
+
+原工作区已同步到最终发布代码与 `0.1.10` 产品版本；原有依赖升级、编辑器设置、未发布 changelog 草稿与素材等 11 个无关文件的改动已保留。
+
 当前系统将普通域名解析为 `198.18.0.0/15` 的 Fake IP 保留地址。网页工具保持拒绝这类地址，不绕过私网保护；实际正常请求使用 `https://8.8.8.8/resolve?name=example.com&type=A` 验证。未修改用户的代理或 DNS 设置。
 
 运行时补充的 Automation QA 空会话属于测试 fixture；主窗口刷新会话列表后已正常打开。电脑操作工具出现缓存 / 点击无响应后，经用户明确选择改用 Electron renderer 调试接口，系统自动化只用于激活受控 TextEdit 窗口。一次来源不匹配的未发送捕获已立即清理，没有发送给模型；此后先核对来源再发送。
