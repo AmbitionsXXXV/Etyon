@@ -25,9 +25,12 @@ const { getSettingsMock } = vi.hoisted(() => ({
         approvalTtlMs: 3_600_000,
         commandAllowlist: [] as AgentCommandApprovalRule[]
       },
-      rtk: { autoRewrite: false }
+      rtk: { autoRewrite: false },
+      hooks: { enabled: false }
     },
-    memory: { enabled: false }
+    memory: { enabled: false },
+    mcp: { servers: [] },
+    webTools: { enabled: false, searchApiKey: "", searchProvider: "brave" }
   }))
 }))
 

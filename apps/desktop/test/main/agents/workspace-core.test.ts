@@ -1,10 +1,14 @@
 import fs from "node:fs"
+import fsPromises from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
 
-import { afterAll, describe, expect, it } from "vite-plus/test"
+import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
+  configureWorkspacePrivateDirectory,
+  createWorkspaceCore,
   getWorkspaceCore,
   invalidateWorkspaceCore,
   isSecretWorkspacePath
@@ -73,7 +77,483 @@ afterAll(() => {
   fs.rmSync(outsidePath, { force: true, recursive: true })
 })
 
+const privacyHome = fs.mkdtempSync(
+  path.join(os.tmpdir(), "etyon-workspace-privacy-")
+)
+const privacyConfig = path.join(privacyHome, "app[data]")
+const PRIVATE_MARKER = "private-workspace-canary-48"
+const PUBLIC_MARKER = "public-workspace-canary-62"
+const privateEntries = [
+  "settings.json",
+  "database.db",
+  "database.db-wal",
+  "database.db-shm",
+  "cursor-auth.json",
+  "hooks.json",
+  "screen-awareness-control.json",
+  "screen-awareness-status.json",
+  "screen-awareness-captures/old-chat-capture.json",
+  "screen-awareness-helper/Contents/MacOS/helper",
+  "tool-results/other-chat/old-result.json",
+  "agent-tasks/other-chat.json",
+  "attachments/other-chat.png",
+  "checkpoints/objects/prior.json",
+  "worktrees/.records/other-workspace.json",
+  "future-private-storage/unknown.json"
+]
+for (const entry of privateEntries) {
+  const target = path.join(privacyConfig, entry)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, `${PRIVATE_MARKER}\n`)
+}
+for (const directory of ["artifacts", "generated-images"]) {
+  fs.mkdirSync(path.join(privacyConfig, directory))
+  fs.writeFileSync(
+    path.join(privacyConfig, directory, "public.txt"),
+    `${PUBLIC_MARKER}\n`
+  )
+}
+const ordinaryProject = path.join(privacyHome, "project")
+fs.mkdirSync(ordinaryProject)
+fs.writeFileSync(
+  path.join(ordinaryProject, "settings.json"),
+  `${PUBLIC_MARKER}\n`
+)
+fs.symlinkSync(privacyConfig, path.join(privacyHome, "config-alias"))
+fs.symlinkSync(
+  path.join(privacyConfig, "settings.json"),
+  path.join(privacyHome, "settings-alias.txt")
+)
+
+afterEach(() => {
+  configureWorkspacePrivateDirectory(null)
+})
+afterAll(() => {
+  fs.rmSync(privacyHome, { force: true, recursive: true })
+})
+
+describe("application private workspace boundaries", () => {
+  it("allows an owned worktree without exposing other private storage", async () => {
+    const ownedPath = path.join(privacyConfig, "worktrees", "owned")
+    fs.mkdirSync(ownedPath, { recursive: true })
+    fs.writeFileSync(path.join(ownedPath, "candidate.txt"), PUBLIC_MARKER)
+    fs.symlinkSync(
+      path.join(privacyConfig, "settings.json"),
+      path.join(ownedPath, "settings-link.txt")
+    )
+    configureWorkspacePrivateDirectory(privacyConfig)
+    try {
+      expect(
+        await createWorkspaceCore(ownedPath).view("candidate.txt")
+      ).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      const owned = createWorkspaceCore(ownedPath, {
+        allowPrivateWorkspaceRoot: true
+      })
+      expect(await owned.view("candidate.txt")).toMatchObject({
+        ok: true,
+        value: { content: PUBLIC_MARKER }
+      })
+      expect(
+        await owned.writeFile("candidate.txt", `${PUBLIC_MARKER}\nupdated`)
+      ).toMatchObject({ ok: true })
+      expect(await owned.listDir(".")).toMatchObject({ ok: true })
+      expect(
+        await owned.searchContent({ limit: 10, pattern: PUBLIC_MARKER })
+      ).toMatchObject({
+        ok: true,
+        value: expect.stringContaining(PUBLIC_MARKER)
+      })
+      expect(await owned.view("settings-link.txt")).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await owned.view("../.records/other-workspace.json")
+      ).toMatchObject({
+        error: { code: "outside-project" },
+        ok: false
+      })
+      expect(
+        await getWorkspaceCore(privacyHome).view(
+          "app[data]/worktrees/owned/candidate.txt"
+        )
+      ).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await owned.searchContent({ limit: 10, pattern: PRIVATE_MARKER })
+      ).toEqual({
+        ok: true,
+        value: ""
+      })
+    } finally {
+      fs.rmSync(ownedPath, { force: true, recursive: true })
+    }
+  })
+
+  it("does not search an output root symlinked into private captures", async () => {
+    const linkedConfig = path.join(privacyHome, "linked-outputs")
+    fs.mkdirSync(path.join(linkedConfig, "screen-awareness-captures"), {
+      recursive: true
+    })
+    fs.writeFileSync(
+      path.join(linkedConfig, "screen-awareness-captures/unsent.json"),
+      PRIVATE_MARKER
+    )
+    fs.symlinkSync(
+      path.join(linkedConfig, "screen-awareness-captures"),
+      path.join(linkedConfig, "artifacts")
+    )
+    try {
+      configureWorkspacePrivateDirectory(linkedConfig)
+      const core = getWorkspaceCore(linkedConfig)
+      expect(await core.view("artifacts/unsent.json")).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await core.searchContent({
+          glob: "**/*",
+          limit: 10,
+          pattern: PRIVATE_MARKER
+        })
+      ).toEqual({ ok: true, value: "" })
+    } finally {
+      fs.rmSync(linkedConfig, { force: true, recursive: true })
+    }
+  })
+  it("protects both explicitly configured release and development roots", async () => {
+    const otherConfig = path.join(privacyHome, "other-app")
+    fs.mkdirSync(path.join(otherConfig, "screen-awareness-captures"), {
+      recursive: true
+    })
+    fs.writeFileSync(path.join(otherConfig, "settings.json"), PRIVATE_MARKER)
+    fs.writeFileSync(
+      path.join(otherConfig, "screen-awareness-captures/unsent.json"),
+      PRIVATE_MARKER
+    )
+    fs.mkdirSync(path.join(otherConfig, "artifacts"))
+    fs.writeFileSync(
+      path.join(otherConfig, "artifacts/report.md"),
+      PUBLIC_MARKER
+    )
+    try {
+      configureWorkspacePrivateDirectory([privacyConfig, otherConfig])
+      const broad = getWorkspaceCore(privacyHome)
+      expect(
+        await broad.view("other-app/screen-awareness-captures/unsent.json")
+      ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+      expect(await broad.view("other-app/settings.json")).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await broad.searchContent({
+          glob: "**/*",
+          limit: 10,
+          pattern: PRIVATE_MARKER
+        })
+      ).toEqual({ ok: true, value: "" })
+      expect(
+        await getWorkspaceCore(otherConfig).view("artifacts/report.md")
+      ).toMatchObject({ ok: true })
+      expect(await getWorkspaceCore(otherConfig).listDir(".")).toMatchObject({
+        ok: true,
+        value: [{ path: "artifacts" }]
+      })
+    } finally {
+      fs.rmSync(otherConfig, { force: true, recursive: true })
+    }
+  })
+  it("blocks captures, old tool refs, settings, controls and unknown internal storage", async () => {
+    const core = getWorkspaceCore(privacyConfig, "private-reader")
+    configureWorkspacePrivateDirectory(privacyConfig)
+    for (const entry of privateEntries) {
+      expect(await core.view(entry)).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(await core.fileStat(entry)).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+    }
+    expect(await core.listDir("screen-awareness-captures")).toMatchObject({
+      error: { code: "secret-path" },
+      ok: false
+    })
+  })
+  it("hides private entries from ls while keeping generated output accessible", async () => {
+    configureWorkspacePrivateDirectory(privacyConfig)
+    const core = getWorkspaceCore(privacyConfig)
+    const listed = await core.listDir(".")
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) {
+      throw new Error("Expected directory listing")
+    }
+    expect(listed.value.map((entry) => entry.path)).toEqual([
+      "artifacts",
+      "generated-images"
+    ])
+    expect(await core.view("artifacts/public.txt")).toMatchObject({ ok: true })
+    expect(
+      await core.writeFile("artifacts/new-report.md", PUBLIC_MARKER)
+    ).toMatchObject({ ok: true })
+    expect(
+      await core.writeBinaryFile(
+        "generated-images/new.png",
+        new Uint8Array([1, 2])
+      )
+    ).toMatchObject({ ok: true })
+  })
+  it("does not read or overwrite app settings through aliases or create new private captures", async () => {
+    configureWorkspacePrivateDirectory(privacyConfig)
+    const home = getWorkspaceCore(privacyHome)
+    expect(await home.view("settings-alias.txt")).toMatchObject({
+      error: { code: "secret-path" },
+      ok: false
+    })
+    expect(
+      await home.view(
+        "config-alias/screen-awareness-captures/old-chat-capture.json"
+      )
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await home.writeFile("config-alias/settings.json", "changed")
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await home.writeFile(
+        "config-alias/screen-awareness-captures/new/deep.json",
+        "capture",
+        { createParentDirectories: true }
+      )
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await home.writeBinaryFile(
+        "config-alias/new-private-file.bin",
+        new Uint8Array([1])
+      )
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      fs.readFileSync(path.join(privacyConfig, "settings.json"), "utf-8")
+    ).toBe(`${PRIVATE_MARKER}\n`)
+    expect(
+      fs.existsSync(path.join(privacyConfig, "screen-awareness-captures/new"))
+    ).toBe(false)
+  })
+  it("keeps ordinary project settings readable and searchable", async () => {
+    configureWorkspacePrivateDirectory(privacyConfig)
+    const core = getWorkspaceCore(ordinaryProject)
+    expect(await core.view("settings.json")).toMatchObject({ ok: true })
+    expect(
+      await core.searchContent({
+        glob: "**/settings.json",
+        limit: 10,
+        pattern: PUBLIC_MARKER
+      })
+    ).toMatchObject({
+      ok: true,
+      value: expect.stringContaining("settings.json")
+    })
+  })
+  it("searches only generated output from the default config cwd", async () => {
+    configureWorkspacePrivateDirectory(privacyConfig)
+    const core = getWorkspaceCore(privacyConfig)
+    expect(
+      await core.searchContent({
+        glob: "**/*",
+        limit: 10,
+        pattern: PRIVATE_MARKER
+      })
+    ).toEqual({ ok: true, value: "" })
+    const publicSearch = await core.searchContent({
+      glob: "**/*.txt",
+      limit: 10,
+      pattern: PUBLIC_MARKER
+    })
+    expect(publicSearch).toMatchObject({
+      ok: true,
+      value: expect.stringContaining("artifacts/public.txt")
+    })
+    expect(
+      await core.searchContent({
+        limit: 10,
+        pattern: PRIVATE_MARKER,
+        requestedPath: "tool-results"
+      })
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+  })
+  it("enforces actual rg exclusions for broad roots, caller globs and config aliases", async () => {
+    configureWorkspacePrivateDirectory(privacyConfig)
+    const core = getWorkspaceCore(privacyHome)
+    expect(
+      await core.searchContent({
+        glob: "**/*",
+        limit: 10,
+        pattern: PRIVATE_MARKER
+      })
+    ).toEqual({ ok: true, value: "" })
+    expect(
+      await core.searchContent({
+        glob: "**/settings.json",
+        limit: 10,
+        pattern: PRIVATE_MARKER
+      })
+    ).toEqual({ ok: true, value: "" })
+    expect(
+      await core.searchContent({
+        limit: 10,
+        pattern: PRIVATE_MARKER,
+        requestedPath: "settings-alias.txt"
+      })
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await core.searchContent({
+        limit: 10,
+        pattern: PRIVATE_MARKER,
+        requestedPath: "config-alias/screen-awareness-captures"
+      })
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await core.searchContent({
+        glob: "**/settings.json",
+        limit: 10,
+        pattern: PUBLIC_MARKER
+      })
+    ).toMatchObject({
+      ok: true,
+      value: expect.stringContaining("project/settings.json")
+    })
+    const filesystemRoot = getWorkspaceCore(path.parse(privacyHome).root)
+    expect(
+      await filesystemRoot.view(path.join(privacyConfig, "settings.json"))
+    ).toMatchObject({ error: { code: "secret-path" }, ok: false })
+    expect(
+      await filesystemRoot.searchContent({
+        glob: "**/*",
+        limit: 10,
+        pattern: PRIVATE_MARKER,
+        requestedPath: privacyHome
+      })
+    ).toEqual({ ok: true, value: "" })
+  })
+})
+
 describe("workspace-core", () => {
+  it("serializes aliases of the same real target across actors and project roots", async () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "etyon-canonical-lock-"))
+    const realRoot = path.join(base, "real")
+    const rootAlias = path.join(base, "root-alias")
+    fs.mkdirSync(realRoot)
+    fs.mkdirSync(path.join(realRoot, "dir"))
+    fs.symlinkSync(realRoot, rootAlias)
+    fs.symlinkSync(path.join(realRoot, "dir"), path.join(realRoot, "alias"))
+    const target = path.join(realRoot, "dir", "shared.txt")
+    fs.writeFileSync(target, "baseline")
+    const first = getWorkspaceCore(realRoot, "canonical-first")
+    const second = getWorkspaceCore(rootAlias, "canonical-second")
+    await first.view("dir/shared.txt")
+    await second.view("alias/shared.txt")
+    const originalWrite = fsPromises.writeFile
+    const delayedWrite = vi
+      .spyOn(fsPromises, "writeFile")
+      .mockImplementation(async (file, data, options) => {
+        await delay(10)
+        return originalWrite(file, data, options)
+      })
+    try {
+      const results = await Promise.all([
+        first.writeFile("dir/shared.txt", "first", {
+          requireReadSnapshot: true
+        }),
+        second.writeFile("alias/shared.txt", "second", {
+          requireReadSnapshot: true
+        })
+      ])
+      expect(results.filter((result) => result.ok)).toHaveLength(1)
+      expect(results.filter((result) => !result.ok)).toEqual([
+        expect.objectContaining({
+          error: expect.objectContaining({ code: "stale-write" }),
+          ok: false
+        })
+      ])
+      expect(delayedWrite).toHaveBeenCalledTimes(1)
+    } finally {
+      delayedWrite.mockRestore()
+      fs.rmSync(base, { force: true, recursive: true })
+    }
+  })
+
+  it("does not recreate a file deleted after this actor read it", async () => {
+    const target = path.join(projectPath, "deleted-snapshot.txt")
+    fs.writeFileSync(target, "old content")
+    const actor = getWorkspaceCore(projectPath, "deleted-writer")
+    await actor.view("deleted-snapshot.txt")
+    fs.unlinkSync(target)
+    expect(
+      await actor.writeFile("deleted-snapshot.txt", "stale content", {
+        requireReadSnapshot: true
+      })
+    ).toMatchObject({ error: { code: "stale-write" }, ok: false })
+    expect(fs.existsSync(target)).toBe(false)
+    expect(await actor.view("deleted-snapshot.txt")).toMatchObject({
+      error: { code: "not-found" },
+      ok: false
+    })
+    expect(
+      await actor.writeFile("deleted-snapshot.txt", "intentional recreation", {
+        requireReadSnapshot: true
+      })
+    ).toMatchObject({ ok: true })
+    expect(
+      await actor.writeFile("new-snapshot.txt", "new content", {
+        requireReadSnapshot: true
+      })
+    ).toMatchObject({ ok: true })
+  })
+
+  it("does not let another actor refresh a stale writer's snapshot", async () => {
+    const target = path.join(projectPath, "actors.txt")
+    fs.writeFileSync(target, "version-one")
+    const first = getWorkspaceCore(projectPath, "first")
+    const second = getWorkspaceCore(projectPath, "second")
+    expect(first).not.toBe(second)
+    expect(getWorkspaceCore(projectPath, "first")).toBe(first)
+    await first.view("actors.txt")
+    fs.writeFileSync(target, "version-two")
+    await second.view("actors.txt")
+    const stale = await first.writeFile("actors.txt", "old intent", {
+      requireReadSnapshot: true
+    })
+    expect(stale).toMatchObject({ error: { code: "stale-write" }, ok: false })
+    expect(fs.readFileSync(target, "utf-8")).toBe("version-two")
+    await first.view("actors.txt")
+    expect(
+      await first.writeFile("actors.txt", "fresh intent", {
+        requireReadSnapshot: true
+      })
+    ).toMatchObject({ ok: true })
+  })
+
+  it("rejects content changes even when the modification time is restored", async () => {
+    const target = path.join(projectPath, "same-time.txt")
+    fs.writeFileSync(target, "before")
+    const time = new Date("2026-01-01T00:00:00Z")
+    fs.utimesSync(target, time, time)
+    const actor = getWorkspaceCore(projectPath, "hash-writer")
+    await actor.view("same-time.txt")
+    fs.writeFileSync(target, "after!")
+    fs.utimesSync(target, time, time)
+    const stale = await actor.writeFile("same-time.txt", "lost update", {
+      requireReadSnapshot: true
+    })
+    expect(stale).toMatchObject({ error: { code: "stale-write" }, ok: false })
+    expect(fs.readFileSync(target, "utf-8")).toBe("after!")
+  })
   it("reuses one workspace instance per project path", () => {
     expect(getWorkspaceCore(projectPath)).toBe(workspace)
   })

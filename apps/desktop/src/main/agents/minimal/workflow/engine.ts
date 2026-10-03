@@ -3,6 +3,8 @@ import vm from "node:vm"
 import type { Node } from "acorn"
 import { parse } from "acorn"
 
+import { runIsolatedWorkflow } from "@/main/agents/minimal/workflow/isolated-workflow"
+
 /**
  * Deterministic multi-agent workflow engine (ported from pi-dynamic-workflows).
  *
@@ -73,6 +75,7 @@ export interface WorkflowRunOptions {
   runAgent: WorkflowRunAgent
   signal?: AbortSignal
   startedAtMs: number
+  timeoutMs?: number
   tokenBudget?: number | null
 }
 
@@ -400,7 +403,7 @@ export const parseWorkflowScript = (
  * a token budget, and abort propagation. Sub-agent failures resolve to `null`
  * (fail-soft) so a script can synthesize partial results; only an abort rethrows.
  */
-export const runWorkflow = async <TResult = unknown>(
+export const runWorkflowInProcess = async <TResult = unknown>(
   script: string,
   options: WorkflowRunOptions
 ): Promise<WorkflowRunResult<TResult>> => {
@@ -504,104 +507,60 @@ export const runWorkflow = async <TResult = unknown>(
     })
   }
 
-  const parallel = (thunks: (() => Promise<unknown>)[]): Promise<unknown[]> => {
-    throwIfAborted()
-
-    if (!Array.isArray(thunks)) {
-      throw new TypeError("parallel() expects an array of functions")
-    }
-
-    if (thunks.some((thunk) => typeof thunk !== "function")) {
-      throw new TypeError(
-        "parallel() expects an array of functions, not promises. Wrap each call: () => agent(...)"
-      )
-    }
-
-    return Promise.all(
-      thunks.map(async (thunk, index) => {
-        try {
-          return await thunk()
-        } catch (error) {
-          if (options.signal?.aborted) {
-            throw error
-          }
-
-          log(`parallel[${index}] failed: ${describeError(error)}`)
-
-          return null
-        }
-      })
-    )
+  const agentBridge = (
+    prompt: string,
+    input: WorkflowAgentOptions,
+    resolve: (json: string) => void,
+    reject: (message: string) => void
+  ): void => {
+    void (async () => {
+      try {
+        resolve(JSON.stringify((await agent(prompt, input)) ?? null))
+      } catch (error) {
+        reject(describeError(error))
+      }
+    })()
   }
-
-  const pipeline = (
-    items: unknown[],
-    ...stages: ((prev: unknown, original: unknown, index: number) => unknown)[]
-  ): Promise<unknown[]> => {
-    throwIfAborted()
-
-    if (!Array.isArray(items)) {
-      throw new TypeError("pipeline() expects an array as the first argument")
-    }
-
-    if (stages.some((stage) => typeof stage !== "function")) {
-      throw new TypeError(
-        "pipeline() stages must be functions: pipeline(items, item => ..., result => ...)"
-      )
-    }
-
-    return Promise.all(
-      items.map(async (item, index) => {
-        let value: unknown = item
-
-        for (const stage of stages) {
-          try {
-            throwIfAborted()
-            value = await stage(value, item, index)
-            throwIfAborted()
-          } catch (error) {
-            if (options.signal?.aborted) {
-              throw error
-            }
-
-            log(`pipeline[${index}] failed: ${describeError(error)}`)
-
-            return null
-          }
-        }
-
-        return value
-      })
-    )
+  const logBridge = (message: unknown): void => {
+    log(String(message).slice(0, 4000))
   }
-
-  const context = vm.createContext({
-    Array,
-    Boolean,
-    JSON,
-    Map,
-    Math,
-    Number,
-    Object,
-    Promise,
-    Set,
-    String,
-    agent,
-    args: options.args,
-    budget,
-    console: {
-      error: (message: unknown) => log(`[error] ${String(message)}`),
-      info: log,
-      log,
-      warn: (message: unknown) => log(`[warn] ${String(message)}`)
+  const phaseBridge = (title: string): void => {
+    phase(String(title).slice(0, 200))
+  }
+  const budgetBridge = (mode: string): number | null =>
+    mode === "total"
+      ? budget.total
+      : mode === "spent"
+        ? budget.spent()
+        : budget.remaining()
+  // Only null-prototype callable bridges and primitive JSON cross into the VM.
+  // Results are parsed by the VM's own JSON/Promise intrinsics, not host constructors.
+  for (const bridge of [agentBridge, logBridge, phaseBridge, budgetBridge]) {
+    Object.setPrototypeOf(bridge, null)
+    Object.freeze(bridge)
+  }
+  const context = vm.createContext(
+    {
+      __agentBridge: agentBridge,
+      __argsJson: JSON.stringify(options.args ?? null),
+      __budgetBridge: budgetBridge,
+      __logBridge: logBridge,
+      __phaseBridge: phaseBridge
     },
-    log,
-    parallel,
-    phase,
-    pipeline
-  })
+    { codeGeneration: { strings: false, wasm: false } }
+  )
+  const prelude = [
+    "const args = JSON.parse(__argsJson);",
+    "const agent = (prompt, options = {}) => new Promise((resolve, reject) => __agentBridge(prompt, options, json => resolve(JSON.parse(json)), error => reject(new Error(error))));",
+    "const log = message => __logBridge(message); const phase = title => __phaseBridge(title);",
+    "const console = { log, info: log, warn: log, error: log };",
+    'const budget = Object.freeze({ remaining: () => __budgetBridge("remaining"), spent: () => __budgetBridge("spent"), total: __budgetBridge("total") });',
+    'const parallel = async thunks => { if (!Array.isArray(thunks) || thunks.some(thunk => typeof thunk !== "function")) throw new TypeError("parallel() expects an array of functions, not promises"); return await Promise.all(thunks.map(async (thunk, index) => { try { return await thunk(); } catch (error) { log("parallel[" + index + "] failed: " + error.message); return null; } })); };',
+    'const pipeline = async (items, ...stages) => { if (!Array.isArray(items)) throw new TypeError("pipeline() expects an array as the first argument"); if (stages.some(stage => typeof stage !== "function")) throw new TypeError("pipeline() stages must be functions"); return await Promise.all(items.map(async (item, index) => { let value = item; for (const stage of stages) { try { value = await stage(value, item, index); } catch (error) { log("pipeline[" + index + "] failed: " + error.message); return null; } } return value; })); };',
+    'globalThis.Date = undefined; Math.random = () => { throw new Error("Workflow scripts must be deterministic"); };'
+  ].join("\n")
 
-  const wrapped = `(async () => {\n${body}\n})()`
+  const wrapped = `${prelude}\n(async () => {\n${body}\n})()`
   // This only bounds synchronous execution between await suspension points.
   const result = await new vm.Script(wrapped, {
     filename: `${meta.name}.js`
@@ -618,3 +577,9 @@ export const runWorkflow = async <TResult = unknown>(
     result: result as TResult
   }
 }
+
+export const runWorkflow = async <TResult = unknown>(
+  script: string,
+  options: WorkflowRunOptions
+): Promise<WorkflowRunResult<TResult>> =>
+  await runIsolatedWorkflow<TResult>(script, options)

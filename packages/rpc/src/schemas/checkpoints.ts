@@ -33,6 +33,7 @@ export const ListCheckpointsOutputSchema = z.object({
 })
 
 export const RestoreCheckpointInputSchema = z.object({
+  expectedFingerprint: z.string().optional(),
   checkpointId: z.string().min(1),
   sessionId: z.string().min(1)
 })
@@ -54,3 +55,9 @@ export type RestoreCheckpointInput = z.infer<
 export type RestoreCheckpointOutput = z.infer<
   typeof RestoreCheckpointOutputSchema
 >
+
+export const PreviewCheckpointInputSchema = RestoreCheckpointInputSchema
+export const PreviewCheckpointOutputSchema = z.object({
+  fingerprint: z.string(),
+  paths: z.array(z.string())
+})

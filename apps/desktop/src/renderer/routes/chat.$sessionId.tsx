@@ -2,6 +2,7 @@ import { useChat } from "@ai-sdk/react"
 import type { UIMessage } from "@ai-sdk/react"
 import { useI18n } from "@etyon/i18n/react"
 import type {
+  AppSettings,
   ChatMention,
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
@@ -41,12 +42,14 @@ import { getToolName, isToolUIPart } from "ai"
 import { AnimatePresence, motion } from "motion/react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, RefObject, UIEvent } from "react"
+import { toast } from "sonner"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import type { InputToolResultHandler } from "@/renderer/components/chat/assistant-message-timeline"
 import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
+import { InvocationStatus } from "@/renderer/components/chat/invocation-status"
 import {
   MessageActions,
   USER_MESSAGE_ACTIONS
@@ -56,6 +59,7 @@ import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { ChatSessionTurnIndicator } from "@/renderer/components/chat/session-turn-indicator"
+import { WorktreeRuntimePanel } from "@/renderer/components/chat/worktree-runtime-panel"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
 import { collectPublishedArtifactRefs } from "@/renderer/lib/chat/artifact-panel"
 import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
@@ -64,6 +68,7 @@ import {
   messageHasWorkSection
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import { getImageFileParts } from "@/renderer/lib/chat/attachments"
+import type { ComposerAttachment } from "@/renderer/lib/chat/attachments"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
 import {
   getImageModeToggleDisabled,
@@ -121,6 +126,11 @@ import type {
   PromptSkillMentionItem,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import {
+  consumeScreenAwarenessCapture,
+  usePendingScreenAwarenessCaptures
+} from "@/renderer/lib/chat/screen-awareness-capture-store"
+import { getScreenAwarenessErrorKey } from "@/renderer/lib/chat/screen-awareness-copy"
 import {
   buildChatSessionTurns,
   shouldShowSessionTurnIndicator
@@ -1617,6 +1627,29 @@ const ChatMessageItem = memo(
 )
 ChatMessageItem.displayName = "ChatMessageItem"
 
+const isBestOfNStartDisabled = (
+  status: string,
+  awaitingApproval: boolean,
+  imageMode: boolean
+): boolean =>
+  status === "streaming" ||
+  status === "submitted" ||
+  awaitingApproval ||
+  imageMode
+
+const isScreenAwarenessEnabled = (settings: AppSettings | undefined): boolean =>
+  Boolean(settings?.screenAwareness.enabled)
+
+const getBestOfNModelOptions = (groups: ChatModelGroup[]) =>
+  groups.flatMap((group) =>
+    group.options
+      .filter((option) => !option.summary.includes("Image"))
+      .map((option) => ({
+        id: option.value,
+        label: `${group.providerName} · ${option.label}`
+      }))
+  )
+
 const ChatRuntime = ({
   activeArtifact,
   agentsEnabled,
@@ -1654,6 +1687,7 @@ const ChatRuntime = ({
   projectTreeItems,
   promptTemplateItems,
   selectedModelValue,
+  screenAwarenessEnabled,
   selectedSession,
   sessionTitle,
   sidePanelTabs,
@@ -1702,6 +1736,7 @@ const ChatRuntime = ({
   projectTreeItems: ProjectSnapshotItem[]
   promptTemplateItems: PromptTemplate[]
   selectedModelValue: string
+  screenAwarenessEnabled: boolean
   selectedSession: ChatSessionSummary
   sessionTitle: string
   sidePanelTabs: SidePanelTabsState
@@ -1748,8 +1783,52 @@ const ChatRuntime = ({
   const [queuedMessages, setQueuedMessages] = useState<QueuedPromptMessage[]>(
     []
   )
+  const pendingScreenAwarenessCaptures = usePendingScreenAwarenessCaptures(
+    selectedSession.id
+  )
   const queuedMessagesRef = useRef(queuedMessages)
   const queryClient = useQueryClient()
+  const stagedScreenCaptureAttachments = useMemo<ComposerAttachment[]>(
+    () =>
+      pendingScreenAwarenessCaptures.map((capture) => ({
+        accessibleText: capture.accessibleText,
+        dataUrl: capture.dataUrl ?? "",
+        id: capture.id,
+        kind: "screen-capture",
+        mediaType: capture.mediaType,
+        name: `${capture.sourceAppName} screen capture.png`,
+        selectedText: capture.selectedText,
+        sourceAppIconDataUrl: capture.sourceAppIconDataUrl,
+        sourceAppName: capture.sourceAppName,
+        sourceLabel: t("chat.attachments.screenAwareness"),
+        title: capture.windowTitle ?? capture.sourceAppName,
+        warnings: capture.warnings?.map((code) =>
+          t(getScreenAwarenessErrorKey(code))
+        )
+      })),
+    [pendingScreenAwarenessCaptures, t]
+  )
+  const dismissStagedCapture = useCallback(
+    async (id: string): Promise<void> => {
+      await window.electron.dismissScreenAwarenessCapture(id)
+      consumeScreenAwarenessCapture(id)
+    },
+    []
+  )
+  const consumeStagedCaptures = useCallback(
+    async (ids: string[]): Promise<void> => {
+      for (const id of ids) {
+        consumeScreenAwarenessCapture(id)
+      }
+      const results = await Promise.allSettled(
+        ids.map((id) => window.electron.dismissScreenAwarenessCapture(id))
+      )
+      if (results.some((result) => result.status === "rejected")) {
+        toast.error(t("chat.screenAwareness.errors.cleanup-failed"))
+      }
+    },
+    [t]
+  )
   const sessionPlanQueryOptions = useMemo(
     () =>
       orpc.agents.getSessionPlan.queryOptions({
@@ -1802,6 +1881,9 @@ const ChatRuntime = ({
       })
       void queryClient.invalidateQueries({
         queryKey: orpc.agents.listRuns.key()
+      })
+      void queryClient.invalidateQueries({
+        queryKey: orpc.checkpoints.list.key()
       })
       // onFinish also fires when a stream segment ends awaiting a tool approval;
       // keep the live todo checklist (and its plan-queue run) alive across that
@@ -2544,6 +2626,25 @@ const ChatRuntime = ({
       : undefined
   }
 
+  const handleBestOfNStart = useCallback(
+    (request: { models: { modelId: string }[]; prompt: string }) => {
+      setAgentMode("agent")
+      const options = buildChatRequestOptions([], "agent")
+      void sendMessage(
+        { text: request.prompt },
+        {
+          body: {
+            ...options.body,
+            bestOfN: request,
+            imageMode: undefined
+          }
+        }
+      )
+      return Promise.resolve()
+    },
+    [buildChatRequestOptions, sendMessage]
+  )
+
   return (
     <ChatProjectContextLayout
       activeArtifact={activeArtifact}
@@ -2570,6 +2671,17 @@ const ChatRuntime = ({
           onToggleProjectContext={onToggleProjectContext}
           selectedSession={selectedSession}
           sessionTitle={sessionTitle}
+        />
+
+        <WorktreeRuntimePanel
+          isRunDisabled={isBestOfNStartDisabled(
+            status,
+            isAwaitingToolApproval,
+            isImageMode
+          )}
+          models={getBestOfNModelOptions(modelGroups)}
+          onStart={handleBestOfNStart}
+          sessionId={selectedSession.id}
         />
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -2748,7 +2860,10 @@ const ChatRuntime = ({
             imageInputAttachLabel={t("chat.attachments.attach")}
             imageInputCountError={t("chat.attachments.countError")}
             imageInputEnabled={isSelectedModelImageInputCapable}
+            imageInputImageLabel={t("chat.attachments.image")}
+            imageInputListLabel={t("chat.attachments.ready")}
             imageInputNonVisionHint={t("chat.attachments.nonVisionHint")}
+            imageInputPreviewLabel={t("chat.imagen.viewFull")}
             imageInputRemoveLabel={t("chat.attachments.remove")}
             imageInputSizeError={t("chat.attachments.sizeError")}
             imageInputTypeError={t("chat.attachments.typeError")}
@@ -2806,6 +2921,23 @@ const ChatRuntime = ({
             queueRemoveLabel={t("chat.composer.queueRemove")}
             queueReorderLabel={t("chat.composer.queueReorder")}
             status={status}
+            stagedAttachments={stagedScreenCaptureAttachments}
+            onStagedAttachmentRemoved={dismissStagedCapture}
+            onStagedAttachmentsConsumed={consumeStagedCaptures}
+            screenAwarenessEnabled={screenAwarenessEnabled}
+            screenAwarenessErrorLabel={t("chat.screenAwareness.failed")}
+            screenAwarenessSelectedTextLabel={t(
+              "chat.screenAwareness.selected"
+            )}
+            screenAwarenessCaptureLabel={t("chat.screenAwareness.capture")}
+            screenAwarenessImageLabel={t("chat.screenAwareness.image")}
+            screenAwarenessTextLabel={t("chat.screenAwareness.text")}
+            screenAwarenessRemoveImageLabel={t(
+              "chat.screenAwareness.removeImage"
+            )}
+            screenAwarenessRemoveTextLabel={t(
+              "chat.screenAwareness.removeText"
+            )}
             stopLabel={t("chat.composer.stop")}
             submitLabel={t("chat.composer.send")}
           />
@@ -3546,6 +3678,7 @@ const ChatSessionPage = () => {
 
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden">
+      <InvocationStatus sessionId={sessionId} />
       <CheckpointRestoreHost sessionId={sessionId} />
       {transport && persistedMessagesQuery.isSuccess ? (
         <ChatRuntime
@@ -3597,6 +3730,7 @@ const ChatSessionPage = () => {
           projectTreeItems={projectTreeItemsQuery.data?.files ?? []}
           promptTemplateItems={promptTemplateItems}
           selectedModelValue={selectedModelValue}
+          screenAwarenessEnabled={isScreenAwarenessEnabled(settingsQuery.data)}
           selectedSession={session}
           sessionTitle={sessionTitle}
           sidePanelTabs={sidePanelTabs}

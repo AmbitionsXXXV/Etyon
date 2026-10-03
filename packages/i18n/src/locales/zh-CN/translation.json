@@ -46,7 +46,9 @@
       "countError": "最多可添加 4 张图片。",
       "image": "附加的图片",
       "nonVisionHint": "当前模型无法识别图片。请移除图片或切换到支持视觉的模型后再发送。",
+      "ready": "待发送图片",
       "remove": "移除图片",
+      "screenAwareness": "屏幕感知",
       "sizeError": "每张图片不得超过 8 MB。",
       "typeError": "不支持的格式，请使用 PNG、JPEG、WebP 或 GIF。",
       "unsupported": "当前模型无法识别图片"
@@ -56,7 +58,11 @@
       "navigate": "打开网页",
       "read": "读取网页",
       "screenshot": "截取网页",
-      "screenshotAlt": "{{url}} 的截图"
+      "screenshotAlt": "{{url}} 的截图",
+      "click": "点击网页元素",
+      "press": "网页按键",
+      "scroll": "滚动网页",
+      "type": "填写网页内容"
     },
     "imageMode": {
       "label": "图像",
@@ -213,7 +219,10 @@
       "resultRestored": "已恢复 {{count}} 个文件。",
       "resultSkipped": "已跳过 {{count}} 个被阻止或位于工作区之外的文件。",
       "successTitle": "恢复完成",
-      "title": "恢复到本次改动之前?"
+      "title": "恢复到本次改动之前?",
+      "gitScope": "将还原下列已跟踪文件。恢复前会保存当前状态；未跟踪文件和暂存区保留。",
+      "previewLoading": "正在计算恢复范围…",
+      "previewFailed": "无法读取恢复范围，请重试。"
     },
     "planHint": {
       "dismiss": "关闭",
@@ -528,7 +537,9 @@
       "exploredProject": "浏览了项目",
       "ranWorkflow": "运行了工作流",
       "todos": "待办",
-      "todoProgressLabel": "已完成 {completed}/{total}"
+      "todoProgressLabel": "已完成 {completed}/{total}",
+      "taskOwner": "负责人：{owner}",
+      "taskBlockedBy": "等待完成：{tasks}"
     },
     "workTime": {
       "label": "用时 {duration}"
@@ -543,6 +554,76 @@
       "running": "运行中…",
       "succeeded": "完成",
       "viewDetails": "查看详情"
+    },
+    "screenAwareness": {
+      "capture": "读取前台窗口",
+      "clear": "清理未发送的捕获",
+      "failed": "窗口捕获未完成",
+      "image": "截图",
+      "removeImage": "移除截图",
+      "removeText": "移除文本",
+      "text": "可访问文本",
+      "selected": "选中文本",
+      "partial": "部分内容不可用",
+      "errors": {
+        "accessibility-permission-required": "需要辅助功能权限才能读取文本。",
+        "capture-limit": "最多暂存 4 份捕获，请先发送或移除。",
+        "capture-unavailable": "未能读取窗口，请重试并检查系统权限。",
+        "protected-surface": "该应用或密码输入区域不支持捕获。",
+        "routing-failed": "未能暂存到聊天，捕获仍保留在本机，请重试。",
+        "screen-permission-required": "需要屏幕录制权限才能截取画面。",
+        "screenshot-unavailable": "截图不可用，已保留可访问文本。",
+        "storage-failed": "无法保存捕获，请检查本机可用空间。",
+        "text-truncated": "文本已达到读取上限，只包含部分内容。",
+        "text-unavailable": "应用未提供可访问文本，已保留截图。",
+        "window-unavailable": "原窗口已关闭或不可用，请重新触发。",
+        "cleanup-failed": "消息已提交，但未能删除本机捕获缓存，请在设置中清理。"
+      }
+    },
+    "invocations": {
+      "title": "有 {{count}} 项操作需要核对",
+      "description": "应用退出前未记录到最终结果。请先检查文件、进程或目标页面；这里的确认只更新记录，不重新执行操作。",
+      "completed": "已核对：操作完成",
+      "notCompleted": "已核对：未完成",
+      "failed": "记录更新失败，请重试。"
+    },
+    "bestOfN": {
+      "applied": "已采纳",
+      "apply": "采纳此方案",
+      "cancel": "取消运行",
+      "cancelDiscard": "保留方案",
+      "confirmDiscard": "确认丢弃",
+      "conflicts": "主工作区已更改这些文件，请处理后重新预览。",
+      "discard": "丢弃候选方案",
+      "discardConfirmation": "将删除这些方案的隔离工作区和未采纳改动。",
+      "empty": "选择 2–4 个模型，分别完成同一任务，再比较结果。",
+      "failed": "失败",
+      "modelLimit": "请选择 2–4 个模型。",
+      "models": "候选模型",
+      "noChanges": "没有文件改动",
+      "pending": "等待开始",
+      "preview": "预览改动",
+      "prompt": "任务描述",
+      "ready": "完成",
+      "recommendation": "评审建议",
+      "recommended": "推荐",
+      "running": "运行中",
+      "start": "并行生成方案",
+      "title": "Best-of-N",
+      "view": "查看方案",
+      "unavailable": "请在 Agent 设置中启用子 agent 委派，并选择允许可写子 agent 的配置。",
+      "discarded": "已丢弃",
+      "files": "个文件"
+    },
+    "worktrees": {
+      "apply": "应用到主工作区",
+      "confirmDiscard": "确认删除工作区",
+      "discard": "删除隔离工作区",
+      "empty": "当前会话没有保留的隔离工作区。",
+      "orphaned": "运行被中断，改动已保留",
+      "preview": "预览改动",
+      "title": "隔离工作区",
+      "files": "个文件"
     }
   },
   "firstLight": {
@@ -843,7 +924,27 @@
         "title": "Crew roster",
         "writeCapable": "可写"
       },
-      "title": "Agents"
+      "title": "Agents",
+      "checkpoints": {
+        "title": "文件回退与快照",
+        "description": "在修改前保留可恢复的文件状态。过期或超出容量的旧快照会自动清理；Git 快照还受 Git 对象保留策略影响。",
+        "days": "保留天数",
+        "storage": "文件内容容量（MB）"
+      },
+      "hooks": {
+        "title": "Hooks",
+        "description": "工具执行前后及会话结束时运行已配置的本地脚本。",
+        "empty": "当前没有配置 Hooks。",
+        "enabled": "启用 Hooks",
+        "global": "全局配置",
+        "scope": "Hooks 配置范围"
+      },
+      "contextBudget": {
+        "title": "模型上下文预算",
+        "description": "每次调用模型前控制输入量，并保留当前任务与待处理的工具调用。",
+        "input": "最大输入预算",
+        "output": "输出预留"
+      }
     },
     "chat": {
       "autoCompact": {
@@ -1047,7 +1148,11 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token 节省",
-      "userInterface": "用户界面"
+      "userInterface": "用户界面",
+      "screenAwareness": "屏幕感知",
+      "mcp": "MCP 服务",
+      "automation": "后台任务",
+      "webTools": "网页工具"
     },
     "memory": {
       "description": "把精简后的长期记忆保存在模型上下文之外，让 chat sessions、projects 和 Telegram chatbot 能共享相关记忆。",
@@ -1515,6 +1620,121 @@
       "description": "选择最小化和关闭操作是否应将应用隐藏到系统托盘。",
       "minimizeToTray": "最小化时隐藏到系统托盘",
       "title": "窗口行为"
+    },
+    "screenAwareness": {
+      "title": "屏幕感知",
+      "description": "按左右 Command 或手动触发，捕获前台窗口。发送前可查看和移除内容，不自动发送。",
+      "enabled": "启用屏幕感知",
+      "accessibility": "辅助功能",
+      "screenRecording": "屏幕录制",
+      "granted": "已授权",
+      "missing": "未授权",
+      "permissions": "设置系统权限",
+      "clear": "清理未发送的捕获",
+      "privacy": "未发送内容在本机保留 10 分钟。密码管理器、系统安全界面和密码输入区域不支持捕获；文本仅包含应用可访问的部分。",
+      "unsupported": "屏幕感知目前仅支持 macOS。",
+      "cleared": "已清理未发送的捕获",
+      "failed": "操作失败，请重试"
+    },
+    "mcp": {
+      "title": "MCP 服务",
+      "description": "接入本机或远程工具。启用服务会启动连接；Agent 的每次调用仍需审批。",
+      "addStdio": "添加本机服务",
+      "addHttp": "添加 HTTP 服务",
+      "configuration": "服务配置（JSON）",
+      "enabled": "启用服务",
+      "connect": "连接 / 刷新工具",
+      "edit": "编辑",
+      "remove": "删除",
+      "invalid": "配置无效，请检查名称、命令或地址及 JSON 格式。",
+      "largeCatalog": "工具说明较多，会占用模型上下文。可停用当前不用的服务。",
+      "tools": "工具（{{count}}）",
+      "catalogTruncated": "服务器发现了 {{count}} 个工具；为控制上下文大小，仅加载符合工具数量和描述预算的部分。",
+      "clearCredentials": "清除凭据",
+      "credentials": "环境变量和 HTTP 请求头会加密保存，编辑时不显示已存凭据。填写新值会替换整组凭据；留空会保留，清除请使用“清除凭据”。",
+      "disconnect": "断开连接",
+      "empty": "添加一个 stdio 或 HTTP MCP 服务器，启用后连接并查看可用工具。",
+      "loading": "正在读取 MCP 配置…",
+      "newServer": "新 MCP 服务器",
+      "status": {
+        "connected": "已连接",
+        "connecting": "连接中",
+        "disconnected": "已断开",
+        "error": "连接失败"
+      }
+    },
+    "webTools": {
+      "apiKey": "搜索 API Key",
+      "clearKey": "清除 API Key",
+      "credentials": "API Key 通过系统安全存储加密保存。抓取无需 Key；搜索使用已保存的服务和 Key。",
+      "description": "让 Agent 抓取公开网页、搜索并返回可查看的来源。请求遵循应用的 HTTP(S) 代理设置，拒绝本地与私网目标。",
+      "enabled": "启用网页工具",
+      "keyPlaceholder": "输入所选搜索服务的 API Key",
+      "keySaved": "已安全保存；留空保留现有 Key",
+      "noResults": "搜索完成，没有结果。",
+      "openFailed": "无法打开来源链接。",
+      "provider": "搜索服务",
+      "providerChanged": "切换服务会清除原服务的 Key。请填写新服务的 Key 后保存。",
+      "query": "搜索关键词",
+      "source": "网页来源",
+      "testFetch": "测试网页抓取",
+      "testSearch": "测试搜索",
+      "testing": "正在测试…",
+      "title": "网页工具",
+      "truncated": "网页正文较长，工具返回了前 24,000 个字符。",
+      "url": "公开网页 URL"
+    },
+    "automation": {
+      "add": "新建任务",
+      "approvalNotice": "打开 Etyon 中对应的会话，处理待审批操作或回答问题。",
+      "cancel": "取消运行",
+      "confirmDelete": "删除这个任务及其运行记录？",
+      "cron": "Cron 表达式",
+      "cronHint": "五个字段：分、时、日、月、星期。例如：0 9 * * 1-5。",
+      "defaultProfile": "默认配置",
+      "delete": "删除",
+      "description": "在 Etyon 开启期间后台运行 agent。遇到审批或问题时暂停；重启后不会补跑已错过的任务。",
+      "desktopNotification": "桌面通知",
+      "empty": "还没有后台任务。选择会话并填写指令，可立即运行，也可设置定时计划。",
+      "edit": "编辑",
+      "enabled": "启用定时计划",
+      "error": "无法加载后台任务。",
+      "history": "最近运行记录",
+      "interval": "运行间隔（分钟）",
+      "loading": "正在加载后台任务…",
+      "model": "模型 ID（可选）",
+      "modelHint": "留空时使用会话模型；agent 配置中的首选模型优先。",
+      "name": "任务名称",
+      "nextRun": "下次运行",
+      "noHistory": "尚无运行记录。",
+      "openChat": "打开会话",
+      "permission": "操作权限",
+      "permissionAcceptEdits": "允许项目文件编辑，命令需审批",
+      "permissionDefault": "文件编辑和命令均需审批",
+      "profile": "Agent 配置",
+      "prompt": "希望 agent 做什么？",
+      "resultNotice": "打开 Etyon 中对应的会话查看结果。",
+      "runNow": "立即运行",
+      "schedule": "运行计划",
+      "scheduleCron": "按 Cron 和时区运行",
+      "scheduleInterval": "按固定间隔运行",
+      "scheduleManual": "仅手动运行",
+      "session": "会话",
+      "started": "开始时间",
+      "status": {
+        "cancelled": "已取消",
+        "failed": "失败",
+        "interrupted": "已中断，需核对",
+        "running": "运行中",
+        "skipped": "已跳过，会话暂不可用",
+        "succeeded": "已完成",
+        "suspended": "等待你的回应"
+      },
+      "telegramHint": "只发送至「消息渠道」中允许的会话 ID。通知失败会显示在运行记录中。",
+      "telegramNotification": "Telegram 通知",
+      "timeZone": "时区",
+      "timeout": "运行时限（分钟）",
+      "title": "后台任务"
     }
   },
   "tray": {

@@ -42,6 +42,8 @@ vi.mock("@/main/db/write-lock", () => ({
   runExclusiveDbWrite: <T>(task: () => Promise<T>): Promise<T> => task()
 }))
 
+vi.mock("electron", () => ({ app: { getPath: () => os.tmpdir() } }))
+
 vi.mock("@/main/settings", () => ({ getSettings: getSettingsMock }))
 vi.mock("@/main/db", () => ({ getDb: vi.fn() }))
 vi.mock("@/main/server/lib/providers", () => ({ resolveModel: vi.fn() }))

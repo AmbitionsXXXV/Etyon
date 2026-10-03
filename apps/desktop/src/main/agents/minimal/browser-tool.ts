@@ -1,6 +1,8 @@
 import fs from "node:fs/promises"
 import { setTimeout as delay } from "node:timers/promises"
 
+import type { JSONValue } from "@ai-sdk/provider"
+import type { ToolResultOutput } from "@ai-sdk/provider-utils"
 import type { ToolApprovalStatus } from "ai"
 import { tool } from "ai"
 import type { WebContentsView } from "electron"
@@ -11,6 +13,17 @@ import {
   persistAttachmentBytes,
   resolveAttachmentRequestPath
 } from "@/main/attachments"
+import {
+  BROWSER_INTERACTION_SCHEMAS,
+  BROWSER_INTERACTION_WORLD_ID,
+  BROWSER_PAGE_SNAPSHOT_SCRIPT,
+  browserElementToModelJson,
+  interactWithBrowser
+} from "@/main/browser/interaction"
+import type {
+  BrowserElement,
+  BrowserInteractionInput
+} from "@/main/browser/interaction"
 import {
   BrowserViewDisposedError,
   ensureBrowserView,
@@ -76,7 +89,8 @@ const ScreenshotActionSchema = z
 const BrowserInputSchema = z.discriminatedUnion("action", [
   NavigateActionSchema,
   ReadActionSchema,
-  ScreenshotActionSchema
+  ScreenshotActionSchema,
+  ...BROWSER_INTERACTION_SCHEMAS
 ])
 
 /** How a navigation ended. `timeout` still carries the page state so far. */
@@ -90,6 +104,11 @@ type BrowserNavigationStatus = "aborted" | "loaded" | "timeout"
  */
 type BrowserToolResult =
   | {
+      action: "click" | "press" | "scroll" | "type"
+      title: string
+      url: string
+    }
+  | {
       action: "navigate"
       status: BrowserNavigationStatus
       title: string
@@ -97,6 +116,7 @@ type BrowserToolResult =
     }
   | {
       action: "read"
+      elements: BrowserElement[]
       text: string
       title: string
       truncated: boolean
@@ -122,18 +142,24 @@ type BrowserScreenshotResult = Extract<
 >
 
 interface PageSnapshot {
+  elements: BrowserElement[]
   text: string
   title: string
   url: string
 }
 
+const BrowserElementSchema = z.object({
+  checked: z.boolean().optional(),
+  disabled: z.boolean().optional(),
+  name: z.string().max(200),
+  ref: z.string().min(1).max(100),
+  role: z.string().max(80),
+  type: z.string().max(100),
+  value: z.string().max(1000).optional()
+})
+
 // Serialized inside the page so the IPC hop carries one string rather than a
 // structured-clone of whatever the page defines.
-const PAGE_SNAPSHOT_SCRIPT = `(() => JSON.stringify({
-  text: document.body ? document.body.innerText : "",
-  title: document.title,
-  url: window.location.href
-}))()`
 
 // A named guard rather than an inline `instanceof` in the catch: the lint rule
 // for type checks around a throw would rewrite that branch into a TypeError,
@@ -146,25 +172,33 @@ const getErrorMessage = (error: unknown): string =>
 
 const parsePageSnapshot = (raw: unknown): PageSnapshot => {
   if (typeof raw !== "string") {
-    return { text: "", title: "", url: "" }
+    return { elements: [], text: "", title: "", url: "" }
   }
 
   try {
     const parsed: unknown = JSON.parse(raw)
 
     if (typeof parsed !== "object" || parsed === null) {
-      return { text: "", title: "", url: "" }
+      return { elements: [], text: "", title: "", url: "" }
     }
 
     const snapshot = parsed as Partial<PageSnapshot>
 
     return {
+      elements: Array.isArray(snapshot.elements)
+        ? snapshot.elements
+            .flatMap((element) => {
+              const parsedElement = BrowserElementSchema.safeParse(element)
+              return parsedElement.success ? [parsedElement.data] : []
+            })
+            .slice(0, 100)
+        : [],
       text: typeof snapshot.text === "string" ? snapshot.text : "",
       title: typeof snapshot.title === "string" ? snapshot.title : "",
       url: typeof snapshot.url === "string" ? snapshot.url : ""
     }
   } catch {
-    return { text: "", title: "", url: "" }
+    return { elements: [], text: "", title: "", url: "" }
   }
 }
 
@@ -284,12 +318,16 @@ const runRead = (sessionId: string): Promise<BrowserReadResult> =>
   withBrowserLease(sessionId, async (view) => {
     const pageUrl = requireLoadedPage(view)
     const snapshot = parsePageSnapshot(
-      await view.webContents.executeJavaScript(PAGE_SNAPSHOT_SCRIPT)
+      await view.webContents.executeJavaScriptInIsolatedWorld(
+        BROWSER_INTERACTION_WORLD_ID,
+        [{ code: BROWSER_PAGE_SNAPSHOT_SCRIPT }]
+      )
     )
     const { text, truncated } = truncatePageText(snapshot.text)
 
     return {
       action: "read",
+      elements: snapshot.elements,
       text,
       title: snapshot.title || view.webContents.getTitle(),
       truncated,
@@ -388,6 +426,31 @@ const readScreenshotBytes = async (
  * would dump base64 into the transcript — those providers get the metadata
  * summary instead. Base64 never enters the persisted result either way.
  */
+const runBrowserInteraction = (
+  sessionId: string,
+  input: BrowserInteractionInput,
+  signal?: AbortSignal
+): Promise<BrowserToolResult> =>
+  withBrowserLease(sessionId, async (view) => {
+    requireLoadedPage(view)
+    await withPaintableBrowserView(
+      sessionId,
+      async (paintableView, ownerWindow) => {
+        await interactWithBrowser(
+          paintableView.webContents,
+          input,
+          signal,
+          ownerWindow ?? undefined
+        )
+      }
+    )
+    return {
+      action: input.action,
+      title: view.webContents.getTitle(),
+      url: view.webContents.getURL()
+    }
+  })
+
 export const buildBrowserTool = ({
   chatSessionId,
   supportsToolResultImages
@@ -397,7 +460,7 @@ export const buildBrowserTool = ({
 }) =>
   tool({
     description:
-      "Drive this chat session's embedded browser: navigate to a page, read its text, or screenshot it. It is the same live view the user sees in the app's Browser panel, and it keeps their logged-in sessions, so each call needs user approval. Only http and https URLs work.",
+      "Drive this chat session's embedded browser: navigate, read text and fresh element refs, screenshot, click, type, scroll, or press a key. Use refs from the latest read; read again after changes. It is the same live view the user sees in the app's Browser panel, and it keeps their logged-in sessions, so each call needs user approval. Only http and https URLs work.",
     execute: async (inputData, context): Promise<BrowserToolResult> => {
       // Recreates the view when the panel was never opened or the LRU reclaimed
       // it (restoring the last url), so every action has a page to act on.
@@ -416,7 +479,14 @@ export const buildBrowserTool = ({
           return await runRead(chatSessionId)
         }
 
-        return await runScreenshot(chatSessionId)
+        if (inputData.action === "screenshot") {
+          return await runScreenshot(chatSessionId)
+        }
+        return await runBrowserInteraction(
+          chatSessionId,
+          inputData,
+          context?.abortSignal
+        )
       } catch (error) {
         if (isBrowserViewDisposedError(error)) {
           throw new Error(
@@ -429,9 +499,16 @@ export const buildBrowserTool = ({
       }
     },
     inputSchema: BrowserInputSchema,
-    toModelOutput: async ({ output }) => {
+    toModelOutput: async ({ output }): Promise<ToolResultOutput> => {
       if (output.action !== "screenshot" || !supportsToolResultImages) {
-        return { type: "json", value: output }
+        const value: JSONValue =
+          output.action === "read"
+            ? {
+                ...output,
+                elements: output.elements.map(browserElementToModelJson)
+              }
+            : output
+        return { type: "json", value }
       }
 
       const bytes = await readScreenshotBytes(output.imageUrl)

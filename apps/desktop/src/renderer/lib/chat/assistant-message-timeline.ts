@@ -102,7 +102,7 @@ export type ToolGroupLabel =
   | { kind: "usedTool" }
 
 /** Tool names that spawn nested sub-agent runs and get their own live row. */
-export type SubagentToolName = "delegate" | "workflow"
+export type SubagentToolName = "best_of_n" | "delegate" | "workflow"
 
 export type GroupedChainEntry =
   | {
@@ -188,21 +188,27 @@ const isChatTodoItem = (value: unknown): value is ChatTodoItem =>
   typeof value.content === "string" &&
   typeof value.status === "string" &&
   TODO_STATUSES.has(value.status as ChatTodoStatus) &&
-  (value.activeForm === undefined || typeof value.activeForm === "string")
+  (value.activeForm === undefined || typeof value.activeForm === "string") &&
+  (value.id === undefined || typeof value.id === "string") &&
+  (value.owner === undefined || typeof value.owner === "string") &&
+  (value.blockedBy === undefined ||
+    (Array.isArray(value.blockedBy) &&
+      value.blockedBy.every((label) => typeof label === "string")))
 
 /**
- * Validated todo list from a `todo_write` tool call's input. The work-section
+ * Validated task snapshot from a task tool's output or legacy todo input. The work-section
  * todo entry uses this as the settled-run fallback once the live `data-todo`
- * store is cleared — the persisted tool-call input is that final snapshot.
+ * store is cleared — the persisted tool call carries that final snapshot.
  */
 export const getTodoPartTodos = (part: ChatToolPart): ChatTodoItem[] => {
-  const { input } = part as { input?: unknown }
+  const { input, output } = part as { input?: unknown; output?: unknown }
+  const snapshot = getToolName(part) === "todo_write" ? input : output
 
-  if (!isRecord(input) || !Array.isArray(input.todos)) {
+  if (!isRecord(snapshot) || !Array.isArray(snapshot.todos)) {
     return []
   }
 
-  return input.todos.filter(isChatTodoItem)
+  return snapshot.todos.filter(isChatTodoItem)
 }
 
 const isExcludedToolPart = (part: ChatUiMessage["parts"][number]): boolean =>
@@ -455,9 +461,13 @@ export const groupChainEntries = (
         continue
       }
 
-      // delegate/workflow spawn nested sub-agents — pull them out of the generic
+      // These tools spawn nested sub-agents — pull them out of the generic
       // Ran/Explored buckets into their own live rows.
-      if (toolName === "delegate" || toolName === "workflow") {
+      if (
+        toolName === "delegate" ||
+        toolName === "workflow" ||
+        toolName === "best_of_n"
+      ) {
         flushToolRun()
         grouped.push({
           key: `subagent-${entry.part.toolCallId}`,
@@ -468,11 +478,15 @@ export const groupChainEntries = (
         continue
       }
 
-      // todo_write maintains one run-wide checklist; collapse repeated updates
+      // Task snapshots maintain one checklist; collapse successful updates
       // into a single entry pinned at its FIRST appearance, refreshing the part
       // in place so the fold shows the current list without jumping to the tail
       // (or remounting under a new key) on every revision.
-      if (toolName === "todo_write") {
+      if (
+        toolName === "todo_write" ||
+        (["task_create", "task_update", "task_list"].includes(toolName) &&
+          entry.part.state === "output-available")
+      ) {
         flushToolRun()
         const existingIndex = grouped.findIndex(
           (candidate) => candidate.kind === "todo"

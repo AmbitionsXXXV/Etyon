@@ -404,6 +404,9 @@ const SKILL_FRONTMATTER_HANDLERS: Record<string, SkillFrontmatterHandler> = {
   description: ({ result, value }) => {
     result.description = value
   },
+  "disable-model-invocation": ({ result, value }) => {
+    result.modelDisabled = parseFrontmatterBoolean(value)
+  },
   extension: applySkillExtensionFrontmatter,
   extensions: applySkillExtensionFrontmatter,
   metadata: ({ index, lines, result }) => {
@@ -421,6 +424,9 @@ const SKILL_FRONTMATTER_HANDLERS: Record<string, SkillFrontmatterHandler> = {
   },
   "short-description": ({ result, value }) => {
     result.shortDescription = value
+  },
+  "user-invocable": ({ result, value }) => {
+    result.visible = parseFrontmatterBoolean(value)
   },
   visible: ({ result, value }) => {
     result.visible = parseFrontmatterBoolean(value)
@@ -996,11 +1002,13 @@ export const formatModelDisabledSkillReferencesForSystemPrompt = (
 }
 
 export const buildSkillsSystemPrompt = ({
+  loadOnDemand = false,
   projectPath,
   query,
   selectedSkills = [],
   settings
 }: {
+  loadOnDemand?: boolean
   projectPath: string
   query: string
   selectedSkills?: ChatSkillMention[]
@@ -1058,16 +1066,42 @@ export const buildSkillsSystemPrompt = ({
   }
 
   const candidateSkills = candidates.map(({ skill }) => skill)
-  const formattedSkills = formatSkillsForSystemPrompt(candidateSkills)
+  const formattedSkills = formatSkillsForSystemPrompt(
+    loadOnDemand
+      ? candidateSkills.filter((skill) => selectedSkillPaths.has(skill.path))
+      : candidateSkills
+  )
+  const catalog = loadOnDemand
+    ? [
+        "<available_skills>",
+        ...candidateSkills
+          .filter(
+            (skill) => skill.modelVisible && !selectedSkillPaths.has(skill.path)
+          )
+          .map((skill) =>
+            [
+              "<skill>",
+              `<name>${escapeXml(skill.name)}</name>`,
+              `<description>${escapeXml(skill.description)}</description>`,
+              `<path>${escapeXml(skill.path)}</path>`,
+              "</skill>"
+            ].join("\n")
+          ),
+        "</available_skills>"
+      ].join("\n")
+    : ""
   const formattedSkillReferences =
     formatModelDisabledSkillReferencesForSystemPrompt(candidateSkills)
 
-  if (!formattedSkills && !formattedSkillReferences) {
+  if (!formattedSkills && !formattedSkillReferences && !catalog) {
     return ""
   }
 
   const content = [
-    "Triggered Etyon skills are provided below as XML.",
+    loadOnDemand
+      ? "Relevant Etyon skills are listed below. Use the skill tool to load instructions and supporting files when needed, or discover more with action=list. Explicitly selected skills are already loaded. Loading never grants tools or permissions."
+      : "Triggered Etyon skills are provided below as XML.",
+    catalog,
     formattedSkills,
     formattedSkillReferences,
     "Follow visible skill instructions when they are relevant to the current request. Model-disabled skill references only identify available skills; do not infer hidden instructions from them. Prefer direct user instructions if there is a conflict."

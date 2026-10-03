@@ -190,6 +190,9 @@ describe("AppSettingsSchema", () => {
         commandAllowlist: []
       },
       autoLoadWorkspaceRules: true,
+      checkpoints: { maxAgeDays: 14, maxTotalMb: 512 },
+      contextBudget: { maxInputTokens: 64000, reserveOutputTokens: 4096 },
+      hooks: { enabled: false },
       defaultPermissionMode: "default",
       defaultProfileId: "general-purpose",
       enabled: false,
@@ -235,6 +238,9 @@ describe("AppSettingsSchema", () => {
         commandAllowlist: []
       },
       autoLoadWorkspaceRules: true,
+      checkpoints: { maxAgeDays: 14, maxTotalMb: 512 },
+      contextBudget: { maxInputTokens: 64000, reserveOutputTokens: 4096 },
+      hooks: { enabled: false },
       defaultPermissionMode: "default",
       defaultProfileId: "coder",
       enabled: true,

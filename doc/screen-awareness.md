@@ -2,21 +2,15 @@
 
 ## 状态
 
-本文定义 Etyon 在 macOS 上的 Screen Awareness 产品合同、授权体验、module interface、原生 helper、Chat 接入与发布验收。
+截至本轮实现，macOS 捕获、权限引导、主进程私有暂存、聊天路由与 composer 接入已落地。入口为双 Command、原生菜单和 composer 的“读取前台窗口”按钮；首版使用独立附件卡，不把正文或图片塞进 TipTap mention attrs。
 
-当前状态是设计已收敛，macOS Phase 1 可运行切片已经开始落地。授权交互研究与来源分级见 [`codex-approval-ux-research.md`](./codex-approval-ux-research.md)。
+- 触发时同步锁定源 PID / window ID，按 AX focused window 匹配；仅截图时按前后台窗口顺序选择。
+- AX 选区 / 窗口文本与 ScreenCaptureKit 截图允许分别成功；选区和全文分别预览，图片与文本可独立移除。
+- 最多暂存 4 份，未发送内容 10 分钟到期；节点 / 深度 / Unicode 文本限制、10 秒原生期限、2048 px 图片长边及失败反馈已接入。
+- instance 控制队列、permission-only 引导、关闭时取消与退出确认已接入；禁用后清理旧暂存，旧 revision 不恢复已移除内容。
+- 原生与桥接 / routing / renderer 回归已覆盖。真实权限、实机捕获、安装包和整体门禁记录见本轮 feature 验收文档；源码构建不等于正式 Developer ID / notarization 或完整多屏 / Spaces 矩阵验收。
 
-已实现的首个切片包括：
-
-- `Etyon Screen Awareness.app` Swift helper、稳定 dev / release bundle ID 与 Application Support 稳定安装路径。
-- 首次触发权限窗口、左右 Command 教学、`0 / 2` 实时状态与三语文案。
-- Accessibility / Screen Recording 的系统 preflight 和 typed System Settings deep link。
-- 跟随 System Settings 的 Etyon 自有悬浮授权面板、拖拽 App 图标与步骤进度。
-- 双 Command latch 与原生 `CGEventTap` 监听。
-- helper 实时状态文件和 Electron 主进程 readback。
-- Electron 启停生命周期、原生菜单入口、Forge 自动构建和资源打包。
-
-尚未完成窗口截图、AX 文本提取、Chat mention / composer staged context 与正式 Developer ID / notarization readback。
+授权交互研究见 [授权 UX 研究](./codex-approval-ux-research.md)。
 
 ## 目标
 
@@ -36,7 +30,7 @@ OpenAI 官方把同构能力称为 [Appshots](https://learn.chatgpt.com/docs/app
 - 固定触发：左右 Command 同时按下；首版不提供自定义热键。
 - 捕获范围：前台窗口，不捕获整个桌面，不录制音频。
 - 上下文：窗口截图、可访问文本、选中文本、App / 窗口元数据。
-- 入口：全局双 Command、`@ Screen Awareness`、原生菜单 `Send Focused Window to AI`。
+- 入口：全局双 Command、composer 的“读取前台窗口”按钮、原生菜单 `Send Focused Window to AI`。
 - 结果：先进入 composer 暂存区，不自动发送。
 - 权限：Screen & System Audio Recording、Accessibility。
 - 降级：截图和文本允许部分成功；两者都失败才判定 capture 失败。
@@ -99,7 +93,7 @@ Etyon 不整体复制该文件。可复用其公开、MIT 授权的状态机与�
 │  │ ScreenAwareness module                                │  │
 │  │ lifecycle · helper bridge · capture store · routing   │  │
 │  └───────────────────────┬───────────────────────────────┘  │
-│                          │ authenticated local IPC           │
+│                          │ private files + typed Electron IPC           │
 │  Renderer                │                                   │
 │  composer chip ← capture │ → chat request → model context    │
 └──────────────────────────┼───────────────────────────────────┘
@@ -181,39 +175,15 @@ helper、IPC、TCC 与 ScreenCaptureKit 都是 module 的 implementation，不�
 
 ## Helper 协议
 
-helper 通过仅本机、带启动期随机 token 的 IPC 与 Etyon 主进程通信。协议事件至少包含：
+当前 bridge 使用当前用户的私有控制 / 事件文件和主进程校验，不依赖本地 HTTP 服务。
 
-```ts
-type ScreenAwarenessHelperEvent =
-  | {
-      requestId: string
-      type: "shortcut-triggered"
-      window: FocusedWindowIdentity
-    }
-  | {
-      requestId: string
-      status: ScreenAwarenessPermissionStatus
-      type: "permission-required"
-    }
-  | {
-      capture: NativeScreenCapture
-      requestId: string
-      type: "capture-completed"
-    }
-  | { error: ScreenAwarenessError; requestId: string; type: "capture-failed" }
-  | {
-      status: ScreenAwarenessPermissionStatus
-      type: "permission-status-changed"
-    }
-```
+- `screen-awareness-control.commands/` 保存原子写入的唯一命令 JSON，含 command、UUID、issuedAt、targetInstanceId；terminate 不会被 onboard 覆盖，也不会终止较新的 instance。
+- `screen-awareness-control.state` 保存当前 instance 与 captureEnabled。触发与落盘前检查，替换 / 禁用后旧 helper 不能继续生成捕获。
+- `screen-awareness-status.json` 保存权限、captureEnabled、instanceId 和时间；fresh heartbeat 用于控制连接，缺失时用 `--status-json` 只读查询权限。
+- `screen-awareness-captures/<uuid>.json` 是 ready / error 事件；ready 引用本目录 PNG / icon 与有界文本。目录 0700，事件 / 图像 0600。
+- main 校验 UUID、类型、大小与私有文件边界；事件通过 typed preload 送往主窗口。超限、到期、移除与关闭均有清理路径。
 
-约束：
-
-- 所有异步捕获都带 `requestId`，旧结果不能覆盖新请求。
-- helper 在双 Command 事件发生时先锁定窗口 identity，再通知 Etyon。
-- Etyon 只有在 native capture 已锁定后才能获得焦点。
-- helper 异常退出后由 main process 有界重启；连续失败后显示可诊断错误，不无限循环。
-- IPC 日志只记录 request ID、状态、耗时和 App bundle ID，不记录截图或正文。
+`--permission-only` 不注册快捷键 / 前台观察，也不允许 capture。停止监听并取消 native tasks 后，reporter 删除自己的 heartbeat 作为退出确认；main 等待确认后再清理。退出超时明确报错，不声称 helper 已停止。
 
 ## 双 Command 状态机
 
@@ -341,75 +311,13 @@ type PermissionState =
 
 `openSystemSettings()` 成功不改变权限状态。只有系统 API readback 才能进入 `granted`。
 
-## Native capture
+## Native capture 与暂存
 
-每次 capture 产生：
+`WindowCaptureService` 在任何 await 前取得源应用与窗口身份，再使用 `SCShareableContent` 的同 PID / window ID 截图。窗口消失时保留已读取文本并提示截图不可用，不改拍其他窗口。AX 最多 400 节点、12 层、约 0.3 秒遍历；选区和正文各最多 24,000 UTF-16 units，按完整字符截断并过滤不可显示控制数据。
 
-```ts
-interface NativeScreenCapture {
-  accessibleText: string | null
-  appBundleId: string
-  appName: string
-  capturedAt: string
-  selectedText: string | null
-  screenshotPng: Uint8Array | null
-  windowBounds: { height: number; width: number; x: number; y: number }
-  windowId: string
-  windowTitle: string
-}
-```
+源窗口来自真实前台应用；Etyon 内的手动入口使用最近 60 秒观察到的外部应用。前台激活通知配合定时观察，保护应用不会被替换成更早的普通应用。密码焦点、已知保护应用、宿主 PID 与 helper 本身受策略限制。AX 不支持完整文档时，界面只说明实际得到的内容及截断状态。
 
-实现顺序：
-
-1. `NSWorkspace.frontmostApplication` 锁定前台 PID / bundle ID。
-2. Accessibility 获取 focused window、focused element 与 selected text。
-3. 有界遍历 AX tree，收集 title、description、value 与文本节点。
-4. ScreenCaptureKit 对目标窗口截图。
-5. 主进程把 PNG 写入现有 attachment store，把文本写入 capture record。
-
-约束：
-
-- AX traversal 有节点数、深度、字符数和时间预算。
-- `AXSecureTextField`、密码属性和已知敏感控件不读取 value。
-- Screenshot 不创建 audio capture path。
-- 窗口关闭、PID 变化或 capture target 失效时返回结构化错误。
-- Screenshot-only 与 text-only 是合法 partial 结果。
-- 对不支持 AX 完整文本的网页和文档，不声称已获取整个文档。
-
-## 数据合同与持久化
-
-`ChatMentionSchema` 增加轻量引用，不把正文或 Base64 图片放入 TipTap attrs：
-
-```ts
-interface ChatScreenAwarenessMention {
-  appName: string
-  captureId: string
-  capturedAt: string
-  kind: "screenAwareness"
-  windowTitle: string
-}
-```
-
-主进程 capture record：
-
-```ts
-interface ScreenAwarenessCaptureRecord {
-  accessibleText: string | null
-  appBundleId: string
-  appName: string
-  captureId: string
-  capturedAt: string
-  screenshotUrl: string | null
-  selectedText: string | null
-  windowTitle: string
-}
-```
-
-- PNG 复用 `apps/desktop/src/main/attachments.ts` 的内容寻址存储。
-- capture record 位于 Etyon app config 目录，不写入用户项目。
-- message metadata 只保存 capture ID 与展示信息。
-- 未发送 capture 有 TTL；发送后随会话保留。
-- 删除 / 归档会话时由引用扫描清理无主 capture 与附件。
+未发送记录位于 app-config 私有 capture 目录。共享 payload 见 `src/shared/screen-awareness.ts`，有可选 dataUrl、accessibleText、selectedText、warnings、sessionId、windowId 和 revision。assign 返回 canonical payload，内容移除递增 revision，renderer 忽略旧版本。发送后截图由现有 attachment persistence 保存为消息 file part；文本成为标注为不可信来源的 user text。原暂存清理，编辑 / regenerate / reload 使用规范消息持久化。
 
 ## Chat 接入
 
@@ -441,9 +349,9 @@ interface ScreenAwarenessCaptureRecord {
 ### 模型上下文
 
 - 视觉模型：用户文本 + accessible text + screenshot。
-- 非视觉模型：用户文本 + accessible text；无文本时提示切换视觉模型。
+- 非视觉模型支持 text-only；仍有图片时提示用户移除图片或选择视觉模型，不暗中丢图。
 - 屏幕内容作为 latest user message 的不可信数据注入，不提升为 system instruction。
-- 发送前按 capture ID readback；缺失或过期的 record 不静默变成空上下文。
+- assign 读回当前 canonical 内容；目标会话删除 / 归档时丢弃旧捕获，恢复不会改投其他 chat。到期内容从暂存移除。
 - 编辑、重新生成与 reload 必须保留 capture 引用和 screenshot file part。
 
 ## 代码落点
@@ -558,7 +466,7 @@ Screen Awareness 的完成条件包含正式包，不以开发态运行成功代
 ### Phase 3：Chat 垂直闭环
 
 - capture store 与 attachment 持久化。
-- `screenAwareness` mention。
+- 私有 capture payload 与独立 staged attachment 卡。
 - composer chip / preview / remove。
 - session routing、queue、edit、regenerate、reload。
 - 用户级不可信上下文注入。

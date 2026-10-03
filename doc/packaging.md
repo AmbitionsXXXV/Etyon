@@ -105,9 +105,17 @@ env:
   HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
 ```
 
+## 本轮 agent 功能的打包验收
+
+`workflow-worker.ts` 通过独立的 `vite.workflow.config.ts` 构建为 `.vite/build/workflow-worker.js`，不能只检查主进程入口存在。升级包还应包含 `0015` / `0016` migration、MCP / Web 的运行时依赖、ASAR 解包后的 native 模块和 `screen-awareness` helper。
+
+上轮使用 `ETYON_RELEASE=true ELECTRON_FORGE_BUILD_IDENTIFIER=release` 执行本地 `vp run make`，当时版本为 `0.1.8`，仅验证打包模式。上轮产物见 [功能补齐记录](./feature-completion-2026-10-03.md)，继续实机验收与 `0.1.9` patch 的证据见 [Patch 验收记录](./patch-acceptance-2026-10-03.md)。
+
+本地 ad-hoc 签名验证仅证明文件与本次签名一致；正式 Developer ID、notarization 和正式 helper 的授权升级流程需要在正式签名产物上单独验收。
+
 ## 应用内更新检查
 
-Release 产物未签名，macOS 上没有 Squirrel.Mac 自动更新的前提条件，所以本期只做「检查 + 通知 + 跳转下载」，不做静默自更新。
+Release 产物尚无 Developer ID 签名与 notarization 验收，macOS 上没有 Squirrel.Mac 自动更新的前提条件，所以本期只做「检查 + 通知 + 跳转下载」，不做静默自更新。
 
 - 更新源：`GET https://api.github.com/repos/AmbitionsXXXV/Etyon/releases/latest`（仓库 public，免认证；该端点自动排除 draft / prerelease）
 - 请求只发生在主进程 `apps/desktop/src/main/updates/index.ts`：启用应用代理时复用 `createProxyAwareFetch`，否则使用 Electron `net.fetch`；renderer CSP 与 `webPreferences` 零改动

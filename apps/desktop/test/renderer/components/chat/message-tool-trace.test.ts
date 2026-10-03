@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { I18nProvider } from "@etyon/i18n/react"
+import type { AgentCheckpoint } from "@etyon/rpc"
 import type { DynamicToolUIPart } from "ai"
 import { act, createElement, Fragment } from "react"
 import type { ReactElement, ReactNode } from "react"
@@ -10,6 +11,12 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it, vi } from "vite-plus/test"
 
 import { StructuredToolTraceCard } from "@/renderer/components/chat/message-tool-trace"
+import {
+  clearCheckpointRestore,
+  clearSessionCheckpoints,
+  getPendingCheckpointRestoreSnapshot,
+  setSessionCheckpoints
+} from "@/renderer/lib/chat/checkpoint-restore-store"
 import {
   compactStructuredToolTraceParts,
   getToolRevealRequest
@@ -98,6 +105,56 @@ const renderStructuredToolTraceCards = (
 // TESTS_ANCHOR
 
 describe("StructuredToolTraceCard", () => {
+  it("exposes newly captured bash checkpoints and requests their restore", () => {
+    const sessionId = "session-bash-restore"
+    const checkpoint: AgentCheckpoint = {
+      createdAt: "2026-10-03T00:00:00.000Z",
+      files: [],
+      gitSnapshotRef: "a".repeat(40),
+      id: "checkpoint-bash",
+      origin: "bash",
+      parentId: null,
+      projectHash: "0123456789abcdef",
+      runId: "run-bash",
+      toolCallId: "call-bash"
+    }
+    const part: DynamicToolUIPart = {
+      input: { command: "printf 'changed' > checkpoint-qa.txt" },
+      output: { exitCode: 0, status: "completed", stdoutPreview: "" },
+      state: "output-available",
+      toolCallId: checkpoint.toolCallId,
+      toolName: "bash",
+      type: "dynamic-tool"
+    }
+    setSessionCheckpoints(sessionId, [])
+    clearCheckpointRestore()
+    const { cleanup, container } = renderElementInDom(
+      renderStructuredToolTraceCards([part], vi.fn())
+    )
+
+    try {
+      expect(
+        container.querySelector('[aria-label="Restore to before this"]')
+      ).toBeNull()
+
+      act(() => {
+        setSessionCheckpoints(sessionId, [checkpoint])
+      })
+      const restoreButton = container.querySelector<HTMLButtonElement>(
+        '[aria-label="Restore to before this"]'
+      )
+      expect(restoreButton).not.toBeNull()
+      act(() => {
+        restoreButton?.click()
+      })
+      expect(getPendingCheckpointRestoreSnapshot()).toEqual(checkpoint)
+    } finally {
+      cleanup()
+      clearSessionCheckpoints(sessionId)
+      clearCheckpointRestore()
+    }
+  })
+
   it("renders tool part states for streaming, approval, output, and errors", () => {
     const handleApprovalResponse = vi.fn()
     const parts = [

@@ -11,7 +11,7 @@ export interface CheckpointRestorePlanEntry {
   path: string
 }
 
-const RESTORE_CANDIDATE_TOOL_NAMES = new Set(["edit", "write"])
+const RESTORE_CANDIDATE_TOOL_NAMES = new Set(["bash", "edit", "write"])
 
 /**
  * Whether a tool row should be probed for a restorable checkpoint. Only the
@@ -27,7 +27,8 @@ export const isRestoreCandidateToolName = (toolName: string): boolean =>
  * file. `origin: "bash"` checkpoints carry just a git snapshot (empty `files`).
  */
 export const canRestoreCheckpoint = (checkpoint: AgentCheckpoint): boolean =>
-  checkpoint.files.length > 0
+  checkpoint.files.length > 0 ||
+  (checkpoint.origin === "bash" && checkpoint.gitSnapshotRef !== null)
 
 /**
  * Resolves the checkpoint a "restore to before this" row targets: the OLDEST

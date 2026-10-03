@@ -1,4 +1,7 @@
+import path from "node:path"
+
 import type { AppSettings, ParsedSkill } from "@etyon/rpc"
+import type { StartBestOfNInputSchema } from "@etyon/rpc/schemas/worktrees"
 import type {
   LanguageModel,
   ModelMessage,
@@ -13,7 +16,10 @@ import {
   streamText,
   toUIMessageStream
 } from "ai"
+import { app } from "electron"
+import type { z } from "zod"
 
+import { createRuntimeHookRunner } from "@/main/agents/hook-runtime"
 import {
   AGENT_LOOP_STEP_FUSE,
   runAgentLoop
@@ -36,11 +42,14 @@ import {
 } from "@/main/agents/prompt-templates"
 import type { PromptTemplate } from "@/main/agents/prompt-templates"
 import { releaseRun } from "@/main/agents/write-claims"
+import { getAppConfigDir } from "@/main/app-paths"
 import { logger } from "@/main/logger"
 import {
+  resolveModelContextWindow,
   resolveEffortProviderOptionsForSelection,
   resolveModel
 } from "@/main/server/lib/providers"
+import { executeBestOfNStream } from "@/main/server/routes/build-best-of-n-stream"
 import { formatSkillCommandInvocation, listSkills } from "@/main/skills"
 import type { AgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
@@ -457,6 +466,7 @@ export interface BuildChatStreamResponseOptions {
   /** Effective chat agent mode for the turn; undefined behaves as "agent". */
   agentMode?: ChatAgentMode
   agentRunId?: string | null
+  bestOfNRequest?: z.infer<typeof StartBestOfNInputSchema>
   messages: UIMessage[]
   model: LanguageModel
   modelId: string | null
@@ -483,6 +493,7 @@ export const buildChatStreamResponse = ({
   abortSignal,
   agentMode,
   agentRunId,
+  bestOfNRequest,
   messages,
   model,
   modelId,
@@ -530,6 +541,15 @@ export const buildChatStreamResponse = ({
       execute: async ({ writer }) => {
         try {
           await executeChatStream(writer)
+        } catch (error) {
+          agentLoopOutcome ??= {
+            errorMessage: describeChatStreamError(error),
+            exitReason: abortSignal.aborted ? "aborted" : "model-error",
+            finishReason: "error",
+            nudged: false,
+            stepCount: 0
+          }
+          throw error
         } finally {
           settleExecute(null)
         }
@@ -545,6 +565,14 @@ export const buildChatStreamResponse = ({
           releaseRun(agentRunId)
         }
 
+        try {
+          await createRuntimeHookRunner(projectPath).run("Stop", {
+            runId: agentRunId ?? null,
+            sessionId
+          })
+        } catch (error) {
+          logger.error("agent_stop_hook_failed", { error })
+        }
         const workTimeMs = Date.now() - requestStartedAt
         // Belt and braces: a run torn down before the loop could settle (e.g.
         // aborted before the first model call) still records why it stopped.
@@ -568,6 +596,24 @@ export const buildChatStreamResponse = ({
     writer: UIMessageStreamWriter<UIMessage>
   ): Promise<void> {
     writeRequestPhase(writer, "model-start")
+
+    if (bestOfNRequest) {
+      agentLoopOutcome = await executeBestOfNStream({
+        abortSignal,
+        modelId,
+        parentProfile: resolveActiveProfile(settings.agents, profileId ?? null),
+        parentRunId: agentRunId ?? null,
+        permissionMode,
+        projectPath,
+        request: bestOfNRequest,
+        userMessageId:
+          messages.findLast((message) => message.role === "user")?.id ??
+          agentRunId ??
+          sessionId,
+        writer
+      })
+      return
+    }
 
     if (!settings.agents.enabled) {
       const effortProviderOptions = resolveEffortProviderOptionsForSelection(
@@ -659,6 +705,19 @@ export const buildChatStreamResponse = ({
     // AI SDK executes approved tool calls at the start of the next stream.
     agentLoopOutcome = await runAgentLoop({
       abortSignal,
+      contextBudget: {
+        ...settings.agents.contextBudget,
+        contextWindow: resolveModelContextWindow(
+          profile.preferredModel || modelId
+        )
+      },
+      resultStore: {
+        sessionId,
+        storageRoot: path.join(
+          getAppConfigDir(app.getPath("home")),
+          "tool-results"
+        )
+      },
       describeError: describeChatStreamError,
       maxSteps: AGENT_LOOP_STEP_FUSE,
       messages: preparedModelMessages,
@@ -669,7 +728,11 @@ export const buildChatStreamResponse = ({
         : {}),
       system: agentSystem,
       tapUiStream: reasoningTimingTap.wrap,
-      toolApproval: buildAgentToolApproval({ permissionMode, projectPath }),
+      toolApproval: buildAgentToolApproval({
+        permissionMode,
+        projectPath,
+        tools: agentTools
+      }),
       tools: agentTools,
       transform: createChatSmoothingTransform(),
       writer: withFirstChunkLatency(writer, {

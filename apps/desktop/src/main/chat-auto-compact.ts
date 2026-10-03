@@ -4,6 +4,7 @@ import type { UIMessage } from "ai"
 import { summarizeChatCompaction } from "@/main/memory/summarization"
 import {
   estimateChatContextUsagePercent,
+  getMessageContextText,
   getMessageText
 } from "@/shared/chat/context-usage"
 
@@ -18,7 +19,10 @@ const truncateText = (value: string, maxLength: number): string => {
     return value
   }
 
-  return `${value.slice(0, maxLength - 3)}...`
+  const marker = "\n... [truncated] ...\n"
+  const headLength = Math.ceil((maxLength - marker.length) / 2)
+  const tailLength = maxLength - marker.length - headLength
+  return `${value.slice(0, headLength)}${marker}${value.slice(-tailLength)}`
 }
 
 const buildCompactedSummary = ({
@@ -39,7 +43,10 @@ const buildCompactedSummary = ({
     .join(", ")
   const compactedText = compactedMessages
     .map((message) => {
-      const text = truncateText(getMessageText(message), MESSAGE_TEXT_MAX_CHARS)
+      const text = truncateText(
+        getMessageContextText(message),
+        MESSAGE_TEXT_MAX_CHARS
+      )
 
       if (!text) {
         return ""
@@ -51,10 +58,14 @@ const buildCompactedSummary = ({
     .join("\n")
   const sections = [
     "Auto compacted conversation summary:",
-    previousSummary ? `Previous summary:\n${previousSummary}` : "",
     `Compacted messages: ${compactedMessages.length}`,
     roleSummary ? `Original roles: ${roleSummary}` : "",
-    compactedText ? `Conversation:\n${compactedText}` : ""
+    compactedText
+      ? `New conversation:\n${truncateText(compactedText, 3600)}`
+      : "",
+    previousSummary
+      ? `Previous summary:\n${truncateText(previousSummary, 2000)}`
+      : ""
   ].filter(Boolean)
 
   return truncateText(sections.join("\n\n"), SUMMARY_MAX_CHARS)
@@ -90,7 +101,7 @@ export const maybeCompactChatMessages = ({
 
   const { keepRecentMessages } = autoCompact
 
-  if (messages.length <= keepRecentMessages + 1) {
+  if (messages.length <= keepRecentMessages) {
     return messages
   }
 
@@ -103,12 +114,26 @@ export const maybeCompactChatMessages = ({
   const messagesWithoutPreviousSummary = messages.filter(
     (message) => message.id !== AUTO_COMPACT_MESSAGE_ID
   )
-  const compactedMessages = messagesWithoutPreviousSummary.slice(
-    0,
-    Math.max(0, messagesWithoutPreviousSummary.length - keepRecentMessages)
+  // Never compact a tool still waiting on input or approval. Its original
+  // call is required by approval/question continuation on the next request.
+  const pendingIndex = messagesWithoutPreviousSummary.findIndex((message) =>
+    message.parts.some(
+      (part) =>
+        "state" in part &&
+        [
+          "input-streaming",
+          "input-available",
+          "approval-requested",
+          "approval-responded"
+        ].includes(String(part.state))
+    )
   )
-  const recentMessages =
-    messagesWithoutPreviousSummary.slice(-keepRecentMessages)
+  const compactEnd = Math.min(
+    Math.max(0, messagesWithoutPreviousSummary.length - keepRecentMessages),
+    pendingIndex === -1 ? messagesWithoutPreviousSummary.length : pendingIndex
+  )
+  const compactedMessages = messagesWithoutPreviousSummary.slice(0, compactEnd)
+  const recentMessages = messagesWithoutPreviousSummary.slice(compactEnd)
 
   if (compactedMessages.length === 0) {
     return messages
@@ -148,9 +173,31 @@ export const compactChatMessages = async ({
   }
 
   const fallbackContent = getMessageText(summaryMessage)
+  // The model must see the source, not only the small deterministic fallback.
+  // Reserve independent budgets so an old summary cannot crowd out new facts.
+  const retainedMessages = new Set(recentMessages)
+  const newSource = messages
+    .filter(
+      (message) =>
+        message.id !== AUTO_COMPACT_MESSAGE_ID && !retainedMessages.has(message)
+    )
+    .map((message) => `${message.role}: ${getMessageContextText(message)}`)
+    .join("\n")
+  const previousSummary = messages.find(
+    (message) => message.id === AUTO_COMPACT_MESSAGE_ID
+  )
+  const sourceContent = [
+    `New conversation:\n${truncateText(newSource, 18000)}`,
+    previousSummary
+      ? `Previous summary:\n${truncateText(getMessageText(previousSummary), 5000)}`
+      : ""
+  ]
+    .filter(Boolean)
+    .join("\n\n")
   const summaryContent = await summarizeChatCompaction({
     fallbackContent,
-    settings
+    settings,
+    sourceContent
   })
 
   return [createAutoCompactMessage(summaryContent), ...recentMessages]

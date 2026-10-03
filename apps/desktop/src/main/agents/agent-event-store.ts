@@ -697,7 +697,12 @@ export interface AgentRunLoopOutcome {
 }
 
 export interface AgentRunStepRecord {
+  cachedInputTokens?: number
+  contextCompacted?: boolean
+  estimatedInputTokens?: number
   finishReason: string
+  inputTokens?: number
+  outputTokens?: number
   stepIndex: number
   toolCallCount: number
 }

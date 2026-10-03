@@ -12,7 +12,7 @@ describe("chat message persistence", () => {
     ).toBe(false)
   })
 
-  it("syncs repaired persistence only after a successful agent request", () => {
+  it("syncs canonical persistence after successful requests in every mode", () => {
     expect(
       shouldSyncPersistedMessagesAfterFinish({
         agentMode: "agent",
@@ -24,6 +24,12 @@ describe("chat message persistence", () => {
         agentMode: "chat",
         isError: false
       })
-    ).toBe(false)
+    ).toBe(true)
+    expect(
+      shouldSyncPersistedMessagesAfterFinish({
+        agentMode: "plan",
+        isError: false
+      })
+    ).toBe(true)
   })
 })

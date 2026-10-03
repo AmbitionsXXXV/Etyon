@@ -267,6 +267,7 @@ export const runWorkspaceEdit = async ({
     edits
   })
   const writeResult = await workspace.writeFile(requestedPath, editedContent, {
+    expectedContentHash: viewResult.value.contentHash,
     expectedMtimeMs: viewResult.value.info.mtimeMs,
     ...(signal ? { signal } : {})
   })

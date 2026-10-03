@@ -326,7 +326,10 @@ export const ComposerPlanQueue = ({
           <ScrollShadow className="max-h-40">
             <ul className="flex flex-col gap-1 px-3 py-2" ref={listRef}>
               {stepTodos.map((todo, index) => (
-                <TodoItemRow key={`${index}-${todo.content}`} todo={todo} />
+                <TodoItemRow
+                  key={todo.id ?? `${index}-${todo.content}`}
+                  todo={todo}
+                />
               ))}
             </ul>
           </ScrollShadow>

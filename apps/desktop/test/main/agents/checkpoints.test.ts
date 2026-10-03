@@ -14,6 +14,7 @@ import {
   CHECKPOINT_MAX_TOTAL_MB,
   getCheckpoint,
   listCheckpoints,
+  previewBashCheckpoint,
   pruneCheckpoints,
   restoreBashCheckpoint,
   restoreFileCheckpoint,
@@ -270,7 +271,7 @@ describe("workspace checkpoints", () => {
       toolCallId: "tool-non-git"
     })
 
-    expect(clean?.gitSnapshotRef).toBeNull()
+    expect(clean?.gitSnapshotRef).toMatch(/^[a-f\d]{40}$/u)
     expect(dirty?.gitSnapshotRef).toMatch(/^[a-f\d]{40,64}$/u)
     expect(nonGit).toMatchObject({ files: [], gitSnapshotRef: null })
   })
@@ -313,6 +314,51 @@ describe("workspace checkpoints", () => {
       runId: "run-restore",
       toolCallId: "tool-restore"
     })
+  })
+
+  it("refuses restoring if tracked files changed after the user previewed them", async () => {
+    const projectPath = createProject()
+    const filePath = path.join(projectPath, "tracked.txt")
+    fs.writeFileSync(filePath, "original\n")
+    execFileSync("git", ["init"], { cwd: projectPath })
+    execFileSync("git", ["add", "."], { cwd: projectPath })
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "initial"
+      ],
+      { cwd: projectPath }
+    )
+    const checkpoint = await captureBashCheckpoint({
+      projectPath,
+      runId: "run-preview",
+      toolCallId: "tool-preview"
+    })
+    if (!checkpoint) {
+      throw new Error("Checkpoint fixture was not created")
+    }
+    fs.writeFileSync(filePath, "after command\n")
+    const preview = await previewBashCheckpoint({
+      checkpointId: checkpoint.id,
+      projectPath
+    })
+    expect(preview.paths).toEqual(["tracked.txt"])
+    fs.writeFileSync(filePath, "manual change after preview\n")
+    const result = await restoreBashCheckpoint({
+      checkpointId: checkpoint.id,
+      expectedFingerprint: preview.fingerprint,
+      projectPath
+    })
+    expect(result).toEqual({ ok: false, reason: "worktree-changed" })
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(
+      "manual change after preview\n"
+    )
   })
 
   it("returns no-snapshot for a bash checkpoint without a git snapshot", async () => {

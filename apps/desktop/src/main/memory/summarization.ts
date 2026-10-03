@@ -27,6 +27,7 @@ interface MemoryQueryRewriteInput {
 interface ChatCompactionInput {
   fallbackContent: string
   settings: AppSettings
+  sourceContent?: string
 }
 
 interface StructuredChatCompactionSummary {
@@ -185,11 +186,12 @@ const generateMemoryToolText = async ({
 
 export const summarizeChatCompaction = async ({
   fallbackContent,
-  settings
+  settings,
+  sourceContent
 }: ChatCompactionInput): Promise<string> => {
   try {
     const text = await generateMemoryToolText({
-      prompt: buildChatCompactionPrompt(fallbackContent),
+      prompt: buildChatCompactionPrompt(sourceContent ?? fallbackContent),
       settings,
       system: CHAT_COMPACTION_SYSTEM_PROMPT
     })

@@ -315,6 +315,7 @@ const CommandToolCallCard = ({
   command,
   defaultExpanded = false,
   detail,
+  footerExtra,
   isStreaming = false,
   metaItems = EMPTY_TOOL_TRACE_META_ITEMS,
   output,
@@ -330,6 +331,7 @@ const CommandToolCallCard = ({
   cwd?: string
   defaultExpanded?: boolean
   detail?: ReactNode
+  footerExtra?: ReactNode
   isStreaming?: boolean
   metaItems?: string[]
   output: string
@@ -354,6 +356,7 @@ const CommandToolCallCard = ({
       }
       defaultExpanded={defaultExpanded}
       description={description}
+      footerExtra={footerExtra}
       icon={ComputerTerminal02Icon}
       state={state}
       statusClassName={statusClassName}
@@ -376,6 +379,10 @@ const CommandToolCallCard = ({
 }
 
 const BROWSER_ACTION_TITLE_KEYS = {
+  click: "chat.browserTool.click",
+  press: "chat.browserTool.press",
+  scroll: "chat.browserTool.scroll",
+  type: "chat.browserTool.type",
   navigate: "chat.browserTool.navigate",
   read: "chat.browserTool.read",
   screenshot: "chat.browserTool.screenshot"
@@ -689,6 +696,11 @@ export const StructuredToolTraceCard = ({
         cwd={inputCwd}
         defaultExpanded={part.state === "approval-requested"}
         detail={detailPanels}
+        footerExtra={
+          isRestoreCandidateToolName(toolName) ? (
+            <ToolTraceRestoreButton part={part} />
+          ) : undefined
+        }
         isStreaming={isCommandStreaming && !commandOutputText}
         metaItems={[...metaItems, workflowProgressMeta, repeatedMetaItem]}
         output={commandOutputText}

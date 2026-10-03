@@ -7,6 +7,8 @@ import {
   uniqueIndex
 } from "drizzle-orm/sqlite-core"
 
+import { defineAutomationTables } from "@/main/db/automation-schema"
+
 export const chatSessions = sqliteTable(
   "chat_sessions",
   {
@@ -29,6 +31,9 @@ export const chatSessions = sqliteTable(
     )
   })
 )
+
+export const { automationRuns, automationTasks } =
+  defineAutomationTables(chatSessions)
 
 export const chatMessages = sqliteTable(
   "chat_messages",
@@ -313,13 +318,49 @@ export const memoryEmbeddings = sqliteTable(
   })
 )
 
+export const agentInvocations = sqliteTable(
+  "agent_invocations",
+  {
+    createdAt: text("created_at").notNull(),
+    error: text("error"),
+    id: text("id").primaryKey(),
+    inputHash: text("input_hash").notNull(),
+    outputJson: text("output_json"),
+    runId: text("run_id"),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: "cascade" }),
+    state: text("state", {
+      enum: ["executing", "failed", "succeeded", "unknown"]
+    }).notNull(),
+    summaryJson: text("summary_json").notNull(),
+    toolCallId: text("tool_call_id").notNull(),
+    toolName: text("tool_name").notNull(),
+    updatedAt: text("updated_at").notNull()
+  },
+  (table) => ({
+    callIdx: uniqueIndex("agent_invocations_call_idx").on(
+      table.sessionId,
+      table.toolCallId
+    ),
+    sessionIdx: index("agent_invocations_session_idx").on(
+      table.sessionId,
+      table.createdAt
+    ),
+    stateIdx: index("agent_invocations_state_idx").on(table.state)
+  })
+)
+
 export const schema = {
   agentApprovals,
   agentArtifacts,
   agentCheckpoints,
   agentEvents,
+  agentInvocations,
   agentRuns,
   agentToolCalls,
+  automationRuns,
+  automationTasks,
   chatMessages,
   chatSessionMemories,
   chatSessionPlans,

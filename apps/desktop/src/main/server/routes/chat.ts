@@ -23,15 +23,17 @@ import { getDb } from "@/main/db"
 import type { AppDatabase } from "@/main/db"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
-import {
-  isImageOutputModelSelection,
-  resolveModel
-} from "@/main/server/lib/providers"
+import { resolveModel } from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import {
   buildImageGenerationStreamResponse,
   getLatestUserMessageText
 } from "@/main/server/routes/build-image-generation-response"
+import { runWithChatSessionExecution } from "@/main/server/routes/chat-session-execution"
+import {
+  prepareChatSubmission,
+  resolveImageRequestModel
+} from "@/main/server/routes/chat-submission"
 import { getSettings } from "@/main/settings"
 import { isAgentPermissionMode } from "@/shared/agents/permission-mode"
 import { resolveActiveProfile } from "@/shared/agents/profiles"
@@ -132,23 +134,55 @@ const resolveSessionPlanSystemPrompts = async ({
   }
 }
 
+chatRoute.use("/chat", async (c, next) => {
+  const body: unknown = await c.req.json()
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("sessionId" in body) ||
+    typeof body.sessionId !== "string"
+  ) {
+    await next()
+    return
+  }
+  const response = await runWithChatSessionExecution(
+    body.sessionId,
+    async () => {
+      await next()
+      return c.res
+    }
+  )
+  if (response === null) {
+    return c.json({ error: "chat_session_busy" }, 409)
+  }
+  c.res = response
+})
+
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
     agentMode: rawAgentMode,
+    automationPrompt,
+    automationRunId,
+    bestOfN: rawBestOfN,
     imageMode: rawImageMode,
     mentions = [],
-    messages,
+    messages: submittedMessages,
     model: requestedModelId,
+    profileId: requestedProfileId,
     permissionMode: rawPermissionMode,
     sessionId
   } = body as {
     agentMode?: unknown
+    automationPrompt?: string
+    automationRunId?: string
+    bestOfN?: unknown
     imageMode?: unknown
     mentions?: ChatMention[]
     messages: UIMessage[]
     model?: string
     permissionMode?: unknown
+    profileId?: string
     sessionId: string
   }
   const db = getDb()
@@ -158,9 +192,26 @@ chatRoute.post("/chat", async (c) => {
     throw new Error(`Chat session not found: ${sessionId}`)
   }
 
+  const submission = await prepareChatSubmission({
+    db,
+    input: {
+      automationPrompt,
+      automationRunId,
+      bestOfN: rawBestOfN,
+      permissionMode: rawPermissionMode,
+      profileId: requestedProfileId,
+      sessionId,
+      submittedMessages
+    },
+    settings: getSettings()
+  })
+  if (!submission.ok) {
+    return c.json({ error: submission.error }, submission.status)
+  }
+  const { bestOfNRequest, messages, settings: baseSettings } = submission
+
   await persistSubmittedChatMessages({ db, messages, sessionId })
 
-  const baseSettings = getSettings()
   const effectiveModelId = requestedModelId ?? session.modelId ?? null
 
   // Direct image mode bypasses the LLM chat/agent loop entirely: the message
@@ -168,15 +219,17 @@ chatRoute.post("/chat", async (c) => {
   // renders through the existing inline imagen pipeline. The renderer only
   // enables the toggle for image-output models; re-validate here as a safety
   // net and fall through to the normal chat path when it does not hold.
-  if (
-    rawImageMode === true &&
-    effectiveModelId &&
-    isImageOutputModelSelection(baseSettings.ai, effectiveModelId)
-  ) {
+  const imageModelValue = resolveImageRequestModel({
+    bestOfN: bestOfNRequest,
+    imageMode: rawImageMode,
+    modelId: effectiveModelId,
+    settings: baseSettings
+  })
+  if (imageModelValue) {
     return buildImageGenerationStreamResponse({
       abortSignal: c.req.raw.signal,
       messages,
-      modelValue: effectiveModelId,
+      modelValue: imageModelValue,
       onFinishPersist: async (nextMessages) => {
         await replaceChatMessages({ db, messages: nextMessages, sessionId })
       },
@@ -190,12 +243,14 @@ chatRoute.post("/chat", async (c) => {
   const latestUserMessageText = getLatestUserMessageText(messages)
   const isImagenCommand = isChatImagenCommandText(latestUserMessageText)
   const isWorkflowCommand = isChatWorkflowCommandText(latestUserMessageText)
-  const effectiveAgentMode = resolveEffectiveAgentMode({
-    composerMode: agentMode,
-    isImagenCommand,
-    isPlanCommand: isChatPlanCommandText(latestUserMessageText),
-    isWorkflowCommand
-  })
+  const effectiveAgentMode = bestOfNRequest
+    ? "agent"
+    : resolveEffectiveAgentMode({
+        composerMode: agentMode,
+        isImagenCommand,
+        isPlanCommand: isChatPlanCommandText(latestUserMessageText),
+        isWorkflowCommand
+      })
   const settings = applyChatAgentModeToSettings({
     agentMode: effectiveAgentMode,
     settings: baseSettings
@@ -263,10 +318,11 @@ chatRoute.post("/chat", async (c) => {
   // Const capture so closures below narrow the run id without re-checking.
   const startedRunId = agentRunId
 
-  return buildChatStreamResponse({
+  const response = await buildChatStreamResponse({
     abortSignal: c.req.raw.signal,
     ...(effectiveAgentMode ? { agentMode: effectiveAgentMode } : {}),
     agentRunId,
+    bestOfNRequest,
     messages,
     model,
     modelId: effectiveModelId,
@@ -275,7 +331,10 @@ chatRoute.post("/chat", async (c) => {
     ...(startedRunId
       ? {
           onAgentStep: (step) =>
-            recordAgentRunStep({ db, runId: startedRunId, step })
+            runExclusiveDbWrite(
+              async () =>
+                await recordAgentRunStep({ db, runId: startedRunId, step })
+            )
         }
       : {}),
     onFinishPersist: async (nextMessages, agentOutcome) => {
@@ -338,6 +397,10 @@ chatRoute.post("/chat", async (c) => {
     settings,
     systemPrompts
   })
+  if (startedRunId) {
+    response.headers.set("x-etyon-agent-run-id", startedRunId)
+  }
+  return response
 })
 
 export { chatRoute }

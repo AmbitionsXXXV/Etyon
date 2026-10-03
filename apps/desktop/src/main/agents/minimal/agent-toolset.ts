@@ -1,10 +1,20 @@
+import path from "node:path"
+
 import type {
   ToolApprovalConfiguration,
   ToolSet,
   UIMessage,
   UIMessageStreamWriter
 } from "ai"
+import { app } from "electron"
 
+import {
+  createRuntimeHookRunner,
+  isHookConfigurationPath
+} from "@/main/agents/hook-runtime"
+import { wrapToolsWithHooks } from "@/main/agents/hooks/tool-wrapper"
+import { protectToolInvocations } from "@/main/agents/invocation-ledger"
+import { getMcpTools } from "@/main/agents/mcp/client-manager"
 import { buildArtifactTool } from "@/main/agents/minimal/artifact-tool"
 import { buildAskUserTool } from "@/main/agents/minimal/ask-user-tool"
 import {
@@ -27,13 +37,22 @@ import {
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
 import { buildProposePlanTool } from "@/main/agents/minimal/propose-plan-tool"
-import { buildTodoTool } from "@/main/agents/minimal/todo-tool"
+import { buildSkillTool } from "@/main/agents/minimal/skill-tool"
+import { buildTaskTools } from "@/main/agents/minimal/task-tools"
 import {
   buildWorkflowTool,
   buildWorkflowToolApproval
 } from "@/main/agents/minimal/workflow/workflow-tool"
-import { getWorkspaceCore } from "@/main/agents/minimal/workspace-core"
+import {
+  createWorkspaceCore,
+  getWorkspaceCore
+} from "@/main/agents/minimal/workspace-core"
+import { createTaskStore } from "@/main/agents/task-store"
+import { buildReadToolResultTool } from "@/main/agents/tool-result-store"
+import { buildWebTools } from "@/main/agents/web/web-tools"
+import { buildRuntimeBestOfNTool } from "@/main/agents/worktree-runtime"
 import { PARENT_WRITE_HOLDER } from "@/main/agents/write-claims"
+import { getAppConfigDir } from "@/main/app-paths"
 import { getDb } from "@/main/db"
 import { isImageGenerationAvailable } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
@@ -55,28 +74,32 @@ import { getModelProviderId } from "@/shared/providers/provider-catalog"
 export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You work directly on the user's project directory with these tools:
 
 - read: read a text file (line-numbered, supports offset/limit)
+- read_tool_result: page a full earlier tool result by its saved reference when the context budget has condensed it
 - ls: list a directory
 - grep: search file contents with ripgrep
-- todo_write: maintain a task checklist for the run — write the plan up front and update statuses as you go (full-replace: send the whole list each call)
+- task_create / task_get / task_update / task_list: durable tasks with dependencies and ownership, shared across this chat's turns and delegates
+- skill: discover relevant skills and load their instructions or supporting files on demand
 - bash: run a shell command from the project root (each command needs user approval unless previously remembered for this project)
 - workflow: orchestrate many READ-ONLY investigator sub-agents from a small JS script to research, review, or understand across many files at once; the sub-agents cannot modify files
 - edit: apply exact text replacements to a file (requires user approval)
 - write: create or overwrite a file (requires user approval)
 - artifact: publish an .html or .md file from the project as a rendered artifact in the app's preview panel
 - imagen: generate an image from a text prompt; it renders inline in the chat message (available when an OpenAI provider is configured)
-- browser: drive this session's embedded browser — navigate to a page, read its text, or screenshot it (each call needs user approval)
+- browser: drive this session's embedded browser — navigate, read text and element refs, screenshot, click, type, scroll, or press a key (each call needs user approval)
 
 Guidelines:
-- Paths are relative to the project root. You cannot access files outside it or secret files such as .env or keys.
+- Project file paths are relative to the project root and cannot access files outside it. The skill tool separately accepts catalogued skill paths and references confined to their skill directory. Neither surface can read secret files such as .env or keys.
 - Read a file before editing or overwriting it; edits are rejected if the file changed since it was read.
 - Keep edits minimal and targeted. Prefer edit over write for existing files.
 - After changing files, briefly summarize what changed and why.
 - If a tool fails, read the error, adjust, and retry rather than giving up.
+- If an invocation outcome is unknown, inspect it with read-only tools and let the user verify its status in the chat before retrying that operation. Changing the call id does not establish that it is safe to replay.
 - bash runs from the project root with a 120s default timeout; set timeoutSeconds (max 600) for long builds or tests. Use it for git, builds, tests, and package scripts, and keep using read/grep/edit/write for file content work.
 - Never use bash to print or copy secret files (.env, keys, credentials); the file tools already refuse them.
 - Reach for workflow only when a task genuinely fans out across many files or areas that reward parallel read-only investigation; for a single scoped question investigate directly or use one delegate, and never use it to make changes since its sub-agents are read-only.
 - delegate hands a bounded task to a specialist sub-agent: a read-only specialist investigates and reports, while a writable specialist can edit/write/run commands (you approve each change). When you run writable sub-agents in parallel, give each a DISJOINT set of files or modules — two sub-agents writing the same file conflict, and the tool rejects the second. Keep cross-cutting or shared-file edits for yourself.
-- On multi-step work (roughly three or more steps), keep a task list with todo_write: seed it with the plan (one item per step) before you start, keep exactly one item in_progress, and mark items completed as you finish them. When you leave plan mode after the user approves a plan, turning that plan into todos should be your first step.
+- Work directly on small or self-contained requests; a number of steps alone does not require task tracking. Use task tools when dependencies, parallel ownership, or continuity across turns make shared state useful. Read existing tasks before creating duplicates, update only changed fields using the current revision, and mark completion only after verification. Independent tasks can progress together. Task ownership is coordination metadata, not permission to edit files or delegate.
+- Skills are instructions, not executable commands. Discover and load a relevant skill through skill when useful, then read referenced files relative to that skill. A slash command is an optional user shortcut. Loading a skill never grants tools, permissions, or permission to spawn sub-agents; honor the current profile and approvals.
 
 Turn discipline:
 - Keep working until the user's request is fully handled; end your turn only when the task is done or you are genuinely blocked on the user.
@@ -93,7 +116,7 @@ Browser (when the browser tool is available):
 - The browser is the user's own view for this session, shown in the app's Browser panel: navigating changes what is on their screen, so browse deliberately and say what you are looking for.
 - navigate takes an http(s) URL (a bare domain gets https://), waits for the load, and reports the settled title and url; read returns the page text (long pages are cut to a head and a tail); screenshot captures the rendered page.
 - Every call is approval-gated because the page text or screenshot is sent to the model provider and the browser keeps the user's logged-in sessions. Prefer read over screenshot unless the question is about layout or rendering.
-- Only http and https work — the browser cannot open local files, custom schemes, or interact with the page (no clicking, typing, or scrolling).
+- Only http and https work — the browser cannot open local files, custom schemes, or execute arbitrary page code. For interaction, use fresh refs from read and the click/type/scroll/press actions.
 
 Images (when the imagen tool is available):
 - Call imagen to generate an image from a text prompt; it saves the image under generated-images/ and shows it inline in the chat message. You do not need an image model selected — imagen handles that itself.
@@ -168,6 +191,72 @@ const modelSupportsToolResultImages = ({
   return getModelProviderId(effectiveModelId) === "anthropic"
 }
 
+const buildDelegationTools = ({
+  agentRunId,
+  chatSessionId,
+  modelId,
+  permissionMode,
+  profile,
+  projectPath,
+  writer
+}: Pick<
+  BuildAgentToolsetOptions,
+  | "agentRunId"
+  | "chatSessionId"
+  | "modelId"
+  | "permissionMode"
+  | "profile"
+  | "projectPath"
+  | "writer"
+>): ToolSet => {
+  if (!profile.allowDelegation || !chatSessionId || !agentRunId) {
+    return {}
+  }
+  const tools: ToolSet = {
+    ...(chatSessionId
+      ? {
+          read_tool_result: buildReadToolResultTool({
+            sessionId: chatSessionId,
+            storageRoot: path.join(
+              getAppConfigDir(app.getPath("home")),
+              "tool-results"
+            )
+          })
+        }
+      : {}),
+    delegate: buildDelegateTool({
+      chatSessionId,
+      parentModelId: modelId,
+      parentProfile: profile,
+      parentRunId: agentRunId,
+      permissionMode,
+      projectPath,
+      writer
+    }),
+    workflow: buildWorkflowTool({
+      chatSessionId,
+      parentModelId: modelId,
+      parentProfile: profile,
+      parentRunId: agentRunId,
+      permissionMode,
+      projectPath,
+      writer
+    })
+  }
+  if (!profile.readonly && writer) {
+    tools.best_of_n = buildRuntimeBestOfNTool({
+      modelId,
+      parentProfile: profile,
+      parentRunId: agentRunId,
+      permissionMode,
+      projectPath,
+      sessionId: chatSessionId,
+      writer
+    })
+  }
+  return tools
+}
+
 export const buildAgentToolset = ({
   agentMode,
   agentRunId,
@@ -179,7 +268,9 @@ export const buildAgentToolset = ({
   writer
 }: BuildAgentToolsetOptions): ToolSet => {
   const settings = getSettings()
-  const workspace = getWorkspaceCore(projectPath)
+  const workspace = chatSessionId
+    ? getWorkspaceCore(projectPath, `chat:${chatSessionId}:parent`)
+    : createWorkspaceCore(projectPath)
   const isPlanMode = agentMode === "plan"
   // The roster is only consulted for plan mode's delegation narrowing; other
   // modes use the requested profile as-is.
@@ -209,12 +300,28 @@ export const buildAgentToolset = ({
     profile.allowedTools
   )
 
-  return {
+  const tools: ToolSet = {
+    ...buildWebTools(),
+    ...getMcpTools(profile.readonly),
     ...fileTools,
-    // Pure run metadata (a task checklist), never gated — offered on every
-    // profile like read/ls. It emits a transient live part keyed by run id and
-    // its call is replayed from agent_tool_calls, so it needs no write access.
-    todo_write: buildTodoTool({ agentRunId, writer }),
+    // Coordination metadata lives outside the project and never grants writes.
+    ...(chatSessionId
+      ? buildTaskTools({
+          agentRunId,
+          store: createTaskStore({
+            chatSessionId,
+            projectPath,
+            storageRoot: path.join(
+              getAppConfigDir(app.getPath("home")),
+              "agent-tasks"
+            )
+          }),
+          writer
+        })
+      : {}),
+    ...(settings.skills?.enabled
+      ? { skill: buildSkillTool({ projectPath, settings: settings.skills }) }
+      : {}),
     // Input-required tools (defined without execute) exist only in plan mode:
     // ask_user forks the plan on the user's answer, propose_plan is the plan's
     // exit gate. A call suspends the run until the chat UI supplies the result.
@@ -259,30 +366,15 @@ export const buildAgentToolset = ({
     ...(profile.readonly || !isImageGenerationAvailable()
       ? {}
       : { imagen: buildImagenTool(workspace) }),
-    // Delegation needs a persisted parent run to attach child runs to; without
-    // one (agents disabled or run-start failed) the parent stays solo.
-    ...(profile.allowDelegation && chatSessionId && agentRunId
-      ? {
-          delegate: buildDelegateTool({
-            chatSessionId,
-            parentModelId: modelId,
-            parentProfile: profile,
-            parentRunId: agentRunId,
-            permissionMode,
-            projectPath,
-            writer
-          }),
-          workflow: buildWorkflowTool({
-            chatSessionId,
-            parentModelId: modelId,
-            parentProfile: profile,
-            parentRunId: agentRunId,
-            permissionMode,
-            projectPath,
-            writer
-          })
-        }
-      : {}),
+    ...buildDelegationTools({
+      agentRunId,
+      chatSessionId,
+      modelId,
+      permissionMode,
+      profile,
+      projectPath,
+      writer
+    }),
     // The project digest (in the system prompt) is the free tier; these cost a
     // network round trip, so they're only offered when memory is on, and only
     // paid when the agent itself calls them.
@@ -293,6 +385,19 @@ export const buildAgentToolset = ({
         }
       : {})
   }
+  return protectToolInvocations(
+    wrapToolsWithHooks(tools, {
+      runner: createRuntimeHookRunner(projectPath),
+      runId: agentRunId ?? null,
+      sessionId: chatSessionId ?? null
+    }),
+    {
+      effectScope: workspace.projectPath,
+      protectAll: settings.agents.hooks.enabled,
+      runId: agentRunId,
+      sessionId: chatSessionId
+    }
+  )
 }
 
 /**
@@ -304,19 +409,42 @@ export const buildAgentToolset = ({
  */
 export const buildAgentToolApproval = ({
   permissionMode,
-  projectPath
+  projectPath,
+  tools
 }: {
   permissionMode: AgentPermissionMode
   projectPath: string
+  tools?: ToolSet
 }): ToolApprovalConfiguration<ToolSet, never> => {
   const settings = getSettings()
   const workspace = getWorkspaceCore(projectPath)
-  const fileEditApproval = buildFileEditToolApproval(permissionMode)
+  const originalFileApproval = buildFileEditToolApproval(permissionMode)
+  const fileEditApproval = (
+    input: unknown,
+    context: Parameters<typeof originalFileApproval>[1]
+  ) =>
+    permissionMode !== "bypass" && isHookConfigurationPath(input, projectPath)
+      ? ("user-approval" as const)
+      : originalFileApproval(input, context)
 
   return {
+    ...Object.fromEntries(
+      Object.keys(tools ?? getMcpTools())
+        .filter((name) => name.startsWith("mcp__"))
+        .map((name) => [
+          name,
+          () => (permissionMode === "bypass" ? undefined : "user-approval")
+        ])
+    ),
     bash: buildBashToolApproval(workspace, permissionMode, settings.agents),
+    best_of_n: () =>
+      permissionMode === "bypass" ? undefined : "user-approval",
     browser: buildBrowserToolApproval(permissionMode),
     edit: fileEditApproval,
+    web_fetch: () =>
+      permissionMode === "bypass" ? undefined : "user-approval",
+    web_search: () =>
+      permissionMode === "bypass" ? undefined : "user-approval",
     workflow: buildWorkflowToolApproval(permissionMode),
     write: fileEditApproval
   }

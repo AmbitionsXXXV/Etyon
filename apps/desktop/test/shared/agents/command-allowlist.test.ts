@@ -10,24 +10,24 @@ describe("deriveCommandApprovalPattern", () => {
     expect(deriveCommandApprovalPattern('git commit -m "xxx"')).toBe(
       "git commit"
     )
-    expect(deriveCommandApprovalPattern("rtk git status")).toBe("rtk git")
+    expect(deriveCommandApprovalPattern("rtk git status")).toBeNull()
     expect(deriveCommandApprovalPattern("vp test run apps/desktop")).toBe(
       "vp test"
     )
   })
 
-  it("skips leading VAR=value environment assignments", () => {
-    expect(deriveCommandApprovalPattern("FOO=1 git push origin")).toBe(
-      "git push"
-    )
-    expect(deriveCommandApprovalPattern("A=1 B=2 npm run build")).toBe(
-      "npm run"
-    )
-  })
-
-  it("collapses to the binary when the second token is a flag", () => {
-    expect(deriveCommandApprovalPattern("tsc --noEmit")).toBe("tsc")
-    expect(deriveCommandApprovalPattern("git -C x commit")).toBe("git")
+  it("keeps environment assignments and leading flags exact-only", () => {
+    for (const command of [
+      "FOO=1 git push origin",
+      "A=1 B=2 npm run build",
+      "tsc --noEmit",
+      "git -C x commit",
+      "node --version",
+      "node script.js",
+      "rtk git status"
+    ]) {
+      expect(deriveCommandApprovalPattern(command)).toBeNull()
+    }
   })
 
   it("returns the binary alone for a single-token command", () => {
@@ -69,6 +69,22 @@ describe("deriveCommandApprovalPattern", () => {
 })
 
 describe("commandMatchesApprovalRule", () => {
+  it("does not reuse old binary-wide rules for different commands", () => {
+    for (const [ruleCommand, command] of [
+      ["git", "git -C . reset --hard"],
+      ["node", "node -e 'console.log(1)'"],
+      ["rtk git", "rtk git reset --hard"],
+      ["git status", "GIT_CONFIG_COUNT=1 git status"]
+    ]) {
+      expect(commandMatchesApprovalRule({ command, ruleCommand })).toBe(false)
+    }
+    expect(
+      commandMatchesApprovalRule({
+        command: "node --version",
+        ruleCommand: "node --version"
+      })
+    ).toBe(true)
+  })
   it("matches a legacy full command only exactly", () => {
     expect(
       commandMatchesApprovalRule({

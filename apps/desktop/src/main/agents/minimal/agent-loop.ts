@@ -1,4 +1,5 @@
 import type {
+  LanguageModelUsage,
   FinishReason,
   LanguageModel,
   ModelMessage,
@@ -10,6 +11,13 @@ import type {
 } from "ai"
 import { isStepCount, streamText, toUIMessageStream } from "ai"
 
+import {
+  getFixedContextCost,
+  prepareBudgetedContext,
+  prepareBudgetedMessages
+} from "@/main/agents/context-budget"
+import type { AgentContextBudget } from "@/main/agents/context-budget"
+import type { ToolResultStoreScope } from "@/main/agents/tool-result-store"
 import { CHAT_RUN_LIMIT_DATA_TYPE } from "@/shared/chat/stream-data"
 import type { ChatRunLimitData } from "@/shared/chat/stream-data"
 import type { EffortProviderOptions } from "@/shared/providers/model-effort"
@@ -62,12 +70,19 @@ export interface AgentLoopOutcome {
 }
 
 export interface AgentLoopStep {
+  estimatedInputTokens?: number
+  inputTokens?: number
+  cachedInputTokens?: number
+  outputTokens?: number
+  contextCompacted?: boolean
   finishReason: FinishReason
   stepIndex: number
   toolCallCount: number
 }
 
 export interface RunAgentLoopOptions {
+  resultStore?: ToolResultStoreScope
+  contextBudget?: AgentContextBudget
   abortSignal?: AbortSignal
   describeError?: (error: unknown) => string
   maxSteps: number
@@ -248,8 +263,36 @@ const buildOptionalStreamSettings = ({
   ...(toolApproval ? { toolApproval } : {})
 })
 
+const applyContextBudget = async (
+  history: ModelMessage[],
+  fixedCost: number,
+  budget?: AgentContextBudget,
+  resultStore?: ToolResultStoreScope
+) => {
+  if (!budget) {
+    return null
+  }
+  const prepared = resultStore
+    ? await prepareBudgetedContext(history, fixedCost, budget, resultStore)
+    : prepareBudgetedMessages(history, fixedCost, budget)
+  history.splice(0, history.length, ...prepared.messages)
+  return prepared
+}
+const buildStepUsage = (
+  usage: LanguageModelUsage | undefined,
+  prepared: Awaited<ReturnType<typeof applyContextBudget>>
+) => ({
+  cachedInputTokens: usage?.inputTokenDetails?.cacheReadTokens,
+  contextCompacted: prepared?.compacted,
+  estimatedInputTokens: prepared?.estimatedInputTokens,
+  inputTokens: usage?.inputTokens,
+  outputTokens: usage?.outputTokens
+})
+
 export const runAgentLoop = async ({
   abortSignal,
+  contextBudget,
+  resultStore,
   describeError = describeUnknownError,
   maxSteps,
   messages,
@@ -303,16 +346,26 @@ export const runAgentLoop = async ({
     transform
   })
 
+  const fixedContextCost = await getFixedContextCost(system, tools)
   while (true) {
     if (abortSignal?.aborted) {
       return buildOutcome("aborted")
     }
 
     try {
+      const prepared = await applyContextBudget(
+        history,
+        fixedContextCost,
+        contextBudget,
+        resultStore
+      )
       const result = streamText({
         ...optionalStreamSettings,
         messages: history,
         model,
+        ...(contextBudget
+          ? { maxOutputTokens: contextBudget.reserveOutputTokens }
+          : {}),
         onError: captureStreamError,
         stopWhen: isStepCount(1),
         tools
@@ -330,10 +383,11 @@ export const runAgentLoop = async ({
       })
       writer.merge(tapUiStream ? tapUiStream(uiStream) : uiStream)
 
-      const [content, finishReason, response] = await Promise.all([
+      const [content, finishReason, response, usage] = await Promise.all([
         result.content,
         result.finishReason,
-        result.response
+        result.response,
+        result.usage
       ])
 
       stepIndex += 1
@@ -345,7 +399,12 @@ export const runAgentLoop = async ({
       ).length
 
       try {
-        await onStepFinish?.({ finishReason, stepIndex, toolCallCount })
+        await onStepFinish?.({
+          ...buildStepUsage(usage, prepared),
+          finishReason,
+          stepIndex,
+          toolCallCount
+        })
       } catch {
         // Observability must never break the run.
       }

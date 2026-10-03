@@ -1,4 +1,11 @@
 export {
+  McpServerInputSchema,
+  McpServerSchema,
+  McpSettingsSchema,
+  McpStatusOutputSchema
+} from "./schemas/mcp"
+export type { McpServerConfig, McpSettings } from "./schemas/mcp"
+export {
   AdvanceAgentRunGraphInputSchema,
   AdvanceAgentRunGraphOutputSchema,
   AgentSessionSnapshotOutputSchema,
@@ -234,6 +241,8 @@ export {
   AgentCheckpointSchema,
   CheckpointFileSchema,
   CheckpointOriginSchema,
+  PreviewCheckpointInputSchema,
+  PreviewCheckpointOutputSchema,
   ListCheckpointsInputSchema,
   ListCheckpointsOutputSchema,
   RestoreCheckpointInputSchema,
@@ -559,3 +568,76 @@ export type {
   UpdateState,
   UpdateStatus
 } from "./schemas/updates"
+export {
+  ListInvocationsInputSchema,
+  ListInvocationsOutputSchema,
+  ResolveInvocationInputSchema
+} from "./schemas/invocations"
+
+export {
+  WebFetchInputSchema,
+  WebFetchOutputSchema,
+  WebSearchInputSchema,
+  WebSearchOutputSchema
+} from "./schemas/web-tools"
+export type { WebToolsSettings } from "./schemas/web-tools"
+export {
+  AutomationListOutputSchema,
+  AutomationListRunsInputSchema,
+  AutomationMutationOutputSchema,
+  AutomationRunInputSchema,
+  AutomationRunSchema,
+  AutomationRunStatusSchema,
+  AutomationRunsOutputSchema,
+  AutomationScheduleSchema,
+  AutomationSetEnabledInputSchema,
+  AutomationTaskDraftSchema,
+  AutomationTaskInputSchema,
+  AutomationTaskSchema
+} from "./schemas/automation"
+export type {
+  AutomationRun,
+  AutomationRunStatus,
+  AutomationSchedule,
+  AutomationTask,
+  AutomationTaskDraft
+} from "./schemas/automation"
+
+export {
+  HookConfigStatusSchema,
+  HookDefinitionSchema,
+  HookEventSchema,
+  HooksConfigSchema,
+  ListHooksInputSchema,
+  ListHooksOutputSchema
+} from "./schemas/hooks"
+export type {
+  HookConfigStatus,
+  HookDefinition,
+  HookEvent
+} from "./schemas/hooks"
+export {
+  ApplyBestOfNInputSchema,
+  ApplyWorktreeInputSchema,
+  ApplyWorktreeOutputSchema,
+  BestOfNCandidateSchema,
+  BestOfNIdInputSchema,
+  BestOfNReviewSchema,
+  BestOfNRunSchema,
+  ListBestOfNOutputSchema,
+  ListWorktreesOutputSchema,
+  ManagedWorktreeSchema,
+  PruneWorktreeInputSchema,
+  StartBestOfNInputSchema,
+  WorktreeDiffSchema,
+  WorktreeIdInputSchema,
+  WorktreeSessionInputSchema
+} from "./schemas/worktrees"
+export type {
+  ApplyWorktreeOutput,
+  BestOfNCandidate,
+  BestOfNReview,
+  BestOfNRun,
+  ManagedWorktree,
+  WorktreeDiff
+} from "./schemas/worktrees"

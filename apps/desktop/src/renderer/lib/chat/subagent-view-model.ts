@@ -6,7 +6,8 @@ import type {
 
 import type {
   ChatToolPart,
-  ChatUiMessage
+  ChatUiMessage,
+  SubagentToolName
 } from "@/renderer/lib/chat/assistant-message-timeline"
 import type { SubagentLiveState } from "@/renderer/lib/chat/subagent-stream-store"
 import {
@@ -89,7 +90,7 @@ export interface SubagentRowViewModel {
   approvals: ChatSubagentApprovalData[]
   body: SubagentRowBody
   durationMs?: number
-  origin: "delegate" | "workflow"
+  origin: SubagentToolName
   profileId: string
   startedAtMs?: number
   status: SubagentDisplayStatus
@@ -143,12 +144,11 @@ export const traceToolCallsToParts = (
     } as ChatUiMessage["parts"][number]
   })
 
-/** Live delegated/workflow child → row VM (a running row can still tick a timer
- * and surface pending approvals). Live rows always fall back to the "delegated
- * task" title, so their origin is `delegate`. */
+/** Live child → row VM with its parent tool's title and pending approvals. */
 export const liveSubagentViewModel = (
   live: SubagentLiveState,
-  approvals: ChatSubagentApprovalData[]
+  approvals: ChatSubagentApprovalData[],
+  origin: SubagentToolName = "delegate"
 ): SubagentRowViewModel => ({
   activity: live.activity,
   approvals,
@@ -158,7 +158,7 @@ export const liveSubagentViewModel = (
     parts: liveSubagentParts(live.parts)
   },
   durationMs: live.durationMs,
-  origin: "delegate",
+  origin,
   profileId: live.meta.profileId,
   startedAtMs: live.startedAtMs,
   status: live.status,
@@ -199,14 +199,15 @@ export const delegatePartViewModel = (
  * a finished timestamp (clamped non-negative); the body always opens a lazy
  * trace of the child's recorded tool calls. */
 export const workflowChildRunViewModel = (
-  run: AgentRunTraceRun
+  run: AgentRunTraceRun,
+  origin: Exclude<SubagentToolName, "delegate"> = "workflow"
 ): SubagentRowViewModel => ({
   approvals: [],
   body: { kind: "trace", runId: run.id },
   durationMs: run.finishedAt
     ? Math.max(0, Date.parse(run.finishedAt) - Date.parse(run.startedAt))
     : undefined,
-  origin: "workflow",
+  origin,
   profileId: run.profileId,
   status: subagentStatusFromRunStatus(run.status)
 })
@@ -241,3 +242,12 @@ export const selectWorkflowChildRuns = (
     .filter((run) => run.profileId === WORKFLOW_CHILD_PROFILE_ID)
     .toReversed()
 }
+
+export const selectSubagentChildRuns = (
+  runs: readonly AgentRunTraceRun[],
+  toolCallId: string,
+  toolName: Exclude<SubagentToolName, "delegate">
+): AgentRunTraceRun[] =>
+  toolName === "workflow"
+    ? selectWorkflowChildRuns(runs, toolCallId)
+    : runs.filter((run) => run.parentToolCallId === toolCallId).toReversed()

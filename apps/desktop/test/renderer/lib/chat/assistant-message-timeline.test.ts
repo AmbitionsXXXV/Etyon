@@ -40,6 +40,66 @@ const groupItem = (
 ): ChainToolGroupItem =>
   ({ part: toolPart(overrides), repeatCount }) as unknown as ChainToolGroupItem
 
+describe("durable task snapshots", () => {
+  it("replays the latest successful snapshot and retains failed updates as errors", () => {
+    const todos = [
+      {
+        blockedBy: ["Implement"],
+        content: "Review",
+        id: "task-1",
+        owner: "reviewer",
+        status: "pending"
+      }
+    ]
+    const grouped = groupChainEntries(
+      buildAssistantChainEntries(
+        message([
+          toolPart({
+            output: { todos: [] },
+            toolCallId: "create",
+            toolName: "task_create"
+          }),
+          toolPart({
+            output: { todos },
+            toolCallId: "update",
+            toolName: "task_update"
+          }),
+          toolPart({
+            errorText: "Task changed",
+            state: "output-error",
+            toolCallId: "failed",
+            toolName: "task_update"
+          })
+        ])
+      )
+    )
+    const entry = grouped.find((candidate) => candidate.kind === "todo")
+    expect(entry).toMatchObject({
+      key: "todo-create",
+      part: { toolCallId: "update" }
+    })
+    if (entry?.kind !== "todo") {
+      throw new Error("Missing task snapshot")
+    }
+    expect(getTodoPartTodos(entry.part)).toEqual(todos)
+    expect(grouped.map((candidate) => candidate.kind)).toEqual([
+      "todo",
+      "tool-group"
+    ])
+  })
+
+  it("does not interpret task mutation input as the persisted task list", () => {
+    expect(
+      getTodoPartTodos(
+        toolPart({
+          input: { subject: "Review" },
+          toolName: "task_create"
+        }) as unknown as ChatToolPart
+      )
+    ).toEqual([])
+  })
+})
+
 describe("buildAssistantChainEntries tail split", () => {
   it("keeps intermediate text in the chain and the trailing text in the body", () => {
     const source = message([
@@ -196,7 +256,7 @@ describe("groupChainEntries", () => {
     expect(hasPendingApproval(answered)).toBe(false)
   })
 
-  it("splits delegate and workflow tools into standalone subagent-call entries", () => {
+  it("splits delegate, workflow and Best-of-N tools into standalone subagent-call entries", () => {
     const grouped = groupChainEntries(
       buildAssistantChainEntries(
         message([
@@ -206,6 +266,13 @@ describe("groupChainEntries", () => {
             toolName: "delegate"
           }),
           toolPart({ input: { script: "meta" }, toolName: "workflow" }),
+          toolPart({
+            input: {
+              models: [{ modelId: "one" }, { modelId: "two" }],
+              prompt: "Implement"
+            },
+            toolName: "best_of_n"
+          }),
           toolPart({ input: { command: "ls" }, toolName: "bash" })
         ])
       )
@@ -215,13 +282,14 @@ describe("groupChainEntries", () => {
       "tool-group",
       "subagent-call",
       "subagent-call",
+      "subagent-call",
       "tool-group"
     ])
     expect(
       grouped
         .filter((entry) => entry.kind === "subagent-call")
         .map((entry) => (entry as { toolName: string }).toolName)
-    ).toEqual(["delegate", "workflow"])
+    ).toEqual(["delegate", "workflow", "best_of_n"])
   })
 
   it("pins the todo entry at its first position and refreshes it in place", () => {

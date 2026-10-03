@@ -46,7 +46,9 @@
       "countError": "添付できる画像は最大 4 枚です。",
       "image": "添付画像",
       "nonVisionHint": "選択中のモデルは画像を認識できません。画像を削除するか、視覚対応のモデルに切り替えて送信してください。",
+      "ready": "送信待ちの画像",
       "remove": "画像を削除",
+      "screenAwareness": "スクリーン認識",
       "sizeError": "画像は 1 枚あたり 8 MB 以下にしてください。",
       "typeError": "対応していない形式です。PNG・JPEG・WebP・GIF を使用してください。",
       "unsupported": "選択中のモデルは画像を認識できません"
@@ -56,7 +58,11 @@
       "navigate": "ページを開く",
       "read": "ページを読む",
       "screenshot": "ページを撮影",
-      "screenshotAlt": "{{url}} のスクリーンショット"
+      "screenshotAlt": "{{url}} のスクリーンショット",
+      "click": "ページの要素をクリック",
+      "press": "ページでキーを押す",
+      "scroll": "ページをスクロール",
+      "type": "入力欄に記入"
     },
     "imageMode": {
       "label": "画像",
@@ -213,7 +219,10 @@
       "resultRestored": "{{count}} 件のファイルを復元しました。",
       "resultSkipped": "ブロックされた、またはワークスペース外の {{count}} 件のファイルをスキップしました。",
       "successTitle": "復元が完了しました",
-      "title": "この変更前に戻しますか?"
+      "title": "この変更前に戻しますか?",
+      "gitScope": "以下の追跡済みファイルを復元します。現在の状態を先に保存し、未追跡ファイルとステージ内容は維持します。",
+      "previewLoading": "復元の変更範囲を計算中…",
+      "previewFailed": "復元範囲を読み込めません。再試行してください。"
     },
     "planHint": {
       "dismiss": "閉じる",
@@ -528,7 +537,9 @@
       "exploredProject": "プロジェクトを確認",
       "ranWorkflow": "ワークフローを実行",
       "todos": "タスク",
-      "todoProgressLabel": "{total} 件中 {completed} 件完了"
+      "todoProgressLabel": "{total} 件中 {completed} 件完了",
+      "taskOwner": "担当：{owner}",
+      "taskBlockedBy": "完了待ち：{tasks}"
     },
     "workTime": {
       "label": "所要時間 {duration}"
@@ -543,6 +554,76 @@
       "running": "実行中…",
       "succeeded": "完了",
       "viewDetails": "詳細を表示"
+    },
+    "screenAwareness": {
+      "capture": "前面ウインドウを取得",
+      "clear": "未送信の取得内容を削除",
+      "failed": "ウインドウを取得できませんでした",
+      "image": "スクリーンショット",
+      "removeImage": "画像を削除",
+      "removeText": "テキストを削除",
+      "text": "アクセス可能なテキスト",
+      "selected": "選択したテキスト",
+      "partial": "一部の内容を取得できません",
+      "errors": {
+        "accessibility-permission-required": "テキストにはアクセシビリティ権限が必要です。",
+        "capture-limit": "最大 4 件を保存できます。先に送信または削除してください。",
+        "capture-unavailable": "取得できませんでした。権限を確認して再試行してください。",
+        "protected-surface": "このアプリまたはパスワード欄は取得できません。",
+        "routing-failed": "チャットへの追加に失敗しました。内容はローカルに保存されています。",
+        "screen-permission-required": "画像の取得には画面収録の権限が必要です。",
+        "screenshot-unavailable": "画像は取得できませんでした。テキストは保存しました。",
+        "storage-failed": "取得内容を保存できません。空き容量を確認してください。",
+        "text-truncated": "テキストの上限に達したため一部のみ含まれます。",
+        "text-unavailable": "テキストを取得できません。画像は保存しました。",
+        "window-unavailable": "元のウインドウが閉じられたか利用できません。再取得してください。",
+        "cleanup-failed": "メッセージは送信されましたが、ローカルのキャプチャを削除できませんでした。設定から削除してください。"
+      }
+    },
+    "invocations": {
+      "title": "{{count}} 件の操作の確認が必要です",
+      "description": "結果の記録前にアプリが終了しました。ファイル、プロセス、対象ページを先に確認してください。この確認は記録の更新のみで操作を再実行しません。",
+      "completed": "確認済み：完了",
+      "notCompleted": "確認済み：未完了",
+      "failed": "記録を更新できません。再試行してください。"
+    },
+    "bestOfN": {
+      "applied": "採用済み",
+      "apply": "この候補を採用",
+      "cancel": "実行をキャンセル",
+      "cancelDiscard": "候補を保持",
+      "confirmDiscard": "破棄を確認",
+      "conflicts": "メインの作業領域でファイルが変更されました。解決後に再度プレビューしてください。",
+      "discard": "候補を破棄",
+      "discardConfirmation": "隔離された作業領域と未採用の変更を削除します。",
+      "empty": "2–4 個のモデルで同じタスクを実行し、結果を比較します。",
+      "failed": "失敗",
+      "modelLimit": "2–4 個のモデルを選択してください。",
+      "models": "候補モデル",
+      "noChanges": "ファイルの変更なし",
+      "pending": "開始待ち",
+      "preview": "変更をプレビュー",
+      "prompt": "タスク",
+      "ready": "完了",
+      "recommendation": "レビュー",
+      "recommended": "推奨",
+      "running": "実行中",
+      "start": "候補を生成",
+      "title": "Best-of-N",
+      "view": "候補を表示",
+      "unavailable": "Agent 設定で委派を有効にし、書き込み可能なサブエージェントを許可するプロファイルを選択してください。",
+      "discarded": "破棄済み",
+      "files": "ファイル"
+    },
+    "worktrees": {
+      "apply": "メインの作業領域に適用",
+      "confirmDiscard": "作業領域の削除を確認",
+      "discard": "隔離された作業領域を削除",
+      "empty": "このチャットには保持された隔離作業領域がありません。",
+      "orphaned": "実行が中断され、変更は保持されました",
+      "preview": "変更をプレビュー",
+      "title": "隔離された作業領域",
+      "files": "ファイル"
     }
   },
   "firstLight": {
@@ -843,7 +924,27 @@
         "title": "Crew roster",
         "writeCapable": "書き込み可能"
       },
-      "title": "Agents"
+      "title": "Agents",
+      "checkpoints": {
+        "title": "ファイル復元とスナップショット",
+        "description": "変更前の状態を保存します。期限や容量を超えた古い内容を削除します。Git スナップショットは Git オブジェクトの保管期間にも依存します。",
+        "days": "保管日数",
+        "storage": "ファイル内容の容量（MB）"
+      },
+      "hooks": {
+        "title": "Hooks",
+        "description": "ツールの実行前後とターン終了時に、設定済みのローカルスクリプトを実行します。",
+        "empty": "Hooks は設定されていません。",
+        "enabled": "Hooks を有効化",
+        "global": "グローバル設定",
+        "scope": "Hooks 設定の範囲"
+      },
+      "contextBudget": {
+        "title": "モデルのコンテキスト予算",
+        "description": "現在のタスクと未処理のツール呼び出しを保持しながら、モデルへの入力を制限します。",
+        "input": "最大入力予算",
+        "output": "出力の予約枠"
+      }
     },
     "chat": {
       "autoCompact": {
@@ -1047,7 +1148,11 @@
       "providers": "Providers",
       "skills": "Skills",
       "tokenSavings": "Token Savings",
-      "userInterface": "ユーザーインターフェース"
+      "userInterface": "ユーザーインターフェース",
+      "screenAwareness": "画面認識",
+      "mcp": "MCP サーバー",
+      "automation": "バックグラウンドタスク",
+      "webTools": "ウェブツール"
     },
     "memory": {
       "description": "圧縮された長期 memory をモデルのコンテキスト外に保存し、chat sessions、projects、Telegram chatbot が関連する記憶を共有できるようにします。",
@@ -1515,6 +1620,121 @@
       "description": "最小化と閉じる操作で、アプリをシステムトレイへ隠すかどうかを選択します。",
       "minimizeToTray": "最小化時にシステムトレイへ",
       "title": "ウインドウの挙動"
+    },
+    "screenAwareness": {
+      "title": "画面認識",
+      "description": "左右の Command キーまたは手動で前面ウインドウを取得します。送信前に確認と削除ができ、自動送信は行いません。",
+      "enabled": "画面認識を有効にする",
+      "accessibility": "アクセシビリティ",
+      "screenRecording": "画面収録",
+      "granted": "許可済み",
+      "missing": "未許可",
+      "permissions": "システム権限を設定",
+      "clear": "未送信の取得内容を削除",
+      "privacy": "未送信の内容はローカルで 10 分間保存されます。パスワード管理アプリ、システムのセキュリティ画面、パスワード欄は取得できません。テキストはアプリが公開する部分のみです。",
+      "unsupported": "画面認識は現在 macOS のみ対応しています。",
+      "cleared": "未送信の内容を削除しました",
+      "failed": "操作に失敗しました。再試行してください。"
+    },
+    "mcp": {
+      "title": "MCP サーバー",
+      "description": "ローカルまたはリモートのツールに接続します。有効にすると接続を開始し、Agent の呼び出しには承認ポリシーが適用されます。",
+      "addStdio": "ローカルサーバーを追加",
+      "addHttp": "HTTP サーバーを追加",
+      "configuration": "サーバー設定（JSON）",
+      "enabled": "サーバーを有効化",
+      "connect": "接続 / ツールを更新",
+      "edit": "編集",
+      "remove": "削除",
+      "invalid": "設定が無効です。名前、コマンドまたは URL、JSON 形式を確認してください。",
+      "largeCatalog": "ツールの説明はモデルのコンテキストを使用します。不要なサーバーを無効にできます。",
+      "tools": "ツール（{{count}}）",
+      "catalogTruncated": "サーバーから {{count}} 個のツールを検出しました。カタログと説明の上限に収まるツールのみ読み込みます。",
+      "clearCredentials": "認証情報を削除",
+      "credentials": "環境変数と HTTP ヘッダーは暗号化され、編集時には表示されません。新しい値は保存済み情報をすべて置き換え、空欄は保持します。削除には「認証情報を削除」を使用してください。",
+      "disconnect": "接続を解除",
+      "empty": "stdio または HTTP MCP サーバーを追加して有効にし、接続してツールを確認してください。",
+      "loading": "MCP 設定を読み込み中…",
+      "newServer": "新しい MCP サーバー",
+      "status": {
+        "connected": "接続済み",
+        "connecting": "接続中",
+        "disconnected": "未接続",
+        "error": "接続失敗"
+      }
+    },
+    "webTools": {
+      "apiKey": "検索 API キー",
+      "clearKey": "API キーを削除",
+      "credentials": "API キーはシステムの安全なストレージで暗号化されます。ページ取得にはキーは不要です。検索には保存済みのサービスとキーを使用します。",
+      "description": "Agent が公開ページを取得し、確認できる出典付きで検索します。アプリの HTTP(S) プロキシ設定に従い、ローカルとプライベートの接続先を拒否します。",
+      "enabled": "ウェブツールを有効にする",
+      "keyPlaceholder": "選択したサービスの API キーを入力",
+      "keySaved": "安全に保存済み。空欄で現在のキーを保持",
+      "noResults": "検索が完了しました。結果はありません。",
+      "openFailed": "出典リンクを開けませんでした。",
+      "provider": "検索サービス",
+      "providerChanged": "サービスを変更すると以前のキーが削除されます。新しいサービスのキーを入力して保存してください。",
+      "query": "検索キーワード",
+      "source": "ページの出典",
+      "testFetch": "ページ取得をテスト",
+      "testSearch": "検索をテスト",
+      "testing": "テスト中…",
+      "title": "ウェブツール",
+      "truncated": "長い文書のため、最初の 24,000 文字を返しました。",
+      "url": "公開ページの URL"
+    },
+    "automation": {
+      "add": "タスクを作成",
+      "approvalNotice": "Etyon のチャットを開いて、承認または質問に回答してください。",
+      "cancel": "実行をキャンセル",
+      "confirmDelete": "このタスクと実行履歴を削除しますか？",
+      "cron": "Cron 式",
+      "cronHint": "分、時、日、月、曜日の 5 項目。例：0 9 * * 1-5。",
+      "defaultProfile": "既定のプロファイル",
+      "delete": "削除",
+      "description": "Etyon の起動中にエージェントをバックグラウンドで実行します。承認や質問で一時停止し、再起動後に過去の実行を再実行しません。",
+      "desktopNotification": "デスクトップ通知",
+      "empty": "バックグラウンドタスクはありません。チャットと指示を選び、1 回実行するかスケジュールを設定してください。",
+      "edit": "編集",
+      "enabled": "スケジュールを有効化",
+      "error": "バックグラウンドタスクを読み込めません。",
+      "history": "最近の実行",
+      "interval": "実行間隔（分）",
+      "loading": "バックグラウンドタスクを読み込み中…",
+      "model": "モデル ID（任意）",
+      "modelHint": "空欄の場合はチャットのモデルを使用します。プロファイルの優先モデルが優先されます。",
+      "name": "タスク名",
+      "nextRun": "次回の実行",
+      "noHistory": "実行履歴はありません。",
+      "openChat": "チャットを開く",
+      "permission": "権限",
+      "permissionAcceptEdits": "ファイル編集を許可し、コマンドは確認",
+      "permissionDefault": "編集とコマンドを確認",
+      "profile": "エージェントのプロファイル",
+      "prompt": "エージェントへの指示",
+      "resultNotice": "Etyon のチャットを開いて結果を確認してください。",
+      "runNow": "今すぐ実行",
+      "schedule": "スケジュール",
+      "scheduleCron": "タイムゾーン付き Cron",
+      "scheduleInterval": "一定間隔",
+      "scheduleManual": "手動のみ",
+      "session": "チャット",
+      "started": "開始",
+      "status": {
+        "cancelled": "キャンセル済み",
+        "failed": "失敗",
+        "interrupted": "中断 — 確認が必要",
+        "running": "実行中",
+        "skipped": "スキップ — チャット使用中",
+        "succeeded": "完了",
+        "suspended": "回答待ち"
+      },
+      "telegramHint": "チャンネルで許可されたチャット ID にのみ送信します。通知の失敗は履歴に表示されます。",
+      "telegramNotification": "Telegram 通知",
+      "timeZone": "タイムゾーン",
+      "timeout": "制限時間（分）",
+      "title": "バックグラウンドタスク"
     }
   },
   "tray": {

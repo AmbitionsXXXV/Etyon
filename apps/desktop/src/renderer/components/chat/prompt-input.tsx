@@ -7,6 +7,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
 import {
+  Button,
   Kbd,
   Popover,
   ProgressCircle,
@@ -19,7 +20,8 @@ import {
   CubeIcon,
   PencilEdit02Icon,
   SentIcon,
-  StopIcon
+  StopIcon,
+  ViewIcon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import type { Editor } from "@tiptap/core"
@@ -43,15 +45,20 @@ import {
   usePlanModeHint
 } from "@/renderer/components/chat/composer-plan-hint"
 import { ComposerPlanQueue } from "@/renderer/components/chat/composer-plan-queue"
+import { ImagenLightbox } from "@/renderer/components/chat/imagen-message"
 import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
+  attachmentsToContextText,
   attachmentToFilePart,
-  classifyAttachmentCandidate
+  classifyAttachmentCandidate,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  mergeComposerAttachments
 } from "@/renderer/lib/chat/attachments"
 import type {
   AttachmentRejectionReason,
   ComposerAttachment
 } from "@/renderer/lib/chat/attachments"
+import { getImageFileName } from "@/renderer/lib/chat/imagen-message"
 import type { ComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
 import {
@@ -98,6 +105,7 @@ import type {
   PromptMentionTrigger,
   QueuedPromptMessage
 } from "@/renderer/lib/chat/prompt-input"
+import { removeScreenAwarenessContent } from "@/renderer/lib/chat/screen-awareness-capture-store"
 import {
   clearPickedWebElement,
   usePickedWebElement
@@ -1002,6 +1010,7 @@ const PromptInputActions = ({
 }
 
 const FILE_INPUT_ACCEPT = ACCEPTED_ATTACHMENT_MEDIA_TYPES.join(",")
+const EMPTY_COMPOSER_ATTACHMENTS: ComposerAttachment[] = []
 
 const encodeBytesToBase64 = (bytes: Uint8Array): string => {
   let binary = ""
@@ -1072,49 +1081,250 @@ const ATTACHMENT_CHIP_EXIT = {
 }
 
 const ComposerAttachmentChips = ({
+  accessibleTextLabel,
   attachments,
+  imageLabel,
+  listLabel,
   onRemove,
-  removeLabel
+  onRemoveContent,
+  previewLabel,
+  removeLabel,
+  removeImageLabel,
+  removeTextLabel,
+  selectedTextLabel,
+  screenshotLabel
 }: {
+  accessibleTextLabel: string
   attachments: ComposerAttachment[]
-  onRemove: (id: string) => void
+  imageLabel: string
+  listLabel: string
+  onRemove: (id: string) => Promise<void>
+  onRemoveContent: (id: string, part: "image" | "text") => Promise<void>
+  previewLabel: string
   removeLabel: string
+  removeImageLabel: string
+  removeTextLabel: string
+  selectedTextLabel: string
+  screenshotLabel: string
 }) => {
+  const [expandedAttachmentId, setExpandedAttachmentId] = useState<
+    string | null
+  >(null)
+
   if (attachments.length === 0) {
     return null
   }
 
+  const expandedAttachment =
+    attachments.find((attachment) => attachment.id === expandedAttachmentId) ??
+    null
+
   return (
-    <div className="mb-3 flex flex-wrap gap-2">
-      {/* Staged attachments only ever exist because the user just added them,
-          so every chip here is a genuine arrival — no entrance guard needed. */}
-      <AnimatePresence>
-        {attachments.map((attachment) => (
-          <motion.div
-            animate={MOTION_SCALE_IN.animate}
-            className="group relative size-16 overflow-hidden rounded-lg border border-border/60 bg-muted/40"
-            exit={ATTACHMENT_CHIP_EXIT}
-            initial={MOTION_SCALE_IN.initial}
-            key={attachment.id}
-            transition={MOTION_SCALE_IN.transition}
-          >
-            <img
-              alt={attachment.name}
-              className="size-full object-cover"
-              src={attachment.dataUrl}
-            />
-            <button
-              aria-label={removeLabel}
-              className="absolute top-0.5 right-0.5 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-white/60"
-              onClick={() => onRemove(attachment.id)}
-              type="button"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={2} />
-            </button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    </div>
+    <>
+      <ul aria-label={listLabel} className="mb-3 flex flex-wrap gap-2">
+        {/* Staged attachments only ever exist because the user just added them,
+            so every card here is a genuine arrival — no entrance guard needed. */}
+        <AnimatePresence>
+          {attachments.map((attachment) => {
+            const title = attachment.title ?? attachment.name
+
+            if (attachment.kind === "screen-capture") {
+              return (
+                <motion.li
+                  animate={MOTION_SCALE_IN.animate}
+                  className="group relative w-60 max-w-full overflow-hidden rounded-2xl border border-border/60 bg-default/45 p-1.5 shadow-xs"
+                  exit={ATTACHMENT_CHIP_EXIT}
+                  initial={MOTION_SCALE_IN.initial}
+                  key={attachment.id}
+                  transition={MOTION_SCALE_IN.transition}
+                >
+                  <button
+                    aria-label={`${previewLabel}: ${title}`}
+                    className="block w-full cursor-zoom-in rounded-xl text-left focus-visible:outline-2 focus-visible:outline-ring"
+                    onClick={() => {
+                      if (attachment.dataUrl) {
+                        setExpandedAttachmentId(attachment.id)
+                      }
+                    }}
+                    type="button"
+                  >
+                    <span className="block h-28 overflow-hidden rounded-xl bg-muted/50 ring-1 ring-border/50">
+                      {attachment.dataUrl ? (
+                        <img
+                          alt={title}
+                          className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                          src={attachment.dataUrl}
+                        />
+                      ) : (
+                        <span className="block max-h-28 overflow-hidden p-2 text-xs whitespace-pre-wrap">
+                          {attachment.selectedText ?? attachment.accessibleText}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex h-10 min-w-0 items-center justify-center gap-2 px-2">
+                      {attachment.sourceAppIconDataUrl ? (
+                        <img
+                          alt=""
+                          aria-hidden="true"
+                          className="size-5 shrink-0 rounded-[0.35rem] object-cover"
+                          src={attachment.sourceAppIconDataUrl}
+                        />
+                      ) : (
+                        <span className="grid size-5 shrink-0 place-items-center rounded-[0.35rem] bg-muted text-muted-foreground">
+                          <HugeiconsIcon
+                            icon={Attachment01Icon}
+                            size={12}
+                            strokeWidth={2}
+                          />
+                        </span>
+                      )}
+                      <span className="truncate text-xs font-medium text-foreground">
+                        {attachment.sourceAppName ??
+                          attachment.sourceLabel ??
+                          imageLabel}
+                      </span>
+                    </span>
+                  </button>
+                  <div className="flex flex-wrap gap-1 px-1 pb-1 text-xs">
+                    {attachment.dataUrl ? (
+                      <button
+                        className="rounded px-1.5 py-1 hover:bg-default"
+                        type="button"
+                        aria-label={removeImageLabel}
+                        onClick={() => {
+                          void onRemoveContent(attachment.id, "image")
+                        }}
+                      >
+                        {screenshotLabel} ×
+                      </button>
+                    ) : null}
+                    {attachment.accessibleText || attachment.selectedText ? (
+                      <details className="min-w-0 flex-1">
+                        <summary className="cursor-pointer rounded px-1.5 py-1">
+                          {accessibleTextLabel}
+                        </summary>
+                        <div className="max-h-48 space-y-2 overflow-auto p-2 text-xs">
+                          {attachment.selectedText && (
+                            <div>
+                              <p className="font-medium">{selectedTextLabel}</p>
+                              <pre className="whitespace-pre-wrap">
+                                {attachment.selectedText}
+                              </pre>
+                            </div>
+                          )}
+                          {attachment.accessibleText && (
+                            <div>
+                              <p className="font-medium">
+                                {accessibleTextLabel}
+                              </p>
+                              <pre className="whitespace-pre-wrap">
+                                {attachment.accessibleText}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded px-1.5 py-1 hover:bg-default"
+                          onClick={() => {
+                            void onRemoveContent(attachment.id, "text")
+                          }}
+                        >
+                          {removeTextLabel}
+                        </button>
+                      </details>
+                    ) : null}
+                    {attachment.warnings?.length ? (
+                      <p className="w-full px-1 text-warning">
+                        {attachment.warnings.join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    aria-label={`${removeLabel}: ${title}`}
+                    className="absolute top-2.5 right-2.5 grid size-7 place-items-center rounded-full bg-background/90 text-foreground ring-1 ring-border/70 backdrop-blur-sm transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                    onClick={() => {
+                      void onRemove(attachment.id)
+                    }}
+                    type="button"
+                  >
+                    <HugeiconsIcon
+                      icon={Cancel01Icon}
+                      size={14}
+                      strokeWidth={2}
+                    />
+                  </button>
+                </motion.li>
+              )
+            }
+
+            return (
+              <motion.li
+                animate={MOTION_SCALE_IN.animate}
+                className="group relative flex h-[4.5rem] w-52 max-w-full items-center overflow-hidden rounded-xl border border-border/60 bg-default/45 p-1.5 pr-8 shadow-xs"
+                exit={ATTACHMENT_CHIP_EXIT}
+                initial={MOTION_SCALE_IN.initial}
+                key={attachment.id}
+                transition={MOTION_SCALE_IN.transition}
+              >
+                <button
+                  aria-label={`${previewLabel}: ${title}`}
+                  className="flex min-w-0 flex-1 cursor-zoom-in items-center gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-ring"
+                  onClick={() => setExpandedAttachmentId(attachment.id)}
+                  type="button"
+                >
+                  <span className="relative h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-muted/50 ring-1 ring-border/50">
+                    <img
+                      alt={title}
+                      className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                      src={attachment.dataUrl}
+                    />
+                    <span className="absolute right-1 bottom-1 grid size-5 place-items-center rounded-md bg-black/60 text-white opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                      <HugeiconsIcon
+                        icon={ViewIcon}
+                        size={12}
+                        strokeWidth={2}
+                      />
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-foreground">
+                      {title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[0.68rem] text-muted-foreground">
+                      {attachment.sourceLabel ?? imageLabel}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  aria-label={`${removeLabel}: ${title}`}
+                  className="absolute top-2 right-2 grid size-6 place-items-center rounded-full bg-background/80 text-muted-foreground ring-1 ring-border/70 backdrop-blur-sm transition-colors hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  onClick={() => {
+                    void onRemove(attachment.id)
+                  }}
+                  type="button"
+                >
+                  <HugeiconsIcon
+                    icon={Cancel01Icon}
+                    size={13}
+                    strokeWidth={2}
+                  />
+                </button>
+              </motion.li>
+            )
+          })}
+        </AnimatePresence>
+      </ul>
+
+      {expandedAttachment ? (
+        <ImagenLightbox
+          alt={expandedAttachment.title ?? expandedAttachment.name}
+          fileName={getImageFileName(expandedAttachment.name)}
+          onClose={() => setExpandedAttachmentId(null)}
+          src={expandedAttachment.dataUrl}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -1231,7 +1441,10 @@ export const PromptInput = ({
   imageInputAttachLabel = "",
   imageInputCountError = "",
   imageInputEnabled = false,
+  imageInputImageLabel = "",
+  imageInputListLabel = "",
   imageInputNonVisionHint = "",
+  imageInputPreviewLabel = "",
   imageInputRemoveLabel = "",
   imageInputSizeError = "",
   imageInputTypeError = "",
@@ -1276,7 +1489,18 @@ export const PromptInput = ({
   queueEditLabel,
   queueRemoveLabel,
   queueReorderLabel,
+  onStagedAttachmentRemoved,
+  onStagedAttachmentsConsumed,
+  screenAwarenessCaptureLabel = "Capture focused window",
+  screenAwarenessImageLabel = "Screenshot",
+  screenAwarenessTextLabel = "Accessible text",
+  screenAwarenessSelectedTextLabel = "Selected text",
+  screenAwarenessErrorLabel = "Window capture failed. Check permissions and try again.",
+  screenAwarenessEnabled = true,
+  screenAwarenessRemoveImageLabel = "Remove screenshot",
+  screenAwarenessRemoveTextLabel = "Remove text",
   status = "ready",
+  stagedAttachments = EMPTY_COMPOSER_ATTACHMENTS,
   stopLabel,
   submitLabel
 }: {
@@ -1314,7 +1538,10 @@ export const PromptInput = ({
   imageInputAttachLabel?: string
   imageInputCountError?: string
   imageInputEnabled?: boolean
+  imageInputImageLabel?: string
+  imageInputListLabel?: string
   imageInputNonVisionHint?: string
+  imageInputPreviewLabel?: string
   imageInputRemoveLabel?: string
   imageInputSizeError?: string
   imageInputTypeError?: string
@@ -1367,7 +1594,18 @@ export const PromptInput = ({
   queueEditLabel?: string
   queueRemoveLabel?: string
   queueReorderLabel?: string
+  onStagedAttachmentRemoved?: (id: string) => Promise<void>
+  onStagedAttachmentsConsumed?: (ids: string[]) => Promise<void>
+  screenAwarenessCaptureLabel?: string
+  screenAwarenessImageLabel?: string
+  screenAwarenessTextLabel?: string
+  screenAwarenessSelectedTextLabel?: string
+  screenAwarenessErrorLabel?: string
+  screenAwarenessEnabled?: boolean
+  screenAwarenessRemoveImageLabel?: string
+  screenAwarenessRemoveTextLabel?: string
   status?: ChatStatus
+  stagedAttachments?: ComposerAttachment[]
   stopLabel: string
   submitLabel: string
 }) => {
@@ -1479,6 +1717,16 @@ export const PromptInput = ({
     [imageInputCountError, imageInputSizeError, imageInputTypeError]
   )
 
+  useEffect(() => {
+    setAttachments((current) =>
+      mergeComposerAttachments(
+        current.filter((entry) => entry.kind !== "screen-capture"),
+        stagedAttachments,
+        Number.POSITIVE_INFINITY
+      )
+    )
+  }, [stagedAttachments])
+
   // Validate → read accepted files to data URLs → append; the first rejected
   // file surfaces its reason inline. Ignored entirely when the model can't see
   // images, so the disabled attach button and paste path stay consistent.
@@ -1494,7 +1742,9 @@ export const PromptInput = ({
 
       for (const file of incoming) {
         const classification = classifyAttachmentCandidate({
-          existingCount: attachments.length + accepted.length,
+          existingCount:
+            attachments.filter((entry) => entry.dataUrl).length +
+            accepted.length,
           mediaType: file.type,
           sizeBytes: file.size
         })
@@ -1524,14 +1774,56 @@ export const PromptInput = ({
         setAttachmentError(attachmentErrorLabel(rejection))
       }
     },
-    [attachmentErrorLabel, attachments.length, imageInputEnabled]
+    [attachmentErrorLabel, attachments, imageInputEnabled]
   )
 
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((current) =>
-      current.filter((attachment) => attachment.id !== id)
-    )
-  }, [])
+  const removeAttachment = useCallback(
+    async (id: string): Promise<void> => {
+      try {
+        if (
+          attachments.some(
+            (entry) => entry.id === id && entry.kind === "screen-capture"
+          )
+        ) {
+          await onStagedAttachmentRemoved?.(id)
+        }
+        setAttachments((current) => current.filter((entry) => entry.id !== id))
+      } catch {
+        setAttachmentError(screenAwarenessErrorLabel)
+      }
+    },
+    [attachments, screenAwarenessErrorLabel, onStagedAttachmentRemoved]
+  )
+
+  const removeCaptureContent = useCallback(
+    async (id: string, part: "image" | "text"): Promise<void> => {
+      try {
+        await window.electron.removeScreenAwarenessCaptureContent(id, part)
+        removeScreenAwarenessContent(id, part)
+        setAttachments((current) =>
+          current
+            .map((entry) =>
+              entry.id === id
+                ? part === "image"
+                  ? { ...entry, dataUrl: "" }
+                  : {
+                      ...entry,
+                      accessibleText: undefined,
+                      selectedText: undefined
+                    }
+                : entry
+            )
+            .filter(
+              (entry) =>
+                entry.dataUrl || entry.accessibleText || entry.selectedText
+            )
+        )
+      } catch {
+        setAttachmentError(screenAwarenessErrorLabel)
+      }
+    },
+    [screenAwarenessErrorLabel]
+  )
 
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -1852,8 +2144,15 @@ export const PromptInput = ({
 
     // Block sending images to a model that can't see them (e.g. attached on a
     // vision model, then switched away): the user removes them or switches back.
-    if (hasAttachments && !imageInputEnabled) {
+    if (attachments.some((entry) => entry.dataUrl) && !imageInputEnabled) {
       setAttachmentError(imageInputNonVisionHint)
+      return
+    }
+    if (
+      attachments.filter((entry) => entry.dataUrl).length >
+      MAX_ATTACHMENTS_PER_MESSAGE
+    ) {
+      setAttachmentError(imageInputCountError)
       return
     }
 
@@ -1861,10 +2160,19 @@ export const PromptInput = ({
 
     try {
       await onSubmit({
-        files: attachments.map(attachmentToFilePart),
+        files: attachments
+          .filter((entry) => entry.dataUrl)
+          .map(attachmentToFilePart),
         mentions,
-        text: normalizedText
+        text: [normalizedText, attachmentsToContextText(attachments)]
+          .filter(Boolean)
+          .join("\n\n")
       })
+      await onStagedAttachmentsConsumed?.(
+        attachments
+          .filter((entry) => entry.kind === "screen-capture")
+          .map((entry) => entry.id)
+      )
       editor.commands.clearContent()
       setPromptInputValue("")
       setAttachments([])
@@ -1881,7 +2189,9 @@ export const PromptInput = ({
     disabled,
     editor,
     imageInputEnabled,
+    imageInputCountError,
     imageInputNonVisionHint,
+    onStagedAttachmentsConsumed,
     onSubmit
   ])
 
@@ -2227,7 +2537,16 @@ export const PromptInput = ({
         <HeroPromptInput.Content className="p-4">
           <ComposerAttachmentChips
             attachments={attachments}
+            imageLabel={imageInputImageLabel}
+            listLabel={imageInputListLabel}
             onRemove={removeAttachment}
+            onRemoveContent={removeCaptureContent}
+            screenshotLabel={screenAwarenessImageLabel}
+            accessibleTextLabel={screenAwarenessTextLabel}
+            selectedTextLabel={screenAwarenessSelectedTextLabel}
+            removeImageLabel={screenAwarenessRemoveImageLabel}
+            removeTextLabel={screenAwarenessRemoveTextLabel}
+            previewLabel={imageInputPreviewLabel}
             removeLabel={imageInputRemoveLabel}
           />
           {attachmentError ? (
@@ -2292,6 +2611,27 @@ export const PromptInput = ({
                 isDisabled={disabled || !imageInputEnabled}
                 onPress={handleAttachClick}
               />
+              {window.electron.process.platform === "darwin" &&
+              screenAwarenessEnabled ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  isDisabled={disabled}
+                  onPress={async () => {
+                    try {
+                      const started =
+                        await window.electron.captureFocusedWindow()
+                      if (!started) {
+                        setAttachmentError(screenAwarenessErrorLabel)
+                      }
+                    } catch {
+                      setAttachmentError(screenAwarenessErrorLabel)
+                    }
+                  }}
+                >
+                  {screenAwarenessCaptureLabel}
+                </Button>
+              ) : null}
               <input
                 accept={FILE_INPUT_ACCEPT}
                 aria-hidden="true"

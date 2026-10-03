@@ -53,8 +53,12 @@ renderer 侧：`components/chat/browser-panel.tsx` 是工具条 + 被度量的�
 | action | 行为 | 输出 |
 | --- | --- | --- |
 | `navigate` | `resolveAllowedBrowserUrl` 规范化 + 白名单（失败抛描述性错误）→ 以 `initiator: "agent"` 加载（面板自动聚焦）→ 等待加载完成，15s 超时返回 partial 而非报错 | `{action, status: "aborted"｜"loaded"｜"timeout", title, url}` |
-| `read` | `executeJavaScript` 取 `document.title` + `document.body.innerText` | `{action, text, title, truncated, url}` |
+| `read` | isolated world 读取可见 `innerText`、标题和本轮元素 refs；名称关联 label / `aria-labelledby`，输出 textbox、checkbox、radio、combobox 等角色。非 password 文本字段 value 最多 1000 字符，checkbox / radio 返回 checked | `{action, elements, text, title, truncated, url}` |
 | `screenshot` | 必要时临时给视图屏外有效 bounds + 可见性（`withPaintableBrowserView`）→ `capturePage()` → 空帧重试一次 → 最长边缩到 ≤1568px → PNG 写入 attachments 内容寻址目录 | `{action, height, imageUrl, path, title, url, width}` |
+| `click` | 校验本轮 ref、节点仍连接、未禁用、可见及中心点未被其他元素覆盖，再发原生 mouse down / up | `{action, title, url}` |
+| `type` | 校验真实焦点及可编辑性，以原生 select-all / insertText 输入；普通 input / textarea append 保留旧值并整体写入，contenteditable append 将 Range 移到末尾保留既有 markup；总输入最多 20000 字符 | `{action, title, url}` |
+| `scroll` | 有界滚动页面或指定本轮 ref；每轴最多 10000 像素 | `{action, title, url}` |
+| `press` | 聚焦可选 ref 后发送 Enter、Tab、方向键等固定枚举，原生键码映射不暴露任意组合键 | `{action, title, url}` |
 
 要点：
 
@@ -62,6 +66,10 @@ renderer 侧：`components/chat/browser-panel.tsx` 是工具条 + 被度量的�
 - **abort**：run 被中断时 navigate 不只是停止等待，还会 `webContents.stop()` 并摘掉监听器——页面不能在用户眼皮下继续加载。
 - **截图落盘在 attachments 目录**（`persistAttachmentBytes`，`src/main/attachments.ts`），不是用户项目目录：它是 app 产物不是项目产物，而且 renderer 只能通过 `etyon-attachment://` 协议读它。**base64 永远不进持久化输出、不进事件存储、不进 UI 流**。
 - **视图丢失**：`BrowserViewDisposedError` 被翻译成一句人话错误返回给模型。
+- **输入确认**：email / number 使用原生编辑命令，不调用不适用的 DOM selection API；select、checkbox、radio 拒绝 `type`，通过 `click` / `press` 操作。`append` 和 replace 都检查 readonly、焦点重定向及节点脱离。页面校验 / 格式化导致最终值与请求不同，会报告错误并让模型重新读取。
+- **窗口归属**：manager 保存创建视图时的真实 owner，paintable callback 将它传入交互层。原生鼠标 / 键盘输入要求视图已有可绘制 surface 且该 owner 已激活；隐藏或失焦时提示用户聚焦 Etyon，不自动抢其他窗口的焦点，也不把新的全局 main window 当作旧 view 的 owner。
+- **脚本边界**：固定交互函数及其 helper 在同一个序列化 factory 内；参数通过 JSON 编码，没有任意 `eval` action。打包 / minify 后仍以同一 bounded surface 工作。
+- **模型 JSON**：元素元数据明确映射成 JSON 字段，省略 `undefined`；保留 `checked: false` 等有效状态，value 最多 1000 字符，password 字段的 value 在模型输出层再次排除。
 
 ### 审批语义
 
@@ -127,7 +135,7 @@ supportsToolResultImages = getModelProviderId(effectiveModelId) === "anthropic"
 
 ## 9. 已知限制
 
-- agent 只能 navigate/read/screenshot，不能点击/输入/滚动（交互动作见 `plans/browser-tab.md` §8 延伸）。
+- agent 的交互使用最近一次 read 的 refs；页面重读、控件变化或脱离后须重新读取。原生 input 要求 Etyon owner window 在前台并具备可绘制视图。
 - 原生视图 z-order 压 DOM：与浏览区域重叠的 overlay 会被盖住。
 - 用户点进页面后键盘焦点在 `WebContentsView`，app 热键不触发。
 - agent 与用户争用 Browser 主实例：agent 导航会打断主实例里的用户浏览（审批卡即是提示）；额外 Browser tab 不受 agent 导航影响，但 agent 工具也不能指定它们。

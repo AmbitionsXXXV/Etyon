@@ -112,6 +112,47 @@ const createTextMessage = ({
 })
 
 describe("agent chat context", () => {
+  it("strips task display snapshots before sending history to the model", async () => {
+    const output = {
+      task: { id: "task-1", subject: "Review" },
+      todos: [{ content: "Review", status: "pending" }]
+    }
+    const messages: UIMessage[] = [
+      {
+        id: "assistant-1",
+        parts: [
+          {
+            input: {},
+            output,
+            state: "output-available",
+            toolCallId: "task-call",
+            toolName: "task_update",
+            type: "dynamic-tool"
+          }
+        ],
+        role: "assistant"
+      }
+    ]
+    convertToModelMessagesMock.mockClear()
+    await prepareAgentChatContext({
+      db: {} as Parameters<typeof prepareAgentChatContext>[0]["db"],
+      mentions: [],
+      messages,
+      projectPath: "/project",
+      sessionId: "session-1",
+      settings: AppSettingsSchema.parse({ agents: { enabled: true } })
+    })
+    expect(convertToModelMessagesMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        parts: [expect.objectContaining({ output: { task: output.task } })]
+      })
+    ])
+    expect(output.todos).toHaveLength(1)
+    expect(buildSkillsSystemPromptMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ loadOnDemand: true })
+    )
+  })
+
   it("builds a normalized memory query from the last three user messages", () => {
     const messages = [
       createTextMessage({

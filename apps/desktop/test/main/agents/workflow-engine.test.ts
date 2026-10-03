@@ -108,6 +108,42 @@ describe("parseWorkflowScript", () => {
 })
 
 describe("runWorkflow", () => {
+  it("terminates an infinite loop after await without blocking the parent", async () => {
+    let heartbeat = false
+    const timer = setTimeout(() => {
+      heartbeat = true
+    }, 50)
+    try {
+      await expect(
+        runWorkflow(`${META}await Promise.resolve(); while (true) {}`, {
+          runAgent: echoRunAgent,
+          startedAtMs: Date.now(),
+          timeoutMs: 250
+        })
+      ).rejects.toThrow(/deadline/u)
+      expect(heartbeat).toBe(true)
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+
+  it("does not expose host constructors or process to the script", async () => {
+    await expect(
+      run(`return agent.constructor.constructor("return process")()`)
+    ).rejects.toThrow()
+    const result = await run(`return typeof process`)
+    expect(result.result).toBe("undefined")
+  })
+
+  it("bounds script output before logs can grow without limit", async () => {
+    await expect(
+      runWorkflow(`${META}while (true) { log("x".repeat(4000)) }`, {
+        runAgent: echoRunAgent,
+        startedAtMs: Date.now(),
+        timeoutMs: 2000
+      })
+    ).rejects.toThrow(/output limit/u)
+  })
   it("runs a single agent() and returns its value", async () => {
     const result = await run(`return await agent("hello")`)
 

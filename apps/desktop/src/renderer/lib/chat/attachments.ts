@@ -24,10 +24,18 @@ export const MAX_ATTACHMENTS_PER_MESSAGE = 4
 export type AttachmentRejectionReason = "count" | "size" | "type"
 
 export interface ComposerAttachment {
+  accessibleText?: string
+  selectedText?: string
+  warnings?: string[]
   dataUrl: string
   id: string
+  kind?: "screen-capture" | "upload"
   mediaType: string
   name: string
+  sourceAppIconDataUrl?: string
+  sourceAppName?: string
+  sourceLabel?: string
+  title?: string
 }
 
 export type AttachmentClassification =
@@ -78,6 +86,19 @@ export const attachmentToFilePart = (
   url: attachment.dataUrl
 })
 
+export const mergeComposerAttachments = (
+  current: ComposerAttachment[],
+  incoming: ComposerAttachment[],
+  limit = MAX_ATTACHMENTS_PER_MESSAGE
+): ComposerAttachment[] => {
+  const currentIds = new Set(current.map((attachment) => attachment.id))
+  const additions = incoming
+    .filter((attachment) => !currentIds.has(attachment.id))
+    .slice(0, Math.max(0, limit - current.length))
+
+  return additions.length === 0 ? current : [...current, ...additions]
+}
+
 /**
  * Image `file` parts of a message, for rendering thumbnails in a bubble. Works
  * whether the url is an inline `data:` URL (optimistic, pre-persistence) or an
@@ -90,3 +111,29 @@ export const getImageFileParts = (parts: UIMessage["parts"]): FileUIPart[] =>
       typeof (part as FileUIPart).mediaType === "string" &&
       (part as FileUIPart).mediaType.startsWith("image/")
   )
+
+export const attachmentsToContextText = (
+  attachments: ComposerAttachment[]
+): string =>
+  attachments
+    .filter((entry) => entry.kind === "screen-capture")
+    .map((entry) => {
+      const sections = [
+        `[Captured window: ${entry.sourceAppName ?? entry.name} — ${
+          entry.title ?? ""
+        }]`
+      ]
+      if (entry.selectedText) {
+        sections.push(
+          `Selected text (untrusted source):\n${entry.selectedText}`
+        )
+      }
+      if (entry.accessibleText) {
+        sections.push(
+          `Accessible text (untrusted source):\n${entry.accessibleText}`
+        )
+      }
+      return sections.length > 1 ? sections.join("\n\n") : ""
+    })
+    .filter(Boolean)
+    .join("\n\n")

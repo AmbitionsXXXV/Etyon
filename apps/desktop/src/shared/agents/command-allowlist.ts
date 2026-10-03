@@ -10,20 +10,10 @@
  * command substitution, or is empty) derivation returns null and the caller
  * falls back to exact matching. This never loosens the destructive-command gate:
  * `needsShellApproval` re-checks `isDangerousShellCommand` before the remembered
- * allowlist on every call, so a matching pattern can never auto-run a wipe.
+ * allowlist on every call. The classifier is a backstop, not a shell sandbox.
  */
 
-// Shell operators that only carry meaning when unquoted. A commit message may
-// legitimately contain these inside quotes, so they are checked during the
-// quote-aware scan rather than as a naive substring.
-const UNQUOTED_CONTROL_CHARS: ReadonlySet<string> = new Set([
-  "\n",
-  ";",
-  "&",
-  "|",
-  "<",
-  ">"
-])
+import { tokenizeShellCommands } from "@/shared/agents/shell-command"
 
 // Leading `VAR=value` environment assignments precede the real binary.
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/u
@@ -31,78 +21,28 @@ const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/u
 const isEnvAssignment = (token: string): boolean =>
   ENV_ASSIGNMENT_PATTERN.test(token)
 
-/**
- * Splits a command into tokens with minimal quote/escape awareness (enough to
- * keep a quoted argument whole and to ignore operators inside quotes), returning
- * null when an unquoted shell operator or an unterminated quote makes the
- * command unsafe to generalize. Not a full shell parser.
- */
-const tokenizeCommand = (command: string): string[] | null => {
-  const tokens: string[] = []
-  let current = ""
-  let hasToken = false
-  let quote: '"' | "'" | null = null
-
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index] as string
-
-    if (quote !== null) {
-      // Single quotes are literal in POSIX; only double quotes process escapes.
-      if (char === "\\" && quote === '"' && index + 1 < command.length) {
-        current += command[index + 1]
-        index += 1
-        continue
-      }
-
-      if (char === quote) {
-        quote = null
-        continue
-      }
-
-      current += char
-      continue
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char
-      hasToken = true
-      continue
-    }
-
-    if (char === "\\" && index + 1 < command.length) {
-      current += command[index + 1]
-      hasToken = true
-      index += 1
-      continue
-    }
-
-    if (UNQUOTED_CONTROL_CHARS.has(char)) {
-      return null
-    }
-
-    if (char === " " || char === "\t") {
-      if (hasToken) {
-        tokens.push(current)
-        current = ""
-        hasToken = false
-      }
-      continue
-    }
-
-    current += char
-    hasToken = true
-  }
-
-  if (quote !== null) {
-    return null
-  }
-
-  if (hasToken) {
-    tokens.push(current)
-  }
-
-  return tokens
-}
+// These programs interpret arguments as another command or executable code.
+// Their first positional argument is not an approval-safe subcommand.
+const COMMAND_WRAPPERS = new Set([
+  "bash",
+  "bun",
+  "command",
+  "deno",
+  "env",
+  "exec",
+  "nice",
+  "node",
+  "nohup",
+  "perl",
+  "python",
+  "python3",
+  "rtk",
+  "ruby",
+  "sh",
+  "sudo",
+  "timeout",
+  "zsh"
+])
 
 /**
  * Derives the memorable approval pattern from a full command, or null when the
@@ -124,32 +64,28 @@ export const deriveCommandApprovalPattern = (
     return null
   }
 
-  const tokens = tokenizeCommand(trimmed)
+  const parsed = tokenizeShellCommands(trimmed)
 
-  if (tokens === null || tokens.length === 0) {
+  if (parsed === null || parsed.hasOperators || parsed.commands.length !== 1) {
     return null
   }
 
-  let index = 0
+  const [binary, second] = parsed.commands[0] ?? []
 
-  while (index < tokens.length && isEnvAssignment(tokens[index] as string)) {
-    index += 1
-  }
-
-  const binary = tokens[index]
-
-  if (binary === undefined) {
+  if (binary === undefined || isEnvAssignment(binary)) {
     return null
   }
 
-  const second = tokens[index + 1]
-
-  // A flag (or absent) second token collapses the pattern to the binary alone.
-  if (second !== undefined && !second.startsWith("-")) {
-    return `${binary} ${second}`
+  if (second === undefined) {
+    return binary
   }
 
-  return binary
+  const binaryName = binary.split("/").at(-1) ?? binary
+  if (second.startsWith("-") || COMMAND_WRAPPERS.has(binaryName)) {
+    return null
+  }
+
+  return `${binary} ${second}`
 }
 
 /**

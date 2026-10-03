@@ -16,6 +16,10 @@ import type { CSSProperties } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { AppSidebarShell } from "@/renderer/components/app-sidebar"
+import { AutomationTab } from "@/renderer/components/settings/automation-tab"
+import { McpTab } from "@/renderer/components/settings/mcp-tab"
+import { ScreenAwarenessTab } from "@/renderer/components/settings/screen-awareness-tab"
+import { WebToolsTab } from "@/renderer/components/settings/web-tools-tab"
 import { buildChatModelGroups } from "@/renderer/lib/chat/model-options"
 import {
   buildDarkColorSchemaOptions,
@@ -73,22 +77,27 @@ interface SettingsNavItem {
 
 const SETTINGS_SECTION_IDS = new Set<string>([
   "about",
+  "automation",
   "agents",
   "channels",
   "chat",
   "color-schema",
   "general",
+  "mcp",
   "memory",
   "network",
   "plugins",
   "providers",
+  "screen-awareness",
   "skills",
   "token-savings",
+  "web-tools",
   "user-interface"
 ])
 
 // Sections whose content owns the scroll area instead of the page shell.
 const FULL_HEIGHT_SECTION_IDS = new Set<SettingsSectionId>([
+  "automation",
   "plugins",
   "providers"
 ])
@@ -579,6 +588,13 @@ export const SettingsPage = ({
                   skills={draft.skills}
                 />
               )}
+
+              <ScreenAwarenessTab
+                active={activeSection === "screen-awareness"}
+              />
+              <McpTab active={activeSection === "mcp"} />
+              <WebToolsTab active={activeSection === "web-tools"} />
+              <AutomationTab active={activeSection === "automation"} />
 
               {activeSection === "plugins" && <PluginsTab />}
 
