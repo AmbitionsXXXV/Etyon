@@ -109,7 +109,7 @@ env:
 
 `workflow-worker.ts` 通过独立的 `vite.workflow.config.ts` 构建为 `.vite/build/workflow-worker.js`，不能只检查主进程入口存在。升级包还应包含 `0015` / `0016` migration、MCP / Web 的运行时依赖、ASAR 解包后的 native 模块和 `screen-awareness` helper。
 
-本轮使用 `ETYON_RELEASE=true ELECTRON_FORGE_BUILD_IDENTIFIER=release` 执行本地 `vp run make`。当前产品版本保持 `0.1.8`；此处的 release 配置代表打包模式，未执行版本递增、tag push 或 GitHub Release。最终产物与实际 UI 验收结果见 [本轮验收记录](./feature-completion-2026-10-03.md)。
+上轮使用 `ETYON_RELEASE=true ELECTRON_FORGE_BUILD_IDENTIFIER=release` 执行本地 `vp run make`，当时版本为 `0.1.8`，仅验证打包模式。上轮产物见 [功能补齐记录](./feature-completion-2026-10-03.md)，继续实机验收与 `0.1.9` patch 的证据见 [Patch 验收记录](./patch-acceptance-2026-10-03.md)。
 
 本地 ad-hoc 签名验证仅证明文件与本次签名一致；正式 Developer ID、notarization 和正式 helper 的授权升级流程需要在正式签名产物上单独验收。
 

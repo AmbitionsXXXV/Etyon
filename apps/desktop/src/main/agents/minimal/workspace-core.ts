@@ -295,13 +295,20 @@ const privatePathAllowed = (root: string, target: string): boolean => {
 
 const assertNonPrivatePath = (
   absolutePath: string,
-  requestedPath: string
+  requestedPath: string,
+  allowedWorkspaceRoot?: string
 ): WorkspaceResult<void> => {
   if (privateDirectories.length === 0) {
     return { ok: true, value: undefined }
   }
   try {
     const canonical = canonicalPathIncludingMissing(absolutePath)
+    if (
+      allowedWorkspaceRoot &&
+      isPathInsideRoot(allowedWorkspaceRoot, canonical)
+    ) {
+      return { ok: true, value: undefined }
+    }
     if (
       privateDirectories.some(
         (directory) =>
@@ -652,9 +659,17 @@ const getWriteLockKey = async (
 
 // Each model actor keeps its own read versions. Filesystem write locks remain
 // global, so isolated actors still serialize writes to the same canonical path.
-export const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
+export const createWorkspaceCore = (
+  projectPath: string,
+  {
+    allowPrivateWorkspaceRoot = false
+  }: { allowPrivateWorkspaceRoot?: boolean } = {}
+): WorkspaceCore => {
   const normalizedProjectPath = path.resolve(projectPath)
   const realProjectPath = realpathIfExists(normalizedProjectPath)
+  const allowedWorkspaceRoot = allowPrivateWorkspaceRoot
+    ? realProjectPath
+    : undefined
   const readSnapshots = new Map<
     string,
     { contentHash: string; mtimeMs: number }
@@ -677,7 +692,11 @@ export const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
       })
     }
 
-    const privateCheck = assertNonPrivatePath(absolutePath, requestedPath)
+    const privateCheck = assertNonPrivatePath(
+      absolutePath,
+      requestedPath,
+      allowedWorkspaceRoot
+    )
     if (!privateCheck.ok) {
       return privateCheck
     }
@@ -715,7 +734,8 @@ export const createWorkspaceCore = (projectPath: string): WorkspaceCore => {
           realAncestorPath,
           path.relative(existingAncestorPath.value, absolutePath)
         ),
-        requestedPath
+        requestedPath,
+        allowedWorkspaceRoot
       )
       if (!privateCheck.ok) {
         return privateCheck

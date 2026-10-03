@@ -11,6 +11,7 @@ import { ensureDatabaseReady } from "@/main/db/migrate"
 import { createMessagePortRpcContext } from "@/main/rpc/context"
 import type { AppRouter } from "@/main/rpc/router"
 import { router } from "@/main/rpc/router"
+import { updateSettings } from "@/main/settings"
 
 const { mockedAppPath, mockedHomeDir, mockedResolveModel } = vi.hoisted(() => ({
   mockedAppPath: process.cwd().endsWith("/apps/desktop")
@@ -83,6 +84,40 @@ vi.mock("@/main/server/lib/providers", () => ({
 describe("message-port rpc", () => {
   afterAll(() => {
     fs.rmSync(mockedHomeDir, { force: true, recursive: true })
+  })
+
+  it("surfaces actionable web request failures over the message-port adapter", async () => {
+    const { port1, port2 } = new MessageChannel()
+    const client: RouterClient<AppRouter> = createORPCClient(
+      new RPCLink({ port: port2 })
+    )
+    const handler = new RPCHandler(router)
+    handler.upgrade(port1, { context: createMessagePortRpcContext() })
+    port1.start()
+    port2.start()
+    const settings = await client.settings.get()
+
+    try {
+      updateSettings({
+        webTools: { enabled: true, searchApiKey: "", searchProvider: "brave" }
+      })
+      await expect(
+        client.webTools.fetch({ url: "http://127.0.0.1/" })
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Local, private and reserved URLs are not allowed"
+      })
+      await expect(
+        client.webTools.search({ query: "public QA source" })
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Configure a search API key in Settings first"
+      })
+    } finally {
+      updateSettings({ webTools: settings.webTools })
+      port1.close()
+      port2.close()
+    }
   })
 
   it("keeps ping working over the message-port adapter", async () => {

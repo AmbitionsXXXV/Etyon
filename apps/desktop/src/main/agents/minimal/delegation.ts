@@ -879,6 +879,8 @@ export interface DelegatedRunResult {
  */
 export interface DelegatedRunOptions {
   abortSignal?: AbortSignal
+  /** Set only by the owned worktree runtime, never by model tool inputs. */
+  allowPrivateWorkspaceRoot?: boolean
   chatSessionId?: string
   childProfile: ResolvedAgentProfile
   childRunId?: string
@@ -1056,7 +1058,9 @@ export const runDelegatedAgent = async (
     writer
   } = options
 
-  const workspace = createWorkspaceCore(projectPath)
+  const workspace = createWorkspaceCore(projectPath, {
+    allowPrivateWorkspaceRoot: options.allowPrivateWorkspaceRoot
+  })
   const isolatedCoordination = Boolean(
     hooksConfigProjectPath &&
     nodePath.resolve(hooksConfigProjectPath) !== nodePath.resolve(projectPath)

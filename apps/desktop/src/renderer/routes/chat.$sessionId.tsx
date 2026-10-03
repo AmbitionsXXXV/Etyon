@@ -1882,6 +1882,9 @@ const ChatRuntime = ({
       void queryClient.invalidateQueries({
         queryKey: orpc.agents.listRuns.key()
       })
+      void queryClient.invalidateQueries({
+        queryKey: orpc.checkpoints.list.key()
+      })
       // onFinish also fires when a stream segment ends awaiting a tool approval;
       // keep the live todo checklist (and its plan-queue run) alive across that
       // pause so the composer strip stays visible until the turn truly ends.

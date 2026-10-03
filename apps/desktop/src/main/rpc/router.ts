@@ -431,24 +431,38 @@ const checkpointsList = rpc
     }
   })
 
+const toWebToolsRpcError = (error: unknown): Error =>
+  new ORPCError("BAD_REQUEST", {
+    cause: error,
+    message: error instanceof Error ? error.message : "Web request failed"
+  })
+
 const webToolsFetch = rpc
   .input(WebFetchInputSchema)
   .output(WebFetchOutputSchema)
   .handler(async ({ input }) => {
-    const settings = getSettings()
-    if (!settings.webTools.enabled) {
-      throw new Error("Web tools are disabled")
+    try {
+      const settings = getSettings()
+      if (!settings.webTools.enabled) {
+        throw new Error("Web tools are disabled")
+      }
+      return await fetchPublicText(input.url, settings.proxy)
+    } catch (error) {
+      throw toWebToolsRpcError(error)
     }
-    return await fetchPublicText(input.url, settings.proxy)
   })
 const webToolsSearch = rpc
   .input(WebSearchInputSchema)
   .output(WebSearchOutputSchema)
   .handler(async ({ input }) => {
-    if (!getSettings().webTools.enabled) {
-      throw new Error("Web tools are disabled")
+    try {
+      if (!getSettings().webTools.enabled) {
+        throw new Error("Web tools are disabled")
+      }
+      return await searchWeb(input.query)
+    } catch (error) {
+      throw toWebToolsRpcError(error)
     }
-    return await searchWeb(input.query)
   })
 
 const mcpStatuses = rpc

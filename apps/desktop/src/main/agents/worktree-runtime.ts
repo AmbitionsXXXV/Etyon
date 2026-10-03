@@ -219,6 +219,7 @@ const executeDurableChild = async (
     )
     const result = await runDelegatedAgent({
       abortSignal: signal,
+      allowPrivateWorkspaceRoot: options.writable,
       chatSessionId: context.sessionId,
       childProfile: options.profile,
       childRunId,

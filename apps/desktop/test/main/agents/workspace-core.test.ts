@@ -8,6 +8,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   configureWorkspacePrivateDirectory,
+  createWorkspaceCore,
   getWorkspaceCore,
   invalidateWorkspaceCore,
   isSecretWorkspacePath
@@ -132,6 +133,68 @@ afterAll(() => {
 })
 
 describe("application private workspace boundaries", () => {
+  it("allows an owned worktree without exposing other private storage", async () => {
+    const ownedPath = path.join(privacyConfig, "worktrees", "owned")
+    fs.mkdirSync(ownedPath, { recursive: true })
+    fs.writeFileSync(path.join(ownedPath, "candidate.txt"), PUBLIC_MARKER)
+    fs.symlinkSync(
+      path.join(privacyConfig, "settings.json"),
+      path.join(ownedPath, "settings-link.txt")
+    )
+    configureWorkspacePrivateDirectory(privacyConfig)
+    try {
+      expect(
+        await createWorkspaceCore(ownedPath).view("candidate.txt")
+      ).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      const owned = createWorkspaceCore(ownedPath, {
+        allowPrivateWorkspaceRoot: true
+      })
+      expect(await owned.view("candidate.txt")).toMatchObject({
+        ok: true,
+        value: { content: PUBLIC_MARKER }
+      })
+      expect(
+        await owned.writeFile("candidate.txt", `${PUBLIC_MARKER}\nupdated`)
+      ).toMatchObject({ ok: true })
+      expect(await owned.listDir(".")).toMatchObject({ ok: true })
+      expect(
+        await owned.searchContent({ limit: 10, pattern: PUBLIC_MARKER })
+      ).toMatchObject({
+        ok: true,
+        value: expect.stringContaining(PUBLIC_MARKER)
+      })
+      expect(await owned.view("settings-link.txt")).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await owned.view("../.records/other-workspace.json")
+      ).toMatchObject({
+        error: { code: "outside-project" },
+        ok: false
+      })
+      expect(
+        await getWorkspaceCore(privacyHome).view(
+          "app[data]/worktrees/owned/candidate.txt"
+        )
+      ).toMatchObject({
+        error: { code: "secret-path" },
+        ok: false
+      })
+      expect(
+        await owned.searchContent({ limit: 10, pattern: PRIVATE_MARKER })
+      ).toEqual({
+        ok: true,
+        value: ""
+      })
+    } finally {
+      fs.rmSync(ownedPath, { force: true, recursive: true })
+    }
+  })
+
   it("does not search an output root symlinked into private captures", async () => {
     const linkedConfig = path.join(privacyHome, "linked-outputs")
     fs.mkdirSync(path.join(linkedConfig, "screen-awareness-captures"), {
