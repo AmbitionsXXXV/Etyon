@@ -25,11 +25,11 @@ export const consumePanelOpenRequest = (): boolean => {
 
 /**
  * A request to show one session-bound surface (Best-of-N, isolated
- * workspaces) in that session's side panel. Unlike {@link requestPanelOpen}
+ * workspaces, the video editor) in that session's side panel. Unlike {@link requestPanelOpen}
  * it is observable, so it works both when the chat route mounts for the
  * session and when the session is already on screen.
  */
-export type PanelSurfaceRequestKind = "bestOfN" | "worktrees"
+export type PanelSurfaceRequestKind = "bestOfN" | "videoEditor" | "worktrees"
 
 export interface PanelSurfaceRequest {
   kind: PanelSurfaceRequestKind

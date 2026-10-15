@@ -7,7 +7,8 @@ import {
   Cancel01Icon,
   ComputerIcon,
   Image01Icon,
-  PlusSignIcon
+  PlusSignIcon,
+  Video01Icon
 } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { motion } from "motion/react"
@@ -68,7 +69,8 @@ export const ComposerAddMenu = ({
   onAttach,
   onCapture,
   skillsLabel,
-  triggerLabel
+  triggerLabel,
+  videoSkill
 }: {
   attachDisabledLabel: string
   attachLabel: string
@@ -81,6 +83,7 @@ export const ComposerAddMenu = ({
   onCapture?: () => void
   skillsLabel: string
   triggerLabel: string
+  videoSkill?: ComposerImageSkill
 }) => {
   const handleAction = useCallback(
     (key: Key) => {
@@ -90,14 +93,19 @@ export const ComposerAddMenu = ({
         onCapture?.()
       } else if (key === "image") {
         imageSkill?.onActivate()
+      } else if (key === "video") {
+        videoSkill?.onActivate()
       }
     },
-    [imageSkill, onAttach, onCapture]
+    [imageSkill, onAttach, onCapture, videoSkill]
   )
   const disabledKeys = [
     ...(isAttachDisabled ? ["attach"] : []),
     ...(imageSkill && (!imageSkill.isAvailable || imageSkill.isActive)
       ? ["image"]
+      : []),
+    ...(videoSkill && (!videoSkill.isAvailable || videoSkill.isActive)
+      ? ["video"]
       : [])
   ]
 
@@ -144,22 +152,43 @@ export const ComposerAddMenu = ({
               <span>{captureLabel}</span>
             </Dropdown.Item>
           ) : null}
-          {imageSkill ? (
+          {imageSkill || videoSkill ? (
             <Dropdown.Section>
               <Header className="px-2 pt-2 pb-1 text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">
                 {skillsLabel}
               </Header>
-              <Dropdown.Item id="image" textValue={imageSkill.labels.menuLabel}>
-                <HugeiconsIcon
-                  className="size-4 shrink-0 text-warning"
-                  icon={Image01Icon}
-                  strokeWidth={2}
-                />
-                <span className="flex-1">{imageSkill.labels.menuLabel}</span>
-                <span className="text-xs text-muted-foreground">
-                  {imageSkill.labels.menuDescription}
-                </span>
-              </Dropdown.Item>
+              {imageSkill ? (
+                <Dropdown.Item
+                  id="image"
+                  textValue={imageSkill.labels.menuLabel}
+                >
+                  <HugeiconsIcon
+                    className="size-4 shrink-0 text-warning"
+                    icon={Image01Icon}
+                    strokeWidth={2}
+                  />
+                  <span className="flex-1">{imageSkill.labels.menuLabel}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {imageSkill.labels.menuDescription}
+                  </span>
+                </Dropdown.Item>
+              ) : null}
+              {videoSkill ? (
+                <Dropdown.Item
+                  id="video"
+                  textValue={videoSkill.labels.menuLabel}
+                >
+                  <HugeiconsIcon
+                    className="size-4 shrink-0 text-accent"
+                    icon={Video01Icon}
+                    strokeWidth={2}
+                  />
+                  <span className="flex-1">{videoSkill.labels.menuLabel}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {videoSkill.labels.menuDescription}
+                  </span>
+                </Dropdown.Item>
+              ) : null}
             </Dropdown.Section>
           ) : null}
         </Dropdown.Menu>

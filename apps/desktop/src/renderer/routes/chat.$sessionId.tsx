@@ -45,6 +45,7 @@ import type { InputToolResultHandler } from "@/renderer/components/chat/assistan
 import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
 import { useComposerImageSkill } from "@/renderer/components/chat/composer-image-skill"
 import type { ComposerImageSkill } from "@/renderer/components/chat/composer-image-skill"
+import { useComposerVideoSkill } from "@/renderer/components/chat/composer-video-skill"
 import { InvocationStatus } from "@/renderer/components/chat/invocation-status"
 import {
   MessageActions,
@@ -173,6 +174,10 @@ import {
   respondToAssistantToolApproval,
   upsertCommandApprovalRule
 } from "@/renderer/lib/chat/tool-ui"
+import {
+  takeVideoEditRequest,
+  usePendingVideoEdit
+} from "@/renderer/lib/chat/video-edit-request"
 import {
   clearWorkflowProgress,
   setWorkflowProgress
@@ -1781,6 +1786,11 @@ const ChatRuntime = ({
     modelGroups,
     selectedModelValue
   })
+  const {
+    isVideoMode,
+    skill: videoSkillState,
+    videoModelValue
+  } = useComposerVideoSkill({ modelGroups, selectedModelValue })
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [queuedMessages, setQueuedMessages] = useState<QueuedPromptMessage[]>(
     []
@@ -2012,16 +2022,20 @@ const ChatRuntime = ({
         mentions,
         model: selectedModelValue || undefined,
         permissionMode,
-        sessionId: selectedSession.id
+        sessionId: selectedSession.id,
+        videoMode: isVideoMode || undefined,
+        videoModel: videoModelValue
       }
     }),
     [
       agentMode,
       imageModelValue,
       isImageMode,
+      isVideoMode,
       permissionMode,
       selectedModelValue,
-      selectedSession.id
+      selectedSession.id,
+      videoModelValue
     ]
   )
 
@@ -2141,12 +2155,28 @@ const ChatRuntime = ({
     setPermissionMode(getNextPermissionMode)
   }, [agentMode])
   // A running turn pauses the skill controls without changing their state.
+  // Image and Video are direct routes, so turning one on turns the other off.
   const imageSkill = useMemo<ComposerImageSkill>(
     () => ({
       ...imageSkillState,
-      isAvailable: imageSkillState.isAvailable && !isRequestPending
+      isAvailable: imageSkillState.isAvailable && !isRequestPending,
+      onActivate: () => {
+        videoSkillState.onDeactivate()
+        imageSkillState.onActivate()
+      }
     }),
-    [imageSkillState, isRequestPending]
+    [imageSkillState, isRequestPending, videoSkillState]
+  )
+  const videoSkill = useMemo<ComposerImageSkill>(
+    () => ({
+      ...videoSkillState,
+      isAvailable: videoSkillState.isAvailable && !isRequestPending,
+      onActivate: () => {
+        imageSkillState.onDeactivate()
+        videoSkillState.onActivate()
+      }
+    }),
+    [imageSkillState, isRequestPending, videoSkillState]
   )
 
   // Mod+J opens or focuses the terminal tab (expanding the project panel if
@@ -2362,6 +2392,37 @@ const ChatRuntime = ({
     },
     [addToolResult, buildChatRequestOptions, latestUserMentions]
   )
+
+  // Edit / Extend from a clip card: sent as this session's next turn, once no
+  // turn is running.
+  const pendingVideoEdit = usePendingVideoEdit()
+  useEffect(() => {
+    if (
+      pendingVideoEdit?.sessionId !== selectedSession.id ||
+      isRequestPending
+    ) {
+      return
+    }
+
+    const request = takeVideoEditRequest(selectedSession.id)
+
+    if (!request) {
+      return
+    }
+
+    const options = buildChatRequestOptions([])
+
+    void sendMessage(
+      { text: request.prompt },
+      { body: { ...options.body, videoEdit: request.edit } }
+    )
+  }, [
+    buildChatRequestOptions,
+    isRequestPending,
+    pendingVideoEdit,
+    selectedSession.id,
+    sendMessage
+  ])
 
   const sendPromptMessage = useCallback(
     ({
@@ -2865,7 +2926,10 @@ const ChatRuntime = ({
               )}
               imageInputAttachLabel={t("chat.attachments.attach")}
               imageInputCountError={t("chat.attachments.countError")}
-              imageInputEnabled={isSelectedModelImageInputCapable}
+              // The Video skill takes an image as the clip's first frame.
+              imageInputEnabled={
+                isSelectedModelImageInputCapable || isVideoMode
+              }
               imageInputImageLabel={t("chat.attachments.image")}
               imageInputListLabel={t("chat.attachments.ready")}
               imageInputNonVisionHint={t("chat.attachments.nonVisionHint")}
@@ -2878,6 +2942,7 @@ const ChatRuntime = ({
               imageSkill={imageSkill}
               isAgentModeToggleDisabled={isAgentModeToggleDisabled}
               isImageMode={isImageMode}
+              videoSkill={videoSkill}
               skillsLabel={t("chat.composer.skillsGroup")}
               isLoadingFileItems={isLoadingFileItems}
               isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}

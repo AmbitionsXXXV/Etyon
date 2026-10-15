@@ -10,8 +10,13 @@ import { resolveFunctionCallingSupport } from "@/shared/providers/function-calli
 import { isImageOutputModel } from "@/shared/providers/image-output"
 import {
   BUILT_IN_PROVIDER_CATALOG,
-  getProviderCatalogEntry
+  getProviderCatalogEntry,
+  resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
+import {
+  canProviderRenderVideo,
+  isVideoOutputModel
+} from "@/shared/providers/video-output"
 
 export interface ChatModelOption {
   capabilities: StoredProviderModel["capabilities"]
@@ -19,6 +24,8 @@ export interface ChatModelOption {
   label: string
   providerId: AiProviderName
   providerName: string
+  /** A video model on a provider that reaches amux's task API. */
+  rendersVideo: boolean
   summary: string
   value: string
 }
@@ -49,8 +56,12 @@ const resolveToolsSummaryTag = (model: StoredProviderModel): string | null => {
   }
 }
 
-const buildModelSummary = (model: StoredProviderModel): string =>
+const buildModelSummary = (
+  model: StoredProviderModel,
+  rendersVideo: boolean
+): string =>
   [
+    rendersVideo ? "Video" : null,
     isImageOutputModel(model) ? "Image" : null,
     model.capabilities?.vision ? "Vision" : null,
     model.capabilities?.reasoning ? "Reasoning" : null,
@@ -87,17 +98,26 @@ export const buildChatModelGroups = (
       providerConfig.models.length > 0
         ? providerConfig.models
         : providerConfig.availableModels
+    const providerRendersVideo = canProviderRenderVideo(
+      provider.id,
+      resolveProviderBaseURL(provider.id, providerConfig)
+    )
 
     return {
-      options: normalizeProviderModels(candidateModels).map((model) => ({
-        capabilities: model.capabilities,
-        id: model.id,
-        label: model.name,
-        providerId: provider.id,
-        providerName: provider.name,
-        summary: buildModelSummary(model),
-        value: `${provider.id}/${model.id}`
-      })),
+      options: normalizeProviderModels(candidateModels).map((model) => {
+        const rendersVideo = providerRendersVideo && isVideoOutputModel(model)
+
+        return {
+          capabilities: model.capabilities,
+          id: model.id,
+          label: model.name,
+          providerId: provider.id,
+          providerName: provider.name,
+          rendersVideo,
+          summary: buildModelSummary(model, rendersVideo),
+          value: `${provider.id}/${model.id}`
+        }
+      }),
       providerId: provider.id,
       providerName: provider.name
     }

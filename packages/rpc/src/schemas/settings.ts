@@ -132,6 +132,14 @@ export const AiProviderConfigSchema = z.object({
   region: MoonshotRegionSchema.optional()
 })
 
+const AMUX_PROVIDER_CONFIG_DEFAULT = {
+  apiKey: "",
+  availableModels: EMPTY_PROVIDER_MODELS,
+  baseURL: "https://gateway.amux.ai/v1",
+  enabled: false,
+  models: EMPTY_PROVIDER_MODELS
+}
+
 const ANTHROPIC_PROVIDER_CONFIG_DEFAULT = {
   apiKey: "",
   availableModels: EMPTY_PROVIDER_MODELS,
@@ -214,6 +222,7 @@ export const AiSettingsSchema = z.object({
   modelEffort: ModelEffortSettingsSchema,
   providers: z
     .object({
+      amux: AiProviderConfigSchema.default(AMUX_PROVIDER_CONFIG_DEFAULT),
       anthropic: AiProviderConfigSchema.default(
         ANTHROPIC_PROVIDER_CONFIG_DEFAULT
       ),
@@ -228,6 +237,7 @@ export const AiSettingsSchema = z.object({
       )
     })
     .default({
+      amux: AMUX_PROVIDER_CONFIG_DEFAULT,
       anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
       cursor: CURSOR_PROVIDER_CONFIG_DEFAULT,
       gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,
@@ -514,6 +524,7 @@ export const AppSettingsSchema = z.object({
     defaultProvider: "openai",
     modelEffort: { anthropic: "high", openai: "medium" },
     providers: {
+      amux: AMUX_PROVIDER_CONFIG_DEFAULT,
       anthropic: ANTHROPIC_PROVIDER_CONFIG_DEFAULT,
       cursor: CURSOR_PROVIDER_CONFIG_DEFAULT,
       gateway: GATEWAY_PROVIDER_CONFIG_DEFAULT,

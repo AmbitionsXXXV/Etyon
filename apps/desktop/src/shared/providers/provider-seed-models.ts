@@ -217,6 +217,7 @@ export const BUILT_IN_PROVIDER_SEED_MODELS: Record<
   BuiltInProviderId,
   StoredProviderModel[]
 > = {
+  amux: [],
   anthropic: [],
   cursor: CURSOR_PROVIDER_SEED_MODELS,
   gateway: [],

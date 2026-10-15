@@ -8,11 +8,20 @@ import {
   compactStructuredToolTraceParts,
   getToolInputPath
 } from "@/renderer/lib/chat/message-tool-trace"
+import {
+  isStoryboardKeyframesPart,
+  isStoryboardReelPart
+} from "@/renderer/lib/chat/storyboard-message"
+import { isVideogenToolPart } from "@/renderer/lib/chat/video-message"
 import { getPathBaseName, isRecord } from "@/renderer/lib/utils"
 import {
   ASK_USER_TOOL_NAME,
   PROPOSE_PLAN_TOOL_NAME
 } from "@/shared/agents/input-tools"
+import {
+  STORYBOARD_CURATE_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME
+} from "@/shared/chat/storyboard"
 import { isChatRunLimitDataPart } from "@/shared/chat/stream-data"
 import type {
   ChatRunLimitData,
@@ -20,6 +29,7 @@ import type {
   ChatTodoItem,
   ChatTodoStatus
 } from "@/shared/chat/stream-data"
+import { VIDEO_OPTIONS_TOOL_NAME } from "@/shared/chat/video-tools"
 
 export type ChatUiMessage = UIMessage<ChatMessageMetadata, ChatStreamDataTypes>
 
@@ -212,7 +222,11 @@ export const getTodoPartTodos = (part: ChatToolPart): ChatTodoItem[] => {
 }
 
 const isExcludedToolPart = (part: ChatUiMessage["parts"][number]): boolean =>
-  isArtifactToolPart(part) || isImagenToolPart(part)
+  isArtifactToolPart(part) ||
+  isImagenToolPart(part) ||
+  isVideogenToolPart(part) ||
+  isStoryboardKeyframesPart(part) ||
+  isStoryboardReelPart(part)
 
 const isChainToolPart = (part: ChatUiMessage["parts"][number]): boolean =>
   isToolUIPart(part as never) && !isExcludedToolPart(part)
@@ -449,7 +463,10 @@ export const groupChainEntries = (
       // out into dedicated interaction cards (never bucketed as "Used N tools").
       if (
         toolName === ASK_USER_TOOL_NAME ||
-        toolName === PROPOSE_PLAN_TOOL_NAME
+        toolName === PROPOSE_PLAN_TOOL_NAME ||
+        toolName === VIDEO_OPTIONS_TOOL_NAME ||
+        toolName === STORYBOARD_PLAN_TOOL_NAME ||
+        toolName === STORYBOARD_CURATE_TOOL_NAME
       ) {
         flushToolRun()
         grouped.push({

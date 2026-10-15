@@ -14,6 +14,7 @@ import { wrapLanguageModel } from "ai"
 import { createProxyAwareFetch } from "@/main/proxy/proxy-fetch"
 import { createXmlToolMiddleware } from "@/main/server/lib/xml-tool-middleware"
 import { getSettings } from "@/main/settings"
+import type { VideoModelChoice } from "@/shared/chat/video-tools"
 import { hasProviderCredential } from "@/shared/providers/credentials"
 import { resolveFunctionCallingSupport } from "@/shared/providers/function-calling"
 import { isImageOutputModel } from "@/shared/providers/image-output"
@@ -27,10 +28,15 @@ import {
   resolveOpenAiApiMode,
   resolveProviderBaseURL
 } from "@/shared/providers/provider-catalog"
+import {
+  canProviderRenderVideo,
+  isVideoOutputModel
+} from "@/shared/providers/video-output"
 
 type ProviderName = BuiltInProviderId
 
 const PROVIDER_PREFIX_MAP: Record<string, ProviderName> = {
+  amux: "amux",
   anthropic: "anthropic",
   cursor: "cursor",
   gateway: "gateway",
@@ -204,6 +210,13 @@ const createProviderModel = (
   }
 
   switch (provider) {
+    // Amux serves every model family behind one key, so Chat Completions (not
+    // Responses, which only OpenAI-family ids support) is the safe default.
+    case "amux": {
+      return createOpenAICompatibleChatModel({
+        baseURL: resolveProviderBaseURL(provider, providerConfig)
+      })
+    }
     case "anthropic": {
       const apiKey = providerConfig.apiKey.trim()
 
@@ -355,6 +368,59 @@ export const resolveImageModelById = (compoundId: string): ImageModel => {
 
   throw new Error(`Provider "${provider}" does not support image generation.`)
 }
+
+// Video runs on amux's task API (see main/amux): the Amux provider, or an
+// OpenAI provider pointed at amux.
+const VIDEO_PROVIDER_CANDIDATES: readonly ProviderName[] = ["amux", "openai"]
+
+const canRenderVideo = (
+  aiSettings: AiSettings,
+  provider: ProviderName
+): boolean =>
+  canProviderRenderVideo(
+    provider,
+    resolveProviderBaseURL(provider, aiSettings.providers[provider])
+  )
+
+export const isVideoOutputModelSelection = (
+  aiSettings: AiSettings,
+  compoundId: string
+): boolean => {
+  try {
+    const { model, provider } = parseModelId(
+      compoundId,
+      aiSettings.defaultProvider
+    )
+
+    return (
+      canRenderVideo(aiSettings, provider) && isVideoOutputModel({ id: model })
+    )
+  } catch {
+    return false
+  }
+}
+
+/** Every enabled video model on a usable provider, for the options card. */
+export const listVideoModelChoices = (
+  aiSettings: AiSettings
+): VideoModelChoice[] =>
+  VIDEO_PROVIDER_CANDIDATES.flatMap((provider) => {
+    const providerConfig = aiSettings.providers[provider]
+
+    if (
+      !hasUsableProvider(provider, providerConfig) ||
+      !canRenderVideo(aiSettings, provider)
+    ) {
+      return []
+    }
+
+    return providerConfig.models
+      .filter((model) => isVideoOutputModel(model))
+      .map((model) => ({
+        label: model.name || model.id,
+        value: `${provider}/${model.id}`
+      }))
+  })
 
 // Safety-net re-validation for the composer image toggle: parse the compound id
 // and check the matching stored model's capability (falling back to the id

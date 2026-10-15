@@ -14,10 +14,20 @@ import {
 } from "@/shared/agents/input-tools"
 import type { PlanDecision } from "@/shared/agents/input-tools"
 import type { ChatAgentMode } from "@/shared/chat/agent-mode"
+import {
+  STORYBOARD_CURATE_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME
+} from "@/shared/chat/storyboard"
+import type { StoryboardPicks, StoryboardPlan } from "@/shared/chat/storyboard"
+import { VIDEO_OPTIONS_TOOL_NAME } from "@/shared/chat/video-tools"
+import type { VideoChoices } from "@/shared/chat/video-tools"
 
 const INPUT_REQUIRED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ASK_USER_TOOL_NAME,
-  PROPOSE_PLAN_TOOL_NAME
+  PROPOSE_PLAN_TOOL_NAME,
+  VIDEO_OPTIONS_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME,
+  STORYBOARD_CURATE_TOOL_NAME
 ])
 
 /**
@@ -152,6 +162,14 @@ export const formatAskUserAnswer = (output: AskUserCardOutput): string => {
   return parts.join(", ")
 }
 
+/** What an answered input-required card hands back to the run. */
+export type InputToolOutput =
+  | AskUserCardOutput
+  | StoryboardPicks
+  | VideoChoices
+  | { decision: PlanDecision }
+  | { plan: StoryboardPlan }
+
 interface RespondToAssistantInputToolInput {
   addToolResult: ChatAddToolOutputFunction<ChatUiMessage>
   buildChatRequestOptions: (
@@ -160,7 +178,7 @@ interface RespondToAssistantInputToolInput {
   ) => ChatRequestOptions
   latestUserMentions: ChatMention[]
   modeOverride?: ChatAgentMode
-  output: AskUserCardOutput | { decision: PlanDecision }
+  output: InputToolOutput
   part: ChatToolPart
 }
 

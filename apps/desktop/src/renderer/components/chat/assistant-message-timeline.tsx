@@ -7,9 +7,9 @@ import {
   BrowserIcon,
   CheckmarkCircle01Icon,
   ClipboardIcon,
-  HelpCircleIcon
+  HelpCircleIcon,
+  Video01Icon
 } from "@hugeicons/core-free-icons"
-import type { IconSvgElement } from "@hugeicons/react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { getToolName } from "ai"
 import { motion } from "motion/react"
@@ -20,7 +20,18 @@ import type { Components, ExtraProps } from "streamdown"
 import { AgentMarkdown } from "@/renderer/components/chat/agent-markdown"
 import { BrowserScreenshotImage } from "@/renderer/components/chat/browser-screenshot"
 import { ImagenMessageImage } from "@/renderer/components/chat/imagen-message"
+import {
+  APPROVAL_CARD_MOTION,
+  InputToolAnsweredLine
+} from "@/renderer/components/chat/input-card-chrome"
+import {
+  StoryboardCurateCard,
+  StoryboardKeyframesLine,
+  StoryboardPlanCard,
+  StoryboardReelCard
+} from "@/renderer/components/chat/storyboard-cards"
 import { WorkSubagentEntry } from "@/renderer/components/chat/subagents/subagent-entries"
+import { VideogenMessageVideo } from "@/renderer/components/chat/video-message"
 import {
   useWorkElapsedMs,
   WorkTextEntry,
@@ -67,17 +78,26 @@ import {
   getProposePlanCardDecision,
   getProposePlanCardInput
 } from "@/renderer/lib/chat/input-tools-ui"
-import type { AskUserCardOutput } from "@/renderer/lib/chat/input-tools-ui"
+import type {
+  AskUserCardOutput,
+  InputToolOutput
+} from "@/renderer/lib/chat/input-tools-ui"
 import { parseChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+import {
+  isStoryboardKeyframesPart,
+  isStoryboardReelPart
+} from "@/renderer/lib/chat/storyboard-message"
 import { getStreamdownAnimateOptions } from "@/renderer/lib/chat/streamdown-settings"
 import { useHasSubagentApprovalPending } from "@/renderer/lib/chat/subagent-stream-store"
 import type { AssistantToolApprovalResponseOptions } from "@/renderer/lib/chat/tool-ui"
 import {
-  MOTION_DURATION,
-  MOTION_EASE,
-  MOTION_FADE_IN,
+  formatVideoChoices,
+  getVideoOptionsCardInput,
+  getVideoOptionsCardOutput,
+  isVideogenToolPart
+} from "@/renderer/lib/chat/video-message"
+import {
   MOTION_FADE_IN_FAST,
-  MOTION_RISE_PX,
   MOTION_ROW_RISE_IN,
   MOTION_TRANSITION_GENTLE_CLASS,
   useEntranceGuard,
@@ -86,6 +106,21 @@ import {
 import { formatElapsedDuration } from "@/renderer/lib/utils"
 import { PROPOSE_PLAN_TOOL_NAME } from "@/shared/agents/input-tools"
 import type { PlanDecision } from "@/shared/agents/input-tools"
+import {
+  STORYBOARD_CURATE_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME,
+  STORYBOARD_SHOT_COUNTS,
+  STORYBOARD_VARIANTS
+} from "@/shared/chat/storyboard"
+import {
+  estimateVideoTokens,
+  VIDEO_DURATIONS,
+  VIDEO_IMAGE_USES,
+  VIDEO_OPTIONS_TOOL_NAME,
+  VIDEO_RATIOS,
+  getVideoResolutions
+} from "@/shared/chat/video-tools"
+import type { VideoChoices } from "@/shared/chat/video-tools"
 
 type MarkdownTableProps = ComponentPropsWithoutRef<"table"> & ExtraProps
 
@@ -165,14 +200,6 @@ const AssistantMarkdownContent = ({
   )
 }
 
-// The one entrance in the timeline allowed a scale: an approval or interaction
-// card asks the user to act, so it lands with slightly more weight than a row.
-const APPROVAL_CARD_MOTION = {
-  animate: { opacity: 1, scale: 1, y: 0 },
-  initial: { opacity: 0, scale: 0.97, y: MOTION_RISE_PX },
-  transition: { duration: MOTION_DURATION.gentle, ease: MOTION_EASE }
-}
-
 const getWorkSectionLabelText = (
   t: Translate,
   status: WorkSectionStatus,
@@ -201,44 +228,9 @@ const getWorkSectionLabelText = (
 // composer to agent mode and resumes there (the plan "Implement" path).
 export type InputToolResultHandler = (
   part: ChatToolPart,
-  output: AskUserCardOutput | { decision: PlanDecision },
+  output: InputToolOutput,
   options?: { switchToAgent?: boolean }
 ) => void
-
-// Answered / historical collapse for both interaction cards: one compact
-// trace-style line echoing the prompt and the chosen answer.
-const InputToolAnsweredLine = ({
-  icon,
-  isJustAnswered,
-  label,
-  value
-}: {
-  icon: IconSvgElement
-  // Only the card that settled in front of the user cross-fades; a historical
-  // answer is simply there when its message mounts.
-  isJustAnswered: boolean
-  label: string
-  value: string
-}) => (
-  <motion.div
-    animate={MOTION_FADE_IN.animate}
-    className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/40 px-2 py-1.5"
-    initial={isJustAnswered ? MOTION_FADE_IN.initial : false}
-    transition={MOTION_FADE_IN.transition}
-  >
-    <span className="grid size-5 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
-      <HugeiconsIcon icon={icon} size={13} />
-    </span>
-    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-      {label}
-    </span>
-    {value ? (
-      <span className="max-w-[55%] min-w-0 shrink-0 truncate text-xs font-medium text-foreground">
-        {value}
-      </span>
-    ) : null}
-  </motion.div>
-)
 
 const AskUserCard = ({
   isDisabled,
@@ -505,6 +497,232 @@ const ProposePlanCard = ({
   )
 }
 
+const TOKENS_PER_THOUSAND = 1000
+
+const VideoChoiceGroup = <Value extends boolean | number | string>({
+  isDisabled,
+  label,
+  onSelect,
+  options,
+  value
+}: {
+  isDisabled: boolean
+  label: string
+  onSelect: (value: Value) => void
+  options: readonly { label: string; value: Value }[]
+  value: Value
+}) => (
+  <fieldset className="m-0 flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0">
+    <legend className="float-left mr-1 w-20 shrink-0 text-xs text-muted-foreground">
+      {label}
+    </legend>
+    {options.map((option) => {
+      const isSelected = option.value === value
+
+      return (
+        <Button
+          aria-pressed={isSelected}
+          className="h-7 min-w-0 px-2.5 text-xs"
+          isDisabled={isDisabled}
+          key={String(option.value)}
+          onPress={() => onSelect(option.value)}
+          size="sm"
+          type="button"
+          variant={isSelected ? "secondary" : "outline"}
+        >
+          {option.label}
+        </Button>
+      )
+    })}
+  </fieldset>
+)
+
+// The Video skill's choices card: the render's settings as one-tap choices,
+// with a live token estimate, answered with the user's picks on Render.
+const VideoOptionsCard = ({
+  isDisabled,
+  onSubmit,
+  part
+}: {
+  isDisabled: boolean
+  onSubmit: (part: ChatToolPart, output: VideoChoices) => void
+  part: ChatToolPart
+}) => {
+  const { t } = useI18n()
+  const input = getVideoOptionsCardInput(part)
+  const isPending = part.state === "input-available"
+  const isJustAnswered = useHasChangedSinceMount(isPending)
+  const [submitted, setSubmitted] = useState(false)
+  const [choices, setChoices] = useState<VideoChoices | null>(
+    input?.defaults ?? null
+  )
+  const isLocked = submitted || isDisabled || !isPending
+
+  if (!isPending) {
+    const output = getVideoOptionsCardOutput(part)
+
+    return (
+      <InputToolAnsweredLine
+        icon={Video01Icon}
+        isJustAnswered={isJustAnswered}
+        label={input?.title ?? t("chat.videogen.label")}
+        value={output ? formatVideoChoices(output, input?.models ?? []) : ""}
+      />
+    )
+  }
+
+  if (!(input && choices)) {
+    return null
+  }
+
+  const pick = <Key extends keyof VideoChoices>(
+    key: Key,
+    value: VideoChoices[Key]
+  ) => setChoices({ ...choices, [key]: value })
+
+  const render = () => {
+    if (isLocked) {
+      return
+    }
+
+    setSubmitted(true)
+    onSubmit(part, choices)
+  }
+
+  return (
+    <motion.div
+      animate={APPROVAL_CARD_MOTION.animate}
+      className="flex flex-col gap-2.5 rounded-xl border border-border/70 bg-background/60 p-3"
+      initial={APPROVAL_CARD_MOTION.initial}
+      transition={APPROVAL_CARD_MOTION.transition}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <HugeiconsIcon
+          className="shrink-0 text-muted-foreground"
+          icon={Video01Icon}
+          size={15}
+        />
+        <p className="min-w-0 flex-1 text-sm leading-5 font-medium text-foreground">
+          {t("chat.videogen.optionsTitle")}
+        </p>
+      </div>
+      {input.models.length > 1 ? (
+        <VideoChoiceGroup
+          isDisabled={isLocked}
+          label={t("chat.videogen.model")}
+          onSelect={(model) => {
+            const resolutions = getVideoResolutions(model)
+
+            // Keep the quality when the new model takes it, else its first.
+            setChoices({
+              ...choices,
+              model,
+              resolution: resolutions.includes(choices.resolution)
+                ? choices.resolution
+                : (resolutions[0] ?? choices.resolution)
+            })
+          }}
+          options={input.models}
+          value={choices.model}
+        />
+      ) : null}
+      <VideoChoiceGroup
+        isDisabled={isLocked}
+        label={t("chat.videogen.shots")}
+        onSelect={(value) => pick("shots", value)}
+        options={STORYBOARD_SHOT_COUNTS.map((value) => ({
+          label:
+            value === 1
+              ? t("chat.videogen.singleClip")
+              : t("chat.videogen.shotCount", { count: value }),
+          value
+        }))}
+        value={choices.shots ?? 1}
+      />
+      <VideoChoiceGroup
+        isDisabled={isLocked}
+        label={t("chat.videogen.length")}
+        onSelect={(value) => pick("duration", value)}
+        options={VIDEO_DURATIONS.map((value) => ({
+          label: t("chat.videogen.seconds", { count: value }),
+          value
+        }))}
+        value={choices.duration}
+      />
+      <VideoChoiceGroup
+        isDisabled={isLocked}
+        label={t("chat.videogen.shape")}
+        onSelect={(value) => pick("ratio", value)}
+        options={VIDEO_RATIOS.map((value) => ({
+          label:
+            value === "adaptive" ? t("chat.videogen.ratioAdaptive") : value,
+          value
+        }))}
+        value={choices.ratio}
+      />
+      <VideoChoiceGroup
+        isDisabled={isLocked}
+        label={t("chat.videogen.quality")}
+        onSelect={(value) => pick("resolution", value)}
+        options={getVideoResolutions(choices.model).map((value) => ({
+          label: value,
+          value
+        }))}
+        value={choices.resolution}
+      />
+      <VideoChoiceGroup
+        isDisabled={isLocked}
+        label={t("chat.videogen.sound")}
+        onSelect={(value) => pick("generateAudio", value)}
+        options={[
+          { label: t("chat.videogen.soundOn"), value: true },
+          { label: t("chat.videogen.soundOff"), value: false }
+        ]}
+        value={choices.generateAudio}
+      />
+      {input.hasImage ? (
+        <VideoChoiceGroup
+          isDisabled={isLocked}
+          label={t("chat.videogen.image")}
+          onSelect={(value) => pick("imageUse", value)}
+          options={VIDEO_IMAGE_USES.map((value) => ({
+            label: t(`chat.videogen.imageUse.${value}`),
+            value
+          }))}
+          value={choices.imageUse}
+        />
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-2.5">
+        <span className="text-xs text-warning-soft-foreground tabular-nums">
+          {(choices.shots ?? 1) > 1
+            ? t("chat.videogen.estimateStoryboard", {
+                count: Math.round(
+                  (estimateVideoTokens(choices) * (choices.shots ?? 1)) /
+                    TOKENS_PER_THOUSAND
+                ),
+                images: ((choices.shots ?? 1) + 1) * STORYBOARD_VARIANTS
+              })
+            : t("chat.videogen.estimate", {
+                count: Math.round(
+                  estimateVideoTokens(choices) / TOKENS_PER_THOUSAND
+                )
+              })}
+        </span>
+        <Button
+          className="ml-auto"
+          isDisabled={isLocked}
+          onPress={render}
+          size="sm"
+          type="button"
+          variant="primary"
+        >
+          {t("chat.videogen.render")}
+        </Button>
+      </div>
+    </motion.div>
+  )
+}
+
 const AssistantInputToolEntry = ({
   isDisabled,
   onInputToolResult,
@@ -514,6 +732,36 @@ const AssistantInputToolEntry = ({
   onInputToolResult: InputToolResultHandler
   part: ChatToolPart
 }) => {
+  if (getToolName(part) === STORYBOARD_PLAN_TOOL_NAME) {
+    return (
+      <StoryboardPlanCard
+        isDisabled={isDisabled}
+        onSubmit={(planPart, output) => onInputToolResult(planPart, output)}
+        part={part}
+      />
+    )
+  }
+
+  if (getToolName(part) === STORYBOARD_CURATE_TOOL_NAME) {
+    return (
+      <StoryboardCurateCard
+        isDisabled={isDisabled}
+        onSubmit={(curatePart, output) => onInputToolResult(curatePart, output)}
+        part={part}
+      />
+    )
+  }
+
+  if (getToolName(part) === VIDEO_OPTIONS_TOOL_NAME) {
+    return (
+      <VideoOptionsCard
+        isDisabled={isDisabled}
+        onSubmit={(videoPart, output) => onInputToolResult(videoPart, output)}
+        part={part}
+      />
+    )
+  }
+
   if (getToolName(part) === PROPOSE_PLAN_TOOL_NAME) {
     return (
       <ProposePlanCard
@@ -683,9 +931,12 @@ const AssistantWorkSection = ({
     }
   }, [status])
 
+  // A resumed run (an answered card, an approval) continues a message that
+  // already carries the previous request's `workTimeMs`; while it runs, the
+  // live clock is the truth, not that stale figure.
   const elapsedMs = useWorkElapsedMs({
     liveStartedAt: isRunActive ? liveWorkTimeStartedAt : undefined,
-    workTimeMs
+    workTimeMs: isRunActive && liveWorkTimeStartedAt ? undefined : workTimeMs
   })
   // Rows already present when the section mounted are history — only the ones
   // the run appends afterwards get to enter.
@@ -966,6 +1217,15 @@ export const AssistantMessageTimeline = ({
   const imagenParts = message.parts.filter((part) =>
     isImagenToolPart(part)
   ) as ChatToolPart[]
+  const videogenParts = message.parts.filter((part) =>
+    isVideogenToolPart(part)
+  ) as ChatToolPart[]
+  const storyboardKeyframeParts = message.parts.filter((part) =>
+    isStoryboardKeyframesPart(part)
+  ) as ChatToolPart[]
+  const storyboardReelParts = message.parts.filter((part) =>
+    isStoryboardReelPart(part)
+  ) as ChatToolPart[]
   // Screenshots stay in the work section as a normal (approval-gated) trace row
   // AND render here, so the captured page survives the section collapsing.
   const browserScreenshotParts = message.parts.filter(
@@ -1011,6 +1271,26 @@ export const AssistantMessageTimeline = ({
       {imagenParts.map((part) => (
         <ImagenMessageImage
           key={`${message.id}-imagen-${part.toolCallId}`}
+          part={part}
+          sessionId={sessionId}
+        />
+      ))}
+      {storyboardKeyframeParts.map((part) => (
+        <StoryboardKeyframesLine
+          key={`${message.id}-keyframes-${part.toolCallId}`}
+          part={part}
+        />
+      ))}
+      {videogenParts.map((part) => (
+        <VideogenMessageVideo
+          key={`${message.id}-videogen-${part.toolCallId}`}
+          part={part}
+          sessionId={sessionId}
+        />
+      ))}
+      {storyboardReelParts.map((part) => (
+        <StoryboardReelCard
+          key={`${message.id}-reel-${part.toolCallId}`}
           part={part}
           sessionId={sessionId}
         />

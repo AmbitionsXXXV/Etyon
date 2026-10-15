@@ -351,6 +351,35 @@ export const agentInvocations = sqliteTable(
   })
 )
 
+// One row per remote media task (amux gpt-image / Seedance). Tasks run for
+// minutes on amux's side, so the row is what lets a render outlive the request
+// that started it: on relaunch the open rows are polled and their outputs saved.
+export const mediaTasks = sqliteTable(
+  "media_tasks",
+  {
+    costText: text("cost_text"),
+    createdAt: text("created_at").notNull(),
+    error: text("error"),
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["image", "video"] }).notNull(),
+    localPathsJson: text("local_paths_json"),
+    model: text("model").notNull(),
+    outputUrlsJson: text("output_urls_json"),
+    // Who waits for the result, e.g. a chat tool part, as JSON.
+    ownerJson: text("owner_json").notNull(),
+    projectPath: text("project_path").notNull(),
+    provider: text("provider").notNull(),
+    requestJson: text("request_json").notNull(),
+    status: text("status", {
+      enum: ["canceled", "expired", "failed", "queued", "running", "succeeded"]
+    }).notNull(),
+    updatedAt: text("updated_at").notNull()
+  },
+  (table) => ({
+    statusIdx: index("media_tasks_status_idx").on(table.status)
+  })
+)
+
 export const schema = {
   agentApprovals,
   agentArtifacts,
@@ -365,6 +394,7 @@ export const schema = {
   chatSessionMemories,
   chatSessionPlans,
   chatSessions,
+  mediaTasks,
   memoryEmbeddings,
   memoryEntries
 } as const

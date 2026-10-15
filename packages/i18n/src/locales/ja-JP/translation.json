@@ -341,7 +341,8 @@
       "truncated": "Diff は切り詰められました",
       "viewDiff": "Diff を表示",
       "viewFile": "ファイルを表示",
-      "viewsLabel": "プロジェクトコンテキストビュー"
+      "viewsLabel": "プロジェクトコンテキストビュー",
+      "videoEditorView": "動画エディタ"
     },
     "promptInput": {
       "permissionMode": {
@@ -637,6 +638,80 @@
       "suggestion": "画像 Skill を使う",
       "suggestionDismiss": "Esc で閉じる",
       "modelLabel": "画像モデル"
+    },
+    "videoSkill": {
+      "label": "動画",
+      "menuDescription": "Seedance クリップ",
+      "remove": "動画スキルをオフにする"
+    },
+    "videogen": {
+      "label": "動画",
+      "failed": "動画の生成に失敗しました",
+      "generating": "動画をレンダリング中 · 数分かかることがあります",
+      "cost": "コスト {{cost}}",
+      "optionsTitle": "レンダリング前に選んでください",
+      "model": "モデル",
+      "length": "長さ",
+      "seconds": "{{count}} 秒",
+      "shape": "比率",
+      "ratioAdaptive": "自動",
+      "quality": "画質",
+      "sound": "音声",
+      "soundOn": "オン",
+      "soundOff": "オフ",
+      "image": "画像",
+      "imageUse": {
+        "first_frame": "最初のフレーム",
+        "reference": "参考",
+        "ignore": "使わない"
+      },
+      "estimate": "≈ {{count}}k トークン",
+      "render": "レンダリング",
+      "openInEditor": "エディタで開く",
+      "shots": "ショット",
+      "singleClip": "1 クリップ",
+      "shotCount": "{{count}} ショット",
+      "estimateStoryboard": "≈ 動画 {{count}}k トークン + 画像 {{images}} 枚",
+      "edit": "編集",
+      "extend": "延長",
+      "editLabel": "このクリップを変更",
+      "extendLabel": "このクリップの続き",
+      "editPlaceholder": "夜にする、雪を降らせる…",
+      "extendPlaceholder": "船が排水口へ流れていく…",
+      "editModel": "Seedance 2.5"
+    },
+    "videoEditor": {
+      "emptyTitle": "クリップはまだありません",
+      "emptyHint": "チャットの動画の下にある「エディタで開く」を押すと、ここに追加されます。",
+      "play": "再生",
+      "pause": "一時停止",
+      "split": "再生位置で分割",
+      "timeline": "タイムライン",
+      "start": "開始（秒）",
+      "end": "終了（秒）",
+      "moveEarlier": "前へ移動",
+      "moveLater": "後ろへ移動",
+      "remove": "削除"
+    },
+    "storyboard": {
+      "planTitle": "絵コンテ",
+      "style": "共通のスタイル（全キーフレーム）",
+      "keyframe": "キーフレーム K{{index}}",
+      "shot": "ショット {{index}} · 動き",
+      "imageCount": "画像を {{count}} 枚作り、選んでから動画をレンダリングします",
+      "makeKeyframes": "キーフレームを作る",
+      "shotCount": "{{count}} ショット",
+      "curateTitle": "キーフレームごとに 1 枚選ぶ",
+      "endsShot": "ショット {{index}} の終わり",
+      "startsShot": "ショット {{index}} の始まり",
+      "variant": "K{{index}} 候補 {{variant}}",
+      "clipCount": "次に {{count}} クリップをレンダリング",
+      "renderClips": "クリップをレンダリング",
+      "keyframesFailed": "キーフレームの生成に失敗しました",
+      "makingKeyframes": "キーフレーム {{count}} 枚 × 候補 {{variants}} を作成中",
+      "keyframesReady": "キーフレーム画像 {{count}} 枚の準備完了",
+      "reel": "絵コンテのリール · {{count}} クリップ",
+      "openReel": "すべてエディタで開く"
     }
   },
   "firstLight": {
@@ -1434,6 +1509,9 @@
         "title": "Models"
       },
       "provider": {
+        "amux": {
+          "description": "Amux は 1 つのキーでチャット、gpt-image、Seedance を提供します。画像と動画はタスク API 経由なので、Etyon を閉じてもレンダリングは続きます。"
+        },
         "cursor": {
           "description": "Cursor provider は組み込み cursor-auth plugin から提供され、Cursor subscription 認証とモデル選択を使います。"
         },

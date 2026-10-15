@@ -341,7 +341,8 @@
       "truncated": "Diff 已截断",
       "viewDiff": "查看 diff",
       "viewFile": "查看文件",
-      "viewsLabel": "项目上下文视图"
+      "viewsLabel": "项目上下文视图",
+      "videoEditorView": "视频编辑"
     },
     "promptInput": {
       "permissionMode": {
@@ -637,6 +638,80 @@
       "suggestion": "使用图像 Skill",
       "suggestionDismiss": "Esc 忽略",
       "modelLabel": "图像模型"
+    },
+    "videoSkill": {
+      "label": "视频",
+      "menuDescription": "Seedance 短片",
+      "remove": "关闭视频技能"
+    },
+    "videogen": {
+      "label": "视频",
+      "failed": "视频生成失败",
+      "generating": "正在渲染视频 · 最多几分钟",
+      "cost": "费用 {{cost}}",
+      "optionsTitle": "渲染前选几项",
+      "model": "模型",
+      "length": "时长",
+      "seconds": "{{count}} 秒",
+      "shape": "画幅",
+      "ratioAdaptive": "自动",
+      "quality": "清晰度",
+      "sound": "声音",
+      "soundOn": "开",
+      "soundOff": "关",
+      "image": "你的图片",
+      "imageUse": {
+        "first_frame": "作为首帧",
+        "reference": "作为参考",
+        "ignore": "不用"
+      },
+      "estimate": "≈ {{count}}k tokens",
+      "render": "开始渲染",
+      "openInEditor": "在编辑器中打开",
+      "shots": "镜头",
+      "singleClip": "单个片段",
+      "shotCount": "{{count}} 个镜头",
+      "estimateStoryboard": "≈ {{count}}k tokens 视频 + {{images}} 张图",
+      "edit": "编辑",
+      "extend": "延长",
+      "editLabel": "修改这个片段",
+      "extendLabel": "接着这个片段",
+      "editPlaceholder": "改成夜晚、加上飘雪……",
+      "extendPlaceholder": "纸船漂进下水道……",
+      "editModel": "Seedance 2.5"
+    },
+    "videoEditor": {
+      "emptyTitle": "还没有片段",
+      "emptyHint": "在对话里视频下方点「在编辑器中打开」，片段就会出现在这里。",
+      "play": "播放",
+      "pause": "暂停",
+      "split": "在播放头处分割",
+      "timeline": "时间线",
+      "start": "开始（秒）",
+      "end": "结束（秒）",
+      "moveEarlier": "前移",
+      "moveLater": "后移",
+      "remove": "移除"
+    },
+    "storyboard": {
+      "planTitle": "分镜方案",
+      "style": "统一风格（每个关键帧）",
+      "keyframe": "关键帧 K{{index}}",
+      "shot": "镜头 {{index}} · 运动",
+      "imageCount": "先生成 {{count}} 张图，你挑完才渲染视频",
+      "makeKeyframes": "生成关键帧",
+      "shotCount": "{{count}} 个镜头",
+      "curateTitle": "每个关键帧挑一张",
+      "endsShot": "镜头 {{index}} 结尾",
+      "startsShot": "镜头 {{index}} 开头",
+      "variant": "K{{index}} 候选 {{variant}}",
+      "clipCount": "接下来渲染 {{count}} 个片段",
+      "renderClips": "渲染片段",
+      "keyframesFailed": "关键帧生成失败",
+      "makingKeyframes": "正在生成 {{count}} 个关键帧 × {{variants}} 个候选",
+      "keyframesReady": "{{count}} 张关键帧已就绪",
+      "reel": "分镜成片 · {{count}} 个片段",
+      "openReel": "全部在编辑器中打开"
     }
   },
   "firstLight": {
@@ -1434,6 +1509,9 @@
         "title": "模型"
       },
       "provider": {
+        "amux": {
+          "description": "Amux 用一个 Key 提供对话、gpt-image 和 Seedance。图片和视频走它的任务 API，渲染时关掉 Etyon 也不会中断。"
+        },
         "cursor": {
           "description": "Cursor provider 来自内置 cursor-auth 插件，使用 Cursor 订阅授权并提供模型选择。"
         },

@@ -1,5 +1,14 @@
 import { z } from "zod"
 
+import {
+  STORYBOARD_CURATE_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME
+} from "@/shared/chat/storyboard"
+import {
+  VIDEO_OPTIONS_TOOL_NAME,
+  VIDEO_OPTIONS_TOOL_PART_TYPE
+} from "@/shared/chat/video-tools"
+
 /**
  * Input-required tools: defined without `execute`, so a call suspends the run
  * (see agent-loop) until the renderer supplies the result via `addToolResult`
@@ -17,7 +26,10 @@ export const PROPOSE_PLAN_TOOL_PART_TYPE =
 
 const INPUT_REQUIRED_TOOL_PART_TYPES: ReadonlySet<string> = new Set([
   ASK_USER_TOOL_PART_TYPE,
-  PROPOSE_PLAN_TOOL_PART_TYPE
+  PROPOSE_PLAN_TOOL_PART_TYPE,
+  VIDEO_OPTIONS_TOOL_PART_TYPE,
+  `tool-${STORYBOARD_PLAN_TOOL_NAME}`,
+  `tool-${STORYBOARD_CURATE_TOOL_NAME}`
 ])
 
 export const isInputRequiredToolPartType = (type: string): boolean =>
@@ -25,7 +37,10 @@ export const isInputRequiredToolPartType = (type: string): boolean =>
 
 const INPUT_REQUIRED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ASK_USER_TOOL_NAME,
-  PROPOSE_PLAN_TOOL_NAME
+  PROPOSE_PLAN_TOOL_NAME,
+  VIDEO_OPTIONS_TOOL_NAME,
+  STORYBOARD_PLAN_TOOL_NAME,
+  STORYBOARD_CURATE_TOOL_NAME
 ])
 
 export const isInputRequiredToolName = (name: string): boolean =>

@@ -114,3 +114,6 @@ artifacts/images
 generated-images
 
 .qoder/
+
+# Etyon-generated files (auto-added)
+generated-videos/

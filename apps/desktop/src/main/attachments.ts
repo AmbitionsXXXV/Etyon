@@ -4,6 +4,7 @@ import path from "node:path"
 
 import type { UIMessage } from "ai"
 import { app, protocol } from "electron"
+import type { CustomScheme } from "electron"
 
 import { getAppConfigDir } from "@/main/app-paths"
 import { logger } from "@/main/logger"
@@ -332,7 +333,11 @@ const getMediaTypeForPath = (filePath: string): string => {
  * secure so the renderer can load `etyon-attachment://` urls as <img> sources
  * and via fetch.
  */
-export const registerAttachmentProtocolScheme = (): void => {
+export const registerAttachmentProtocolScheme = (
+  // Electron keeps only the last `registerSchemesAsPrivileged` call, so other
+  // app schemes ride along on this one.
+  otherSchemes: CustomScheme[] = []
+): void => {
   protocol.registerSchemesAsPrivileged([
     {
       privileges: {
@@ -341,7 +346,8 @@ export const registerAttachmentProtocolScheme = (): void => {
         supportFetchAPI: true
       },
       scheme: ATTACHMENT_PROTOCOL_SCHEME
-    }
+    },
+    ...otherSchemes
   ])
 }
 

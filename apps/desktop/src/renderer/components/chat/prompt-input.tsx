@@ -50,6 +50,7 @@ import {
   usePlanModeHint
 } from "@/renderer/components/chat/composer-plan-hint"
 import { ComposerPlanQueue } from "@/renderer/components/chat/composer-plan-queue"
+import { ComposerVideoSkillChip } from "@/renderer/components/chat/composer-video-skill"
 import { ImagenLightbox } from "@/renderer/components/chat/imagen-message"
 import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
@@ -1471,6 +1472,7 @@ export const PromptInput = ({
   imageSkill,
   isAgentModeToggleDisabled,
   isImageMode = false,
+  videoSkill,
   isLoadingFileItems = false,
   isLoadingPromptTemplateItems = false,
   isLoadingSkillItems = false,
@@ -1570,6 +1572,8 @@ export const PromptInput = ({
   imageInputUnsupportedLabel?: string
   /** The Image skill: offered in the + menu, `/image`, and as a typed-intent hint. */
   imageSkill?: ComposerImageSkill
+  /** The Video skill: offered in the + menu; same shape as the Image skill. */
+  videoSkill?: ComposerImageSkill
   isAgentModeToggleDisabled?: boolean
   isImageMode?: boolean
   isLoadingFileItems?: boolean
@@ -2096,7 +2100,11 @@ export const PromptInput = ({
   // Timed plan-mode hint (Feature D): only offered from chat/agent mode, with no
   // request in flight and image mode off. Switching keeps the draft and refocuses.
   const isPlanHintEligible =
-    !disabled && !isOutputActive && !isImageMode && agentMode !== "plan"
+    !disabled &&
+    !isOutputActive &&
+    !isImageMode &&
+    !videoSkill?.isActive &&
+    agentMode !== "plan"
   const {
     conceal: concealPlanHint,
     dismiss: dismissPlanHint,
@@ -2473,6 +2481,16 @@ export const PromptInput = ({
         return
       }
 
+      if (
+        videoSkill?.isActive &&
+        promptInputValue.length === 0 &&
+        event.key === "Backspace"
+      ) {
+        event.preventDefault()
+        videoSkill.onDeactivate()
+        return
+      }
+
       if (isPromptSubmitKeyDown(event)) {
         event.preventDefault()
         await handleSubmit()
@@ -2483,6 +2501,7 @@ export const PromptInput = ({
       imageSkill,
       isImageSkillSuggestionVisible,
       promptInputValue,
+      videoSkill,
       activeCommandPaletteRange,
       activeMentionRange,
       activePromptTemplateRange,
@@ -2500,6 +2519,23 @@ export const PromptInput = ({
 
   const handleImageSkillActivate = () => imageSkill?.onActivate()
   const handleImageSkillDeactivate = () => imageSkill?.onDeactivate()
+  const handleVideoSkillDeactivate = () => videoSkill?.onDeactivate()
+  const activeSkillChip = imageSkill?.isActive ? (
+    <ComposerImageSkillChip
+      disabled={disabled}
+      label={imageSkill.labels.menuLabel}
+      onRemove={handleImageSkillDeactivate}
+      removeLabel={imageSkill.labels.remove}
+    />
+  ) : null
+  const activeVideoSkillChip = videoSkill?.isActive ? (
+    <ComposerVideoSkillChip
+      disabled={disabled}
+      label={videoSkill.labels.menuLabel}
+      onRemove={handleVideoSkillDeactivate}
+      removeLabel={videoSkill.labels.remove}
+    />
+  ) : null
   const isScreenCaptureAvailable =
     window.electron.process.platform === "darwin" && screenAwarenessEnabled
   const handleCaptureFocusedWindow = async () => {
@@ -2691,15 +2727,9 @@ export const PromptInput = ({
                 onCapture={handleCaptureFocusedWindow}
                 skillsLabel={skillsLabel}
                 triggerLabel={addMenuLabel}
+                videoSkill={videoSkill}
               />
-              {imageSkill?.isActive ? (
-                <ComposerImageSkillChip
-                  disabled={disabled}
-                  label={imageSkill.labels.menuLabel}
-                  onRemove={handleImageSkillDeactivate}
-                  removeLabel={imageSkill.labels.remove}
-                />
-              ) : (
+              {activeSkillChip ?? activeVideoSkillChip ?? (
                 <>
                   <PromptInputAgentModeControl
                     agentLabel={agentModeAgentLabel}

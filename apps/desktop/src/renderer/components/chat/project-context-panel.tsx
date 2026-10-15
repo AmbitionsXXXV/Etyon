@@ -49,6 +49,7 @@ import { ArtifactPanel } from "@/renderer/components/chat/artifact-panel"
 import { BrowserPanel } from "@/renderer/components/chat/browser-panel"
 import { ProjectFileCodeViewer } from "@/renderer/components/chat/project-file-code-viewer"
 import { TerminalPanel } from "@/renderer/components/chat/terminal-panel"
+import { VideoEditorPanel } from "@/renderer/components/chat/video-editor-panel"
 import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
 import {
   buildProjectGitStatusSummary,
@@ -1934,6 +1935,10 @@ export const ProjectContextPanel = ({
           sessionId={runtimeSessionId}
         />
       )
+    }
+
+    if (tab.kind === "videoEditor") {
+      return <VideoEditorPanel sessionId={selectedSession.id} />
     }
 
     if (tab.kind === "terminal") {

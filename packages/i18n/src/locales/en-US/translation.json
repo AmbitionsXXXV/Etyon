@@ -341,7 +341,8 @@
       "truncated": "Diff truncated",
       "viewDiff": "View diff",
       "viewFile": "View file",
-      "viewsLabel": "Project context views"
+      "viewsLabel": "Project context views",
+      "videoEditorView": "Video editor"
     },
     "promptInput": {
       "permissionMode": {
@@ -637,6 +638,80 @@
       "suggestion": "Use the Image skill",
       "suggestionDismiss": "Esc to dismiss",
       "modelLabel": "Image model"
+    },
+    "videoSkill": {
+      "label": "Video",
+      "menuDescription": "Seedance clip",
+      "remove": "Turn off the Video skill"
+    },
+    "videogen": {
+      "label": "Video",
+      "failed": "Video generation failed",
+      "generating": "Rendering video · up to a few minutes",
+      "cost": "Cost {{cost}}",
+      "optionsTitle": "A few choices before I render",
+      "model": "Model",
+      "length": "Length",
+      "seconds": "{{count}} s",
+      "shape": "Shape",
+      "ratioAdaptive": "Auto",
+      "quality": "Quality",
+      "sound": "Sound",
+      "soundOn": "On",
+      "soundOff": "Off",
+      "image": "Your image",
+      "imageUse": {
+        "first_frame": "First frame",
+        "reference": "Reference",
+        "ignore": "Ignore"
+      },
+      "estimate": "≈ {{count}}k tokens",
+      "render": "Render",
+      "openInEditor": "Open in editor",
+      "shots": "Shots",
+      "singleClip": "1 clip",
+      "shotCount": "{{count}} shots",
+      "estimateStoryboard": "≈ {{count}}k tokens of video + {{images}} images",
+      "edit": "Edit",
+      "extend": "Extend",
+      "editLabel": "Change this clip",
+      "extendLabel": "Continue this clip",
+      "editPlaceholder": "Make it night, add falling snow…",
+      "extendPlaceholder": "The boat drifts into the drain…",
+      "editModel": "Seedance 2.5"
+    },
+    "videoEditor": {
+      "emptyTitle": "No clips yet",
+      "emptyHint": "Use “Open in editor” under a video in the chat to bring it here.",
+      "play": "Play",
+      "pause": "Pause",
+      "split": "Split at playhead",
+      "timeline": "Timeline",
+      "start": "Start (s)",
+      "end": "End (s)",
+      "moveEarlier": "Move earlier",
+      "moveLater": "Move later",
+      "remove": "Remove"
+    },
+    "storyboard": {
+      "planTitle": "Storyboard plan",
+      "style": "Shared look (every keyframe)",
+      "keyframe": "Keyframe K{{index}}",
+      "shot": "Shot {{index}} · motion",
+      "imageCount": "Makes {{count}} images; you pick before any video renders",
+      "makeKeyframes": "Make keyframes",
+      "shotCount": "{{count}} shots",
+      "curateTitle": "Pick one frame per keyframe",
+      "endsShot": "ends shot {{index}}",
+      "startsShot": "starts shot {{index}}",
+      "variant": "K{{index}} variant {{variant}}",
+      "clipCount": "Renders {{count}} clips next",
+      "renderClips": "Render clips",
+      "keyframesFailed": "Keyframes failed",
+      "makingKeyframes": "Making {{count}} keyframes × {{variants}} variants",
+      "keyframesReady": "{{count}} keyframe images ready",
+      "reel": "Storyboard reel · {{count}} clips",
+      "openReel": "Open all in editor"
     }
   },
   "firstLight": {
@@ -1434,6 +1509,9 @@
         "title": "Models"
       },
       "provider": {
+        "amux": {
+          "description": "Amux runs chat, gpt-image and Seedance behind one key. Images and videos go through its task API, so long renders keep going while Etyon is closed."
+        },
         "cursor": {
           "description": "The Cursor provider is supplied by the built-in cursor-auth plugin, using Cursor subscription auth with model selection."
         },

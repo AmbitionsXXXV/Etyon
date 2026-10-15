@@ -22,6 +22,7 @@ import { session } from "electron"
  * - `img-src`: `etyon-attachment:` serves persisted vision images; `data:`/
  *   `blob:` cover generated images. Remote hosts stay blocked, which also
  *   neutralizes remote image beacons embedded in agent markdown.
+ * - `media-src`: `etyon-media:` streams generated videos from the project.
  * - `connect-src`: MessagePort RPC is not subject to CSP, while AI SDK chat
  *   streams use the main-process Hono server on a random `127.0.0.1` port.
  *   Only that loopback HTTP origin is allowed; arbitrary remote fetches remain
@@ -34,9 +35,9 @@ const PROD_CSP = [
   "default-src 'none'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: etyon-attachment:",
+  "img-src 'self' data: blob: etyon-attachment: etyon-media:",
   "font-src 'self' data:",
-  "media-src 'self' data: blob:",
+  "media-src 'self' data: blob: etyon-media:",
   `connect-src 'self' ${LOCAL_CHAT_SERVER_CSP_SOURCE}`,
   "frame-src 'self'",
   "object-src 'none'",
@@ -55,9 +56,9 @@ const buildDevCsp = (devOrigin: string): string =>
     "default-src 'none'",
     `script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' ${devOrigin}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: etyon-attachment:",
+    "img-src 'self' data: blob: etyon-attachment: etyon-media:",
     "font-src 'self' data:",
-    "media-src 'self' data: blob:",
+    "media-src 'self' data: blob: etyon-media:",
     `connect-src 'self' ${LOCAL_CHAT_SERVER_CSP_SOURCE} ${devOrigin} ws: wss:`,
     "frame-src 'self'",
     "object-src 'none'",

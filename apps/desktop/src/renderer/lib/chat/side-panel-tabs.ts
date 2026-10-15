@@ -1,6 +1,7 @@
 import type { TranslationKey } from "@etyon/i18n"
 import {
   File01Icon,
+  Film01Icon,
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
@@ -28,6 +29,7 @@ export type PanelSurfaceKind =
   | "commit"
   | "files"
   | "terminal"
+  | "videoEditor"
   | "worktrees"
 
 export type PanelTabId = string
@@ -113,6 +115,12 @@ export const PANEL_SURFACE_METADATA = {
     labelKey: "chat.projectPanel.terminalView",
     shortcutKey: "J"
   },
+  videoEditor: {
+    badge: null,
+    icon: Film01Icon,
+    labelKey: "chat.projectPanel.videoEditorView",
+    shortcutKey: null
+  },
   worktrees: {
     badge: null,
     icon: Layers01Icon,
@@ -132,6 +140,7 @@ export const PANEL_LAUNCHER_SURFACE_KINDS = [
   "commit",
   "terminal",
   "browser",
+  "videoEditor",
   "bestOfN",
   "worktrees"
 ] as const satisfies readonly PanelSurfaceKind[]
@@ -144,6 +153,7 @@ export const isPanelSurfaceKind = (value: Key): value is PanelSurfaceKind =>
   value === "commit" ||
   value === "files" ||
   value === "terminal" ||
+  value === "videoEditor" ||
   value === "worktrees"
 
 const findTabIndex = (

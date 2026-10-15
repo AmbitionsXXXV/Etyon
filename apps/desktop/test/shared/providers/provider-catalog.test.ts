@@ -9,17 +9,19 @@ import {
 } from "@/shared/providers/provider-catalog"
 
 describe("provider-catalog", () => {
-  it("shows openai, cursor, moonshot, and z.ai in the settings providers tab", () => {
+  it("shows openai, amux, cursor, moonshot, and z.ai in the settings providers tab", () => {
     const providers = getSettingsTabProviders()
 
     expect(providers.map(({ id }) => id)).toEqual([
       "openai",
+      "amux",
       "cursor",
       "moonshot",
       "zai-coding-plan"
     ])
     expect(providers.map(({ name }) => name)).toEqual([
       "OpenAI",
+      "Amux",
       "Cursor",
       "Moonshot",
       "Z.AI Coding Plan"

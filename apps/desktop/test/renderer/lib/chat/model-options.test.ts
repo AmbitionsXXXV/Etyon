@@ -12,6 +12,13 @@ const buildAiSettingsFixture = (): AiSettings => ({
   defaultProvider: "moonshot",
   modelEffort: { anthropic: "high", openai: "medium" },
   providers: {
+    amux: {
+      apiKey: "",
+      availableModels: [],
+      baseURL: "",
+      enabled: false,
+      models: []
+    },
     anthropic: {
       apiKey: "",
       availableModels: [],
@@ -111,6 +118,31 @@ describe("chat model options", () => {
     })
 
     expect(groups.map((group) => group.providerId)).toEqual(["zai-coding-plan"])
+  })
+
+  it("flags Seedance as a video model only on an amux-backed provider", () => {
+    const aiSettings = buildAiSettingsFixture()
+    const seedance = { id: "bytedance/seedance-2.0", name: "Seedance 2.0" }
+    const optionsAt = (baseURL: string) =>
+      buildChatModelGroups({
+        ...aiSettings,
+        providers: {
+          ...aiSettings.providers,
+          openai: {
+            ...aiSettings.providers.openai,
+            apiKey: "key",
+            baseURL,
+            enabled: true,
+            models: [seedance]
+          }
+        }
+      }).find((group) => group.providerId === "openai")?.options[0]
+
+    expect(optionsAt("https://gateway.amux.ai/v1")).toMatchObject({
+      rendersVideo: true,
+      summary: "Video"
+    })
+    expect(optionsAt("https://api.openai.com/v1")?.rendersVideo).toBe(false)
   })
 
   it("prefers the session model, then the default model, then the first option", () => {

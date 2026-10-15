@@ -28,6 +28,7 @@ import {
   cancelRuntimeWorktrees,
   recoverRuntimeWorktrees
 } from "@/main/agents/worktree-runtime"
+import { resumeOpenMediaTasks } from "@/main/amux/media-tasks"
 import { getAppDisplayName, syncRuntimeIcon } from "@/main/app-metadata"
 import { getAppConfigDir, getElectronUserDataDir } from "@/main/app-paths"
 import {
@@ -40,6 +41,10 @@ import { registerRendererContentSecurityPolicy } from "@/main/content-security-p
 import { getDb } from "@/main/db"
 import { ensureDatabaseReady } from "@/main/db/migrate"
 import { logger } from "@/main/logger"
+import {
+  MEDIA_SCHEME_PRIVILEGES,
+  registerMediaProtocol
+} from "@/main/media-protocol"
 import { setupMenu } from "@/main/menu"
 import { registerNativeIpcHandlers } from "@/main/native-ipc"
 import { disposeProxyAwareFetch } from "@/main/proxy/proxy-fetch"
@@ -84,7 +89,7 @@ if (started) {
 
 // Must run before `app` is ready so the renderer can load attachment images
 // through the custom scheme; the request handler is registered post-ready.
-registerAttachmentProtocolScheme()
+registerAttachmentProtocolScheme([MEDIA_SCHEME_PRIVILEGES])
 registerNativeIpcHandlers()
 registerTerminalIpcHandlers()
 registerBrowserIpcHandlers()
@@ -128,6 +133,9 @@ const handleAppReady = async (): Promise<void> => {
   }
 
   registerAttachmentProtocol()
+  registerMediaProtocol()
+  // Renders started before the last quit are still running on amux.
+  void resumeOpenMediaTasks()
   registerRpcHandler()
   await startServer()
   await startAutomationService({

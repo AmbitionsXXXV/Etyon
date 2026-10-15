@@ -23,12 +23,19 @@ import { getDb } from "@/main/db"
 import type { AppDatabase } from "@/main/db"
 import { runExclusiveDbWrite } from "@/main/db/write-lock"
 import { logger } from "@/main/logger"
-import { resolveModel } from "@/main/server/lib/providers"
+import {
+  isVideoOutputModelSelection,
+  resolveModel
+} from "@/main/server/lib/providers"
 import { buildChatStreamResponse } from "@/main/server/routes/build-chat-stream-response"
 import {
   buildImageGenerationStreamResponse,
   getLatestUserMessageText
 } from "@/main/server/routes/build-image-generation-response"
+import {
+  buildVideoGenerationStreamResponse,
+  resolveVideoRequest
+} from "@/main/server/routes/build-video-generation-response"
 import { runWithChatSessionExecution } from "@/main/server/routes/chat-session-execution"
 import {
   prepareChatSubmission,
@@ -158,6 +165,95 @@ chatRoute.use("/chat", async (c, next) => {
   c.res = response
 })
 
+// The composer's Image and Video skills bypass the LLM chat/agent loop: the
+// prompt goes straight to the media model, and the result renders inline. Null
+// falls through to the normal chat path. Kept out of the route handler so the
+// handler stays within its complexity budget.
+const buildDirectGenerationResponse = ({
+  abortSignal,
+  bestOfN,
+  db,
+  imageMode,
+  imageModel,
+  messages,
+  modelId,
+  projectPath,
+  sessionId,
+  settings,
+  videoEdit,
+  videoMode,
+  videoModel
+}: {
+  abortSignal: AbortSignal
+  bestOfN: Parameters<typeof resolveImageRequestModel>[0]["bestOfN"]
+  db: AppDatabase
+  imageMode: unknown
+  imageModel: unknown
+  messages: UIMessage[]
+  modelId: string | null
+  projectPath: string
+  sessionId: string
+  settings: AppSettings
+  videoEdit: unknown
+  videoMode: unknown
+  videoModel: unknown
+}): Response | null => {
+  const onFinishPersist = async (nextMessages: UIMessage[]) => {
+    await replaceChatMessages({ db, messages: nextMessages, sessionId })
+  }
+
+  // A fresh Video prompt gets the choices card; the resume after the user
+  // answers it renders the clip.
+  const videoRequest = bestOfN
+    ? null
+    : resolveVideoRequest({
+        messages,
+        settings,
+        videoEdit,
+        videoMode,
+        videoModel
+      })
+
+  if (videoRequest) {
+    return buildVideoGenerationStreamResponse({
+      abortSignal,
+      // A video model selected as the chat model cannot draft a storyboard.
+      chatModelId:
+        modelId && !isVideoOutputModelSelection(settings.ai, modelId)
+          ? modelId
+          : null,
+      messages,
+      onFinishPersist,
+      projectPath,
+      request: videoRequest,
+      requestStartedAt: Date.now(),
+      sessionId
+    })
+  }
+
+  // The renderer only enables the Image toggle for image-output models;
+  // re-validate here as a safety net.
+  const imageModelValue = resolveImageRequestModel({
+    bestOfN,
+    imageMode,
+    imageModel,
+    modelId,
+    settings
+  })
+
+  return imageModelValue
+    ? buildImageGenerationStreamResponse({
+        abortSignal,
+        messages,
+        modelValue: imageModelValue,
+        onFinishPersist,
+        projectPath,
+        requestStartedAt: Date.now(),
+        sessionId
+      })
+    : null
+}
+
 chatRoute.post("/chat", async (c) => {
   const body = await c.req.json()
   const {
@@ -172,7 +268,10 @@ chatRoute.post("/chat", async (c) => {
     model: requestedModelId,
     profileId: requestedProfileId,
     permissionMode: rawPermissionMode,
-    sessionId
+    sessionId,
+    videoEdit: rawVideoEdit,
+    videoMode: rawVideoMode,
+    videoModel: rawVideoModel
   } = body as {
     agentMode?: unknown
     automationPrompt?: string
@@ -186,6 +285,9 @@ chatRoute.post("/chat", async (c) => {
     permissionMode?: unknown
     profileId?: string
     sessionId: string
+    videoEdit?: unknown
+    videoMode?: unknown
+    videoModel?: unknown
   }
   const db = getDb()
   const session = await getChatSessionById(db, sessionId)
@@ -216,30 +318,23 @@ chatRoute.post("/chat", async (c) => {
 
   const effectiveModelId = requestedModelId ?? session.modelId ?? null
 
-  // Direct image mode bypasses the LLM chat/agent loop entirely: the message
-  // text goes straight to the selected image model's Images API, and the result
-  // renders through the existing inline imagen pipeline. The renderer only
-  // enables the toggle for image-output models; re-validate here as a safety
-  // net and fall through to the normal chat path when it does not hold.
-  const imageModelValue = resolveImageRequestModel({
+  const directResponse = buildDirectGenerationResponse({
+    abortSignal: c.req.raw.signal,
     bestOfN: bestOfNRequest,
+    db,
     imageMode: rawImageMode,
     imageModel: rawImageModel,
+    messages,
     modelId: effectiveModelId,
-    settings: baseSettings
+    projectPath: session.projectPath,
+    sessionId,
+    settings: baseSettings,
+    videoEdit: rawVideoEdit,
+    videoMode: rawVideoMode,
+    videoModel: rawVideoModel
   })
-  if (imageModelValue) {
-    return buildImageGenerationStreamResponse({
-      abortSignal: c.req.raw.signal,
-      messages,
-      modelValue: imageModelValue,
-      onFinishPersist: async (nextMessages) => {
-        await replaceChatMessages({ db, messages: nextMessages, sessionId })
-      },
-      projectPath: session.projectPath,
-      requestStartedAt: Date.now(),
-      sessionId
-    })
+  if (directResponse) {
+    return directResponse
   }
 
   const agentMode = isChatAgentMode(rawAgentMode) ? rawAgentMode : undefined

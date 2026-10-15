@@ -153,6 +153,37 @@ describe("shouldSendChatAutomatically", () => {
     expect(shouldSendChatAutomatically({ messages })).toBe(true)
   })
 
+  it("continues once the Video skill's choices card is answered, not before", () => {
+    const card = {
+      input: { prompt: "A paper boat", title: "A paper boat" },
+      toolCallId: "video_options-1",
+      type: "tool-video_options"
+    } as const
+    const answered = [
+      {
+        id: "assistant-1",
+        parts: [
+          {
+            ...card,
+            output: { duration: 5, model: "openai/doubao-seedance-2.0" },
+            state: "output-available"
+          }
+        ],
+        role: "assistant"
+      }
+    ] satisfies UIMessage[]
+    const pending = [
+      {
+        id: "assistant-1",
+        parts: [{ ...card, state: "input-available" }],
+        role: "assistant"
+      }
+    ] satisfies UIMessage[]
+
+    expect(shouldSendChatAutomatically({ messages: answered })).toBe(true)
+    expect(shouldSendChatAutomatically({ messages: pending })).toBe(false)
+  })
+
   it("waits while an input-required question is still unanswered", () => {
     const messages = [
       {

@@ -1,6 +1,7 @@
 import * as z from "zod"
 
 export const BuiltInProviderIdSchema = z.enum([
+  "amux",
   "anthropic",
   "cursor",
   "gateway",

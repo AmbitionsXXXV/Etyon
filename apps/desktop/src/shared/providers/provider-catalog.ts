@@ -43,6 +43,7 @@ interface SettingsTabProviderCatalogEntry extends ProviderCatalogEntry {
 
 export const SETTINGS_PROVIDER_IDS = [
   "openai",
+  "amux",
   "cursor",
   "moonshot",
   "zai-coding-plan"
@@ -67,6 +68,21 @@ const cloneStoredProviderModel = (
 
 const cloneStoredProviderModels = (models: StoredProviderModel[]) =>
   models.map(cloneStoredProviderModel)
+
+// Amux: one key for chat (OpenAI-compatible /v1) and for its task API, which
+// runs gpt-image and Seedance asynchronously (see main/amux).
+const AMUX_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
+  baseURL: "https://gateway.amux.ai/v1",
+  credential: "apiKey",
+  descriptionKey: "settings.providers.provider.amux.description",
+  id: "amux",
+  modelsApiPath: "models",
+  name: "Amux",
+  runtimeReady: true,
+  seedModels: BUILT_IN_PROVIDER_SEED_MODELS.amux,
+  settingsTab: true,
+  upstreamModelsApi: "GET /v1/models"
+}
 
 const ANTHROPIC_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
   baseURL: "",
@@ -146,6 +162,7 @@ const ZAI_CODING_PLAN_PROVIDER_CATALOG_ENTRY: ProviderCatalogEntry = {
 }
 
 export const BUILT_IN_PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
+  AMUX_PROVIDER_CATALOG_ENTRY,
   ANTHROPIC_PROVIDER_CATALOG_ENTRY,
   CURSOR_PROVIDER_CATALOG_ENTRY,
   GATEWAY_PROVIDER_CATALOG_ENTRY,
@@ -158,6 +175,7 @@ export const BUILT_IN_PROVIDER_CATALOG_BY_ID: Record<
   BuiltInProviderId,
   ProviderCatalogEntry
 > = {
+  amux: AMUX_PROVIDER_CATALOG_ENTRY,
   anthropic: ANTHROPIC_PROVIDER_CATALOG_ENTRY,
   cursor: CURSOR_PROVIDER_CATALOG_ENTRY,
   gateway: GATEWAY_PROVIDER_CATALOG_ENTRY,
