@@ -15,7 +15,8 @@ import {
   PruneWorktreeInputSchema,
   WorktreeDiffSchema,
   WorktreeIdInputSchema,
-  WorktreeSessionInputSchema
+  WorktreeSessionInputSchema,
+  WorktreeSidebarSummaryOutputSchema
 } from "@etyon/rpc/schemas/worktrees"
 import { ORPCError } from "@orpc/server"
 import { app } from "electron"
@@ -26,6 +27,7 @@ import {
   createRuntimeBestOfNService,
   getRuntimeWorktreeManager
 } from "@/main/agents/worktree-runtime"
+import { buildWorktreeSidebarSummary } from "@/main/agents/worktrees/sidebar-summary"
 import { getAppConfigDir } from "@/main/app-paths"
 import { getChatSessionById } from "@/main/chat-sessions"
 import { rpc } from "@/main/rpc/context"
@@ -106,6 +108,15 @@ export const worktreesRouter = {
         input.id,
         input.sessionId
       )
+    }),
+  sidebarSummary: rpc
+    .output(WorktreeSidebarSummaryOutputSchema)
+    .handler(async () => {
+      const [runs, worktrees] = await Promise.all([
+        createRuntimeBestOfNService().listAll(),
+        getRuntimeWorktreeManager().list()
+      ])
+      return { sessions: buildWorktreeSidebarSummary(runs, worktrees) }
     }),
   prune: rpc
     .input(PruneWorktreeInputSchema)

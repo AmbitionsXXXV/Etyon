@@ -88,7 +88,12 @@ describe("AppSettingsSchema", () => {
       theme: "dark"
     })
 
-    expect(settings.sidebar.mode).toBe("simple")
+    expect(settings.sidebar).toEqual({
+      collapseResolvedRuns: true,
+      mode: "simple",
+      nestWorktrees: true,
+      showWorktreeBadges: true
+    })
   })
 
   it("adds disabled telegram bridge defaults for empty and legacy settings", () => {

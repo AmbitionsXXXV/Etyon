@@ -90,6 +90,8 @@ export interface BestOfNService {
   discard: (id: string, sessionId: string) => Promise<void>
   get: (id: string, sessionId: string) => Promise<BestOfNRun>
   list: (sessionId: string) => Promise<BestOfNRun[]>
+  /** Every run across sessions, unsorted; for cross-session summaries. */
+  listAll: () => Promise<BestOfNRun[]>
   preview: (
     id: string,
     candidateId: string,
@@ -548,5 +550,15 @@ export const createBestOfNService = ({
       await save(run)
     }
   }
-  return { apply, cancel, discard, get, list, preview, recover, start }
+  return {
+    apply,
+    cancel,
+    discard,
+    get,
+    list,
+    listAll: allRuns,
+    preview,
+    recover,
+    start
+  }
 }

@@ -118,9 +118,40 @@ export const ApplyBestOfNInputSchema = BestOfNIdInputSchema.extend({
   candidateId: z.string().uuid(),
   expectedFingerprint: z.string().min(1)
 })
+// Per-session digest for the sidebar: the latest Best-of-N run and the kept
+// isolated workspaces, so chat rows can nest or badge them without polling
+// every session's full run list.
+export const WorktreeSidebarCandidateSchema = z.object({
+  changedFileCount: z.number().int().nonnegative().nullable(),
+  id: z.string().uuid(),
+  modelId: z.string(),
+  recommended: z.boolean(),
+  state: BestOfNCandidateSchema.shape.state
+})
+export const WorktreeSidebarSessionSchema = z.object({
+  hasInterruptedWorktree: z.boolean(),
+  keptWorktreeCount: z.number().int().nonnegative(),
+  run: z
+    .object({
+      candidates: z.array(WorktreeSidebarCandidateSchema),
+      id: z.string().uuid(),
+      isResolved: z.boolean()
+    })
+    .nullable(),
+  sessionId: z.string()
+})
+export const WorktreeSidebarSummaryOutputSchema = z.object({
+  sessions: z.array(WorktreeSidebarSessionSchema)
+})
 export type ManagedWorktree = z.infer<typeof ManagedWorktreeSchema>
 export type WorktreeDiff = z.infer<typeof WorktreeDiffSchema>
 export type ApplyWorktreeOutput = z.infer<typeof ApplyWorktreeOutputSchema>
 export type BestOfNCandidate = z.infer<typeof BestOfNCandidateSchema>
 export type BestOfNReview = z.infer<typeof BestOfNReviewSchema>
 export type BestOfNRun = z.infer<typeof BestOfNRunSchema>
+export type WorktreeSidebarCandidate = z.infer<
+  typeof WorktreeSidebarCandidateSchema
+>
+export type WorktreeSidebarSession = z.infer<
+  typeof WorktreeSidebarSessionSchema
+>

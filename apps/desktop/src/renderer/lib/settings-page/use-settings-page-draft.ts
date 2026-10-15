@@ -12,6 +12,7 @@ import type {
   MemorySettings,
   ProxySettings,
   SidebarMode,
+  SidebarSettings,
   SkillsSettings,
   TelegramSettings,
   Theme
@@ -378,6 +379,12 @@ export const useSettingsPageDraft = () => {
     (v: ProxySettings) => updateDraftRef.current("proxy", v),
     []
   )
+  const handleSidebarChange = useCallback((patch: Partial<SidebarSettings>) => {
+    setDraft((prev) =>
+      prev ? { ...prev, sidebar: { ...prev.sidebar, ...patch } } : prev
+    )
+  }, [])
+
   const handleSidebarModeChange = useCallback((v: SidebarMode) => {
     setDraft((prev) =>
       prev
@@ -439,6 +446,7 @@ export const useSettingsPageDraft = () => {
     handleProxyChange,
     handleSave,
     handleSkillsChange,
+    handleSidebarChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleTelegramChange,

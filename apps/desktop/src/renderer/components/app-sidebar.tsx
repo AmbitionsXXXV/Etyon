@@ -46,7 +46,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type {
   ChangeEvent,
   DragEvent,
@@ -58,6 +58,11 @@ import type {
 } from "react"
 import { createPortal } from "react-dom"
 
+import {
+  SessionWorktreeBadge,
+  SessionWorktreeRows
+} from "@/renderer/components/sidebar-worktree-rows"
+import type { SidebarWorktreeView } from "@/renderer/components/sidebar-worktree-rows"
 import { MOTION_RISE_IN_CLASS, useEntranceGuard } from "@/renderer/lib/motion"
 import { orpc } from "@/renderer/lib/rpc"
 import {
@@ -81,8 +86,10 @@ import {
   SIDEBAR_WIDTH_PX_MIN,
   useProjectSidebarState
 } from "@/renderer/lib/sidebar/use-project-sidebar-state"
+import { getSidebarWorktreeDisplay } from "@/renderer/lib/sidebar/worktree-summary"
 
 const EXPAND_EASE = [0.25, 1, 0.5, 1] as const
+const WORKTREE_SUMMARY_REFETCH_INTERVAL_MS = 5000
 const EXPAND_RESET_DELAY_MS = 520
 const PROJECT_GROUP_ROW_CLASS_NAME =
   "title-bar-no-drag group/project-row -mx-1 flex h-10 w-full items-center gap-1 rounded-xl px-2 text-left text-[15px] font-medium text-sidebar-foreground/82 transition-[background-color,color] hover:bg-white/4 hover:text-sidebar-accent-foreground focus-within:bg-white/4 focus-within:text-sidebar-accent-foreground"
@@ -121,6 +128,7 @@ interface ChatSessionItemProps {
   session: ChatSessionSummary
   showPinAction?: boolean
   togglingPinnedSessionId?: string
+  worktreeView?: SidebarWorktreeView
 }
 
 interface ProjectGroupSectionProps {
@@ -161,6 +169,7 @@ interface ProjectGroupSectionProps {
   toggleProjectGroupLabel: string
   togglingPinnedSessionId?: string
   visibleCount: number
+  worktreeView?: SidebarWorktreeView
 }
 
 interface ProjectGroupsSectionProps {
@@ -199,6 +208,7 @@ interface ProjectGroupsSectionProps {
   toggleProjectGroupLabel: string
   togglingPinnedSessionId?: string
   visibleCountForProject: (projectPath: string) => number
+  worktreeView?: SidebarWorktreeView
 }
 
 const getProjectMenuDisabledKeys = ({
@@ -536,7 +546,8 @@ const ChatSessionItem = ({
   onTogglePinned,
   session,
   showPinAction = false,
-  togglingPinnedSessionId
+  togglingPinnedSessionId,
+  worktreeView
 }: ChatSessionItemProps) => {
   const { t } = useI18n({ keyPrefix: "home.sidebar" })
   const [contextMenu, setContextMenu] =
@@ -652,6 +663,10 @@ const ChatSessionItem = ({
               ) : null}
             </div>
             <div className="ml-2.5 flex shrink-0 items-center gap-2.5 leading-5">
+              <SessionWorktreeBadge
+                sessionId={session.id}
+                view={worktreeView}
+              />
               {diffMetaItem?.label ? (
                 <SidebarGitStatusSummary
                   agentGitStatus={session.agentGitStatus}
@@ -685,6 +700,11 @@ const ChatSessionItem = ({
           </button>
         </div>
       </div>
+      <SessionWorktreeRows
+        onOpen={onOpen}
+        sessionId={session.id}
+        view={worktreeView}
+      />
       {contextMenu ? (
         <SessionContextMenu
           onClose={handleCloseContextMenu}
@@ -726,7 +746,8 @@ const ProjectGroupSection = ({
   settingPinnedProjectPath,
   toggleProjectGroupLabel,
   togglingPinnedSessionId,
-  visibleCount
+  visibleCount,
+  worktreeView
 }: ProjectGroupSectionProps) => {
   const { t } = useI18n()
   const [confirmAction, setConfirmAction] = useState<
@@ -1026,6 +1047,7 @@ const ProjectGroupSection = ({
                 session={session}
                 showPinAction
                 togglingPinnedSessionId={togglingPinnedSessionId}
+                worktreeView={worktreeView}
               />
             ))}
           </SidebarMenu>
@@ -1145,7 +1167,8 @@ const ProjectGroupsSection = ({
   showMoreLabel,
   toggleProjectGroupLabel,
   togglingPinnedSessionId,
-  visibleCountForProject
+  visibleCountForProject,
+  worktreeView
 }: ProjectGroupsSectionProps) => {
   const [draggingProjectPath, setDraggingProjectPath] = useState<string | null>(
     null
@@ -1232,6 +1255,7 @@ const ProjectGroupsSection = ({
             toggleProjectGroupLabel={toggleProjectGroupLabel}
             togglingPinnedSessionId={togglingPinnedSessionId}
             visibleCount={visibleCountForProject(group.projectPath)}
+            worktreeView={worktreeView}
           />
         ))}
       </div>
@@ -1332,6 +1356,26 @@ export const AppSidebar = () => {
     refetchInterval: CHAT_SESSIONS_STATUS_REFETCH_INTERVAL_MS
   })
   const settingsQuery = useQuery(orpc.settings.get.queryOptions({}))
+  const worktreeSummaryQuery = useQuery({
+    ...orpc.worktrees.sidebarSummary.queryOptions(),
+    refetchInterval: WORKTREE_SUMMARY_REFETCH_INTERVAL_MS
+  })
+  const sidebarSettings = settingsQuery.data?.sidebar
+  const worktreeView = useMemo<SidebarWorktreeView>(
+    () => ({
+      collapseResolvedRuns: sidebarSettings?.collapseResolvedRuns ?? true,
+      display: sidebarSettings
+        ? getSidebarWorktreeDisplay(sidebarSettings)
+        : "hidden",
+      summaries: new Map(
+        (worktreeSummaryQuery.data?.sessions ?? []).map((summary) => [
+          summary.sessionId,
+          summary
+        ])
+      )
+    }),
+    [sidebarSettings, worktreeSummaryQuery.data]
+  )
   const [projectVisibleCounts, setProjectVisibleCounts] = useState<
     Record<string, number>
   >({})
@@ -1443,6 +1487,7 @@ export const AppSidebar = () => {
                 onArchive={handleArchiveChatSession}
                 onOpen={handleOpenChatSession}
                 session={session}
+                worktreeView={worktreeView}
               />
             ))}
           </SidebarMenu>
@@ -1474,6 +1519,7 @@ export const AppSidebar = () => {
                   session={session}
                   showPinAction
                   togglingPinnedSessionId={isSettingPinnedChatSessionId}
+                  worktreeView={worktreeView}
                 />
               ))}
             </SidebarMenu>
@@ -1519,6 +1565,7 @@ export const AppSidebar = () => {
           toggleProjectGroupLabel={t("sidebar.toggleProjectGroup")}
           togglingPinnedSessionId={isSettingPinnedChatSessionId}
           visibleCountForProject={getVisibleCountForProject}
+          worktreeView={worktreeView}
         />
       </>
     )

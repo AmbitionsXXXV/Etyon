@@ -613,7 +613,9 @@
       "view": "查看方案",
       "unavailable": "请在 Agent 设置中启用子 agent 委派，并选择允许可写子 agent 的配置。",
       "discarded": "已丢弃",
-      "files": "个文件"
+      "files": "个文件",
+      "modelFilter": "筛选模型",
+      "newRun": "新的比较"
     },
     "worktrees": {
       "apply": "应用到主工作区",
@@ -623,7 +625,9 @@
       "orphaned": "运行被中断，改动已保留",
       "preview": "预览改动",
       "title": "隔离工作区",
-      "files": "个文件"
+      "files": "个文件",
+      "openChip": "在侧边面板中打开 Best-of-N 和隔离工作区",
+      "shortTitle": "工作区"
     },
     "message": {
       "youLabel": "你",
@@ -672,7 +676,12 @@
       "showMore": "显示更多",
       "toggleProjectGroup": "切换项目分组",
       "toggleSidebar": "切换侧边栏",
-      "unpinSession": "取消置顶会话"
+      "unpinSession": "取消置顶会话",
+      "worktrees": {
+        "pick": "推荐",
+        "files": "{{count}} 个文件",
+        "runBadge": "Best-of-N 已完成 {{progress}}"
+      }
     },
     "hint": "聊天流程还没接好，现在可以先在 Settings 里完成工作台设置。",
     "logoAlt": "Etyon 应用图标",
@@ -1461,7 +1470,28 @@
           }
         }
       },
-      "title": "侧边栏设置"
+      "title": "侧边栏设置",
+      "description": "选择对话的列表方式。Best-of-N 运行和隔离工作区也遵循同样的布局。",
+      "preview": {
+        "label": "预览",
+        "simpleHint": "候选方案和工作区可从对话标题栏的标签打开。"
+      },
+      "worktrees": {
+        "projectsTitle": "项目模式下的 Best-of-N 和隔离工作区",
+        "simpleTitle": "简洁模式下的 Best-of-N 和隔离工作区",
+        "nestWorktrees": {
+          "label": "嵌套在所属对话下",
+          "description": "Best-of-N 候选方案和保留的工作区以子行显示。"
+        },
+        "collapseResolvedRuns": {
+          "label": "隐藏已结束的运行",
+          "description": "已采纳或已取消的运行会收回到对话行中。"
+        },
+        "showWorktreeBadges": {
+          "label": "显示工作区标记",
+          "description": "有候选方案的对话显示计数，保留工作区的对话显示圆点。"
+        }
+      }
     },
     "skills": {
       "commands": {
@@ -1779,6 +1809,11 @@
       "timeZone": "时区",
       "timeout": "运行时限（分钟）",
       "title": "后台任务"
+    },
+    "navGroup": {
+      "assistant": "助手",
+      "tools": "工具",
+      "app": "应用"
     }
   },
   "tray": {

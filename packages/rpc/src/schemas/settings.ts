@@ -67,7 +67,10 @@ export const LightColorSchemaSchema = z.enum([
 export const SidebarModeSchema = z.enum(["projects", "simple"])
 
 export const SidebarSettingsSchema = z.object({
-  mode: SidebarModeSchema.default("simple")
+  collapseResolvedRuns: z.boolean().default(true),
+  mode: SidebarModeSchema.default("simple"),
+  nestWorktrees: z.boolean().default(true),
+  showWorktreeBadges: z.boolean().default(true)
 })
 
 export const AgentExecutionModeSchema = z.enum([
@@ -240,7 +243,10 @@ const PROXY_SETTINGS_DEFAULT = {
 } as const
 
 const SIDEBAR_SETTINGS_DEFAULT = {
-  mode: "simple" as const
+  collapseResolvedRuns: true,
+  mode: "simple" as const,
+  nestWorktrees: true,
+  showWorktreeBadges: true
 } as const
 
 const AGENT_LSP_SETTINGS_DEFAULT = {

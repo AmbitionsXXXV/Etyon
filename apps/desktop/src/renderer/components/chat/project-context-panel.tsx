@@ -1761,6 +1761,10 @@ const ProjectPanelTabContent = ({
   )
 }
 
+export type WorktreeSurfaces = Partial<
+  Record<Extract<PanelSurfaceKind, "bestOfN" | "worktrees">, ReactNode>
+>
+
 export const ProjectContextPanel = ({
   activeArtifact,
   activeTabId,
@@ -1778,7 +1782,8 @@ export const ProjectContextPanel = ({
   openTabs,
   projectItems,
   revealTarget,
-  selectedSession
+  selectedSession,
+  worktreeSurfaces
 }: {
   activeArtifact: ChatArtifactRef | null
   activeTabId: PanelTabId | null
@@ -1802,6 +1807,8 @@ export const ProjectContextPanel = ({
   projectItems: ProjectSnapshotItem[]
   revealTarget?: ProjectPanelRevealRequest | null
   selectedSession: ChatSessionSummary
+  /** Session-bound surfaces the chat runtime owns (Best-of-N, workspaces). */
+  worktreeSurfaces?: WorktreeSurfaces
 }) => {
   const { t } = useI18n()
   const fileRevealTarget = revealTarget?.view === "file" ? revealTarget : null
@@ -1910,6 +1917,10 @@ export const ProjectContextPanel = ({
           sessionId={selectedSession.id}
         />
       ) : null
+    }
+
+    if (tab.kind === "bestOfN" || tab.kind === "worktrees") {
+      return worktreeSurfaces?.[tab.kind] ?? null
     }
 
     if (tab.kind === "browser") {

@@ -1,6 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import {
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
@@ -35,9 +36,14 @@ import { SETTINGS_PAGE_EASE_CURVE } from "@/renderer/lib/settings-page/constants
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 import {
   SETTINGS_NAV_ENTRIES,
+  SETTINGS_NAV_GROUP_LABEL_KEY,
+  SETTINGS_NAV_GROUP_ORDER,
   SETTINGS_NAV_LABEL_KEY_BY_SECTION
 } from "@/renderer/lib/settings-page/nav-config"
-import type { SettingsSectionId } from "@/renderer/lib/settings-page/nav-config"
+import type {
+  SettingsNavGroupId,
+  SettingsSectionId
+} from "@/renderer/lib/settings-page/nav-config"
 import { useSettingsPageDraft } from "@/renderer/lib/settings-page/use-settings-page-draft"
 
 import { AboutTab } from "./settings/about-tab"
@@ -63,7 +69,9 @@ import { TokenSavingsTab } from "./settings/token-savings-tab"
 import {
   FontFamilyCombobox,
   FontSizeInput,
+  SidebarModePreview,
   SidebarModeSelector,
+  SidebarWorktreeRules,
   ThemeSelector
 } from "./settings/ui-tab"
 import { TITLE_BAR_HEIGHT } from "./title-bar"
@@ -76,6 +84,12 @@ interface SettingsNavItem {
   handleSelect: () => void
   icon: (typeof SETTINGS_NAV_ENTRIES)[number]["icon"]
   id: SettingsSectionId
+  label: string
+}
+
+interface SettingsNavGroup {
+  id: SettingsNavGroupId
+  items: SettingsNavItem[]
   label: string
 }
 
@@ -133,31 +147,36 @@ const getSettingsPageLayoutStyle = (
 
 const SettingsSidebar = ({
   activeSection,
-  navItems
+  navGroups
 }: {
   activeSection: SettingsSectionId
-  navItems: SettingsNavItem[]
+  navGroups: SettingsNavGroup[]
 }) => (
   <AppSidebarShell
     contentClassName="pb-3"
     headerClassName="pt-6"
     headerContent={<div aria-hidden className={TRAFFIC_LIGHT_CLEARANCE} />}
   >
-    <SidebarGroup className="px-3 pb-0">
-      <SidebarMenu className="title-bar-no-drag">
-        {navItems.map((item) => (
-          <SidebarMenuItem key={item.id}>
-            <SidebarMenuButton
-              isActive={activeSection === item.id}
-              onClick={item.handleSelect}
-            >
-              <HugeiconsIcon icon={item.icon} size={16} />
-              <span>{item.label}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
-    </SidebarGroup>
+    {navGroups.map((group) => (
+      <SidebarGroup className="px-3 pb-3" key={group.id}>
+        <SidebarGroupLabel className="h-auto px-2 pb-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+          {group.label}
+        </SidebarGroupLabel>
+        <SidebarMenu className="title-bar-no-drag">
+          {group.items.map((item) => (
+            <SidebarMenuItem key={item.id}>
+              <SidebarMenuButton
+                isActive={activeSection === item.id}
+                onClick={item.handleSelect}
+              >
+                <HugeiconsIcon icon={item.icon} size={16} />
+                <span>{item.label}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroup>
+    ))}
   </AppSidebarShell>
 )
 
@@ -222,6 +241,7 @@ export const SettingsPage = ({
     handleProxyChange,
     handleSave,
     handleSkillsChange,
+    handleSidebarChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
     handleTelegramChange,
@@ -247,6 +267,20 @@ export const SettingsPage = ({
         )
       })),
     [handleNavSelect, t]
+  )
+
+  const navGroups = useMemo<SettingsNavGroup[]>(
+    () =>
+      SETTINGS_NAV_GROUP_ORDER.map((groupId) => ({
+        id: groupId,
+        items: navItems.filter(
+          (item) =>
+            SETTINGS_NAV_ENTRIES.find((entry) => entry.id === item.id)
+              ?.group === groupId
+        ),
+        label: t(SETTINGS_NAV_GROUP_LABEL_KEY[groupId])
+      })),
+    [navItems, t]
   )
 
   const activeSectionLabel = useMemo(
@@ -357,7 +391,7 @@ export const SettingsPage = ({
 
   return (
     <SidebarProvider className="overflow-hidden" style={layoutStyle}>
-      <SettingsSidebar activeSection={activeSection} navItems={navItems} />
+      <SettingsSidebar activeSection={activeSection} navGroups={navGroups} />
 
       <SidebarInset className="min-h-0 overflow-hidden">
         <div className="flex min-h-0 flex-1 flex-col">
@@ -519,19 +553,37 @@ export const SettingsPage = ({
                     {...settingsPageSectionMotion(0.15)}
                     className="space-y-4 rounded-lg border border-border bg-card p-5"
                   >
-                    <h2 className="text-sm font-semibold">
-                      {t("settings.sidebar.title")}
-                    </h2>
+                    <div className="space-y-1">
+                      <h2 className="text-sm font-semibold">
+                        {t("settings.sidebar.title")}
+                      </h2>
+                      <p className="text-sm leading-5 text-muted-foreground">
+                        {t("settings.sidebar.description")}
+                      </p>
+                    </div>
 
-                    <div className="space-y-2">
-                      <h3 className="text-xs font-medium text-muted-foreground">
-                        {t("settings.sidebar.mode.label")}
-                      </h3>
-                      <SidebarModeSelector
-                        onChange={handleSidebarModeChange}
-                        options={sidebarModeOptions}
-                        value={draft.sidebar.mode}
-                      />
+                    <div className="flex flex-wrap gap-6">
+                      <div className="min-w-0 flex-[999_1_420px] space-y-4">
+                        <SidebarModeSelector
+                          onChange={handleSidebarModeChange}
+                          options={sidebarModeOptions}
+                          value={draft.sidebar.mode}
+                        />
+                        <SidebarWorktreeRules
+                          onChange={handleSidebarChange}
+                          sidebar={draft.sidebar}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-[1_1_260px] space-y-2">
+                        <h3 className="text-xs font-medium text-muted-foreground">
+                          {t("settings.sidebar.preview.label")}
+                        </h3>
+                        <SidebarModePreview
+                          mode={draft.sidebar.mode}
+                          nestWorktrees={draft.sidebar.nestWorktrees}
+                          showWorktreeBadges={draft.sidebar.showWorktreeBadges}
+                        />
+                      </div>
                     </div>
                   </motion.section>
 

@@ -58,64 +58,41 @@ export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   "user-interface": "settings.nav.userInterface"
 } as const satisfies Record<SettingsSectionId, TranslationKey>
 
+export type SettingsNavGroupId = "app" | "assistant" | "tools"
+
+export const SETTINGS_NAV_GROUP_LABEL_KEY = {
+  app: "settings.navGroup.app",
+  assistant: "settings.navGroup.assistant",
+  tools: "settings.navGroup.tools"
+} as const satisfies Record<SettingsNavGroupId, TranslationKey>
+
+/** Display order of the groups; entries keep their order inside a group. */
+export const SETTINGS_NAV_GROUP_ORDER = [
+  "assistant",
+  "tools",
+  "app"
+] as const satisfies readonly SettingsNavGroupId[]
+
 export const SETTINGS_NAV_ENTRIES: readonly {
+  group: SettingsNavGroupId
   icon: typeof Settings02Icon
   id: SettingsSectionId
 }[] = [
-  { icon: CalendarClockIcon, id: "automation" },
-  { icon: WebDesignIcon, id: "web-tools" },
-  { icon: PlugSocketIcon, id: "mcp" },
-  {
-    icon: Settings02Icon,
-    id: "general"
-  },
-  {
-    icon: CloudServerIcon,
-    id: "providers"
-  },
-  {
-    icon: RobotIcon,
-    id: "agents"
-  },
-  { icon: ScreenShareIcon, id: "screen-awareness" },
-  {
-    icon: BubbleChatIcon,
-    id: "chat"
-  },
-  {
-    icon: SentIcon,
-    id: "channels"
-  },
-  {
-    icon: BrainIcon,
-    id: "memory"
-  },
-  {
-    icon: PackageOpenIcon,
-    id: "plugins"
-  },
-  {
-    icon: PuzzleIcon,
-    id: "skills"
-  },
-  {
-    icon: ChartLineData02Icon,
-    id: "token-savings"
-  },
-  {
-    icon: PaintBrush01Icon,
-    id: "color-schema"
-  },
-  {
-    icon: ComputerIcon,
-    id: "user-interface"
-  },
-  {
-    icon: InternetIcon,
-    id: "network"
-  },
-  {
-    icon: InformationCircleIcon,
-    id: "about"
-  }
+  { group: "assistant", icon: BubbleChatIcon, id: "chat" },
+  { group: "assistant", icon: RobotIcon, id: "agents" },
+  { group: "assistant", icon: CloudServerIcon, id: "providers" },
+  { group: "assistant", icon: BrainIcon, id: "memory" },
+  { group: "assistant", icon: PuzzleIcon, id: "skills" },
+  { group: "tools", icon: WebDesignIcon, id: "web-tools" },
+  { group: "tools", icon: PlugSocketIcon, id: "mcp" },
+  { group: "tools", icon: PackageOpenIcon, id: "plugins" },
+  { group: "tools", icon: ScreenShareIcon, id: "screen-awareness" },
+  { group: "tools", icon: CalendarClockIcon, id: "automation" },
+  { group: "app", icon: Settings02Icon, id: "general" },
+  { group: "app", icon: ComputerIcon, id: "user-interface" },
+  { group: "app", icon: PaintBrush01Icon, id: "color-schema" },
+  { group: "app", icon: SentIcon, id: "channels" },
+  { group: "app", icon: ChartLineData02Icon, id: "token-savings" },
+  { group: "app", icon: InternetIcon, id: "network" },
+  { group: "app", icon: InformationCircleIcon, id: "about" }
 ]

@@ -635,7 +635,10 @@ export {
   StartBestOfNInputSchema,
   WorktreeDiffSchema,
   WorktreeIdInputSchema,
-  WorktreeSessionInputSchema
+  WorktreeSessionInputSchema,
+  WorktreeSidebarCandidateSchema,
+  WorktreeSidebarSessionSchema,
+  WorktreeSidebarSummaryOutputSchema
 } from "./schemas/worktrees"
 export type {
   ApplyWorktreeOutput,
@@ -643,5 +646,7 @@ export type {
   BestOfNReview,
   BestOfNRun,
   ManagedWorktree,
-  WorktreeDiff
+  WorktreeDiff,
+  WorktreeSidebarCandidate,
+  WorktreeSidebarSession
 } from "./schemas/worktrees"

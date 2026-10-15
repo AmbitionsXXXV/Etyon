@@ -59,9 +59,14 @@ import {
 import { MessageAttachmentImages } from "@/renderer/components/chat/message-attachment-images"
 import { ModelSelector } from "@/renderer/components/chat/model-selector"
 import { ProjectContextPanel } from "@/renderer/components/chat/project-context-panel"
+import type { WorktreeSurfaces } from "@/renderer/components/chat/project-context-panel"
 import { PromptInput } from "@/renderer/components/chat/prompt-input"
 import { ChatSessionTurnIndicator } from "@/renderer/components/chat/session-turn-indicator"
-import { WorktreeRuntimePanel } from "@/renderer/components/chat/worktree-runtime-panel"
+import {
+  BestOfNSurface,
+  WorktreeRuntimeChip,
+  WorktreesSurface
+} from "@/renderer/components/chat/worktree-runtime-panel"
 import { getChatTransport } from "@/renderer/lib/ai/transport"
 import { collectPublishedArtifactRefs } from "@/renderer/lib/chat/artifact-panel"
 import type { ChatArtifactRef } from "@/renderer/lib/chat/artifact-panel"
@@ -102,7 +107,11 @@ import {
   buildChatModelGroups,
   resolveChatModelValue
 } from "@/renderer/lib/chat/model-options"
-import { consumePanelOpenRequest } from "@/renderer/lib/chat/panel-open-request"
+import {
+  clearPanelSurfaceRequest,
+  consumePanelOpenRequest,
+  usePanelSurfaceRequest
+} from "@/renderer/lib/chat/panel-open-request"
 import { buildComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import {
   formatProjectDiffCount,
@@ -666,20 +675,28 @@ const ProjectContextTrigger = ({
 
 const ChatSessionHeader = ({
   isProjectContextOpen,
+  onOpenWorktreeSurface,
   onToggleProjectContext,
   selectedSession,
   sessionTitle
 }: {
   isProjectContextOpen: boolean
+  onOpenWorktreeSurface?: (kind: "bestOfN" | "worktrees") => void
   onToggleProjectContext: () => void
   selectedSession: ChatSessionSummary
   sessionTitle: string
 }) => (
-  <div className="title-bar-drag flex shrink-0 items-start justify-between gap-4">
+  <div className="title-bar-drag flex shrink-0 items-center justify-between gap-4">
     <div className="min-w-0 space-y-2">
       <h1 className="truncate text-2xl font-semibold">{sessionTitle}</h1>
     </div>
     <div className="title-bar-no-drag flex shrink-0 items-center gap-2">
+      {onOpenWorktreeSurface ? (
+        <WorktreeRuntimeChip
+          onOpenSurface={onOpenWorktreeSurface}
+          sessionId={selectedSession.id}
+        />
+      ) : null}
       <ProjectContextTrigger
         gitStatus={selectedSession.gitStatus}
         isOpen={isProjectContextOpen}
@@ -825,7 +842,8 @@ const ChatProjectContextLayout = ({
   onRefresh,
   openTabs,
   projectItems,
-  selectedSession
+  selectedSession,
+  worktreeSurfaces
 }: {
   activeArtifact?: ChatArtifactRef | null
   activeTabId: PanelTabId | null
@@ -845,6 +863,7 @@ const ChatProjectContextLayout = ({
   openTabs: readonly ChatPanelTab[]
   projectItems: ProjectSnapshotItem[]
   selectedSession: ChatSessionSummary
+  worktreeSurfaces?: WorktreeSurfaces
 }) => {
   const { t } = useI18n()
   const projectContextPanelRef = useRef<PanelImperativeHandle | null>(null)
@@ -1014,6 +1033,7 @@ const ChatProjectContextLayout = ({
               projectItems={projectItems}
               revealTarget={revealTarget}
               selectedSession={selectedSession}
+              worktreeSurfaces={worktreeSurfaces}
             />
           </motion.div>
         </Resizable.Panel>
@@ -2680,6 +2700,34 @@ const ChatRuntime = ({
     [buildChatRequestOptions, sendMessage]
   )
 
+  const handleOpenWorktreeSurface = useCallback(
+    (kind: "bestOfN" | "worktrees") => {
+      onOpenPanelTab(kind)
+      onProjectContextOpenChange(true)
+    },
+    [onOpenPanelTab, onProjectContextOpenChange]
+  )
+
+  const isBestOfNRunDisabled = isBestOfNStartDisabled(
+    status,
+    isAwaitingToolApproval,
+    isImageMode
+  )
+  const worktreeSurfaces = useMemo<WorktreeSurfaces>(
+    () => ({
+      bestOfN: (
+        <BestOfNSurface
+          isRunDisabled={isBestOfNRunDisabled}
+          models={getBestOfNModelOptions(modelGroups)}
+          onStart={handleBestOfNStart}
+          sessionId={selectedSession.id}
+        />
+      ),
+      worktrees: <WorktreesSurface sessionId={selectedSession.id} />
+    }),
+    [handleBestOfNStart, isBestOfNRunDisabled, modelGroups, selectedSession.id]
+  )
+
   return (
     <ChatProjectContextLayout
       activeArtifact={activeArtifact}
@@ -2699,24 +2747,15 @@ const ChatRuntime = ({
       openTabs={sidePanelTabs.openTabs}
       projectItems={projectTreeItems}
       selectedSession={selectedSession}
+      worktreeSurfaces={worktreeSurfaces}
     >
       <div className="flex h-svh min-h-0 flex-col gap-6 overflow-hidden p-6">
         <ChatSessionHeader
           isProjectContextOpen={isProjectContextOpen}
+          onOpenWorktreeSurface={handleOpenWorktreeSurface}
           onToggleProjectContext={onToggleProjectContext}
           selectedSession={selectedSession}
           sessionTitle={sessionTitle}
-        />
-
-        <WorktreeRuntimePanel
-          isRunDisabled={isBestOfNStartDisabled(
-            status,
-            isAwaitingToolApproval,
-            isImageMode
-          )}
-          models={getBestOfNModelOptions(modelGroups)}
-          onStart={handleBestOfNStart}
-          sessionId={selectedSession.id}
         />
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -3679,6 +3718,18 @@ const ChatSessionPage = () => {
 
     return unsubscribe
   }, [sessionId])
+
+  // A sidebar child row (Best-of-N candidate, kept workspace) asks for its
+  // surface; it may arrive before or after this session mounts.
+  const panelSurfaceRequest = usePanelSurfaceRequest()
+  useEffect(() => {
+    if (!panelSurfaceRequest || panelSurfaceRequest.sessionId !== sessionId) {
+      return
+    }
+    setSidePanelTabs((state) => openPanelTab(state, panelSurfaceRequest.kind))
+    setProjectContextOpen(true)
+    clearPanelSurfaceRequest()
+  }, [panelSurfaceRequest, sessionId])
 
   const handleGoHome = useCallback(() => {
     navigate({ to: "/" })

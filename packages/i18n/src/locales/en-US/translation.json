@@ -613,7 +613,9 @@
       "view": "View candidates",
       "unavailable": "Enable subagent delegation in Agent settings and select a profile that allows writable delegates.",
       "discarded": "Discarded",
-      "files": "files"
+      "files": "files",
+      "modelFilter": "Filter models",
+      "newRun": "New comparison"
     },
     "worktrees": {
       "apply": "Apply to primary workspace",
@@ -623,7 +625,9 @@
       "orphaned": "Run interrupted; changes retained",
       "preview": "Preview changes",
       "title": "Isolated workspaces",
-      "files": "files"
+      "files": "files",
+      "openChip": "Open Best-of-N and isolated workspaces in the side panel",
+      "shortTitle": "Workspaces"
     },
     "message": {
       "youLabel": "You",
@@ -672,7 +676,12 @@
       "showMore": "Show more",
       "toggleProjectGroup": "Toggle project group",
       "toggleSidebar": "Toggle Sidebar",
-      "unpinSession": "Unpin Session"
+      "unpinSession": "Unpin Session",
+      "worktrees": {
+        "pick": "Pick",
+        "files": "{{count}} files",
+        "runBadge": "Best-of-N {{progress}} done"
+      }
     },
     "hint": "Open Settings to finish the workspace setup while chat is still being wired.",
     "logoAlt": "Etyon application icon",
@@ -1461,7 +1470,28 @@
           }
         }
       },
-      "title": "Sidebar Settings"
+      "title": "Sidebar Settings",
+      "description": "Choose how chats are listed. Best-of-N runs and isolated workspaces follow the same layout.",
+      "preview": {
+        "label": "Preview",
+        "simpleHint": "Candidates and workspaces open from the chip in the chat header."
+      },
+      "worktrees": {
+        "projectsTitle": "Best-of-N and isolated workspaces in Projects mode",
+        "simpleTitle": "Best-of-N and isolated workspaces in Simple mode",
+        "nestWorktrees": {
+          "label": "Nest under their chat",
+          "description": "Best-of-N candidates and kept workspaces appear as child rows."
+        },
+        "collapseResolvedRuns": {
+          "label": "Hide finished runs",
+          "description": "Runs you applied or cancelled fold back into the chat row."
+        },
+        "showWorktreeBadges": {
+          "label": "Show worktree badges",
+          "description": "A count on chats with live candidates and a dot for kept workspaces."
+        }
+      }
     },
     "skills": {
       "commands": {
@@ -1779,6 +1809,11 @@
       "timeZone": "Time zone",
       "timeout": "Time limit in minutes",
       "title": "Background tasks"
+    },
+    "navGroup": {
+      "assistant": "Assistant",
+      "tools": "Tools",
+      "app": "App"
     }
   },
   "tray": {

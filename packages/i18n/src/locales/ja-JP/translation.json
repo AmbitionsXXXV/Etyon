@@ -613,7 +613,9 @@
       "view": "候補を表示",
       "unavailable": "Agent 設定で委派を有効にし、書き込み可能なサブエージェントを許可するプロファイルを選択してください。",
       "discarded": "破棄済み",
-      "files": "ファイル"
+      "files": "ファイル",
+      "modelFilter": "モデルを絞り込む",
+      "newRun": "新しい比較"
     },
     "worktrees": {
       "apply": "メインの作業領域に適用",
@@ -623,7 +625,9 @@
       "orphaned": "実行が中断され、変更は保持されました",
       "preview": "変更をプレビュー",
       "title": "隔離された作業領域",
-      "files": "ファイル"
+      "files": "ファイル",
+      "openChip": "サイドパネルで Best-of-N と隔離された作業領域を開く",
+      "shortTitle": "作業領域"
     },
     "message": {
       "youLabel": "あなた",
@@ -672,7 +676,12 @@
       "showMore": "もっと表示",
       "toggleProjectGroup": "プロジェクトグループを切り替え",
       "toggleSidebar": "サイドバーを切り替え",
-      "unpinSession": "セッションの固定を解除"
+      "unpinSession": "セッションの固定を解除",
+      "worktrees": {
+        "pick": "推奨",
+        "files": "{{count}} ファイル",
+        "runBadge": "Best-of-N {{progress}} 完了"
+      }
     },
     "hint": "チャット導線はまだ未接続なので、その間に Settings でワークスペースを整えられます。",
     "logoAlt": "Etyon アプリケーションアイコン",
@@ -1461,7 +1470,28 @@
           }
         }
       },
-      "title": "Sidebar Settings"
+      "title": "Sidebar Settings",
+      "description": "チャットの一覧表示の方法を選びます。Best-of-N の実行と隔離された作業領域も同じレイアウトに従います。",
+      "preview": {
+        "label": "プレビュー",
+        "simpleHint": "候補と作業領域はチャットのヘッダーのチップから開けます。"
+      },
+      "worktrees": {
+        "projectsTitle": "プロジェクトモードでの Best-of-N と隔離された作業領域",
+        "simpleTitle": "シンプルモードでの Best-of-N と隔離された作業領域",
+        "nestWorktrees": {
+          "label": "チャットの下に入れ子で表示",
+          "description": "Best-of-N の候補と保持された作業領域を子行として表示します。"
+        },
+        "collapseResolvedRuns": {
+          "label": "終了した実行を隠す",
+          "description": "採用またはキャンセルした実行はチャットの行に折りたたまれます。"
+        },
+        "showWorktreeBadges": {
+          "label": "作業領域のバッジを表示",
+          "description": "候補があるチャットに件数を、保持された作業領域にドットを表示します。"
+        }
+      }
     },
     "skills": {
       "commands": {
@@ -1779,6 +1809,11 @@
       "timeZone": "タイムゾーン",
       "timeout": "制限時間（分）",
       "title": "バックグラウンドタスク"
+    },
+    "navGroup": {
+      "assistant": "アシスタント",
+      "tools": "ツール",
+      "app": "アプリ"
     }
   },
   "tray": {

@@ -4,10 +4,12 @@ import type {
   BestOfNRun,
   WorktreeDiff
 } from "@etyon/rpc/schemas/worktrees"
+import { cn } from "@etyon/ui/lib/utils"
 import { Button, ScrollShadow } from "@heroui/react"
 import { useState } from "react"
 import type { SyntheticEvent } from "react"
 
+import { MOTION_TRANSITION_FAST_CLASS } from "@/renderer/lib/motion"
 import { DEFAULT_BEST_OF_N_LABELS } from "@/renderer/lib/worktrees/labels"
 import type { BestOfNPanelLabels } from "@/renderer/lib/worktrees/labels"
 
@@ -35,7 +37,7 @@ export interface BestOfNPanelProps {
   runs: BestOfNRun[]
 }
 
-const CandidateCard = ({
+const CandidateRow = ({
   candidate,
   isBusy,
   labels,
@@ -50,47 +52,58 @@ const CandidateCard = ({
 }) => {
   const status = labels[candidate.state]
   return (
-    <article className="min-w-0 space-y-2 rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="min-w-0 truncate text-xs font-semibold">
+    <article
+      className={cn(
+        "min-w-0 space-y-1.5 rounded-xl px-3 py-2.5",
+        recommended ? "bg-accent-soft" : "bg-surface"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <h3 className="min-w-0 flex-1 truncate text-sm font-medium">
           {candidate.modelId}
         </h3>
-        <span className="shrink-0 text-[0.625rem] text-muted-foreground">
-          {status}
-        </span>
+        {recommended ? (
+          <span className="shrink-0 rounded-md bg-accent-soft px-1.5 text-[0.6875rem] font-medium text-accent-soft-foreground">
+            {labels.recommended}
+          </span>
+        ) : (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {status}
+          </span>
+        )}
+        {candidate.worktreeId ? (
+          <Button
+            isDisabled={isBusy || candidate.state === "running"}
+            onPress={onPreview}
+            size="sm"
+            variant="secondary"
+          >
+            {labels.preview}
+          </Button>
+        ) : null}
       </div>
-      {recommended && (
-        <p className="text-xs font-medium text-success">{labels.recommended}</p>
-      )}
       {candidate.stats && (
-        <p className="text-[0.625rem] text-muted-foreground">
-          {candidate.stats.changedFileCount} {labels.files} · +
-          {candidate.stats.additions} −{candidate.stats.deletions}
+        <p className="font-mono text-xs text-muted-foreground">
+          {candidate.stats.changedFileCount} {labels.files}{" "}
+          <span className="text-success">+{candidate.stats.additions}</span>{" "}
+          <span className="text-danger">−{candidate.stats.deletions}</span>
         </p>
       )}
-      <ScrollShadow className="max-h-40">
-        <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
-          {candidate.summary || candidate.error || status}
-        </p>
-      </ScrollShadow>
+      <p className="line-clamp-3 text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
+        {candidate.summary || candidate.error || status}
+      </p>
       {candidate.error && candidate.summary && (
         <p className="text-xs text-danger">{candidate.error}</p>
       )}
-      {candidate.worktreeId ? (
-        <Button
-          isDisabled={isBusy || candidate.state === "running"}
-          onPress={onPreview}
-          size="sm"
-          variant="secondary"
-        >
-          {labels.preview}
-        </Button>
-      ) : candidate.state === "ready" ? (
+      {!candidate.worktreeId && candidate.state === "ready" ? (
         <p className="text-xs text-muted-foreground">{labels.noChanges}</p>
       ) : null}
     </article>
   )
 }
+
+const MAX_BEST_OF_N_MODELS = 4
+const MIN_BEST_OF_N_MODELS = 2
 
 const BestOfNLaunchForm = ({
   isBusy,
@@ -106,12 +119,25 @@ const BestOfNLaunchForm = ({
   onStart: BestOfNPanelProps["onStart"]
 }) => {
   const [selectedModels, setSelectedModels] = useState<string[]>(() =>
-    models.slice(0, 2).map(({ id }) => id)
+    models.slice(0, MIN_BEST_OF_N_MODELS).map(({ id }) => id)
   )
+  const [filter, setFilter] = useState("")
   const [prompt, setPrompt] = useState("")
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null
   )
+  const normalizedFilter = filter.trim().toLowerCase()
+  const visibleModels = normalizedFilter
+    ? models.filter(
+        ({ id, label }) =>
+          selectedModels.includes(id) ||
+          label.toLowerCase().includes(normalizedFilter)
+      )
+    : models
+  const isFormDisabled = isBusy || isRunDisabled
+  const hasValidSelection =
+    selectedModels.length >= MIN_BEST_OF_N_MODELS &&
+    selectedModels.length <= MAX_BEST_OF_N_MODELS
   const start = async (
     event: SyntheticEvent<HTMLFormElement>
   ): Promise<void> => {
@@ -119,7 +145,10 @@ const BestOfNLaunchForm = ({
     const modelIds = selectedModels.filter((id) =>
       models.some((model) => model.id === id)
     )
-    if (modelIds.length < 2 || modelIds.length > 4) {
+    if (
+      modelIds.length < MIN_BEST_OF_N_MODELS ||
+      modelIds.length > MAX_BEST_OF_N_MODELS
+    ) {
       setValidationMessage(labels.modelLimit)
       return
     }
@@ -132,40 +161,70 @@ const BestOfNLaunchForm = ({
   return (
     <>
       <form className="space-y-3" onSubmit={start}>
-        <fieldset>
-          <legend className="mb-2 text-xs font-medium">{labels.models}</legend>
-          <ScrollShadow className="max-h-28">
-            <div className="flex flex-wrap gap-x-3 gap-y-2">
-              {models.map(({ id, label }) => (
-                <label className="flex items-center gap-1.5 text-xs" key={id}>
-                  <input
-                    checked={selectedModels.includes(id)}
+        <fieldset className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <legend className="text-xs font-medium">{labels.models}</legend>
+            <span
+              className={cn(
+                "font-mono text-xs",
+                hasValidSelection ? "text-muted-foreground" : "text-warning"
+              )}
+            >
+              {selectedModels.length}/{MAX_BEST_OF_N_MODELS}
+            </span>
+          </div>
+          <input
+            aria-label={labels.modelFilter}
+            className="bg-field-background h-8 w-full rounded-lg border border-border px-2.5 text-xs text-field-foreground outline-none placeholder:text-field-placeholder focus-visible:border-focus"
+            disabled={isFormDisabled}
+            onChange={(event) => {
+              setFilter(event.target.value)
+            }}
+            placeholder={labels.modelFilter}
+            type="search"
+            value={filter}
+          />
+          <ScrollShadow className="max-h-32">
+            <div className="flex flex-wrap gap-1.5">
+              {visibleModels.map(({ id, label }) => {
+                const isSelected = selectedModels.includes(id)
+                return (
+                  <button
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "h-7 rounded-full border px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      MOTION_TRANSITION_FAST_CLASS,
+                      isSelected
+                        ? "border-accent/50 bg-accent-soft text-accent-soft-foreground"
+                        : "border-border bg-surface text-foreground hover:bg-default"
+                    )}
                     disabled={
-                      isBusy ||
-                      isRunDisabled ||
-                      (!selectedModels.includes(id) &&
-                        selectedModels.length >= 4)
+                      isFormDisabled ||
+                      (!isSelected &&
+                        selectedModels.length >= MAX_BEST_OF_N_MODELS)
                     }
-                    onChange={(event) => {
+                    key={id}
+                    onClick={() => {
                       setSelectedModels(
-                        event.target.checked
-                          ? [...selectedModels, id]
-                          : selectedModels.filter((modelId) => modelId !== id)
+                        isSelected
+                          ? selectedModels.filter((modelId) => modelId !== id)
+                          : [...selectedModels, id]
                       )
                     }}
-                    type="checkbox"
-                  />
-                  {label}
-                </label>
-              ))}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                )
+              })}
             </div>
           </ScrollShadow>
         </fieldset>
         <label className="block space-y-1 text-xs">
-          <span>{labels.prompt}</span>
+          <span className="font-medium">{labels.prompt}</span>
           <textarea
-            className="min-h-20 w-full resize-y rounded-md border border-border bg-background p-2 text-xs"
-            disabled={isBusy || isRunDisabled}
+            className="bg-field-background min-h-20 w-full resize-y rounded-lg border border-border p-2.5 text-xs text-field-foreground outline-none focus-visible:border-focus"
+            disabled={isFormDisabled}
             maxLength={16_000}
             onChange={(event) => {
               setPrompt(event.target.value)
@@ -175,17 +234,16 @@ const BestOfNLaunchForm = ({
           />
         </label>
         <Button
-          isDisabled={
-            isBusy ||
-            isRunDisabled ||
-            selectedModels.length < 2 ||
-            !prompt.trim()
-          }
+          fullWidth
+          isDisabled={isFormDisabled || !hasValidSelection || !prompt.trim()}
           size="sm"
           type="submit"
         >
           {labels.start}
         </Button>
+        <p className="text-xs leading-5 text-muted-foreground">
+          {labels.empty}
+        </p>
       </form>
       {validationMessage && (
         <p className="text-xs text-danger" role="alert">
@@ -313,28 +371,13 @@ export const BestOfNPanel = ({
   }
 
   return (
-    <section aria-label={labels.title} className="flex min-h-0 flex-col gap-3">
-      <h2 className="text-sm font-semibold">{labels.title}</h2>
-      <BestOfNLaunchForm
-        isBusy={isBusy}
-        isRunDisabled={isRunDisabled}
-        labels={labels}
-        models={models}
-        onStart={(request) =>
-          perform(async () => {
-            await onStart(request)
-          })
-        }
-      />
+    <section aria-label={labels.title} className="flex min-h-0 flex-col gap-4">
       {failureMessage && (
         <p className="text-xs whitespace-pre-wrap text-danger" role="alert">
           {failureMessage}
         </p>
       )}
-      <ScrollShadow className="max-h-[50vh] min-h-0 space-y-3">
-        {!run && (
-          <p className="text-xs text-muted-foreground">{labels.empty}</p>
-        )}
+      <div className="min-h-0 space-y-3">
         {runs.length > 1 && (
           <div className="flex flex-wrap gap-2">
             {runs.map((item) => (
@@ -357,12 +400,12 @@ export const BestOfNPanel = ({
         )}
         {run && (
           <>
-            <p className="text-xs leading-5 whitespace-pre-wrap">
+            <p className="line-clamp-2 text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
               {run.prompt}
             </p>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
+            <div className="space-y-1.5">
               {run.candidates.map((candidate) => (
-                <CandidateCard
+                <CandidateRow
                   candidate={candidate}
                   isBusy={isBusy}
                   key={candidate.id}
@@ -377,7 +420,7 @@ export const BestOfNPanel = ({
               ))}
             </div>
             {run.review && (
-              <div className="space-y-1 rounded-lg bg-muted/40 p-3">
+              <div className="space-y-1 rounded-xl bg-surface p-3">
                 <h3 className="text-xs font-medium">{labels.recommendation}</h3>
                 <p className="text-xs leading-5 whitespace-pre-wrap text-muted-foreground">
                   {run.review.recommendation}
@@ -458,7 +501,21 @@ export const BestOfNPanel = ({
             )}
           </>
         )}
-      </ScrollShadow>
+      </div>
+      <div className="space-y-3 border-t border-separator pt-4">
+        <h2 className="text-sm font-semibold">{labels.newRun}</h2>
+        <BestOfNLaunchForm
+          isBusy={isBusy}
+          isRunDisabled={isRunDisabled}
+          labels={labels}
+          models={models}
+          onStart={(request) =>
+            perform(async () => {
+              await onStart(request)
+            })
+          }
+        />
+      </div>
     </section>
   )
 }

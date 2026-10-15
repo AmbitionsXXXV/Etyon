@@ -3,6 +3,7 @@ import type {
   DarkColorSchema,
   LightColorSchema,
   SidebarMode,
+  SidebarSettings,
   Theme
 } from "@etyon/rpc"
 import {
@@ -16,13 +17,14 @@ import {
   ComboboxValue
 } from "@etyon/ui/components/combobox"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Input } from "@heroui/react"
+import { Button, Input, Switch } from "@heroui/react"
 import { MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { orpc } from "@/renderer/lib/rpc"
+import { getSidebarWorktreeRules } from "@/renderer/lib/sidebar/worktree-summary"
 
 const FALLBACK_FONTS = [
   "System Default",
@@ -229,21 +231,30 @@ const SidebarModeButton = ({
     <button
       aria-pressed={isActive}
       className={cn(
-        "flex min-h-40 flex-col items-center justify-center gap-4 rounded-2xl border px-6 py-5 text-center transition-all",
+        "flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors",
         isActive
-          ? "border-primary bg-primary/12 text-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_25%,transparent)]"
-          : "border-border hover:border-muted-foreground/30 hover:bg-muted/50"
+          ? "border-primary bg-primary/8"
+          : "border-border hover:border-muted-foreground/30 hover:bg-default/40"
       )}
       onClick={handleClick}
       type="button"
     >
-      <div className="text-foreground">{option.icon}</div>
-      <div className="space-y-1.5">
-        <div className="text-lg font-semibold tracking-[-0.02em]">
+      <span
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-xl [&_svg]:size-5",
+          isActive ? "bg-primary/15 text-primary" : "bg-default text-foreground"
+        )}
+      >
+        {option.icon}
+      </span>
+      <span className="min-w-0 space-y-0.5">
+        <span className="block text-sm font-semibold text-foreground">
           {option.label}
-        </div>
-        <p className="text-sm text-muted-foreground">{option.description}</p>
-      </div>
+        </span>
+        <span className="block text-xs leading-5 text-muted-foreground">
+          {option.description}
+        </span>
+      </span>
     </button>
   )
 }
@@ -257,7 +268,7 @@ export const SidebarModeSelector = ({
   options: SidebarModeOption[]
   value: SidebarMode
 }) => (
-  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
     {options.map((option) => (
       <SidebarModeButton
         isActive={value === option.value}
@@ -446,6 +457,173 @@ export const FontSizeInput = ({
           min: FONT_SIZE_MIN
         })}
       </p>
+    </div>
+  )
+}
+
+const PreviewRow = ({
+  depth = 0,
+  isActive = false,
+  trailing,
+  width
+}: {
+  depth?: 0 | 1
+  isActive?: boolean
+  trailing?: React.ReactNode
+  width: string
+}) => (
+  <div
+    className={cn(
+      "flex h-7 items-center gap-2 rounded-lg px-2",
+      depth === 1 && "ml-4 border-l border-border pl-3",
+      isActive && "bg-default"
+    )}
+  >
+    <span
+      className={cn(
+        "h-2 rounded-full",
+        isActive ? "bg-foreground/70" : "bg-surface-tertiary"
+      )}
+      style={{ width }}
+    />
+    <span className="flex-1" />
+    {trailing}
+  </div>
+)
+
+const PreviewCandidateBadge = () => (
+  <span className="rounded-md bg-accent-soft px-1.5 font-mono text-[10px] text-accent-soft-foreground">
+    2/3
+  </span>
+)
+
+const PreviewKeptDot = () => (
+  <span className="size-1.5 rounded-full bg-warning" />
+)
+
+/**
+ * A language-neutral sketch of the sidebar in the selected mode, showing where
+ * Best-of-N candidates and kept workspaces appear with the current switches.
+ */
+export const SidebarModePreview = ({
+  mode,
+  nestWorktrees,
+  showWorktreeBadges
+}: {
+  mode: SidebarMode
+  nestWorktrees: boolean
+  showWorktreeBadges: boolean
+}) => {
+  const { t } = useI18n()
+  const isProjects = mode === "projects"
+  return (
+    <figure
+      aria-label={t("settings.sidebar.preview.label")}
+      className="flex min-h-64 flex-col gap-1 rounded-2xl border border-border bg-background p-3"
+    >
+      {isProjects ? (
+        <>
+          <div className="flex h-7 items-center gap-2 px-2 text-muted-foreground">
+            <span className="size-3 rounded-sm border border-current" />
+            <span className="h-2 w-16 rounded-full bg-surface-tertiary" />
+          </div>
+          <PreviewRow isActive width="55%" />
+          {nestWorktrees ? (
+            <>
+              <PreviewRow
+                depth={1}
+                trailing={
+                  <span className="rounded-md bg-accent-soft px-1.5 text-[10px] text-accent-soft-foreground">
+                    {t("home.sidebar.worktrees.pick")}
+                  </span>
+                }
+                width="35%"
+              />
+              <PreviewRow depth={1} width="45%" />
+              <PreviewRow
+                depth={1}
+                trailing={
+                  <span className="size-2.5 animate-spin rounded-full border border-accent border-r-transparent motion-reduce:animate-none" />
+                }
+                width="30%"
+              />
+            </>
+          ) : null}
+          <PreviewRow width="62%" />
+          <PreviewRow width="48%" />
+          {nestWorktrees ? (
+            <PreviewRow depth={1} trailing={<PreviewKeptDot />} width="40%" />
+          ) : null}
+          <div className="mt-1 flex h-7 items-center gap-2 px-2 text-muted-foreground">
+            <span className="size-3 rounded-sm border border-current" />
+            <span className="h-2 w-12 rounded-full bg-surface-tertiary" />
+          </div>
+        </>
+      ) : (
+        <>
+          <PreviewRow
+            isActive
+            trailing={showWorktreeBadges ? <PreviewCandidateBadge /> : null}
+            width="55%"
+          />
+          <PreviewRow width="62%" />
+          <PreviewRow
+            trailing={showWorktreeBadges ? <PreviewKeptDot /> : null}
+            width="48%"
+          />
+          <PreviewRow width="70%" />
+          <PreviewRow width="40%" />
+          <p className="mt-auto rounded-lg bg-surface px-2.5 py-2 text-xs leading-5 text-muted-foreground">
+            {t("settings.sidebar.preview.simpleHint")}
+          </p>
+        </>
+      )}
+    </figure>
+  )
+}
+
+/** The worktree switches that apply to the selected sidebar mode. */
+export const SidebarWorktreeRules = ({
+  onChange,
+  sidebar
+}: {
+  onChange: (patch: Partial<SidebarSettings>) => void
+  sidebar: SidebarSettings
+}) => {
+  const { t } = useI18n()
+  return (
+    <div className="space-y-1 border-t border-separator pt-4">
+      <h3 className="pb-1 text-xs font-medium text-muted-foreground">
+        {t(
+          sidebar.mode === "projects"
+            ? "settings.sidebar.worktrees.projectsTitle"
+            : "settings.sidebar.worktrees.simpleTitle"
+        )}
+      </h3>
+      {getSidebarWorktreeRules(sidebar).map((rule) => (
+        <div
+          className="flex items-center justify-between gap-4 py-2"
+          key={rule.key}
+        >
+          <div className="min-w-0 space-y-0.5">
+            <div className="text-sm font-medium">{t(rule.labelKey)}</div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {t(rule.descriptionKey)}
+            </p>
+          </div>
+          <Switch
+            aria-label={t(rule.labelKey)}
+            isSelected={sidebar[rule.key]}
+            onChange={(isSelected) => onChange({ [rule.key]: isSelected })}
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
+        </div>
+      ))}
     </div>
   )
 }

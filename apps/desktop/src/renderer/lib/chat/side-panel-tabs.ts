@@ -4,7 +4,9 @@ import {
   FolderGitIcon,
   GitCommitIcon,
   GitCompareIcon,
+  GitForkIcon,
   GlobeIcon,
+  Layers01Icon,
   TerminalIcon
 } from "@hugeicons/core-free-icons"
 import type { Key } from "react"
@@ -20,11 +22,13 @@ import type { Key } from "react"
 
 export type PanelSurfaceKind =
   | "artifact"
+  | "bestOfN"
   | "browser"
   | "changes"
   | "commit"
   | "files"
   | "terminal"
+  | "worktrees"
 
 export type PanelTabId = string
 
@@ -73,6 +77,12 @@ export const PANEL_SURFACE_METADATA = {
     labelKey: "chat.projectPanel.artifactView",
     shortcutKey: null
   },
+  bestOfN: {
+    badge: null,
+    icon: GitForkIcon,
+    labelKey: "chat.bestOfN.title",
+    shortcutKey: null
+  },
   browser: {
     badge: null,
     icon: GlobeIcon,
@@ -102,6 +112,12 @@ export const PANEL_SURFACE_METADATA = {
     icon: TerminalIcon,
     labelKey: "chat.projectPanel.terminalView",
     shortcutKey: "J"
+  },
+  worktrees: {
+    badge: null,
+    icon: Layers01Icon,
+    labelKey: "chat.worktrees.title",
+    shortcutKey: null
   }
 } as const satisfies Record<PanelSurfaceKind, PanelSurfaceMetadata>
 
@@ -115,16 +131,20 @@ export const PANEL_LAUNCHER_SURFACE_KINDS = [
   "changes",
   "commit",
   "terminal",
-  "browser"
+  "browser",
+  "bestOfN",
+  "worktrees"
 ] as const satisfies readonly PanelSurfaceKind[]
 
 export const isPanelSurfaceKind = (value: Key): value is PanelSurfaceKind =>
   value === "artifact" ||
+  value === "bestOfN" ||
   value === "browser" ||
   value === "changes" ||
   value === "commit" ||
   value === "files" ||
-  value === "terminal"
+  value === "terminal" ||
+  value === "worktrees"
 
 const findTabIndex = (
   openTabs: readonly ChatPanelTab[],

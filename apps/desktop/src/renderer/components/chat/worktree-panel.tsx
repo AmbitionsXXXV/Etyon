@@ -39,23 +39,22 @@ export const WorktreePanel = ({
   }
   return (
     <section aria-label={labels.title} className="flex min-h-0 flex-col gap-3">
-      <h2 className="text-sm font-semibold">{labels.title}</h2>
       {failureMessage && (
         <p className="text-xs whitespace-pre-wrap text-danger" role="alert">
           {failureMessage}
         </p>
       )}
-      <ScrollShadow className="max-h-[50vh] min-h-0 space-y-3">
+      <div className="min-h-0 space-y-3">
         {worktrees.length === 0 && (
           <p className="text-xs text-muted-foreground">{labels.empty}</p>
         )}
         {worktrees.map((tree) => (
           <article
-            className="space-y-2 rounded-lg border border-border p-3"
+            className="space-y-2 rounded-xl bg-surface p-3"
             key={tree.id}
           >
             <h3 className="text-xs font-semibold">{tree.label}</h3>
-            <p className="truncate text-[0.625rem] text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {tree.workspacePath}
             </p>
             {tree.state === "orphaned" && (
@@ -106,7 +105,7 @@ export const WorktreePanel = ({
           </article>
         ))}
         {preview && (
-          <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="space-y-2 rounded-xl bg-surface p-3">
             <p className="text-xs">
               {preview.paths.length} {labels.files} · +{preview.additions} −
               {preview.deletions}
@@ -153,7 +152,7 @@ export const WorktreePanel = ({
             </Button>
           </div>
         )}
-      </ScrollShadow>
+      </div>
     </section>
   )
 }
