@@ -89,13 +89,13 @@ const PROJECT_GROUP_ROW_CLASS_NAME =
 const PROJECT_GROUP_TOGGLE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-3 border-0 bg-transparent p-0 text-left text-inherit outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
 const PROJECTS_SECTION_EMPTY_CLASS_NAME =
-  "title-bar-no-drag mt-2 rounded-[1.25rem] border border-dashed border-sidebar-border/70 bg-white/[0.03] px-4 py-4 text-[12px] leading-5 text-sidebar-foreground/68"
+  "title-bar-no-drag mt-2 rounded-[1.25rem] border border-dashed border-sidebar-border/70 bg-white/[0.03] px-4 py-4 text-[12px] leading-5 text-muted-foreground"
 const PROJECTS_SECTION_HEADER_CLASS_NAME =
   "title-bar-no-drag group/projects-header flex items-center gap-1 rounded-[1.125rem] px-1 py-1.5 transition-[background-color,color] hover:bg-white/[0.03] focus-within:bg-white/[0.03]"
 const SESSION_ROW_CLASS_NAME =
   "min-h-10.5 items-center rounded-[1.125rem] px-3 py-0 text-sm font-medium text-sidebar-foreground/86 transition-[background-color,color] hover:bg-white/5 hover:text-sidebar-accent-foreground data-[active=true]:bg-white/7 data-[active=true]:text-sidebar-accent-foreground"
 const SESSION_ROW_META_CLASS_NAME =
-  "shrink-0 text-sm leading-5 font-medium tabular-nums text-sidebar-foreground/58"
+  "shrink-0 text-sm leading-5 font-medium tabular-nums text-muted-foreground"
 
 interface AppSidebarShellProps {
   children?: ReactNode
@@ -277,7 +277,7 @@ const SidebarGitStatusSummary = ({
       : null,
     agentGitStatus.untracked > 0
       ? {
-          className: "text-sidebar-foreground/55",
+          className: "text-muted-foreground",
           label: `?${agentGitStatus.untracked}`
         }
       : null
@@ -603,7 +603,7 @@ const ChatSessionItem = ({
           <button
             aria-label={pinActionLabel}
             className={cn(
-              "flex min-h-10.5 w-9 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-sidebar-foreground/70 outline-none transition-[opacity,color] duration-150 hover:bg-white/5 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50",
+              "flex min-h-10.5 w-9 shrink-0 items-center justify-center rounded-none border-0 bg-transparent p-0 text-muted-foreground outline-none transition-[opacity,color] duration-150 hover:bg-white/5 hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:pointer-events-none disabled:opacity-50",
               "pointer-events-none opacity-0",
               "group-hover/menu-item:pointer-events-auto group-hover/menu-item:opacity-100",
               "group-focus-within/menu-item:pointer-events-auto group-focus-within/menu-item:opacity-100",
@@ -646,7 +646,7 @@ const ChatSessionItem = ({
                 })}
               </span>
               {showProjectDiffLine ? (
-                <span className="block max-w-full truncate text-[12px] leading-none font-medium text-sidebar-foreground/50 tabular-nums">
+                <span className="block max-w-full truncate text-[12px] leading-none font-medium text-muted-foreground tabular-nums">
                   {diffMetaItem?.label}
                 </span>
               ) : null}
@@ -893,9 +893,7 @@ const ProjectGroupSection = ({
           <HugeiconsIcon
             className={cn(
               "shrink-0 transition-colors",
-              expanded
-                ? "text-sidebar-foreground/92"
-                : "text-sidebar-foreground/64"
+              expanded ? "text-sidebar-foreground/92" : "text-muted-foreground"
             )}
             icon={expanded ? FolderOpenIcon : Folder01Icon}
             size={18}
@@ -906,7 +904,7 @@ const ProjectGroupSection = ({
           </SidebarGroupLabel>
           {isPinnedProject ? (
             <HugeiconsIcon
-              className="size-3.5 shrink-0 text-sidebar-foreground/50"
+              className="size-3.5 shrink-0 text-muted-foreground"
               icon={PinIcon}
               strokeWidth={2}
             />
@@ -919,7 +917,7 @@ const ProjectGroupSection = ({
               projectName: group.projectName
             })}
             className={cn(
-              "h-7 w-7 shrink-0 text-sidebar-foreground/56 transition-[opacity,transform,color] duration-150",
+              "h-7 w-7 shrink-0 text-muted-foreground transition-[opacity,transform,color] duration-150",
               "pointer-events-none translate-x-1 opacity-0",
               "group-hover/project-row:pointer-events-auto group-hover/project-row:translate-x-0 group-hover/project-row:opacity-100",
               "group-focus-within/project-row:pointer-events-auto group-focus-within/project-row:translate-x-0 group-focus-within/project-row:opacity-100",
@@ -1034,7 +1032,7 @@ const ProjectGroupSection = ({
 
           {hasHiddenSessions || showLessAction ? (
             <button
-              className="title-bar-no-drag mt-1 ml-11 text-left text-[13px] font-medium text-sidebar-foreground/56 transition-colors hover:text-sidebar-accent-foreground"
+              className="title-bar-no-drag mt-1 ml-11 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:text-sidebar-accent-foreground"
               onClick={hasHiddenSessions ? handleShowMore : handleShowLess}
               type="button"
             >
@@ -1246,7 +1244,7 @@ const ProjectGroupsSection = ({
     <Button
       aria-label={addProjectLabel}
       className={cn(
-        "text-sidebar-foreground/56 transition-[opacity,transform,color] duration-200",
+        "text-muted-foreground transition-[opacity,transform,color] duration-200",
         "pointer-events-none translate-x-1 opacity-0",
         "group-hover/projects-header:pointer-events-auto group-hover/projects-header:translate-x-0 group-hover/projects-header:opacity-100",
         "group-focus-within/projects-header:pointer-events-auto group-focus-within/projects-header:translate-x-0 group-focus-within/projects-header:opacity-100",
@@ -1267,7 +1265,7 @@ const ProjectGroupsSection = ({
     <SidebarGroup className="px-3 pb-3">
       <div className={PROJECTS_SECTION_HEADER_CLASS_NAME}>
         <div className="flex min-w-0 flex-1 items-center px-1.5 py-1">
-          <span className="min-w-0 truncate text-[11px] font-semibold tracking-[0.22em] text-sidebar-foreground/54 uppercase">
+          <span className="min-w-0 truncate text-[11px] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
             {projectsLabel}
           </span>
         </div>
@@ -1283,7 +1281,7 @@ const ProjectGroupsSection = ({
 
         <div
           aria-label={projectsCountLabel}
-          className="rounded-[0.875rem] border border-sidebar-border/50 bg-sidebar-foreground/5 px-2.5 py-1 text-[11px] font-medium text-sidebar-foreground/58 tabular-nums"
+          className="rounded-[0.875rem] border border-sidebar-border/50 bg-sidebar-foreground/5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground tabular-nums"
           title={projectsCountLabel}
         >
           {projectCount} / {sessionCount}
@@ -1425,7 +1423,7 @@ export const AppSidebar = () => {
     if (!isProjectsMode && chatSessions.length === 0) {
       return (
         <SidebarGroup className="px-3 pb-3">
-          <div className="title-bar-no-drag rounded-xl border border-dashed border-sidebar-border/80 px-3 py-4 text-xs text-sidebar-foreground/70">
+          <div className="title-bar-no-drag rounded-xl border border-dashed border-sidebar-border/80 px-3 py-4 text-xs text-muted-foreground">
             {t("sidebar.empty")}
           </div>
         </SidebarGroup>
@@ -1456,7 +1454,7 @@ export const AppSidebar = () => {
       <>
         {pinnedChatSessions.length > 0 ? (
           <SidebarGroup className="px-3 pb-3">
-            <SidebarGroupLabel className="h-auto items-start px-1 py-0 text-[11px] font-semibold tracking-[0.16em] text-sidebar-foreground/42 uppercase">
+            <SidebarGroupLabel className="h-auto items-start px-1 py-0 text-[11px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
               <div className="flex items-center gap-2">
                 <HugeiconsIcon icon={PinIcon} size={14} strokeWidth={2} />
                 <span>{t("sidebar.pinnedThreads")}</span>

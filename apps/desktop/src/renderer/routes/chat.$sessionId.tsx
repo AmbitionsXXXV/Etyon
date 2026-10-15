@@ -4,6 +4,8 @@ import { useI18n } from "@etyon/i18n/react"
 import type {
   AppSettings,
   ChatMention,
+  ChatMessageActions as ChatMessageActionsVisibility,
+  ChatMessageStyle,
   ChatUiMessage as PersistedChatUiMessage,
   ChatSessionSummary,
   GitProjectDiffOutput,
@@ -80,6 +82,13 @@ import {
   getAssistantLiveStatusOrbState,
   resolveAssistantLiveStatus
 } from "@/renderer/lib/chat/live-status"
+import {
+  CHAT_READING_COLUMN_CLASS_NAME,
+  getChatMessageActions,
+  getChatMessageStyle,
+  getUserBubbleClassName,
+  getUserMessageColumnClassName
+} from "@/renderer/lib/chat/message-appearance"
 import {
   formatWorkTime,
   parseChatMessageMetadata
@@ -1284,7 +1293,7 @@ const AssistantWorkTime = ({
   }
 
   return (
-    <p className={cn("mb-2 text-[0.6875rem] text-muted-foreground", className)}>
+    <p className={cn("mb-2 text-xs text-muted-foreground", className)}>
       {t("chat.workTime.label", {
         duration: formatWorkTime(durationMs)
       })}
@@ -1323,7 +1332,7 @@ const AssistantLiveStatus = ({
               state={getAssistantLiveStatusOrbState(liveStatus)}
             />
             <div className="flex min-w-0 flex-col">
-              <span className="shimmer text-muted-foreground/80">
+              <span className="shimmer text-muted-foreground">
                 {statusLabel}
               </span>
               <AssistantWorkTime
@@ -1394,6 +1403,7 @@ const ChatMessageBubble = ({
   isRequestPending,
   liveWorkTimeStartedAt,
   message,
+  messageStyle,
   onApprovalResponse,
   onInputToolResult,
   onOpenArtifact,
@@ -1405,6 +1415,7 @@ const ChatMessageBubble = ({
   isRequestPending: boolean
   liveWorkTimeStartedAt?: number
   message: ChatUiMessage
+  messageStyle: ChatMessageStyle
   onApprovalResponse: (
     part: ChatToolPart,
     approved: boolean,
@@ -1469,7 +1480,7 @@ const ChatMessageBubble = ({
   }
 
   return (
-    <ChatMessage.Bubble className="rounded-3xl bg-primary px-4 py-3 text-primary-foreground [&_*]:text-primary-foreground!">
+    <ChatMessage.Bubble className={getUserBubbleClassName(messageStyle)}>
       <ChatMessage.Body className="pr-0">
         <ChatMessage.Content>
           {mentions.length > 0 && !hasInlineMentions ? (
@@ -1517,6 +1528,8 @@ const ChatMessageItem = memo(
     isRequestPending,
     liveWorkTimeStartedAt,
     message,
+    messageActions,
+    messageStyle,
     onApprovalResponse,
     onInputToolResult,
     onCancelEditMessage,
@@ -1537,6 +1550,8 @@ const ChatMessageItem = memo(
     isRequestPending: boolean
     liveWorkTimeStartedAt?: number
     message: ChatUiMessage
+    messageActions: ChatMessageActionsVisibility
+    messageStyle: ChatMessageStyle
     onApprovalResponse: (
       part: ChatToolPart,
       approved: boolean,
@@ -1552,9 +1567,11 @@ const ChatMessageItem = memo(
     sessionId: string
     streamdownAnimation: StreamdownAnimation
   }) => {
+    const { t } = useI18n()
     const isAssistant = message.role === "assistant"
     const isUser = message.role === "user"
     const isEditingMessage = isUser && editingMessageId === message.id
+    const isDocumentStyle = messageStyle === "document"
     const messageText = getMessageText(message)
     const MessageRoot = isAssistant ? ChatMessage.Assistant : ChatMessage.User
 
@@ -1569,12 +1586,23 @@ const ChatMessageItem = memo(
           animate={MOTION_RISE_IN.animate}
           className={cn(
             "min-w-0",
-            isAssistant ? "w-full max-w-3xl" : "max-w-[78%]"
+            isAssistant
+              ? "w-full"
+              : getUserMessageColumnClassName(
+                  isEditingMessage ? "document" : messageStyle
+                )
           )}
           data-chat-message-id={message.id}
           initial={isEntering ? MOTION_RISE_IN.initial : false}
           transition={MOTION_RISE_IN.transition}
         >
+          {isDocumentStyle && !isEditingMessage ? (
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+              {isUser
+                ? t("chat.message.youLabel")
+                : t("chat.message.assistantLabel")}
+            </p>
+          ) : null}
           {isEditingMessage ? (
             <EditingMessageBubble
               editingMessageText={editingMessageText}
@@ -1591,6 +1619,7 @@ const ChatMessageItem = memo(
               isRequestPending={isRequestPending}
               liveWorkTimeStartedAt={liveWorkTimeStartedAt}
               message={message}
+              messageStyle={messageStyle}
               onApprovalResponse={onApprovalResponse}
               onInputToolResult={onInputToolResult}
               onOpenArtifact={onOpenArtifact}
@@ -1606,6 +1635,7 @@ const ChatMessageItem = memo(
                 isRegenerating={isRequestPending}
                 messageText={messageText}
                 onRegenerate={() => onRegenerate(message.id)}
+                visibility={messageActions}
               />
               <AgentRunInspector message={message} />
             </div>
@@ -1618,6 +1648,7 @@ const ChatMessageItem = memo(
               messageText={messageText}
               onEdit={() => onStartEditMessage(message)}
               onRegenerate={() => onRegenerate(message.id)}
+              visibility={messageActions}
             />
           ) : null}
         </motion.div>
@@ -1665,6 +1696,8 @@ const ChatRuntime = ({
   isProjectDiffLoading,
   mentionItems,
   mentionSkillItems,
+  messageActions,
+  messageStyle,
   modelEffort,
   modelGroups,
   initialMessages,
@@ -1709,6 +1742,8 @@ const ChatRuntime = ({
   initialMessages: ChatUiMessage[]
   mentionItems: ProjectSnapshotItem[]
   mentionSkillItems: PromptSkillMentionItem[]
+  messageActions: ChatMessageActionsVisibility
+  messageStyle: ChatMessageStyle
   modelEffort: ModelEffortSettings
   modelGroups: ChatModelGroup[]
   onChatFinish: () => void
@@ -2711,7 +2746,9 @@ const ChatRuntime = ({
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div
+                  className={cn("space-y-6", CHAT_READING_COLUMN_CLASS_NAME)}
+                >
                   {messages.map((message) => {
                     if (
                       isLiveStatusPlaceholderMessage({
@@ -2736,6 +2773,8 @@ const ChatRuntime = ({
                         key={message.id}
                         liveWorkTimeStartedAt={requestStartedAt}
                         message={message}
+                        messageActions={messageActions}
+                        messageStyle={messageStyle}
                         onApprovalResponse={handleToolApprovalResponse}
                         onCancelEditMessage={handleCancelEditMessage}
                         onEditingMessageTextChange={setEditingMessageText}
@@ -3675,6 +3714,7 @@ const ChatSessionPage = () => {
     fallbackTitle: t("home.actions.newChat"),
     session
   })
+  const chatSettings = settingsQuery.data?.chat
 
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden">
@@ -3684,7 +3724,7 @@ const ChatSessionPage = () => {
         <ChatRuntime
           activeArtifact={activeArtifact}
           agentsEnabled={settingsQuery.data?.agents.enabled ?? false}
-          autoCompact={settingsQuery.data?.chat.autoCompact}
+          autoCompact={chatSettings?.autoCompact}
           defaultPermissionMode={
             settingsQuery.data?.agents.defaultPermissionMode ?? "default"
           }
@@ -3734,9 +3774,9 @@ const ChatSessionPage = () => {
           selectedSession={session}
           sessionTitle={sessionTitle}
           sidePanelTabs={sidePanelTabs}
-          streamdownAnimation={getChatStreamdownAnimation(
-            settingsQuery.data?.chat
-          )}
+          streamdownAnimation={getChatStreamdownAnimation(chatSettings)}
+          messageActions={getChatMessageActions(chatSettings)}
+          messageStyle={getChatMessageStyle(chatSettings)}
           transport={transport}
         />
       ) : (

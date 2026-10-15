@@ -138,6 +138,8 @@ describe("AppSettingsSchema", () => {
         keepRecentMessages: 4,
         threshold: 80
       },
+      messageActions: "hover",
+      messageStyle: "soft",
       streamdown: {
         animation: "fade-in"
       }
@@ -159,10 +161,19 @@ describe("AppSettingsSchema", () => {
         keepRecentMessages: 4,
         threshold: 80
       },
+      messageActions: "hover",
+      messageStyle: "soft",
       streamdown: {
         animation: "blur-in"
       }
     })
+  })
+
+  it("defaults the chat message style and rejects unknown styles", () => {
+    expect(AppSettingsSchema.parse({ chat: {} }).chat.messageStyle).toBe("soft")
+    expect(
+      UpdateSettingsSchema.safeParse({ chat: { messageStyle: "neon" } }).success
+    ).toBe(false)
   })
 
   it("adds skills defaults for empty and legacy settings", () => {

@@ -306,8 +306,14 @@ const STREAMDOWN_SETTINGS_DEFAULT = {
   animation: STREAMDOWN_ANIMATION_DEFAULT
 } as const
 
+export const CHAT_MESSAGE_STYLE_DEFAULT = "soft" as const
+
+export const CHAT_MESSAGE_ACTIONS_DEFAULT = "hover" as const
+
 const CHAT_SETTINGS_DEFAULT = {
   autoCompact: AUTO_COMPACT_SETTINGS_DEFAULT,
+  messageActions: CHAT_MESSAGE_ACTIONS_DEFAULT,
+  messageStyle: CHAT_MESSAGE_STYLE_DEFAULT,
   streamdown: STREAMDOWN_SETTINGS_DEFAULT
 } as const
 
@@ -391,8 +397,18 @@ export const StreamdownSettingsSchema = z.object({
   animation: StreamdownAnimationSchema.default(STREAMDOWN_ANIMATION_DEFAULT)
 })
 
+// How the user's own messages are drawn. Assistant replies always use the full
+// reading column; only the user side changes shape.
+export const ChatMessageStyleSchema = z.enum(["bubble", "document", "soft"])
+
+export const ChatMessageActionsSchema = z.enum(["always", "hover"])
+
 export const ChatSettingsSchema = z.object({
   autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT),
+  messageActions: ChatMessageActionsSchema.default(
+    CHAT_MESSAGE_ACTIONS_DEFAULT
+  ),
+  messageStyle: ChatMessageStyleSchema.default(CHAT_MESSAGE_STYLE_DEFAULT),
   streamdown: StreamdownSettingsSchema.default(STREAMDOWN_SETTINGS_DEFAULT)
 })
 
@@ -575,6 +591,8 @@ export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
 export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
+export type ChatMessageActions = z.infer<typeof ChatMessageActionsSchema>
+export type ChatMessageStyle = z.infer<typeof ChatMessageStyleSchema>
 export type StreamdownAnimation = z.infer<typeof StreamdownAnimationSchema>
 export type StreamdownSettings = z.infer<typeof StreamdownSettingsSchema>
 export type TelegramSettings = z.infer<typeof TelegramSettingsSchema>

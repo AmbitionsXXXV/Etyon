@@ -624,6 +624,10 @@
       "preview": "変更をプレビュー",
       "title": "隔離された作業領域",
       "files": "ファイル"
+    },
+    "message": {
+      "youLabel": "あなた",
+      "assistantLabel": "アシスタント"
     }
   },
   "firstLight": {
@@ -961,9 +965,23 @@
           "description": "推定コンテキスト使用量がこの割合を超えると圧縮します。低い値ほど余白を多く残し、高い値ほど元の内容を多く保持します。",
           "early": "早め（5%）",
           "label": "圧縮しきい値: {{value}}%",
-          "late": "遅め（95%）"
+          "late": "遅め（95%）",
+          "tokens": "≈ {{tokens}} トークン"
         },
-        "title": "Auto Compact"
+        "title": "Auto Compact",
+        "recommendation": {
+          "forModel": "{{model}} の推奨設定 · {{window}} コンテキスト",
+          "generic": "推奨設定",
+          "summary": "{{threshold}}% で圧縮し、直近 {{keep}} 件のメッセージを保持します。返信と要約のために約 {{reserve}} トークンを残します。",
+          "summaryUnknown": "{{threshold}}% で圧縮し、直近 {{keep}} 件のメッセージを保持します。既定のモデルはコンテキストウィンドウを公開していません。",
+          "apply": "推奨値を使う"
+        },
+        "preset": {
+          "label": "しきい値のプリセット",
+          "early": "早め · {{value}}%",
+          "recommended": "推奨 · {{value}}%",
+          "late": "遅め · {{value}}%"
+        }
       },
       "description": "chat の応答レンダリング、履歴圧縮、コンテキスト保持を設定します。",
       "streamdown": {
@@ -996,7 +1014,33 @@
         "description": "Streamdown で assistant Markdown をレンダリングし、ストリーミング応答の動きを調整します。",
         "title": "Markdown レンダリング"
       },
-      "title": "Chat"
+      "title": "Chat",
+      "messageStyle": {
+        "title": "メッセージのスタイル",
+        "description": "自分のメッセージの表示方法です。アシスタントの返信は常に読みやすい幅いっぱいに表示されます。",
+        "option": {
+          "soft": {
+            "label": "ソフト",
+            "description": "テキストに沿ったニュートラルな吹き出し。"
+          },
+          "bubble": {
+            "label": "バブル",
+            "description": "アクセントカラーの吹き出しで見分けやすい。"
+          },
+          "document": {
+            "label": "ドキュメント",
+            "description": "すべて左揃えで名前を表示。長いプロンプト向け。"
+          }
+        }
+      },
+      "messageActions": {
+        "label": "メッセージの操作",
+        "description": "各メッセージの下にあるコピー・再試行・編集。",
+        "option": {
+          "hover": "ホバー時",
+          "always": "常に"
+        }
+      }
     },
     "common": {
       "cancel": "キャンセル",

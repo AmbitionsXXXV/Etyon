@@ -40,7 +40,7 @@ const getMemoryEntryTitle = (entry: MemoryEntry): string =>
 
 const MemoryMetaChip = ({ label, value }: { label: string; value: string }) => (
   <span className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[0.625rem] text-muted-foreground">
-    <span className="font-medium text-foreground/70">{label}</span>
+    <span className="font-medium text-muted-foreground">{label}</span>
     <span>{value}</span>
   </span>
 )

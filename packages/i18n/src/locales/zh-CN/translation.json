@@ -624,6 +624,10 @@
       "preview": "预览改动",
       "title": "隔离工作区",
       "files": "个文件"
+    },
+    "message": {
+      "youLabel": "你",
+      "assistantLabel": "助手"
     }
   },
   "firstLight": {
@@ -961,9 +965,23 @@
           "description": "当预估上下文用量超过该百分比时触发压缩。较低值会保留更多缓冲区，较高值会保留更多原始内容。",
           "early": "较早（5%）",
           "label": "压缩阈值：{{value}}%",
-          "late": "较晚（95%）"
+          "late": "较晚（95%）",
+          "tokens": "≈ {{tokens}} tokens"
         },
-        "title": "Auto Compact"
+        "title": "Auto Compact",
+        "recommendation": {
+          "forModel": "{{model}} 的推荐设置 · {{window}} 上下文",
+          "generic": "推荐设置",
+          "summary": "在 {{threshold}}% 时压缩，保留最近 {{keep}} 条消息。为回复和摘要留出约 {{reserve}} tokens。",
+          "summaryUnknown": "在 {{threshold}}% 时压缩，保留最近 {{keep}} 条消息。默认模型未提供上下文窗口大小。",
+          "apply": "使用推荐值"
+        },
+        "preset": {
+          "label": "阈值预设",
+          "early": "提前 · {{value}}%",
+          "recommended": "推荐 · {{value}}%",
+          "late": "延后 · {{value}}%"
+        }
       },
       "description": "配置 Chat 响应渲染、历史压缩与上下文保留策略。",
       "streamdown": {
@@ -996,7 +1014,33 @@
         "description": "使用 Streamdown 渲染 assistant Markdown，并控制流式输出的动效。",
         "title": "Markdown 渲染"
       },
-      "title": "Chat"
+      "title": "Chat",
+      "messageStyle": {
+        "title": "消息样式",
+        "description": "你发送的消息如何显示。助手回复始终占满阅读栏。",
+        "option": {
+          "soft": {
+            "label": "柔和",
+            "description": "贴合文字的中性气泡。"
+          },
+          "bubble": {
+            "label": "气泡",
+            "description": "强调色气泡，便于快速浏览。"
+          },
+          "document": {
+            "label": "文档",
+            "description": "全部左对齐并显示角色名，适合长提示词。"
+          }
+        }
+      },
+      "messageActions": {
+        "label": "消息操作",
+        "description": "每条消息下方的复制、重试和编辑。",
+        "option": {
+          "hover": "悬停时",
+          "always": "始终"
+        }
+      }
     },
     "common": {
       "cancel": "取消",

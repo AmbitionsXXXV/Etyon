@@ -20,7 +20,10 @@ import { AutomationTab } from "@/renderer/components/settings/automation-tab"
 import { McpTab } from "@/renderer/components/settings/mcp-tab"
 import { ScreenAwarenessTab } from "@/renderer/components/settings/screen-awareness-tab"
 import { WebToolsTab } from "@/renderer/components/settings/web-tools-tab"
-import { buildChatModelGroups } from "@/renderer/lib/chat/model-options"
+import {
+  buildChatModelGroups,
+  resolveChatModelValue
+} from "@/renderer/lib/chat/model-options"
 import {
   buildDarkColorSchemaOptions,
   buildHeroUiProColorSchemaPairOptions,
@@ -41,6 +44,7 @@ import { AboutTab } from "./settings/about-tab"
 import { AgentsTab } from "./settings/agents-tab"
 import { ChannelsTab } from "./settings/channels-tab"
 import { ChatTab } from "./settings/chat-tab"
+import type { ChatTabDefaultModel } from "./settings/chat-tab"
 import { ColorSchemaTab } from "./settings/color-schema"
 import {
   AppIconSelector,
@@ -255,6 +259,25 @@ export const SettingsPage = ({
     () => (draft ? buildChatModelGroups(draft.ai) : []),
     [draft]
   )
+  const chatDefaultModel = useMemo<ChatTabDefaultModel | null>(() => {
+    if (!draft) {
+      return null
+    }
+    const value = resolveChatModelValue({
+      defaultModel: draft.ai.defaultModel,
+      groups: channelModelGroups,
+      sessionModelId: null
+    })
+    const option = channelModelGroups
+      .flatMap((group) => group.options)
+      .find((candidate) => candidate.value === value)
+    return option
+      ? {
+          contextWindow: option.capabilities?.contextWindow,
+          label: `${option.providerName} · ${option.label}`
+        }
+      : null
+  }, [channelModelGroups, draft])
   const sidebarModeOptions = useMemo(() => buildSidebarModeOptions(t), [t])
   const darkColorSchemaOptions = useMemo(
     () => buildDarkColorSchemaOptions(t),
@@ -571,7 +594,11 @@ export const SettingsPage = ({
               )}
 
               {activeSection === "chat" && (
-                <ChatTab chat={draft.chat} onChange={handleChatChange} />
+                <ChatTab
+                  chat={draft.chat}
+                  defaultModel={chatDefaultModel}
+                  onChange={handleChatChange}
+                />
               )}
 
               {activeSection === "memory" && (

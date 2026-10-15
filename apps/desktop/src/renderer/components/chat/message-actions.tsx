@@ -1,10 +1,12 @@
 import { useI18n } from "@etyon/i18n/react"
+import type { ChatMessageActions as ChatMessageActionsVisibility } from "@etyon/rpc"
 import { cn } from "@etyon/ui/lib/utils"
 import { ChatMessage, ChatMessageActions } from "@heroui-pro/react"
 import { PencilEdit02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useCallback, useEffect, useState } from "react"
 
+import { getMessageActionsVisibilityClassName } from "@/renderer/lib/chat/message-appearance"
 import { MOTION_TRANSITION_FAST_CLASS } from "@/renderer/lib/motion"
 
 const COPY_FEEDBACK_RESET_MS = 1600
@@ -34,7 +36,8 @@ export const MessageActions = ({
   isRegenerating = false,
   onEdit,
   messageText,
-  onRegenerate
+  onRegenerate,
+  visibility = "hover"
 }: {
   actions?: readonly MessageActionKind[]
   align?: "end" | "start"
@@ -42,6 +45,7 @@ export const MessageActions = ({
   onEdit?: () => void
   messageText: string
   onRegenerate: () => void
+  visibility?: ChatMessageActionsVisibility
 }) => {
   const { t } = useI18n({ keyPrefix: "chat.messageActions" })
   const [copied, setCopied] = useState(false)
@@ -96,7 +100,8 @@ export const MessageActions = ({
     <ChatMessageActions
       aria-label={t("label")}
       className={cn(
-        "invisible mt-1.5 flex h-8 items-center gap-0.5 px-1 opacity-0 transition-opacity group-hover/message:visible group-hover/message:opacity-100 group-focus-within/message:visible group-focus-within/message:opacity-100",
+        "mt-1.5 flex h-8 items-center gap-0.5 px-1 transition-opacity",
+        getMessageActionsVisibilityClassName(visibility),
         MOTION_TRANSITION_FAST_CLASS,
         align === "end" && "justify-end"
       )}

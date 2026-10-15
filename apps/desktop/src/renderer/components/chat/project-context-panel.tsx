@@ -553,7 +553,7 @@ const ProjectFilePreview = ({
             pathSegments.map((segment, index) => (
               <span className="contents" key={`${index}-${segment}`}>
                 {index > 0 ? (
-                  <span className="shrink-0 text-muted-foreground/70">/</span>
+                  <span className="shrink-0 text-muted-foreground">/</span>
                 ) : null}
                 <span
                   className={cn(
@@ -770,7 +770,7 @@ const ProjectFileBufferTabs = ({
                 {basename}
               </span>
               {disambiguator ? (
-                <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
+                <span className="shrink-0 truncate text-[10px] text-muted-foreground">
                   {disambiguator}
                 </span>
               ) : null}

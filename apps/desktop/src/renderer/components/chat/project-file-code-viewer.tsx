@@ -152,7 +152,7 @@ export const ProjectFileCodeViewer = ({
             >
               <span
                 className={cn(
-                  "sticky left-0 z-10 border-r border-border/70 pr-4 text-right text-muted-foreground/70 tabular-nums select-none",
+                  "sticky left-0 z-10 border-r border-border/70 pr-4 text-right text-muted-foreground tabular-nums select-none",
                   isHighlighted ? HIGHLIGHTED_GUTTER_BACKGROUND : "bg-card/95"
                 )}
               >

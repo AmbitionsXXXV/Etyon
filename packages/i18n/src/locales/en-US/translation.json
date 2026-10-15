@@ -624,6 +624,10 @@
       "preview": "Preview changes",
       "title": "Isolated workspaces",
       "files": "files"
+    },
+    "message": {
+      "youLabel": "You",
+      "assistantLabel": "Assistant"
     }
   },
   "firstLight": {
@@ -961,9 +965,23 @@
           "description": "When estimated context usage exceeds this percentage, older messages are compacted. Lower values leave more buffer, while higher values preserve more original content.",
           "early": "Early (5%)",
           "label": "Compaction Threshold: {{value}}%",
-          "late": "Late (95%)"
+          "late": "Late (95%)",
+          "tokens": "≈ {{tokens}} tokens"
         },
-        "title": "Auto Compact"
+        "title": "Auto Compact",
+        "recommendation": {
+          "forModel": "Recommended for {{model}} · {{window}} context",
+          "generic": "Recommended setting",
+          "summary": "Compact at {{threshold}}% and keep {{keep}} recent messages. Leaves about {{reserve}} tokens for the reply and the summary.",
+          "summaryUnknown": "Compact at {{threshold}}% and keep {{keep}} recent messages. The default model does not report its context window.",
+          "apply": "Use recommended"
+        },
+        "preset": {
+          "label": "Threshold presets",
+          "early": "Early · {{value}}%",
+          "recommended": "Recommended · {{value}}%",
+          "late": "Late · {{value}}%"
+        }
       },
       "description": "Configure chat response rendering, history compression, and context preservation.",
       "streamdown": {
@@ -996,7 +1014,33 @@
         "description": "Render assistant Markdown with Streamdown and tune the streaming response motion.",
         "title": "Markdown Rendering"
       },
-      "title": "Chat"
+      "title": "Chat",
+      "messageStyle": {
+        "title": "Message style",
+        "description": "How your own messages look. Assistant replies always use the full reading column.",
+        "option": {
+          "soft": {
+            "label": "Soft",
+            "description": "A neutral bubble that hugs your text."
+          },
+          "bubble": {
+            "label": "Bubble",
+            "description": "An accent-colored bubble that is easy to scan."
+          },
+          "document": {
+            "label": "Document",
+            "description": "Everything left-aligned with names. Best for long prompts."
+          }
+        }
+      },
+      "messageActions": {
+        "label": "Message actions",
+        "description": "Copy, retry, and edit under each message.",
+        "option": {
+          "hover": "On hover",
+          "always": "Always"
+        }
+      }
     },
     "common": {
       "cancel": "Cancel",
