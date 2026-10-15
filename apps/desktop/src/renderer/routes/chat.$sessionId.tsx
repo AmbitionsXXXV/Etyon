@@ -2254,9 +2254,17 @@ const ChatRuntime = ({
     return []
   }, [messages])
 
+  const selectedModelContextWindow = useMemo(
+    () =>
+      modelGroups
+        .flatMap((group) => group.options)
+        .find((option) => option.value === selectedModelValue)?.capabilities
+        ?.contextWindow,
+    [modelGroups, selectedModelValue]
+  )
   const contextUsagePercent = useMemo(
-    () => estimateChatContextUsagePercent(messages),
-    [messages]
+    () => estimateChatContextUsagePercent(messages, selectedModelContextWindow),
+    [messages, selectedModelContextWindow]
   )
   const contextUsageSegments = useMemo(
     () => getChatContextUsageSegments(messages),
@@ -2561,10 +2569,6 @@ const ChatRuntime = ({
     ]
   )
 
-  const selectedModelContextWindow = modelGroups
-    .flatMap((group) => group.options)
-    .find((option) => option.value === selectedModelValue)
-    ?.capabilities?.contextWindow
   const contextWindowLabel = formatContextWindowLabel(
     selectedModelContextWindow
   )

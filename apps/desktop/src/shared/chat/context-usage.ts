@@ -1,11 +1,14 @@
 import type { UIMessage } from "ai"
 
 /**
- * Character budget used to estimate how full the chat context is. This is the
- * same budget that drives auto-compaction, so the composer indicator and the
- * auto-compact trigger stay in sync.
+ * Context window assumed when the chat model does not report one. The same
+ * estimate drives the composer indicator and the auto-compact trigger, so the
+ * two stay in sync.
  */
-export const CHAT_CONTEXT_CHAR_BUDGET = 24_000
+export const DEFAULT_CHAT_CONTEXT_WINDOW = 128_000
+
+const ASCII_CHARS_PER_TOKEN = 4
+const MAX_ASCII_CODE_POINT = 0x7f
 
 const WHITESPACE_PATTERN = /\s+/gu
 
@@ -71,17 +74,45 @@ export const getMessageContextText = (message: UIMessage): string =>
     .filter(Boolean)
     .join("\n")
 
-export const estimateChatContextUsagePercent = (
-  messages: UIMessage[]
-): number => {
-  const totalCharacters = messages.reduce(
-    (sum, message) => sum + getMessageContextText(message).length,
+/**
+ * Tokens a text costs, roughly: four ASCII characters per token and one per
+ * other character (CJK and the like) — magpie's estimate before it scales to
+ * the vendor's count. No tokenizer ships with the app.
+ */
+export const estimateTextTokens = (text: string): number => {
+  let asciiCharacters = 0
+  let otherCharacters = 0
+
+  for (const character of text) {
+    if ((character.codePointAt(0) ?? 0) <= MAX_ASCII_CODE_POINT) {
+      asciiCharacters += 1
+    } else {
+      otherCharacters += 1
+    }
+  }
+
+  return Math.ceil(asciiCharacters / ASCII_CHARS_PER_TOKEN) + otherCharacters
+}
+
+export const estimateChatContextTokens = (messages: UIMessage[]): number =>
+  messages.reduce(
+    (sum, message) => sum + estimateTextTokens(getMessageContextText(message)),
     0
   )
 
+/** How full the model's context window is, as a 0–100 percentage. */
+export const estimateChatContextUsagePercent = (
+  messages: UIMessage[],
+  contextWindow?: number | null
+): number => {
+  const window =
+    contextWindow && contextWindow > 0
+      ? contextWindow
+      : DEFAULT_CHAT_CONTEXT_WINDOW
+
   return Math.min(
     100,
-    Math.round((totalCharacters / CHAT_CONTEXT_CHAR_BUDGET) * 100)
+    Math.round((estimateChatContextTokens(messages) / window) * 100)
   )
 }
 

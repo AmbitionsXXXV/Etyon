@@ -10,6 +10,9 @@ import {
 } from "@/main/chat-auto-compact"
 import * as summarization from "@/main/memory/summarization"
 
+// About the old 24,000-character budget, so the fixtures keep their scale.
+const TEST_CONTEXT_WINDOW = 6000
+
 const buildTextMessage = ({
   id,
   role,
@@ -71,7 +74,11 @@ describe("chat auto compact", () => {
       .spyOn(summarization, "summarizeChatCompaction")
       .mockResolvedValue("summarized")
     try {
-      await compactChatMessages({ messages, settings })
+      await compactChatMessages({
+        contextWindow: TEST_CONTEXT_WINDOW,
+        messages,
+        settings
+      })
       for (const content of [
         summarize.mock.calls[0]?.[0].fallbackContent,
         summarize.mock.calls[0]?.[0].sourceContent
@@ -108,7 +115,11 @@ describe("chat auto compact", () => {
           autoCompact: { enabled: true, keepRecentMessages: 2, threshold: 5 }
         }
       })
-      await compactChatMessages({ messages, settings })
+      await compactChatMessages({
+        contextWindow: TEST_CONTEXT_WINDOW,
+        messages,
+        settings
+      })
       expect(summarize).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceContent: expect.stringContaining("MIDDLE_DECISION")
@@ -149,8 +160,16 @@ describe("chat auto compact", () => {
         autoCompact: { enabled: true, keepRecentMessages: 2, threshold: 5 }
       }
     })
-    expect(estimateChatContextUsagePercent(messages)).toBe(100)
-    expect(maybeCompactChatMessages({ messages, settings })[0]?.parts).toEqual([
+    expect(estimateChatContextUsagePercent(messages, TEST_CONTEXT_WINDOW)).toBe(
+      100
+    )
+    expect(
+      maybeCompactChatMessages({
+        contextWindow: TEST_CONTEXT_WINDOW,
+        messages,
+        settings
+      })[0]?.parts
+    ).toEqual([
       expect.objectContaining({
         text: expect.stringContaining("NEW_TOOL_FACT")
       })
@@ -181,7 +200,11 @@ describe("chat auto compact", () => {
         autoCompact: { enabled: true, keepRecentMessages: 2, threshold: 5 }
       }
     })
-    const compacted = maybeCompactChatMessages({ messages, settings })
+    const compacted = maybeCompactChatMessages({
+      contextWindow: TEST_CONTEXT_WINDOW,
+      messages,
+      settings
+    })
     expect(compacted[0]?.parts).toEqual([
       expect.objectContaining({
         text: expect.stringContaining("NEW_CRITICAL_DECISION")
@@ -213,7 +236,13 @@ describe("chat auto compact", () => {
         autoCompact: { enabled: true, keepRecentMessages: 2, threshold: 5 }
       }
     })
-    expect(maybeCompactChatMessages({ messages, settings })).toBe(messages)
+    expect(
+      maybeCompactChatMessages({
+        contextWindow: TEST_CONTEXT_WINDOW,
+        messages,
+        settings
+      })
+    ).toBe(messages)
   })
   it("keeps messages unchanged below the configured threshold", () => {
     const messages: UIMessage[] = [
@@ -238,9 +267,12 @@ describe("chat auto compact", () => {
       }
     })
 
-    expect(estimateChatContextUsagePercent(messages)).toBeLessThan(95)
+    expect(
+      estimateChatContextUsagePercent(messages, TEST_CONTEXT_WINDOW)
+    ).toBeLessThan(95)
     expect(
       maybeCompactChatMessages({
+        contextWindow: TEST_CONTEXT_WINDOW,
         messages,
         settings
       })
@@ -287,6 +319,7 @@ describe("chat auto compact", () => {
     })
 
     const compactedMessages = maybeCompactChatMessages({
+      contextWindow: TEST_CONTEXT_WINDOW,
       messages,
       settings
     })
@@ -340,6 +373,7 @@ describe("chat auto compact", () => {
     })
 
     const compactedMessages = await compactChatMessages({
+      contextWindow: TEST_CONTEXT_WINDOW,
       messages,
       settings
     })

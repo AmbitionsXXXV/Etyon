@@ -13,6 +13,7 @@ import {
   maybeRefreshProjectMemoryDigest,
   shouldRefreshLongTermMemory
 } from "@/main/memory/project-digest"
+import { resolveModelContextWindow } from "@/main/server/lib/providers"
 import { getSettings } from "@/main/settings"
 import { isRecord } from "@/renderer/lib/utils"
 
@@ -258,6 +259,7 @@ export const replaceChatMessages = async ({
   const persistableMessages = await persistDataUrlAttachments(messages)
   const settings = getSettings()
   const compactedMessages = await compactChatMessages({
+    contextWindow: resolveModelContextWindow(session.modelId ?? null),
     messages: persistableMessages,
     settings
   })

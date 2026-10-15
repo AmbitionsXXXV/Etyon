@@ -83,9 +83,12 @@ const createAutoCompactMessage = (content: string): UIMessage => ({
 })
 
 export const maybeCompactChatMessages = ({
+  contextWindow,
   messages,
   settings
 }: {
+  /** The chat model's window in tokens; null falls back to the default. */
+  contextWindow?: number | null
   messages: UIMessage[]
   settings: AppSettings
 }): UIMessage[] => {
@@ -95,7 +98,10 @@ export const maybeCompactChatMessages = ({
     return messages
   }
 
-  if (estimateChatContextUsagePercent(messages) < autoCompact.threshold) {
+  if (
+    estimateChatContextUsagePercent(messages, contextWindow) <
+    autoCompact.threshold
+  ) {
     return messages
   }
 
@@ -151,13 +157,16 @@ export const maybeCompactChatMessages = ({
 }
 
 export const compactChatMessages = async ({
+  contextWindow,
   messages,
   settings
 }: {
+  contextWindow?: number | null
   messages: UIMessage[]
   settings: AppSettings
 }): Promise<UIMessage[]> => {
   const compactedMessages = maybeCompactChatMessages({
+    contextWindow,
     messages,
     settings
   })
