@@ -7,7 +7,6 @@ import { cn } from "@etyon/ui/lib/utils"
 import { PromptInput as HeroPromptInput } from "@heroui-pro/react"
 import type { ChatStatus } from "@heroui-pro/react"
 import {
-  Button,
   Kbd,
   Popover,
   ProgressCircle,
@@ -41,6 +40,12 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
+  ComposerAddMenu,
+  ComposerImageSkillChip,
+  ComposerImageSkillSuggestion
+} from "@/renderer/components/chat/composer-image-skill"
+import type { ComposerImageSkill } from "@/renderer/components/chat/composer-image-skill"
+import {
   ComposerPlanHint,
   usePlanModeHint
 } from "@/renderer/components/chat/composer-plan-hint"
@@ -58,6 +63,7 @@ import type {
   AttachmentRejectionReason,
   ComposerAttachment
 } from "@/renderer/lib/chat/attachments"
+import { shouldSuggestImageSkill } from "@/renderer/lib/chat/image-skill"
 import { getImageFileName } from "@/renderer/lib/chat/imagen-message"
 import type { ComposerPlanQueueProps } from "@/renderer/lib/chat/plan-queue"
 import { ProjectMentionExtension } from "@/renderer/lib/chat/project-mention-extension"
@@ -1030,47 +1036,44 @@ const readFileAsDataUrl = async (file: File): Promise<string> => {
   return `data:${file.type};base64,${encodeBytesToBase64(new Uint8Array(buffer))}`
 }
 
-// Mirrors ComposerImageModeControl's conditional-tooltip recipe: a bare
-// disabled button when the model can't see images, wrapped in the explanatory
-// tooltip only when actionable.
-const PromptInputAttachControl = ({
-  attachLabel,
-  disabledTooltip,
-  isDisabled,
-  onPress
+// Keys the Image skill owns while the composer has focus: Tab accepts the
+// typed-intent hint, Escape hides it for this draft, and Backspace on an empty
+// draft leaves the skill. Returns true when the key was handled.
+const handleImageSkillKeyDown = ({
+  event,
+  imageSkill,
+  isDraftEmpty,
+  isSuggestionVisible,
+  onDismissSuggestion
 }: {
-  attachLabel: string
-  disabledTooltip: string
-  isDisabled: boolean
-  onPress: () => void
-}) => {
-  const button = (
-    <button
-      aria-label={isDisabled ? disabledTooltip : attachLabel}
-      className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
-        isDisabled
-          ? "cursor-not-allowed opacity-50"
-          : "hover:bg-default hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-      )}
-      disabled={isDisabled}
-      onClick={onPress}
-      type="button"
-    >
-      <HugeiconsIcon icon={Attachment01Icon} size={16} strokeWidth={2} />
-    </button>
-  )
-
-  if (isDisabled) {
-    return button
+  event: KeyboardEvent<HTMLDivElement>
+  imageSkill?: ComposerImageSkill
+  isDraftEmpty: boolean
+  isSuggestionVisible: boolean
+  onDismissSuggestion: () => void
+}): boolean => {
+  if (!imageSkill) {
+    return false
   }
 
-  return (
-    <Tooltip delay={300}>
-      <Tooltip.Trigger>{button}</Tooltip.Trigger>
-      <Tooltip.Content placement="top">{attachLabel}</Tooltip.Content>
-    </Tooltip>
-  )
+  if (isSuggestionVisible && event.key === "Tab" && !event.shiftKey) {
+    event.preventDefault()
+    imageSkill.onActivate()
+    return true
+  }
+
+  if (isSuggestionVisible && event.key === "Escape") {
+    onDismissSuggestion()
+    return true
+  }
+
+  if (imageSkill.isActive && isDraftEmpty && event.key === "Backspace") {
+    event.preventDefault()
+    imageSkill.onDeactivate()
+    return true
+  }
+
+  return false
 }
 
 // Removal is a plain fade at `fast`: the sibling chips reflow underneath it
@@ -1330,6 +1333,7 @@ const ComposerAttachmentChips = ({
 
 const usePromptCommandPaletteItems = ({
   activeRange,
+  imageSkill,
   imagenDescription,
   imagenLabel,
   planDescription,
@@ -1342,6 +1346,7 @@ const usePromptCommandPaletteItems = ({
   workflowLabel
 }: {
   activeRange: { query: string } | null
+  imageSkill?: { description: string; label: string }
   imagenDescription: string
   imagenLabel: string
   planDescription: string
@@ -1362,6 +1367,18 @@ const usePromptCommandPaletteItems = ({
         insertText: "/plan ",
         label: planLabel
       },
+      // Selecting /image switches the Image skill on instead of inserting text.
+      ...(imageSkill
+        ? [
+            {
+              command: "/image",
+              description: imageSkill.description,
+              id: "image" as const,
+              insertText: "",
+              label: imageSkill.label
+            }
+          ]
+        : []),
       {
         command: "/imagen",
         description: imagenDescription,
@@ -1392,6 +1409,7 @@ const usePromptCommandPaletteItems = ({
       }
     ],
     [
+      imageSkill,
       imagenDescription,
       imagenLabel,
       planDescription,
@@ -1422,6 +1440,7 @@ export const PromptInput = ({
   agentModeAgentLabel,
   agentModeChatLabel,
   agentModePlanLabel,
+  addMenuLabel = "Add",
   agentModeToggleLabel,
   commandPaletteEmptyLabel,
   commandPaletteGroupLabel,
@@ -1449,6 +1468,7 @@ export const PromptInput = ({
   imageInputSizeError = "",
   imageInputTypeError = "",
   imageInputUnsupportedLabel = "",
+  imageSkill,
   isAgentModeToggleDisabled,
   isImageMode = false,
   isLoadingFileItems = false,
@@ -1499,6 +1519,7 @@ export const PromptInput = ({
   screenAwarenessEnabled = true,
   screenAwarenessRemoveImageLabel = "Remove screenshot",
   screenAwarenessRemoveTextLabel = "Remove text",
+  skillsLabel = "Skills",
   status = "ready",
   stagedAttachments = EMPTY_COMPOSER_ATTACHMENTS,
   stopLabel,
@@ -1508,6 +1529,7 @@ export const PromptInput = ({
   agentModeAgentLabel: string
   agentModeChatLabel: string
   agentModePlanLabel: string
+  addMenuLabel?: string
   agentModeToggleLabel: string
   commandPaletteEmptyLabel: string
   commandPaletteGroupLabel: string
@@ -1546,6 +1568,8 @@ export const PromptInput = ({
   imageInputSizeError?: string
   imageInputTypeError?: string
   imageInputUnsupportedLabel?: string
+  /** The Image skill: offered in the + menu, `/image`, and as a typed-intent hint. */
+  imageSkill?: ComposerImageSkill
   isAgentModeToggleDisabled?: boolean
   isImageMode?: boolean
   isLoadingFileItems?: boolean
@@ -1604,6 +1628,7 @@ export const PromptInput = ({
   screenAwarenessEnabled?: boolean
   screenAwarenessRemoveImageLabel?: string
   screenAwarenessRemoveTextLabel?: string
+  skillsLabel?: string
   status?: ChatStatus
   stagedAttachments?: ComposerAttachment[]
   stopLabel: string
@@ -1645,8 +1670,19 @@ export const PromptInput = ({
   const compositionSubmitGuardTimeoutRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
+  const imageSkillPaletteItem = useMemo(
+    () =>
+      imageSkill?.isAvailable && !imageSkill.isActive
+        ? {
+            description: imageSkill.labels.menuDescription,
+            label: imageSkill.labels.menuLabel
+          }
+        : undefined,
+    [imageSkill]
+  )
   const commandPaletteItems = usePromptCommandPaletteItems({
     activeRange: activeCommandPaletteRange,
+    imageSkill: imageSkillPaletteItem,
     imagenDescription: commandPaletteImagenDescription,
     imagenLabel: commandPaletteImagenLabel,
     planDescription: commandPalettePlanDescription,
@@ -2038,6 +2074,25 @@ export const PromptInput = ({
     )
   }, [activePromptTemplateItemPath, activePromptTemplateRange])
 
+  // Image skill hint: offered while the draft reads like an image request and
+  // the skill is available but off. Esc hides it until the draft is cleared.
+  const [isImageSuggestionDismissed, setIsImageSuggestionDismissed] =
+    useState(false)
+  useEffect(() => {
+    if (promptInputValue.trim().length === 0) {
+      setIsImageSuggestionDismissed(false)
+    }
+  }, [promptInputValue])
+  const isImageSkillSuggestionVisible =
+    imageSkill !== undefined &&
+    imageSkill.isAvailable &&
+    !imageSkill.isActive &&
+    !isImageSuggestionDismissed &&
+    !activeCommandPaletteRange &&
+    !activeMentionRange &&
+    !activePromptTemplateRange &&
+    shouldSuggestImageSkill(promptInputValue)
+
   // Timed plan-mode hint (Feature D): only offered from chat/agent mode, with no
   // request in flight and image mode off. Switching keeps the draft and refocuses.
   const isPlanHintEligible =
@@ -2102,8 +2157,12 @@ export const PromptInput = ({
         .insertContent(item.insertText)
         .run()
       setActiveCommandPaletteRange(null)
+
+      if (item.id === "image") {
+        imageSkill?.onActivate()
+      }
     },
-    [activeCommandPaletteRange, editor]
+    [activeCommandPaletteRange, editor, imageSkill]
   )
 
   const handleSelectPromptTemplateItem = useCallback(
@@ -2402,6 +2461,18 @@ export const PromptInput = ({
         return
       }
 
+      if (
+        handleImageSkillKeyDown({
+          event,
+          imageSkill,
+          isDraftEmpty: promptInputValue.length === 0,
+          isSuggestionVisible: isImageSkillSuggestionVisible,
+          onDismissSuggestion: () => setIsImageSuggestionDismissed(true)
+        })
+      ) {
+        return
+      }
+
       if (isPromptSubmitKeyDown(event)) {
         event.preventDefault()
         await handleSubmit()
@@ -2409,6 +2480,9 @@ export const PromptInput = ({
     },
     [
       activeItemIndex,
+      imageSkill,
+      isImageSkillSuggestionVisible,
+      promptInputValue,
       activeCommandPaletteRange,
       activeMentionRange,
       activePromptTemplateRange,
@@ -2423,6 +2497,21 @@ export const PromptInput = ({
       promptTemplateItems
     ]
   )
+
+  const handleImageSkillActivate = () => imageSkill?.onActivate()
+  const handleImageSkillDeactivate = () => imageSkill?.onDeactivate()
+  const isScreenCaptureAvailable =
+    window.electron.process.platform === "darwin" && screenAwarenessEnabled
+  const handleCaptureFocusedWindow = async () => {
+    try {
+      const started = await window.electron.captureFocusedWindow()
+      if (!started) {
+        setAttachmentError(screenAwarenessErrorLabel)
+      }
+    } catch {
+      setAttachmentError(screenAwarenessErrorLabel)
+    }
+  }
 
   return (
     <HeroPromptInput
@@ -2572,66 +2661,69 @@ export const PromptInput = ({
           >
             <EditorContent editor={editor} />
           </div>
+          {isImageSkillSuggestionVisible && imageSkill ? (
+            <ComposerImageSkillSuggestion
+              dismissLabel={imageSkill.labels.suggestionDismiss}
+              label={imageSkill.labels.suggestion}
+              onAccept={handleImageSkillActivate}
+            />
+          ) : null}
         </HeroPromptInput.Content>
 
-        {/* `static` takes the toolbar out of HeroUI's absolute bottom overlay:
-            in-flow it can wrap onto extra rows when the chat column is dragged
-            narrow (growing the shell) instead of climbing over the editor, and
-            long editor content can no longer run underneath it. */}
-        <HeroPromptInput.Toolbar className="static flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
-          {/* `flex-auto`, not `flex-1`: a basis-0 item never triggers the
-              toolbar's wrap, so the end cluster would stay on the first row and
-              get painted over. Content-sized basis lets it wrap below instead. */}
-          <HeroPromptInput.ToolbarStart className="min-w-0 flex-auto">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-              <PromptInputAgentModeControl
-                agentLabel={agentModeAgentLabel}
-                chatLabel={agentModeChatLabel}
-                disabled={disabled}
-                isToggleDisabled={isAgentModeToggleDisabled}
-                mode={agentMode}
-                onModeChange={onAgentModeChange}
-                planLabel={agentModePlanLabel}
-                toggleLabel={agentModeToggleLabel}
-              />
-              <PromptInputPermissionModeControl
-                acceptEditsLabel={permissionModeAcceptEditsLabel}
-                bypassLabel={permissionModeBypassLabel}
-                defaultLabel={permissionModeDefaultLabel}
-                disabled={disabled}
-                isHidden={agentMode === "chat"}
-                mode={permissionMode}
-                onModeChange={onPermissionModeChange}
-                toggleLabel={permissionModeToggleLabel}
-              />
-              {footer}
-              <PromptInputAttachControl
+        {/* `static` keeps the toolbar in flow below the editor. It is one row
+            that never wraps: the start cluster shrinks (the model chip
+            truncates first) while the end cluster keeps its size. */}
+        <HeroPromptInput.Toolbar className="static flex flex-nowrap items-center justify-between gap-3 px-4 py-3">
+          <HeroPromptInput.ToolbarStart className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
+              <ComposerAddMenu
+                attachDisabledLabel={imageInputUnsupportedLabel}
                 attachLabel={imageInputAttachLabel}
-                disabledTooltip={imageInputUnsupportedLabel}
-                isDisabled={disabled || !imageInputEnabled}
-                onPress={handleAttachClick}
+                captureLabel={
+                  isScreenCaptureAvailable
+                    ? screenAwarenessCaptureLabel
+                    : undefined
+                }
+                disabled={disabled}
+                imageSkill={imageSkill}
+                isAttachDisabled={!imageInputEnabled}
+                onAttach={handleAttachClick}
+                onCapture={handleCaptureFocusedWindow}
+                skillsLabel={skillsLabel}
+                triggerLabel={addMenuLabel}
               />
-              {window.electron.process.platform === "darwin" &&
-              screenAwarenessEnabled ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  isDisabled={disabled}
-                  onPress={async () => {
-                    try {
-                      const started =
-                        await window.electron.captureFocusedWindow()
-                      if (!started) {
-                        setAttachmentError(screenAwarenessErrorLabel)
-                      }
-                    } catch {
-                      setAttachmentError(screenAwarenessErrorLabel)
-                    }
-                  }}
-                >
-                  {screenAwarenessCaptureLabel}
-                </Button>
-              ) : null}
+              {imageSkill?.isActive ? (
+                <ComposerImageSkillChip
+                  disabled={disabled}
+                  label={imageSkill.labels.menuLabel}
+                  onRemove={handleImageSkillDeactivate}
+                  removeLabel={imageSkill.labels.remove}
+                />
+              ) : (
+                <>
+                  <PromptInputAgentModeControl
+                    agentLabel={agentModeAgentLabel}
+                    chatLabel={agentModeChatLabel}
+                    disabled={disabled}
+                    isToggleDisabled={isAgentModeToggleDisabled}
+                    mode={agentMode}
+                    onModeChange={onAgentModeChange}
+                    planLabel={agentModePlanLabel}
+                    toggleLabel={agentModeToggleLabel}
+                  />
+                  <PromptInputPermissionModeControl
+                    acceptEditsLabel={permissionModeAcceptEditsLabel}
+                    bypassLabel={permissionModeBypassLabel}
+                    defaultLabel={permissionModeDefaultLabel}
+                    disabled={disabled}
+                    isHidden={agentMode === "chat"}
+                    mode={permissionMode}
+                    onModeChange={onPermissionModeChange}
+                    toggleLabel={permissionModeToggleLabel}
+                  />
+                </>
+              )}
+              {footer}
               <input
                 accept={FILE_INPUT_ACCEPT}
                 aria-hidden="true"

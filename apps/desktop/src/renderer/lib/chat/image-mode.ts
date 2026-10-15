@@ -1,17 +1,9 @@
 /**
- * Pure state helpers for the composer's image mode toggle. The toggle is only
- * usable when the selected chat model can output images; its on/off value is
- * re-derived whenever the selected model changes. State lives in component
- * state (no persistence) — these functions hold the rules so they are testable.
+ * Pure state rule for the composer's Image skill: its on/off value is
+ * re-derived whenever the selected chat model changes. State lives in
+ * component state (no persistence) — this function holds the rule so it is
+ * testable.
  */
-
-export const getImageModeToggleDisabled = ({
-  isCapable,
-  isRequestPending
-}: {
-  isCapable: boolean
-  isRequestPending: boolean
-}): boolean => !isCapable || isRequestPending
 
 /**
  * On a model change: a newly-selected capable model defaults ON (pure image

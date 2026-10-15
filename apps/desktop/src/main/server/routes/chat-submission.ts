@@ -28,23 +28,32 @@ interface SubmissionFailure {
 }
 type BestOfNRequest = z.infer<typeof StartBestOfNInputSchema>
 
+// The composer's Image skill names its image model explicitly so the chat
+// model stays untouched; older clients only flip `imageMode` on an
+// image-output chat model. Either way the target must be an image-output model.
 export const resolveImageRequestModel = ({
   bestOfN,
   imageMode,
+  imageModel,
   modelId,
   settings
 }: {
   bestOfN?: BestOfNRequest
   imageMode: unknown
+  imageModel?: unknown
   modelId: string | null
   settings: AppSettings
-}): string | null =>
-  imageMode === true &&
-  !bestOfN &&
-  modelId &&
-  isImageOutputModelSelection(settings.ai, modelId)
-    ? modelId
+}): string | null => {
+  const targetModelId =
+    typeof imageModel === "string" && imageModel ? imageModel : modelId
+
+  return imageMode === true &&
+    !bestOfN &&
+    targetModelId &&
+    isImageOutputModelSelection(settings.ai, targetModelId)
+    ? targetModelId
     : null
+}
 
 const prepareAutomationMessages = async (
   db: AppDatabase,

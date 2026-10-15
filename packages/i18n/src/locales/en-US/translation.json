@@ -64,11 +64,6 @@
       "scroll": "Scroll page",
       "type": "Fill page field"
     },
-    "imageMode": {
-      "label": "Image",
-      "tooltip": "Generate an image from your message",
-      "unsupported": "The selected model can't generate images"
-    },
     "imagen": {
       "close": "Close image",
       "copied": "Copied",
@@ -106,7 +101,9 @@
       "queueSteer": "Steer current run",
       "queuedMessages": "Queued messages",
       "send": "Send",
-      "stop": "Stop output"
+      "stop": "Stop output",
+      "addMenu": "Add files, captures, or skills",
+      "skillsGroup": "Skills"
     },
     "details": {
       "model": "Model",
@@ -632,6 +629,14 @@
     "message": {
       "youLabel": "You",
       "assistantLabel": "Assistant"
+    },
+    "imageSkill": {
+      "label": "Image",
+      "menuDescription": "Generate or edit",
+      "remove": "Turn off the Image skill",
+      "suggestion": "Use the Image skill",
+      "suggestionDismiss": "Esc to dismiss",
+      "modelLabel": "Image model"
     }
   },
   "firstLight": {

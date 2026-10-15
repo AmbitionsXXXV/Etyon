@@ -64,11 +64,6 @@
       "scroll": "ページをスクロール",
       "type": "入力欄に記入"
     },
-    "imageMode": {
-      "label": "画像",
-      "tooltip": "オンにすると、メッセージから画像を生成します",
-      "unsupported": "選択中のモデルは画像生成に対応していません"
-    },
     "imagen": {
       "close": "画像を閉じる",
       "copied": "コピーしました",
@@ -106,7 +101,9 @@
       "queueSteer": "現在の実行を調整",
       "queuedMessages": "キュー済みメッセージ",
       "send": "送信",
-      "stop": "出力を停止"
+      "stop": "出力を停止",
+      "addMenu": "ファイル・キャプチャ・Skill を追加",
+      "skillsGroup": "Skills"
     },
     "details": {
       "model": "モデル",
@@ -632,6 +629,14 @@
     "message": {
       "youLabel": "あなた",
       "assistantLabel": "アシスタント"
+    },
+    "imageSkill": {
+      "label": "画像",
+      "menuDescription": "生成・編集",
+      "remove": "画像 Skill をオフにする",
+      "suggestion": "画像 Skill を使う",
+      "suggestionDismiss": "Esc で閉じる",
+      "modelLabel": "画像モデル"
     }
   },
   "firstLight": {

@@ -166,6 +166,7 @@ chatRoute.post("/chat", async (c) => {
     automationRunId,
     bestOfN: rawBestOfN,
     imageMode: rawImageMode,
+    imageModel: rawImageModel,
     mentions = [],
     messages: submittedMessages,
     model: requestedModelId,
@@ -178,6 +179,7 @@ chatRoute.post("/chat", async (c) => {
     automationRunId?: string
     bestOfN?: unknown
     imageMode?: unknown
+    imageModel?: unknown
     mentions?: ChatMention[]
     messages: UIMessage[]
     model?: string
@@ -222,6 +224,7 @@ chatRoute.post("/chat", async (c) => {
   const imageModelValue = resolveImageRequestModel({
     bestOfN: bestOfNRequest,
     imageMode: rawImageMode,
+    imageModel: rawImageModel,
     modelId: effectiveModelId,
     settings: baseSettings
   })

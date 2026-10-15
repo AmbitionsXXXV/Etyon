@@ -18,19 +18,11 @@ import { cn } from "@etyon/ui/lib/utils"
 import { ChatMessage } from "@heroui-pro/react"
 import { Resizable } from "@heroui-pro/react/resizable"
 import type { PanelImperativeHandle } from "@heroui-pro/react/resizable"
-import {
-  Button,
-  Chip,
-  ScrollShadow,
-  TextArea,
-  ToggleButton,
-  Tooltip
-} from "@heroui/react"
+import { Button, Chip, ScrollShadow, TextArea } from "@heroui/react"
 import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
   Cancel01Icon,
-  Image01Icon,
   PanelRightCloseIcon,
   PanelRightOpenIcon
 } from "@hugeicons/core-free-icons"
@@ -51,6 +43,8 @@ import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspecto
 import { AssistantMessageTimeline } from "@/renderer/components/chat/assistant-message-timeline"
 import type { InputToolResultHandler } from "@/renderer/components/chat/assistant-message-timeline"
 import { CheckpointRestoreHost } from "@/renderer/components/chat/checkpoint-restore-host"
+import { useComposerImageSkill } from "@/renderer/components/chat/composer-image-skill"
+import type { ComposerImageSkill } from "@/renderer/components/chat/composer-image-skill"
 import { InvocationStatus } from "@/renderer/components/chat/invocation-status"
 import {
   MessageActions,
@@ -77,10 +71,6 @@ import {
 import { getImageFileParts } from "@/renderer/lib/chat/attachments"
 import type { ComposerAttachment } from "@/renderer/lib/chat/attachments"
 import { shouldSendChatAutomatically } from "@/renderer/lib/chat/auto-send"
-import {
-  getImageModeToggleDisabled,
-  resolveImageModeForModelChange
-} from "@/renderer/lib/chat/image-mode"
 import { respondToAssistantInputTool } from "@/renderer/lib/chat/input-tools-ui"
 import {
   ASSISTANT_LIVE_STATUS_LABEL_KEY,
@@ -284,54 +274,6 @@ const isSelectedModelImageInput = (
     : false
 }
 
-// Mirrors the PromptInputAgentModeControl recipe. Renders a bare button while
-// disabled (no image model selected / request in flight) and wraps it in the
-// explanatory tooltip only when actionable — following the conditional-tooltip
-// precedent in project-context-panel.tsx.
-const ComposerImageModeControl = ({
-  isDisabled,
-  isSelected,
-  label,
-  onPress,
-  tooltip,
-  unsupportedLabel
-}: {
-  isDisabled: boolean
-  isSelected: boolean
-  label: string
-  onPress: () => void
-  tooltip: string
-  unsupportedLabel: string
-}) => {
-  const button = (
-    <ToggleButton
-      aria-label={isDisabled ? unsupportedLabel : tooltip}
-      className={cn(
-        "h-8 min-w-0 shrink-0 px-2.5 text-xs",
-        isSelected && "bg-primary/15! text-primary!"
-      )}
-      isDisabled={isDisabled}
-      isSelected={isSelected}
-      onPress={onPress}
-      size="sm"
-    >
-      <HugeiconsIcon icon={Image01Icon} size={14} strokeWidth={2} />
-      <span>{label}</span>
-    </ToggleButton>
-  )
-
-  if (isDisabled) {
-    return button
-  }
-
-  return (
-    <Tooltip>
-      <Tooltip.Trigger>{button}</Tooltip.Trigger>
-      <Tooltip.Content placement="top">{tooltip}</Tooltip.Content>
-    </Tooltip>
-  )
-}
-
 interface MentionQueryState {
   query: string
   trigger: PromptMentionTrigger
@@ -367,9 +309,6 @@ const NOOP_PERMISSION_MODE_CHANGE = (mode: AgentPermissionMode): void => {
   void mode
 }
 const NOOP_PROMPT_SUBMIT = (): Promise<void> => Promise.resolve()
-const NOOP_IMAGE_MODE_TOGGLE = (): void => {
-  // No-op: the image toggle is inert while the session is still loading.
-}
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD_PX = 48
 const PROJECT_CONTEXT_PANEL_DEFAULT_SIZE = 48
 // The chat column keeps enough width for the composer toolbar (mode pills +
@@ -1832,8 +1771,16 @@ const ChatRuntime = ({
     () => isSelectedModelImageInput(modelGroups, selectedModelValue),
     [modelGroups, selectedModelValue]
   )
-  const [isImageMode, setIsImageMode] = useState(isSelectedModelImageCapable)
-  const previousImageCapableRef = useRef(isSelectedModelImageCapable)
+  const {
+    imageModelValue,
+    isImageMode,
+    renderModelSlot,
+    skill: imageSkillState
+  } = useComposerImageSkill({
+    isSelectedModelImageCapable,
+    modelGroups,
+    selectedModelValue
+  })
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [queuedMessages, setQueuedMessages] = useState<QueuedPromptMessage[]>(
     []
@@ -2019,20 +1966,6 @@ const ChatRuntime = ({
     clearTodos()
   }, [selectedSession.id])
 
-  // Re-derive the image toggle whenever the selected model changes: a newly
-  // capable model defaults ON, a non-capable model forces OFF, and an unchanged
-  // capability preserves the user's choice.
-  useEffect(() => {
-    setIsImageMode((previous) =>
-      resolveImageModeForModelChange({
-        isCapable: isSelectedModelImageCapable,
-        previous,
-        wasCapable: previousImageCapableRef.current
-      })
-    )
-    previousImageCapableRef.current = isSelectedModelImageCapable
-  }, [isSelectedModelImageCapable])
-
   // Auto-open the preview panel when a new artifact is published during a
   // turn. The first pass per session marks history as seen so reloading or
   // switching sessions never reopens old artifacts. (Generated images render
@@ -2075,6 +2008,7 @@ const ChatRuntime = ({
       body: {
         agentMode: mode,
         imageMode: isImageMode || undefined,
+        imageModel: imageModelValue,
         mentions,
         model: selectedModelValue || undefined,
         permissionMode,
@@ -2083,6 +2017,7 @@ const ChatRuntime = ({
     }),
     [
       agentMode,
+      imageModelValue,
       isImageMode,
       permissionMode,
       selectedModelValue,
@@ -2205,17 +2140,14 @@ const ChatRuntime = ({
 
     setPermissionMode(getNextPermissionMode)
   }, [agentMode])
-  const isImageModeToggleDisabled = getImageModeToggleDisabled({
-    isCapable: isSelectedModelImageCapable,
-    isRequestPending
-  })
-  const handleImageModeToggle = useCallback(() => {
-    if (isImageModeToggleDisabled) {
-      return
-    }
-
-    setIsImageMode((previous) => !previous)
-  }, [isImageModeToggleDisabled])
+  // A running turn pauses the skill controls without changing their state.
+  const imageSkill = useMemo<ComposerImageSkill>(
+    () => ({
+      ...imageSkillState,
+      isAvailable: imageSkillState.isAvailable && !isRequestPending
+    }),
+    [imageSkillState, isRequestPending]
+  )
 
   // Mod+J opens or focuses the terminal tab (expanding the project panel if
   // collapsed), and collapses the panel when the terminal is already the active
@@ -2879,38 +2811,38 @@ const ChatRuntime = ({
             </AnimatePresence>
           </div>
 
-          <PromptInput
-            agentMode={agentMode}
-            agentModeAgentLabel={t("chat.composer.agentModeAgent")}
-            agentModeChatLabel={t("chat.composer.agentModeChat")}
-            agentModePlanLabel={t("chat.composer.agentModePlan")}
-            agentModeToggleLabel={t("chat.composer.agentModeToggle")}
-            commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
-            commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
-            commandPaletteImagenDescription={t(
-              "chat.mentions.commandImagenDescription"
-            )}
-            commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
-            commandPalettePlanDescription={t(
-              "chat.mentions.commandPlanDescription"
-            )}
-            commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
-            commandPalettePromptDescription={t(
-              "chat.mentions.commandPromptDescription"
-            )}
-            commandPalettePromptLabel={t("chat.mentions.commandPromptLabel")}
-            commandPaletteSkillDescription={t(
-              "chat.mentions.commandSkillDescription"
-            )}
-            commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
-            commandPaletteWorkflowDescription={t(
-              "chat.mentions.commandWorkflowDescription"
-            )}
-            commandPaletteWorkflowLabel={t(
-              "chat.mentions.commandWorkflowLabel"
-            )}
-            footer={
-              <div className="flex min-w-0 items-center gap-3">
+          <div className={CHAT_READING_COLUMN_CLASS_NAME}>
+            <PromptInput
+              agentMode={agentMode}
+              agentModeAgentLabel={t("chat.composer.agentModeAgent")}
+              agentModeChatLabel={t("chat.composer.agentModeChat")}
+              agentModePlanLabel={t("chat.composer.agentModePlan")}
+              agentModeToggleLabel={t("chat.composer.agentModeToggle")}
+              commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
+              commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+              commandPaletteImagenDescription={t(
+                "chat.mentions.commandImagenDescription"
+              )}
+              commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
+              commandPalettePlanDescription={t(
+                "chat.mentions.commandPlanDescription"
+              )}
+              commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
+              commandPalettePromptDescription={t(
+                "chat.mentions.commandPromptDescription"
+              )}
+              commandPalettePromptLabel={t("chat.mentions.commandPromptLabel")}
+              commandPaletteSkillDescription={t(
+                "chat.mentions.commandSkillDescription"
+              )}
+              commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
+              commandPaletteWorkflowDescription={t(
+                "chat.mentions.commandWorkflowDescription"
+              )}
+              commandPaletteWorkflowLabel={t(
+                "chat.mentions.commandWorkflowLabel"
+              )}
+              footer={renderModelSlot(
                 <ModelSelector
                   effortLabel={t("chat.model.effortLabel")}
                   effortLevelLabels={effortLevelLabels}
@@ -2924,101 +2856,99 @@ const ChatRuntime = ({
                   searchEmptyLabel={t("chat.model.searchEmpty")}
                   searchPlaceholder={t("chat.model.searchPlaceholder")}
                   value={selectedModelValue}
-                />
-                <ComposerImageModeControl
-                  isDisabled={isImageModeToggleDisabled}
-                  isSelected={isImageMode}
-                  label={t("chat.imageMode.label")}
-                  onPress={handleImageModeToggle}
-                  tooltip={t("chat.imageMode.tooltip")}
-                  unsupportedLabel={t("chat.imageMode.unsupported")}
-                />
-              </div>
-            }
-            imageInputAttachLabel={t("chat.attachments.attach")}
-            imageInputCountError={t("chat.attachments.countError")}
-            imageInputEnabled={isSelectedModelImageInputCapable}
-            imageInputImageLabel={t("chat.attachments.image")}
-            imageInputListLabel={t("chat.attachments.ready")}
-            imageInputNonVisionHint={t("chat.attachments.nonVisionHint")}
-            imageInputPreviewLabel={t("chat.imagen.viewFull")}
-            imageInputRemoveLabel={t("chat.attachments.remove")}
-            imageInputSizeError={t("chat.attachments.sizeError")}
-            imageInputTypeError={t("chat.attachments.typeError")}
-            imageInputUnsupportedLabel={t("chat.attachments.unsupported")}
-            isAgentModeToggleDisabled={isAgentModeToggleDisabled}
-            isImageMode={isImageMode}
-            isLoadingFileItems={isLoadingFileItems}
-            isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
-            isLoadingSkillItems={isLoadingSkillItems}
-            mentionEmptyLabel={t("chat.mentions.empty")}
-            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
-            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
-            mentionGlobalSkillSourceLabel={t("chat.mentions.globalSkillSource")}
-            mentionItems={mentionItems}
-            mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
-            mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
-            mentionSkillItems={mentionSkillItems}
-            mentionSkillSearchPlaceholder={t(
-              "chat.mentions.skillsSearchPlaceholder"
-            )}
-            contextUsage={contextUsage}
-            isOutputActive={isRequestPending}
-            onAgentModeChange={handleAgentModeChange}
-            onMentionQueryChange={onMentionQueryChange}
-            onPermissionModeChange={setPermissionMode}
-            onPromptTemplateQueryChange={onPromptTemplateQueryChange}
-            onQueuedMessagesReorder={handleQueuedMessagesReorder}
-            onRemoveQueuedMessage={handleRemoveQueuedMessage}
-            onStop={handleStop}
-            onSubmit={handleSubmit}
-            permissionMode={permissionMode}
-            permissionModeAcceptEditsLabel={t(
-              "chat.promptInput.permissionMode.acceptEdits"
-            )}
-            permissionModeBypassLabel={t(
-              "chat.promptInput.permissionMode.bypass"
-            )}
-            permissionModeDefaultLabel={t(
-              "chat.promptInput.permissionMode.default"
-            )}
-            permissionModeToggleLabel={t(
-              "chat.promptInput.permissionMode.title"
-            )}
-            placeholder={t("chat.composer.placeholder")}
-            planHintDismissLabel={t("chat.planHint.dismiss")}
-            planHintSwitchLabel={t("chat.planHint.switch")}
-            planHintTitle={t("chat.planHint.title")}
-            planQueue={planQueue}
-            promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
-            promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
-            promptTemplateItems={promptTemplateItems}
-            queuedMessages={queuedMessages}
-            queuedMessagesLabel={t("chat.composer.queuedMessages")}
-            queueEditLabel={t("chat.composer.queueEdit")}
-            queueRemoveLabel={t("chat.composer.queueRemove")}
-            queueReorderLabel={t("chat.composer.queueReorder")}
-            status={status}
-            stagedAttachments={stagedScreenCaptureAttachments}
-            onStagedAttachmentRemoved={dismissStagedCapture}
-            onStagedAttachmentsConsumed={consumeStagedCaptures}
-            screenAwarenessEnabled={screenAwarenessEnabled}
-            screenAwarenessErrorLabel={t("chat.screenAwareness.failed")}
-            screenAwarenessSelectedTextLabel={t(
-              "chat.screenAwareness.selected"
-            )}
-            screenAwarenessCaptureLabel={t("chat.screenAwareness.capture")}
-            screenAwarenessImageLabel={t("chat.screenAwareness.image")}
-            screenAwarenessTextLabel={t("chat.screenAwareness.text")}
-            screenAwarenessRemoveImageLabel={t(
-              "chat.screenAwareness.removeImage"
-            )}
-            screenAwarenessRemoveTextLabel={t(
-              "chat.screenAwareness.removeText"
-            )}
-            stopLabel={t("chat.composer.stop")}
-            submitLabel={t("chat.composer.send")}
-          />
+                />,
+                isRequestPending
+              )}
+              imageInputAttachLabel={t("chat.attachments.attach")}
+              imageInputCountError={t("chat.attachments.countError")}
+              imageInputEnabled={isSelectedModelImageInputCapable}
+              imageInputImageLabel={t("chat.attachments.image")}
+              imageInputListLabel={t("chat.attachments.ready")}
+              imageInputNonVisionHint={t("chat.attachments.nonVisionHint")}
+              imageInputPreviewLabel={t("chat.imagen.viewFull")}
+              imageInputRemoveLabel={t("chat.attachments.remove")}
+              imageInputSizeError={t("chat.attachments.sizeError")}
+              imageInputTypeError={t("chat.attachments.typeError")}
+              imageInputUnsupportedLabel={t("chat.attachments.unsupported")}
+              addMenuLabel={t("chat.composer.addMenu")}
+              imageSkill={imageSkill}
+              isAgentModeToggleDisabled={isAgentModeToggleDisabled}
+              isImageMode={isImageMode}
+              skillsLabel={t("chat.composer.skillsGroup")}
+              isLoadingFileItems={isLoadingFileItems}
+              isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
+              isLoadingSkillItems={isLoadingSkillItems}
+              mentionEmptyLabel={t("chat.mentions.empty")}
+              mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+              mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+              mentionGlobalSkillSourceLabel={t(
+                "chat.mentions.globalSkillSource"
+              )}
+              mentionItems={mentionItems}
+              mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
+              mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
+              mentionSkillItems={mentionSkillItems}
+              mentionSkillSearchPlaceholder={t(
+                "chat.mentions.skillsSearchPlaceholder"
+              )}
+              contextUsage={contextUsage}
+              isOutputActive={isRequestPending}
+              onAgentModeChange={handleAgentModeChange}
+              onMentionQueryChange={onMentionQueryChange}
+              onPermissionModeChange={setPermissionMode}
+              onPromptTemplateQueryChange={onPromptTemplateQueryChange}
+              onQueuedMessagesReorder={handleQueuedMessagesReorder}
+              onRemoveQueuedMessage={handleRemoveQueuedMessage}
+              onStop={handleStop}
+              onSubmit={handleSubmit}
+              permissionMode={permissionMode}
+              permissionModeAcceptEditsLabel={t(
+                "chat.promptInput.permissionMode.acceptEdits"
+              )}
+              permissionModeBypassLabel={t(
+                "chat.promptInput.permissionMode.bypass"
+              )}
+              permissionModeDefaultLabel={t(
+                "chat.promptInput.permissionMode.default"
+              )}
+              permissionModeToggleLabel={t(
+                "chat.promptInput.permissionMode.title"
+              )}
+              placeholder={t("chat.composer.placeholder")}
+              planHintDismissLabel={t("chat.planHint.dismiss")}
+              planHintSwitchLabel={t("chat.planHint.switch")}
+              planHintTitle={t("chat.planHint.title")}
+              planQueue={planQueue}
+              promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
+              promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
+              promptTemplateItems={promptTemplateItems}
+              queuedMessages={queuedMessages}
+              queuedMessagesLabel={t("chat.composer.queuedMessages")}
+              queueEditLabel={t("chat.composer.queueEdit")}
+              queueRemoveLabel={t("chat.composer.queueRemove")}
+              queueReorderLabel={t("chat.composer.queueReorder")}
+              status={status}
+              stagedAttachments={stagedScreenCaptureAttachments}
+              onStagedAttachmentRemoved={dismissStagedCapture}
+              onStagedAttachmentsConsumed={consumeStagedCaptures}
+              screenAwarenessEnabled={screenAwarenessEnabled}
+              screenAwarenessErrorLabel={t("chat.screenAwareness.failed")}
+              screenAwarenessSelectedTextLabel={t(
+                "chat.screenAwareness.selected"
+              )}
+              screenAwarenessCaptureLabel={t("chat.screenAwareness.capture")}
+              screenAwarenessImageLabel={t("chat.screenAwareness.image")}
+              screenAwarenessTextLabel={t("chat.screenAwareness.text")}
+              screenAwarenessRemoveImageLabel={t(
+                "chat.screenAwareness.removeImage"
+              )}
+              screenAwarenessRemoveTextLabel={t(
+                "chat.screenAwareness.removeText"
+              )}
+              stopLabel={t("chat.composer.stop")}
+              submitLabel={t("chat.composer.send")}
+            />
+          </div>
         </div>
       </div>
     </ChatProjectContextLayout>
@@ -3142,39 +3072,39 @@ const ChatPendingState = ({
             </div>
           </ScrollShadow>
 
-          <PromptInput
-            agentMode="chat"
-            agentModeAgentLabel={t("chat.composer.agentModeAgent")}
-            agentModeChatLabel={t("chat.composer.agentModeChat")}
-            agentModePlanLabel={t("chat.composer.agentModePlan")}
-            agentModeToggleLabel={t("chat.composer.agentModeToggle")}
-            commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
-            commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
-            commandPaletteImagenDescription={t(
-              "chat.mentions.commandImagenDescription"
-            )}
-            commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
-            commandPalettePlanDescription={t(
-              "chat.mentions.commandPlanDescription"
-            )}
-            commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
-            commandPalettePromptDescription={t(
-              "chat.mentions.commandPromptDescription"
-            )}
-            commandPalettePromptLabel={t("chat.mentions.commandPromptLabel")}
-            commandPaletteSkillDescription={t(
-              "chat.mentions.commandSkillDescription"
-            )}
-            commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
-            commandPaletteWorkflowDescription={t(
-              "chat.mentions.commandWorkflowDescription"
-            )}
-            commandPaletteWorkflowLabel={t(
-              "chat.mentions.commandWorkflowLabel"
-            )}
-            disabled
-            footer={
-              <div className="flex min-w-0 items-center gap-3">
+          <div className={CHAT_READING_COLUMN_CLASS_NAME}>
+            <PromptInput
+              agentMode="chat"
+              agentModeAgentLabel={t("chat.composer.agentModeAgent")}
+              agentModeChatLabel={t("chat.composer.agentModeChat")}
+              agentModePlanLabel={t("chat.composer.agentModePlan")}
+              agentModeToggleLabel={t("chat.composer.agentModeToggle")}
+              commandPaletteEmptyLabel={t("chat.mentions.commandPaletteEmpty")}
+              commandPaletteGroupLabel={t("chat.mentions.commandPaletteGroup")}
+              commandPaletteImagenDescription={t(
+                "chat.mentions.commandImagenDescription"
+              )}
+              commandPaletteImagenLabel={t("chat.mentions.commandImagenLabel")}
+              commandPalettePlanDescription={t(
+                "chat.mentions.commandPlanDescription"
+              )}
+              commandPalettePlanLabel={t("chat.mentions.commandPlanLabel")}
+              commandPalettePromptDescription={t(
+                "chat.mentions.commandPromptDescription"
+              )}
+              commandPalettePromptLabel={t("chat.mentions.commandPromptLabel")}
+              commandPaletteSkillDescription={t(
+                "chat.mentions.commandSkillDescription"
+              )}
+              commandPaletteSkillLabel={t("chat.mentions.commandSkillLabel")}
+              commandPaletteWorkflowDescription={t(
+                "chat.mentions.commandWorkflowDescription"
+              )}
+              commandPaletteWorkflowLabel={t(
+                "chat.mentions.commandWorkflowLabel"
+              )}
+              disabled
+              footer={
                 <ModelSelector
                   disabled
                   effortLabel={t("chat.model.effortLabel")}
@@ -3190,58 +3120,52 @@ const ChatPendingState = ({
                   searchPlaceholder={t("chat.model.searchPlaceholder")}
                   value={selectedModelValue}
                 />
-                <ComposerImageModeControl
-                  isDisabled
-                  isSelected={false}
-                  label={t("chat.imageMode.label")}
-                  onPress={NOOP_IMAGE_MODE_TOGGLE}
-                  tooltip={t("chat.imageMode.tooltip")}
-                  unsupportedLabel={t("chat.imageMode.unsupported")}
-                />
-              </div>
-            }
-            isLoadingFileItems={isLoadingFileItems}
-            isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
-            isLoadingSkillItems={isLoadingSkillItems}
-            mentionEmptyLabel={t("chat.mentions.empty")}
-            mentionFileGroupLabel={t("chat.mentions.filesGroup")}
-            mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
-            mentionGlobalSkillSourceLabel={t("chat.mentions.globalSkillSource")}
-            mentionItems={[]}
-            mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
-            mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
-            mentionSkillItems={[]}
-            mentionSkillSearchPlaceholder={t(
-              "chat.mentions.skillsSearchPlaceholder"
-            )}
-            onAgentModeChange={NOOP_AGENT_MODE_CHANGE}
-            onMentionQueryChange={onMentionQueryChange}
-            onPermissionModeChange={NOOP_PERMISSION_MODE_CHANGE}
-            onPromptTemplateQueryChange={onPromptTemplateQueryChange}
-            onSubmit={NOOP_PROMPT_SUBMIT}
-            permissionMode="default"
-            permissionModeAcceptEditsLabel={t(
-              "chat.promptInput.permissionMode.acceptEdits"
-            )}
-            permissionModeBypassLabel={t(
-              "chat.promptInput.permissionMode.bypass"
-            )}
-            permissionModeDefaultLabel={t(
-              "chat.promptInput.permissionMode.default"
-            )}
-            permissionModeToggleLabel={t(
-              "chat.promptInput.permissionMode.title"
-            )}
-            placeholder={t("chat.composer.placeholder")}
-            planHintDismissLabel={t("chat.planHint.dismiss")}
-            planHintSwitchLabel={t("chat.planHint.switch")}
-            planHintTitle={t("chat.planHint.title")}
-            promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
-            promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
-            promptTemplateItems={promptTemplateItems}
-            stopLabel={t("chat.composer.stop")}
-            submitLabel={t("chat.composer.send")}
-          />
+              }
+              isLoadingFileItems={isLoadingFileItems}
+              isLoadingPromptTemplateItems={isLoadingPromptTemplateItems}
+              isLoadingSkillItems={isLoadingSkillItems}
+              mentionEmptyLabel={t("chat.mentions.empty")}
+              mentionFileGroupLabel={t("chat.mentions.filesGroup")}
+              mentionFolderGroupLabel={t("chat.mentions.foldersGroup")}
+              mentionGlobalSkillSourceLabel={t(
+                "chat.mentions.globalSkillSource"
+              )}
+              mentionItems={[]}
+              mentionSkillEmptyLabel={t("chat.mentions.skillsEmpty")}
+              mentionSkillGroupLabel={t("chat.mentions.skillsGroup")}
+              mentionSkillItems={[]}
+              mentionSkillSearchPlaceholder={t(
+                "chat.mentions.skillsSearchPlaceholder"
+              )}
+              onAgentModeChange={NOOP_AGENT_MODE_CHANGE}
+              onMentionQueryChange={onMentionQueryChange}
+              onPermissionModeChange={NOOP_PERMISSION_MODE_CHANGE}
+              onPromptTemplateQueryChange={onPromptTemplateQueryChange}
+              onSubmit={NOOP_PROMPT_SUBMIT}
+              permissionMode="default"
+              permissionModeAcceptEditsLabel={t(
+                "chat.promptInput.permissionMode.acceptEdits"
+              )}
+              permissionModeBypassLabel={t(
+                "chat.promptInput.permissionMode.bypass"
+              )}
+              permissionModeDefaultLabel={t(
+                "chat.promptInput.permissionMode.default"
+              )}
+              permissionModeToggleLabel={t(
+                "chat.promptInput.permissionMode.title"
+              )}
+              placeholder={t("chat.composer.placeholder")}
+              planHintDismissLabel={t("chat.planHint.dismiss")}
+              planHintSwitchLabel={t("chat.planHint.switch")}
+              planHintTitle={t("chat.planHint.title")}
+              promptTemplateEmptyLabel={t("chat.mentions.promptTemplatesEmpty")}
+              promptTemplateGroupLabel={t("chat.mentions.promptTemplatesGroup")}
+              promptTemplateItems={promptTemplateItems}
+              stopLabel={t("chat.composer.stop")}
+              submitLabel={t("chat.composer.send")}
+            />
+          </div>
         </div>
       </div>
     </ChatProjectContextLayout>

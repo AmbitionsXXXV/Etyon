@@ -164,41 +164,40 @@ export const ModelSelector = ({
   return (
     <Autocomplete
       aria-label="Model"
-      className="w-56 max-w-full"
+      className="max-w-56 min-w-0 shrink"
       isDisabled={disabled}
       onChange={handleChange}
       selectionMode="single"
       value={value || null}
       variant="secondary"
     >
-      <Autocomplete.Trigger className="min-h-10 min-w-0 overflow-hidden rounded-xl border-foreground/15 bg-popover/90 px-3 py-2 shadow-sm hover:bg-accent/10 dark:bg-popover/80 dark:hover:bg-accent/15">
-        <Autocomplete.Value className="min-w-0 flex-1">
+      {/* `pe-7` keeps HeroUI's room for the absolutely positioned indicator;
+          the translucent fill stays visible on the composer's `default` shell. */}
+      <Autocomplete.Trigger className="h-8 min-h-8 min-w-0 items-center overflow-hidden rounded-full border-transparent bg-foreground/8 py-0 ps-3 pe-7 shadow-none hover:bg-foreground/12">
+        <Autocomplete.Value className="flex min-w-0 flex-1 items-center">
           {({ defaultChildren, isPlaceholder }) => {
             if (isPlaceholder || !selectedOption) {
               return defaultChildren
             }
 
             return (
-              <span className="flex min-w-0 items-center gap-2 text-left">
+              // One line on the toolbar: capabilities stay in the list below.
+              <span
+                className="flex min-w-0 items-center gap-1.5 text-left"
+                title={selectedOption.summary || undefined}
+              >
                 <ProviderIcon
-                  className="size-4 text-foreground"
+                  className="size-3.5 shrink-0 text-foreground"
                   providerId={selectedOption.providerId}
                 />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">
-                    {selectedOption.label}
-                  </span>
-                  {selectedOption.summary ? (
-                    <span className="block truncate text-[0.6875rem] leading-4 text-muted-foreground">
-                      {selectedOption.summary}
-                    </span>
-                  ) : null}
+                <span className="min-w-0 truncate text-xs font-medium">
+                  {selectedOption.label}
                 </span>
               </span>
             )
           }}
         </Autocomplete.Value>
-        <Autocomplete.Indicator className="size-3.5 shrink-0" />
+        <Autocomplete.Indicator className="size-3 shrink-0 text-muted-foreground" />
       </Autocomplete.Trigger>
       <Autocomplete.Popover className="w-88 max-w-[calc(100vw-2rem)] border border-border/80 bg-popover shadow-overlay">
         <Autocomplete.Filter filter={contains}>

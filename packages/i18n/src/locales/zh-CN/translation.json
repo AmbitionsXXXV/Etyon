@@ -64,11 +64,6 @@
       "scroll": "滚动网页",
       "type": "填写网页内容"
     },
-    "imageMode": {
-      "label": "图像",
-      "tooltip": "开启后，发送的消息将直接生成图片",
-      "unsupported": "当前模型不支持图片生成"
-    },
     "imagen": {
       "close": "关闭图片",
       "copied": "已复制",
@@ -106,7 +101,9 @@
       "queueSteer": "转向当前运行",
       "queuedMessages": "队列消息",
       "send": "发送",
-      "stop": "停止输出"
+      "stop": "停止输出",
+      "addMenu": "添加文件、截图或 Skill",
+      "skillsGroup": "Skills"
     },
     "details": {
       "model": "当前模型",
@@ -632,6 +629,14 @@
     "message": {
       "youLabel": "你",
       "assistantLabel": "助手"
+    },
+    "imageSkill": {
+      "label": "图像",
+      "menuDescription": "生成或编辑",
+      "remove": "关闭图像 Skill",
+      "suggestion": "使用图像 Skill",
+      "suggestionDismiss": "Esc 忽略",
+      "modelLabel": "图像模型"
     }
   },
   "firstLight": {
