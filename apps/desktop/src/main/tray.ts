@@ -1,22 +1,11 @@
 import { Menu, Tray, app } from "electron"
-import type { NativeImage } from "electron"
 
-import { createRuntimeIcon, getAppDisplayName } from "./app-metadata"
-import { t } from "./localization"
-import { getSettings } from "./settings"
-import { createSettingsWindow, focusOrCreateMainWindow } from "./window"
+import { createTrayIcon, getAppDisplayName } from "@/main/app-metadata"
+import { t } from "@/main/localization"
+import { getSettings } from "@/main/settings"
+import { createSettingsWindow, focusOrCreateMainWindow } from "@/main/window"
 
 let tray: Tray | null = null
-
-const createTrayImage = (): NativeImage | undefined => {
-  const icon = createRuntimeIcon(getSettings().appIcon)
-
-  if (!icon) {
-    return undefined
-  }
-
-  return icon.resize({ height: 16 })
-}
 
 const buildTrayMenu = () => {
   const appName = getAppDisplayName()
@@ -53,7 +42,7 @@ const getTrayInstance = (): Tray | null => {
 }
 
 const syncTray = (trayInstance: Tray) => {
-  const trayIcon = createTrayImage()
+  const trayIcon = createTrayIcon(getSettings().appIcon)
 
   if (trayIcon) {
     trayInstance.setImage(trayIcon)
@@ -93,7 +82,7 @@ export const setupTray = () => {
     return existingTray
   }
 
-  const trayIcon = createTrayImage()
+  const trayIcon = createTrayIcon(getSettings().appIcon)
 
   if (!trayIcon) {
     return

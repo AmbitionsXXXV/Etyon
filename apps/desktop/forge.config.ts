@@ -39,8 +39,8 @@ const config: ForgeConfig = {
       setupIcon: "resources/icon.ico"
     }),
     new MakerZIP({}, ["darwin"]),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({ options: { icon: "resources/icon.png" } }),
+    new MakerDeb({ options: { icon: "resources/icon.png" } }),
     new MakerDMG({
       additionalDMGOptions: {
         window: { size: { height: 420, width: 660 } }
@@ -74,8 +74,10 @@ const config: ForgeConfig = {
       "resources/icon.icns",
       "resources/icon.ico",
       "resources/icon-light.png",
+      "resources/icon.png",
       "resources/screen-awareness",
-      "resources/tray.png"
+      "resources/tray-template.png",
+      "resources/tray-template@2x.png"
     ],
     helperBundleId,
     icon: "resources/icon",

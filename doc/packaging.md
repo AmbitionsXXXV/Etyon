@@ -55,8 +55,10 @@
 
 - 桌面端图片资源统一放在 `apps/desktop/resources/`
 - 打包阶段通过 `packagerConfig.icon = "resources/icon"` 同时支持 `resources/icon.icns` 与 `resources/icon.ico`
-- 运行时通过 `packagerConfig.extraResource` 把 `icon-dark.png`、`icon-light.png`、`icon.icns`、`icon.ico` 和 `tray.png` 一并复制到产物 `resources`，供主进程在 `app.isPackaged === true` 时读取
-- 开发阶段主进程直接从 `apps/desktop/resources/` 读取图标；所选 PNG 用于 `macOS` Dock、Windows / Linux 窗口和托盘，缺失时回退到 `icon.icns` 或 `icon.ico`
+- 运行时通过 `packagerConfig.extraResource` 把 `icon-dark.png`、`icon-light.png`、`icon.png`、`icon.icns`、`icon.ico`、`tray-template.png` 和 `tray-template@2x.png` 一并复制到产物 `resources`，供主进程在 `app.isPackaged === true` 时读取
+- 开发阶段主进程直接从 `apps/desktop/resources/` 读取图标；所选 PNG 用于 macOS Dock、Windows / Linux 窗口和托盘，缺失时回退到 `icon.icns` 或 `icon.ico`；macOS 菜单栏优先使用独立单色模板
+- Linux DEB / RPM maker 使用 `resources/icon.png`（`512 × 512 px`）；macOS ICNS 包含 `16–1024 px`，Windows ICO 包含 `16 / 20 / 24 / 32 / 40 / 48 / 64 / 128 / 256 px`
+- 图标源稿、生成命令与预览见 [图标资源](./app-icons.md)
 - 开发阶段如果使用 `electron-forge start`，`macOS` Dock / Finder 显示的应用名仍然来自 `Electron.app` 本体，无法仅靠 `forge.config.ts` 或 `app.setName()` 改掉；代码里只能把菜单文案、窗口标题和 Dock 图标切到项目自己的元数据
 
 ## 版本与发版入口

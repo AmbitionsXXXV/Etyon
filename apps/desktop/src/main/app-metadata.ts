@@ -61,6 +61,21 @@ export const createRuntimeIcon = (
   return createNativeImageFromPath(iconPath)
 }
 
+export const createTrayIcon = (appIcon: AppIcon): NativeImage | undefined => {
+  if (platform.isMacOS) {
+    const icon = createNativeImageFromPath(
+      resolveAssetPath(["tray-template.png"])
+    )
+
+    if (icon) {
+      icon.setTemplateImage(true)
+      return icon
+    }
+  }
+
+  return createRuntimeIcon(appIcon)?.resize({ height: 16 })
+}
+
 export const getAppDisplayName = (): string =>
   isRuntimeReleaseBuild() ? RELEASE_APP_NAME : DEVELOPMENT_APP_NAME
 

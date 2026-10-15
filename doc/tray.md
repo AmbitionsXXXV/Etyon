@@ -24,7 +24,11 @@
 
 ## 图标
 
-- 托盘跟随 `settings.appIcon`，深色与白色选项分别读取 `icon-dark.png` 和 `icon-light.png`
-- 创建托盘图标时会把当前应用图标缩放到 `16 px` 高度
+- macOS 菜单栏使用独立的单色工作盒图标：`tray-template.png` 为 `16 × 16 px`，`tray-template@2x.png` 为 `32 × 32 px`，均显示为 `16 pt`
+- `app-metadata.ts` 的 `createTrayIcon()` 加载两种分辨率并调用 `setTemplateImage(true)`，由 macOS 根据菜单栏背景处理颜色；不再缩小立体应用图标，也不对模板再次 resize，以保留 Retina 表示
+- 模板源文件是 `apps/desktop/resources/tray-template.svg`，按 `16 px` 网格绘制，笔画宽 `1.5 px`；保留任务卡、勾选、工作盒和智能核心，省略材质与阴影
+- Windows / Linux 继续跟随 `settings.appIcon`，深色与白色选项分别读取 `icon-dark.png` 和 `icon-light.png`，缩放到 `16 px` 高度
 - 保存图标设置后会调用 `refreshTray()`，无需重启即可更新现有托盘图标
-- 如果所选 PNG 不存在，运行时会回退到平台默认的 `icon.icns` 或 `icon.ico`
+- macOS 模板缺失时沿用应用图标回退；如果所选应用 PNG 不存在，运行时会回退到平台默认的 `icon.icns` 或 `icon.ico`
+
+生成方式和尺寸预览见 [图标资源](./app-icons.md)。模板与高分屏命名规则遵循 [Electron nativeImage 文档](https://www.electronjs.org/docs/latest/api/native-image#template-image-macos)。
