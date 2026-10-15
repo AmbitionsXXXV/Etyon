@@ -988,7 +988,8 @@
           "generic": "推荐设置",
           "summary": "在 {{threshold}}% 时压缩，保留最近 {{keep}} 条消息。为回复和摘要留出约 {{reserve}} tokens。",
           "summaryUnknown": "在 {{threshold}}% 时压缩，保留最近 {{keep}} 条消息。默认模型未提供上下文窗口大小。",
-          "apply": "使用推荐值"
+          "apply": "使用推荐值",
+          "summaryReplay": "在 {{threshold}}% 时压缩，保留最近 {{keep}} 条消息。回放你最近 {{calls}} 个已记录的步骤，这样可少用 {{saving}}% 的 token。"
         },
         "preset": {
           "label": "阈值预设",
@@ -1850,6 +1851,34 @@
         "custom": "{{hours}} 小时",
         "used": "已用 {{percent}}%",
         "resets": "重置于 {{time}}"
+      },
+      "tuning": {
+        "title": "为你调优",
+        "description": "根据本机 Claude Code 和 Codex 自己的会话文件回放，找出最省 token 的自动压缩窗口。",
+        "range": {
+          "label": "时间范围",
+          "today": "今天",
+          "week": "7 天",
+          "month": "30 天"
+        },
+        "calls": "{{count}} 次调用",
+        "now": "当前 {{value}}",
+        "best": "最省 token {{value}}",
+        "saving": "最多节省 {{percent}}%",
+        "explain": "你的对话每次调用约增长 {{growth}}，一次压缩后约剩 {{after}}。此时间范围内的压缩次数：当前 {{compactsNow}} 次，建议窗口下 {{compactsBest}} 次。",
+        "tooFew": "此时间范围内调用太少，无法给出建议（至少需要 50 次）。",
+        "source": {
+          "locked": "已设置 {{variable}}，它的优先级更高。",
+          "ours": "由 Etyon 设置。",
+          "user": "你在 {{file}} 中设置了 {{value}}。",
+          "default": "使用该工具的默认值。"
+        },
+        "codexShared": "Codex 所有模型共用一个窗口。",
+        "use": "使用 {{value}}",
+        "undo": "撤销",
+        "saved": "已保存。该工具会在下次会话时读取。",
+        "empty": "此时间范围内没有 Claude Code 或 Codex 会话。",
+        "caveat": "这只是 token 估算。窗口越小压缩越频繁，每次压缩都会丢失部分对话内容。"
       }
     }
   },

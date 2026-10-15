@@ -988,7 +988,8 @@
           "generic": "推奨設定",
           "summary": "{{threshold}}% で圧縮し、直近 {{keep}} 件のメッセージを保持します。返信と要約のために約 {{reserve}} トークンを残します。",
           "summaryUnknown": "{{threshold}}% で圧縮し、直近 {{keep}} 件のメッセージを保持します。既定のモデルはコンテキストウィンドウを公開していません。",
-          "apply": "推奨値を使う"
+          "apply": "推奨値を使う",
+          "summaryReplay": "{{threshold}}% で圧縮し、直近 {{keep}} 件のメッセージを保持します。記録された直近 {{calls}} ステップを再生すると、トークンを {{saving}}% 削減できました。"
         },
         "preset": {
           "label": "しきい値のプリセット",
@@ -1850,6 +1851,34 @@
         "custom": "{{hours}} 時間",
         "used": "{{percent}}% 使用",
         "resets": "{{time}} にリセット"
+      },
+      "tuning": {
+        "title": "あなた向けの調整",
+        "description": "このマシンの Claude Code と Codex のセッションファイルを再生し、トークンが最も少なく済んだ自動圧縮ウィンドウを示します。",
+        "range": {
+          "label": "期間",
+          "today": "今日",
+          "week": "7 日間",
+          "month": "30 日間"
+        },
+        "calls": "{{count}} 回の呼び出し",
+        "now": "現在 {{value}}",
+        "best": "最少トークン {{value}}",
+        "saving": "最大 {{percent}}% 削減",
+        "explain": "会話は 1 回の呼び出しで約 {{growth}} 増え、圧縮後は約 {{after}} 残ります。この期間の圧縮回数：現在 {{compactsNow}} 回、推奨ウィンドウでは {{compactsBest}} 回。",
+        "tooFew": "この期間の呼び出しが少なすぎて推奨できません（50 回必要）。",
+        "source": {
+          "locked": "{{variable}} が設定されていて優先されます。",
+          "ours": "Etyon が設定しました。",
+          "user": "{{file}} で {{value}} に設定されています。",
+          "default": "エージェントの既定値です。"
+        },
+        "codexShared": "Codex はすべてのモデルで同じウィンドウを使います。",
+        "use": "{{value}} を使う",
+        "undo": "元に戻す",
+        "saved": "保存しました。次のセッションから反映されます。",
+        "empty": "この期間に Claude Code や Codex のセッションはありません。",
+        "caveat": "トークンの推定にすぎません。ウィンドウを小さくするほど圧縮が増え、圧縮のたびに会話の内容が一部失われます。"
       }
     }
   },

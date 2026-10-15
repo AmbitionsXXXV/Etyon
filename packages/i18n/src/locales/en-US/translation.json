@@ -988,7 +988,8 @@
           "generic": "Recommended setting",
           "summary": "Compact at {{threshold}}% and keep {{keep}} recent messages. Leaves about {{reserve}} tokens for the reply and the summary.",
           "summaryUnknown": "Compact at {{threshold}}% and keep {{keep}} recent messages. The default model does not report its context window.",
-          "apply": "Use recommended"
+          "apply": "Use recommended",
+          "summaryReplay": "Compact at {{threshold}}% and keep {{keep}} recent messages. Replaying your last {{calls}} recorded steps, this would have used {{saving}}% fewer tokens."
         },
         "preset": {
           "label": "Threshold presets",
@@ -1850,6 +1851,34 @@
         "custom": "{{hours}}-hour",
         "used": "{{percent}}% used",
         "resets": "Resets {{time}}"
+      },
+      "tuning": {
+        "title": "Tuned for you",
+        "description": "The auto-compact window that would have cost Claude Code and Codex the fewest tokens, replayed from their own session files on this machine.",
+        "range": {
+          "label": "Time range",
+          "today": "Today",
+          "week": "7 days",
+          "month": "30 days"
+        },
+        "calls": "{{count}} calls",
+        "now": "Now {{value}}",
+        "best": "Fewest tokens {{value}}",
+        "saving": "Up to {{percent}}% fewer",
+        "explain": "Your conversations grow about {{growth}} a call, and a compaction leaves about {{after}}. Compactions in this range: {{compactsNow}} now, {{compactsBest}} at the advised window.",
+        "tooFew": "Too few calls in this range to advise a window (50 needed).",
+        "source": {
+          "locked": "{{variable}} is set and comes first.",
+          "ours": "Set by Etyon.",
+          "user": "You set {{value}} in {{file}}.",
+          "default": "The agent's default."
+        },
+        "codexShared": "Codex uses one window for every model.",
+        "use": "Use {{value}}",
+        "undo": "Undo",
+        "saved": "Saved. The agent reads it from its next session.",
+        "empty": "No Claude Code or Codex sessions in this range.",
+        "caveat": "A token estimate only. The lower the window, the more often it compacts, and each compaction loses some of what the conversation knew."
       }
     }
   },

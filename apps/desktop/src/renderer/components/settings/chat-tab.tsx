@@ -1,6 +1,7 @@
 import { useI18n } from "@etyon/i18n/react"
 import type {
   AutoCompactSettings,
+  ChatCompactAdvice,
   ChatMessageActions,
   ChatMessageStyle,
   ChatSettings,
@@ -10,6 +11,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import { Button, Label, NumberField, Slider, Switch } from "@heroui/react"
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useQuery } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useCallback } from "react"
 
@@ -22,8 +24,10 @@ import {
   clampAutoCompactThreshold,
   getRecommendedAutoCompact
 } from "@/renderer/lib/chat/auto-compact-settings"
+import type { AutoCompactRecommendation } from "@/renderer/lib/chat/auto-compact-settings"
 import { STREAMDOWN_ANIMATION_OPTIONS } from "@/renderer/lib/chat/streamdown-settings"
 import { MOTION_TRANSITION_FAST_CLASS } from "@/renderer/lib/motion"
+import { orpc } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 import { formatContextWindowCompact } from "@/shared/providers/context-window"
 
@@ -114,6 +118,39 @@ const MessageStylePreview = ({ style }: { style: ChatMessageStyle }) => (
   </div>
 )
 
+const RecommendationSummary = ({
+  recommendation,
+  replayAdvice
+}: {
+  recommendation: AutoCompactRecommendation
+  replayAdvice: ChatCompactAdvice | null
+}) => {
+  const { t } = useI18n()
+  let summary = t("settings.chat.autoCompact.recommendation.summaryUnknown", {
+    keep: recommendation.keepRecentMessages,
+    threshold: recommendation.threshold
+  })
+
+  if (replayAdvice) {
+    summary = t("settings.chat.autoCompact.recommendation.summaryReplay", {
+      calls: replayAdvice.calls,
+      keep: recommendation.keepRecentMessages,
+      saving: Math.round(replayAdvice.saving * 100),
+      threshold: recommendation.threshold
+    })
+  } else if (recommendation.reserveTokens !== null) {
+    summary = t("settings.chat.autoCompact.recommendation.summary", {
+      keep: recommendation.keepRecentMessages,
+      reserve:
+        formatContextWindowCompact(recommendation.reserveTokens) ??
+        recommendation.reserveTokens,
+      threshold: recommendation.threshold
+    })
+  }
+
+  return <p className="text-xs leading-5 text-foreground/80">{summary}</p>
+}
+
 const SegmentedControl = <TValue extends string>({
   label,
   onChange,
@@ -143,7 +180,14 @@ const SegmentedControl = <TValue extends string>({
 
 export const ChatTab = ({ chat, defaultModel, onChange }: ChatTabProps) => {
   const { t } = useI18n()
-  const recommendation = getRecommendedAutoCompact(defaultModel?.contextWindow)
+  const replayAdvice = useQuery(orpc.agentTuning.chatAdvice.queryOptions()).data
+  const windowRecommendation = getRecommendedAutoCompact(
+    defaultModel?.contextWindow
+  )
+  // A replay of recorded steps beats the window rule once there is enough of it.
+  const recommendation = replayAdvice
+    ? { ...windowRecommendation, threshold: replayAdvice.thresholdPercent }
+    : windowRecommendation
   const isRecommended =
     chat.autoCompact.threshold === recommendation.threshold &&
     chat.autoCompact.keepRecentMessages === recommendation.keepRecentMessages
@@ -325,24 +369,10 @@ export const ChatTab = ({ chat, defaultModel, onChange }: ChatTabProps) => {
                       })
                     : t("settings.chat.autoCompact.recommendation.generic")}
                 </div>
-                <p className="text-xs leading-5 text-foreground/80">
-                  {recommendation.reserveTokens === null
-                    ? t(
-                        "settings.chat.autoCompact.recommendation.summaryUnknown",
-                        {
-                          keep: recommendation.keepRecentMessages,
-                          threshold: recommendation.threshold
-                        }
-                      )
-                    : t("settings.chat.autoCompact.recommendation.summary", {
-                        keep: recommendation.keepRecentMessages,
-                        reserve:
-                          formatContextWindowCompact(
-                            recommendation.reserveTokens
-                          ) ?? recommendation.reserveTokens,
-                        threshold: recommendation.threshold
-                      })}
-                </p>
+                <RecommendationSummary
+                  recommendation={recommendation}
+                  replayAdvice={replayAdvice ?? null}
+                />
               </div>
               {isRecommended ? null : (
                 <Button onPress={handleUseRecommended} size="sm">

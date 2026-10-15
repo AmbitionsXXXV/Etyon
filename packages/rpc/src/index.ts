@@ -471,6 +471,7 @@ export {
   AppIconSchema,
   AppSettingsSchema,
   AutoCompactSettingsSchema,
+  ChatCompactAdviceSchema,
   ChatMessageActionsSchema,
   ChatMessageStyleSchema,
   ChatSettingsSchema,
@@ -510,6 +511,7 @@ export type {
   AppIcon,
   AppSettings,
   AutoCompactSettings,
+  ChatCompactAdvice,
   ChatMessageActions,
   ChatMessageStyle,
   ChatSettings,
@@ -667,3 +669,19 @@ export type {
   LocalAccountUsage,
   LocalAccountUsageWindow
 } from "./schemas/local-accounts"
+export {
+  AgentCompactAdviceSchema,
+  AgentCompactSettingSchema,
+  AgentTuningInputSchema,
+  AgentTuningOutputSchema,
+  AgentTuningRowSchema,
+  ApplyAgentTuningInputSchema,
+  TunedAgentSchema,
+  UndoAgentTuningInputSchema
+} from "./schemas/agent-tuning"
+export type {
+  AgentCompactAdvice,
+  AgentCompactSetting,
+  AgentTuningRow,
+  TunedAgent
+} from "./schemas/agent-tuning"

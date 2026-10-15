@@ -220,6 +220,7 @@ import {
 } from "@/main/project-snapshot"
 import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
+import { agentTuningRouter } from "@/main/rpc/agent-tuning-procedures"
 import { rpc } from "@/main/rpc/context"
 import type { AppRpcContext } from "@/main/rpc/context"
 import { localAccountsRouter } from "@/main/rpc/local-accounts-procedures"
@@ -1241,6 +1242,7 @@ const browserStop = rpc
 
 export const router = {
   bestOfN: bestOfNRouter,
+  agentTuning: agentTuningRouter,
   localAccounts: localAccountsRouter,
   hooks: hooksRouter,
   worktrees: worktreesRouter,

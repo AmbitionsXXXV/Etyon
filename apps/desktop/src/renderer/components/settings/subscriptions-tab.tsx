@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "motion/react"
 
+import { AgentTuningSection } from "@/renderer/components/settings/agent-tuning-section"
 import { orpc } from "@/renderer/lib/rpc"
 import { settingsPageSectionMotion } from "@/renderer/lib/settings-page/motion"
 
@@ -288,6 +289,11 @@ export const SubscriptionsTab = ({
           <AccountCard account={account} />
         </motion.div>
       ))}
+      {accounts.data?.discovery ? (
+        <motion.div {...settingsPageSectionMotion(0.35)}>
+          <AgentTuningSection />
+        </motion.div>
+      ) : null}
     </div>
   )
 }

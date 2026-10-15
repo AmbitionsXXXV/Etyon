@@ -415,6 +415,13 @@ export const ChatMessageStyleSchema = z.enum(["bubble", "document", "soft"])
 
 export const ChatMessageActionsSchema = z.enum(["always", "hover"])
 
+// The threshold a replay of the default model's recorded steps advises.
+export const ChatCompactAdviceSchema = z.object({
+  calls: z.number().int().nonnegative(),
+  saving: z.number().min(0),
+  thresholdPercent: z.number().int().min(1).max(95)
+})
+
 export const ChatSettingsSchema = z.object({
   autoCompact: AutoCompactSettingsSchema.default(AUTO_COMPACT_SETTINGS_DEFAULT),
   messageActions: ChatMessageActionsSchema.default(
@@ -605,6 +612,7 @@ export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
 export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
+export type ChatCompactAdvice = z.infer<typeof ChatCompactAdviceSchema>
 export type LocalAccountsSettings = z.infer<typeof LocalAccountsSettingsSchema>
 export type ChatMessageActions = z.infer<typeof ChatMessageActionsSchema>
 export type ChatMessageStyle = z.infer<typeof ChatMessageStyleSchema>
