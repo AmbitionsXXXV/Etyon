@@ -65,6 +65,7 @@ import { NetworkTab } from "./settings/network-tab"
 import { PluginsTab } from "./settings/plugins-tab"
 import { ProvidersTab } from "./settings/providers-tab"
 import { SkillsTab } from "./settings/skills-tab"
+import { SubscriptionsTab } from "./settings/subscriptions-tab"
 import { TokenSavingsTab } from "./settings/token-savings-tab"
 import {
   FontFamilyCombobox,
@@ -108,6 +109,7 @@ const SETTINGS_SECTION_IDS = new Set<string>([
   "providers",
   "screen-awareness",
   "skills",
+  "subscriptions",
   "token-savings",
   "web-tools",
   "user-interface"
@@ -241,6 +243,7 @@ export const SettingsPage = ({
     handleProxyChange,
     handleSave,
     handleSkillsChange,
+    handleLocalAccountsChange,
     handleSidebarChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,
@@ -539,6 +542,12 @@ export const SettingsPage = ({
                   />
                 </div>
               )}
+
+              <SubscriptionsTab
+                active={activeSection === "subscriptions"}
+                localAccounts={draft.localAccounts}
+                onLocalAccountsChange={handleLocalAccountsChange}
+              />
 
               {activeSection === "agents" && (
                 <AgentsTab

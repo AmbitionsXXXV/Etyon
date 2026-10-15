@@ -9,6 +9,7 @@ import type {
   CustomTheme,
   DarkColorSchema,
   LightColorSchema,
+  LocalAccountsSettings,
   MemorySettings,
   ProxySettings,
   SidebarMode,
@@ -254,6 +255,10 @@ export const useSettingsPageDraft = () => {
     (v: ChatSettings) => updateDraftRef.current("chat", v),
     []
   )
+  const handleLocalAccountsChange = useCallback(
+    (v: LocalAccountsSettings) => updateDraftRef.current("localAccounts", v),
+    []
+  )
   const handleCloseToTrayChange = useCallback(
     (v: boolean) => updateDraftRef.current("closeToTray", v),
     []
@@ -446,6 +451,7 @@ export const useSettingsPageDraft = () => {
     handleProxyChange,
     handleSave,
     handleSkillsChange,
+    handleLocalAccountsChange,
     handleSidebarChange,
     handleSidebarModeChange,
     handleStartMinimizedToTrayChange,

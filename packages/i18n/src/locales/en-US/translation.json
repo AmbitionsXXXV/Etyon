@@ -1210,7 +1210,8 @@
       "screenAwareness": "Screen Awareness",
       "mcp": "MCP servers",
       "automation": "Background tasks",
-      "webTools": "Web tools"
+      "webTools": "Web tools",
+      "subscriptions": "Subscriptions"
     },
     "memory": {
       "description": "Store compact long-term memory outside the model context so chat sessions, projects, and the Telegram bridge can share relevant recall.",
@@ -1819,6 +1820,37 @@
       "assistant": "Assistant",
       "tools": "Tools",
       "app": "App"
+    },
+    "subscriptions": {
+      "title": "Local subscriptions",
+      "description": "Read the Claude Code and Codex logins on this machine in place. Nothing is copied, and tokens never reach this window.",
+      "discovery": "Detect local subscriptions",
+      "off": "Detection is off. Turn it on and save to read Claude Code and Codex logins.",
+      "account": {
+        "claudeCode": "Claude Code",
+        "codex": "Codex"
+      },
+      "status": {
+        "signedIn": "Signed in",
+        "signedOut": "Signed out",
+        "notInstalled": "Not installed",
+        "unavailable": "Couldn't be read"
+      },
+      "source": "Read from {{source}}",
+      "until": "Paid through {{date}}",
+      "claudeNote": "Etyon only reads this login and its allowance through Claude Code. It sends no requests on your Claude subscription.",
+      "usage": {
+        "title": "Allowance",
+        "refresh": "Refresh allowance",
+        "credits": "{{credits}} credits left"
+      },
+      "window": {
+        "session": "5-hour",
+        "week": "Weekly",
+        "custom": "{{hours}}-hour",
+        "used": "{{percent}}% used",
+        "resets": "Resets {{time}}"
+      }
     }
   },
   "tray": {

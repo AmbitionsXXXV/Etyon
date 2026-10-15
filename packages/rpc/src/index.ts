@@ -474,6 +474,7 @@ export {
   ChatMessageActionsSchema,
   ChatMessageStyleSchema,
   ChatSettingsSchema,
+  LocalAccountsSettingsSchema,
   CustomThemeColorsSchema,
   CustomThemePresetSchema,
   CustomThemeSchema,
@@ -512,6 +513,7 @@ export type {
   ChatMessageActions,
   ChatMessageStyle,
   ChatSettings,
+  LocalAccountsSettings,
   CustomTheme,
   CustomThemePreset,
   CustomThemeType,
@@ -650,3 +652,18 @@ export type {
   WorktreeSidebarCandidate,
   WorktreeSidebarSession
 } from "./schemas/worktrees"
+export {
+  ListLocalAccountsOutputSchema,
+  LocalAccountIdSchema,
+  LocalAccountSchema,
+  LocalAccountStatusSchema,
+  LocalAccountUsageInputSchema,
+  LocalAccountUsageSchema,
+  LocalAccountUsageWindowSchema
+} from "./schemas/local-accounts"
+export type {
+  LocalAccount,
+  LocalAccountId,
+  LocalAccountUsage,
+  LocalAccountUsageWindow
+} from "./schemas/local-accounts"

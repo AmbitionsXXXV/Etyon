@@ -222,6 +222,7 @@ import { fetchProviderModels } from "@/main/providers/fetch-provider-models"
 import { testProxy } from "@/main/proxy/test-proxy"
 import { rpc } from "@/main/rpc/context"
 import type { AppRpcContext } from "@/main/rpc/context"
+import { localAccountsRouter } from "@/main/rpc/local-accounts-procedures"
 import { withRpcSessionMutation } from "@/main/rpc/session-mutation"
 import {
   bestOfNRouter,
@@ -1240,6 +1241,7 @@ const browserStop = rpc
 
 export const router = {
   bestOfN: bestOfNRouter,
+  localAccounts: localAccountsRouter,
   hooks: hooksRouter,
   worktrees: worktreesRouter,
   automation: automationRouter,

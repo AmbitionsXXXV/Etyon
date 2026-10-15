@@ -5,6 +5,7 @@ import {
   CalendarClockIcon,
   ChartLineData02Icon,
   CloudServerIcon,
+  CreditCardIcon,
   ComputerIcon,
   InformationCircleIcon,
   InternetIcon,
@@ -34,6 +35,7 @@ export type SettingsSectionId =
   | "providers"
   | "screen-awareness"
   | "skills"
+  | "subscriptions"
   | "token-savings"
   | "web-tools"
   | "user-interface"
@@ -53,6 +55,7 @@ export const SETTINGS_NAV_LABEL_KEY_BY_SECTION = {
   providers: "settings.nav.providers",
   "screen-awareness": "settings.nav.screenAwareness",
   skills: "settings.nav.skills",
+  subscriptions: "settings.nav.subscriptions",
   "token-savings": "settings.nav.tokenSavings",
   "web-tools": "settings.nav.webTools",
   "user-interface": "settings.nav.userInterface"
@@ -81,6 +84,7 @@ export const SETTINGS_NAV_ENTRIES: readonly {
   { group: "assistant", icon: BubbleChatIcon, id: "chat" },
   { group: "assistant", icon: RobotIcon, id: "agents" },
   { group: "assistant", icon: CloudServerIcon, id: "providers" },
+  { group: "assistant", icon: CreditCardIcon, id: "subscriptions" },
   { group: "assistant", icon: BrainIcon, id: "memory" },
   { group: "assistant", icon: PuzzleIcon, id: "skills" },
   { group: "tools", icon: WebDesignIcon, id: "web-tools" },

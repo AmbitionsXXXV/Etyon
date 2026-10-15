@@ -1210,7 +1210,8 @@
       "screenAwareness": "画面認識",
       "mcp": "MCP サーバー",
       "automation": "バックグラウンドタスク",
-      "webTools": "ウェブツール"
+      "webTools": "ウェブツール",
+      "subscriptions": "サブスクリプション"
     },
     "memory": {
       "description": "圧縮された長期 memory をモデルのコンテキスト外に保存し、chat sessions、projects、Telegram chatbot が関連する記憶を共有できるようにします。",
@@ -1819,6 +1820,37 @@
       "assistant": "アシスタント",
       "tools": "ツール",
       "app": "アプリ"
+    },
+    "subscriptions": {
+      "title": "このマシンのサブスクリプション",
+      "description": "このマシンの Claude Code と Codex のログインをその場で読み取ります。何もコピーせず、トークンがこのウィンドウに届くことはありません。",
+      "discovery": "ローカルのサブスクリプションを検出",
+      "off": "検出はオフです。オンにして保存すると Claude Code と Codex のログインを読み取ります。",
+      "account": {
+        "claudeCode": "Claude Code",
+        "codex": "Codex"
+      },
+      "status": {
+        "signedIn": "ログイン済み",
+        "signedOut": "未ログイン",
+        "notInstalled": "未インストール",
+        "unavailable": "読み取れません"
+      },
+      "source": "{{source}} から読み取り",
+      "until": "{{date}} まで有効",
+      "claudeNote": "Etyon は Claude Code を通じてこのログインと利用枠を読み取るだけです。Claude サブスクリプションでリクエストを送ることはありません。",
+      "usage": {
+        "title": "利用枠",
+        "refresh": "利用枠を更新",
+        "credits": "残り {{credits}} クレジット"
+      },
+      "window": {
+        "session": "5 時間",
+        "week": "週間",
+        "custom": "{{hours}} 時間",
+        "used": "{{percent}}% 使用",
+        "resets": "{{time}} にリセット"
+      }
     }
   },
   "tray": {

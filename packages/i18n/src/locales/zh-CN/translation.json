@@ -1210,7 +1210,8 @@
       "screenAwareness": "屏幕感知",
       "mcp": "MCP 服务",
       "automation": "后台任务",
-      "webTools": "网页工具"
+      "webTools": "网页工具",
+      "subscriptions": "订阅"
     },
     "memory": {
       "description": "把精简后的长期记忆保存在模型上下文之外，让 chat sessions、projects 和 Telegram chatbot 能共享相关记忆。",
@@ -1819,6 +1820,37 @@
       "assistant": "助手",
       "tools": "工具",
       "app": "应用"
+    },
+    "subscriptions": {
+      "title": "本机订阅",
+      "description": "直接读取本机 Claude Code 和 Codex 的登录状态。不会复制任何内容，令牌也不会进入此窗口。",
+      "discovery": "检测本机订阅",
+      "off": "检测已关闭。开启并保存后即可读取 Claude Code 和 Codex 的登录状态。",
+      "account": {
+        "claudeCode": "Claude Code",
+        "codex": "Codex"
+      },
+      "status": {
+        "signedIn": "已登录",
+        "signedOut": "未登录",
+        "notInstalled": "未安装",
+        "unavailable": "无法读取"
+      },
+      "source": "读取自 {{source}}",
+      "until": "有效期至 {{date}}",
+      "claudeNote": "Etyon 只通过 Claude Code 读取此登录状态和额度，不会使用你的 Claude 订阅发送任何请求。",
+      "usage": {
+        "title": "额度",
+        "refresh": "刷新额度",
+        "credits": "剩余 {{credits}} 点数"
+      },
+      "window": {
+        "session": "5 小时",
+        "week": "每周",
+        "custom": "{{hours}} 小时",
+        "used": "已用 {{percent}}%",
+        "resets": "重置于 {{time}}"
+      }
     }
   },
   "tray": {

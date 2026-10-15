@@ -66,6 +66,12 @@ export const LightColorSchemaSchema = z.enum([
 
 export const SidebarModeSchema = z.enum(["projects", "simple"])
 
+// Reading the logins of the user's own coding agents (Claude Code, Codex).
+// Off means no file, CLI, or network call touches them.
+export const LocalAccountsSettingsSchema = z.object({
+  discovery: z.boolean().default(true)
+})
+
 export const SidebarSettingsSchema = z.object({
   collapseResolvedRuns: z.boolean().default(true),
   mode: SidebarModeSchema.default("simple"),
@@ -525,6 +531,7 @@ export const AppSettingsSchema = z.object({
   onboardedAt: z.string().nullable().default(null),
   proxy: ProxySettingsSchema.default(PROXY_SETTINGS_DEFAULT),
   screenAwareness: ScreenAwarenessSettingsSchema.default({ enabled: true }),
+  localAccounts: LocalAccountsSettingsSchema.default({ discovery: true }),
   sidebar: SidebarSettingsSchema.default(SIDEBAR_SETTINGS_DEFAULT),
   skills: SkillsSettingsSchema.default(SKILLS_SETTINGS_DEFAULT),
   startMinimizedToTray: z.boolean().default(false),
@@ -557,6 +564,7 @@ export const UpdateSettingsSchema = z.object({
   onboardedAt: z.string().nullable().optional(),
   proxy: ProxySettingsSchema.optional(),
   screenAwareness: ScreenAwarenessSettingsSchema.optional(),
+  localAccounts: LocalAccountsSettingsSchema.optional(),
   sidebar: SidebarSettingsSchema.optional(),
   skills: SkillsSettingsSchema.optional(),
   startMinimizedToTray: z.boolean().optional(),
@@ -597,6 +605,7 @@ export type ProxyType = z.infer<typeof ProxyTypeSchema>
 export type SidebarMode = z.infer<typeof SidebarModeSchema>
 export type SidebarSettings = z.infer<typeof SidebarSettingsSchema>
 export type SkillsSettings = z.infer<typeof SkillsSettingsSchema>
+export type LocalAccountsSettings = z.infer<typeof LocalAccountsSettingsSchema>
 export type ChatMessageActions = z.infer<typeof ChatMessageActionsSchema>
 export type ChatMessageStyle = z.infer<typeof ChatMessageStyleSchema>
 export type StreamdownAnimation = z.infer<typeof StreamdownAnimationSchema>
