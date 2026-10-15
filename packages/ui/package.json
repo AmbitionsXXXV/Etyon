@@ -53,7 +53,7 @@
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "marked": "^18.0.14",
-    "motion": "^13.4.4",
+    "motion": "catalog:",
     "next-themes": "^0.4.6",
     "react": "catalog:",
     "react-aria-components": "^1.21.1",
@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
-    "@turbo/gen": "^2.11.4",
+    "@turbo/gen": "^2.11.5",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",

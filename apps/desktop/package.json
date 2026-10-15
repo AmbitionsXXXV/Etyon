@@ -72,7 +72,7 @@
     "hono": "^4.13.9",
     "linkedom": "^0.18.13",
     "maplibre-gl": "^6.11.2",
-    "motion": "^13.4.4",
+    "motion": "catalog:",
     "shiki": "4.4.3",
     "streamdown": "^2.6.0",
     "thinking-orbs": "^0.3.2",

@@ -41,7 +41,7 @@
     "@shadcn/lint": "^0.2.0",
     "cz-git": "^1.14.0",
     "sherif": "^1.13.0",
-    "turbo": "^2.11.4",
+    "turbo": "^2.11.5",
     "typescript": "catalog:",
     "ultracite": "7.12.0",
     "vite-plus": "catalog:"
@@ -49,5 +49,5 @@
   "engines": {
     "node": "^22.22.2 || ^24.11.0 || >=26.0.0"
   },
-  "packageManager": "pnpm@11.23.0"
+  "packageManager": "pnpm@12.8.1"
 }

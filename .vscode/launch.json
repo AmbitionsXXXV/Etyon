@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:Etyon}/native/screen-awareness-macos",
+      "name": "Debug EtyonScreenAwareness (native/screen-awareness-macos)",
+      "target": "EtyonScreenAwareness",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug EtyonScreenAwareness (native/screen-awareness-macos)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:Etyon}/native/screen-awareness-macos",
+      "name": "Release EtyonScreenAwareness (native/screen-awareness-macos)",
+      "target": "EtyonScreenAwareness",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release EtyonScreenAwareness (native/screen-awareness-macos)"
+    }
+  ]
+}

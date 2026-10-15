@@ -2,12 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Bug Fixes
+
+- Restore authenticated HeroUI Pro artifacts required by the existing chat UI test suites.
+
 ## [0.1.10] - 2026-10-03
 
 ### Bug Fixes
+
 - Avoid swift entrypoint filename ambiguity (503ee39)
 
 ### Other
+
 - Merge pull request #3 from AmbitionsXXXV/codex/patch-0-1-10-release-fix
 
 fix(desktop): avoid swift entrypoint filename ambiguity (64088e6)
@@ -15,6 +23,7 @@ fix(desktop): avoid swift entrypoint filename ambiguity (64088e6)
 ## [0.1.9] - 2026-10-03
 
 ### Features
+
 - Complete agent runtime and screen awareness (852b3ef)
 - Add durable tasks and on-demand skills (83e6267)
 - Add macos screen awareness onboarding (1a51bcd)
@@ -35,6 +44,7 @@ fix(desktop): avoid swift entrypoint filename ambiguity (64088e6)
 - Add switchable app icons (0a8dfbc)
 
 ### Bug Fixes
+
 - Close feature acceptance gaps (f7b923a)
 - Harden in-app update flow (d60aa0f)
 - Keep composer toolbar intact when the chat column is narrow (117d98d)
@@ -44,17 +54,21 @@ fix(desktop): avoid swift entrypoint filename ambiguity (64088e6)
 - Preserve messages when local fetch fails (b0147ec)
 
 ### Other
+
 - Merge pull request #2 from AmbitionsXXXV/codex/on-demand-preset-tools
 
 feat(desktop): complete agent runtime and screen awareness (5235b0b)
+
 - Merge pull request #1 from AmbitionsXXXV/feat/in-app-updates
 
 feat(desktop): add in-app update checks and release gates (1b9aaad)
 
 ### Refactor
+
 - Move update core logic into src/shared (28c9d20)
 
 ### Chores
+
 - Add shadcn tailwind checks (d386f23)
 - Update dependencies and improve code quality (eec4c38)
 - Merge origin main updates (9923d3f)
@@ -66,42 +80,51 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 ## [0.1.8] - 2026-07-21
 
 ### Features
+
 - Implement Content Security Policy for renderer and introduce AgentMarkdown component (d1d9720)
 - Brand the installer surfaces (PR3) (9a715c9)
 - Polish First Light reveal (PR2) (1794068)
 - Add First Light first-run onboarding animation (eb9e55b)
 
 ### Bug Fixes
+
 - Actually publish the changelog to the GitHub release body (a51bc40)
 - Harden terminal theme tracking (c0c86e7)
 - Fail loud on missing packaged deps and derive libsql binding names (920ce87)
 
 ### Refactor
+
 - Extract forge helper logic into forge/ modules (9a66e6f)
 
 ### Documentation
+
 - Add First Light install experience design spec (f56493c)
 
 ### Chores
+
 - Bump version to 0.1.8 (045336f)
 
 ## [0.1.7] - 2026-07-17
 
 ### Features
+
 - Add Tailwind CSS v4 documentation skill (bee4861)
 - Sync the terminal theme with the app theme (e039fad)
 
 ### Bug Fixes
+
 - Polish light-theme chat readability and indicators (1848be9)
 - Use hash history so the packaged renderer resolves routes (84927e3)
 - Ship native deps and app assets in packaged build (a9bd43f)
 
 ### Chores
+
 - Bump version to 0.1.7 (6e449f8)
 
 ## [0.1.6] - 2026-07-17
 
 ### Features
+
 - Adopt ai sdk 7 semantic apis in the agent runtime (4e42c19)
 - Migrate to ai sdk 7 (5672a6e)
 - Wire vite devtools into renderer dev server (61b19d5)
@@ -142,6 +165,7 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 - Introduce plan mode functionality for chat agent (264febc)
 
 ### Bug Fixes
+
 - Approval resume denial, plan queue during approvals, allowlist patterns (3b7e09d)
 - Update Kbd component styling in prompt input (2dbfec5)
 - Stretch project panel tabs to full width and drop the empty status strip (13ed691)
@@ -154,11 +178,13 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 - Write connection token file with 0600 permissions (7607e2a)
 
 ### Refactor
+
 - Move context-usage indicator beside the send button (00bee53)
 - Update dependencies and remove deprecated agent features (1b2377d)
 - Reorganize chat components and enhance utility functions (86e3408)
 
 ### Documentation
+
 - Record ai sdk 7 migration and vite devtools integration (6ef0292)
 - Apply formatter to gap-closure roadmap (b3e592f)
 - Add gap-closure roadmap with per-feature implementation plans (365fcf3)
@@ -169,13 +195,16 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 - Realign agents doc with the shipped file-only runtime (4f81466)
 
 ### Testing
+
 - Pin renderer view logic against sdk-materialized streams (7c1c2ae)
 - Cover delegate concurrency limit, output clamps, and failure path (f001c31)
 
 ### CI
+
 - Add git-cliff changelog generation for releases (be74897)
 
 ### Chores
+
 - Bump version to 0.1.6 (97c2844)
 - Update package manager (a09c4c3)
 - Update package manager (8298d0c)
@@ -188,6 +217,7 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 ## [0.1.5] - 2026-06-09
 
 ### Features
+
 - Implement chat agent mode functionality and UI controls (1c64e16)
 - Enhance agent chat message handling and session management (4682ce8)
 - Add comprehensive Mastra framework guide and common errors reference (a8c942d)
@@ -271,33 +301,38 @@ feat(desktop): add in-app update checks and release gates (1b9aaad)
 - ✨ add shadcn monorepo support (a15ebd8)
 
 ### Bug Fixes
+
 - Update continual learning state and improve chat message rendering (e535992)
 - Update continual learning state and TypeScript configuration (e832fa6)
 - 🐛 update settings and improve error handling in desktop application (01b5899)
 
 ### Other
+
 - 🌱 init commit (a984617)
 
 ### Refactor
+
 - Streamline agent chat message handling and remove deprecated features (1a3194e)
 - 📦 simplify SQLite database URL validation in tests (b072f01)
 
 ### Documentation
+
 - Refine behavioral guidelines and enhance agent architecture documentation (af1f46b)
 - Update memory enhancement docs (6766691)
 - Design memory enhancement (25094dd)
 - Add rust cli integration design (edbfc15)
 
 ### Styling
+
 - 🎨 improve settings page functionality and code organization (7460b0c)
 
 ### CI
+
 - Add macOS ARM64 release workflow via GitHub Actions (120edc8)
 
 ### Chores
+
 - Allow hono@4.12.25 past minimum-release-age policy (793a7f0)
 - Bump version to 0.1.5 (dd8c9b1)
 - Update package dependencies and versions (8a6b9c5)
 - 🔨 remove .nvmrc and update package dependencies (2e80520)
-
-
