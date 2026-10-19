@@ -8,6 +8,7 @@ import {
   compactStructuredToolTraceParts,
   getToolInputPath
 } from "@/renderer/lib/chat/message-tool-trace"
+import { isPullRequestToolPart } from "@/renderer/lib/chat/pull-request-card"
 import {
   isStoryboardKeyframesPart,
   isStoryboardReelPart
@@ -224,6 +225,7 @@ export const getTodoPartTodos = (part: ChatToolPart): ChatTodoItem[] => {
 const isExcludedToolPart = (part: ChatUiMessage["parts"][number]): boolean =>
   isArtifactToolPart(part) ||
   isImagenToolPart(part) ||
+  isPullRequestToolPart(part) ||
   isVideogenToolPart(part) ||
   isStoryboardKeyframesPart(part) ||
   isStoryboardReelPart(part)
