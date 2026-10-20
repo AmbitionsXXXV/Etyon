@@ -164,6 +164,10 @@ type StepDecision =
   | { kind: "exit"; exitReason: AgentLoopExitReason }
   | { kind: "limit" }
   | { kind: "nudge" }
+  | { kind: "output-limit" }
+
+const OUTPUT_LIMIT_TOOL_CALL_ERROR =
+  "The model reached its output limit before finishing a tool call, so the tool did not run. Try again, or switch to another model."
 
 /**
  * Names of tools the loop cannot execute itself: defined without `execute`
@@ -224,6 +228,13 @@ const evaluateStep = ({
 
   if (finishReason === "tool-calls") {
     return stepIndex >= maxSteps ? { kind: "limit" } : { kind: "continue" }
+  }
+
+  // The SDK does not execute tool calls from a step cut off by the output
+  // limit (their input may be truncated), so ending as "completed" would leave
+  // a call that never ran with no explanation.
+  if (finishReason === "length" && toolCallCount > 0) {
+    return { kind: "output-limit" }
   }
 
   if (finishReason === "error") {
@@ -430,6 +441,12 @@ export const runAgentLoop = async ({
         })
 
         return buildOutcome("max-steps")
+      }
+
+      if (decision.kind === "output-limit") {
+        writer.write({ errorText: OUTPUT_LIMIT_TOOL_CALL_ERROR, type: "error" })
+
+        return buildOutcome("model-error", OUTPUT_LIMIT_TOOL_CALL_ERROR)
       }
 
       if (decision.kind === "nudge") {
