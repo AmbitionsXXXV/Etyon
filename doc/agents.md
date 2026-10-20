@@ -102,6 +102,7 @@ streamText().fullStream
 
 - Approval resume 的 projection 以最后一条 user message 作为合并边界；恢复后的 event-derived assistant suffix 会与恢复前已有的 assistant tool-call 气泡合并回同一条 assistant message，renderer 始终把一轮 assistant turn 渲染成单条连贯气泡，不再拆出第二条消息或显示续接标记。
 - `bash` / `rtkCommand` / `runCheck` 的命令记忆规则不是无限泛化：只在同一 workspace、同一 cwd、同一 tool 且双方都属于 bounded intent（只读 Git inspection 或 bounded `vp` check）时覆盖不同 argv；destructive / unsupported package manager / network / raw output / long-running / background / cwd 边界仍先于 allowlist 生效。
+- 一步以 `length` 结束且带着工具调用时，AI SDK 不执行这些调用（输入可能被截断）。agent loop 把这种步骤记为 `model-error`，向 UI 写一条错误说明，run 落为 `failed`，不再静默记成 `succeeded` 而留下一个从未运行的工具调用。只有文字被截断的 `length` 步骤仍按 `completed` 结束。2026-10-20 在 amux 的 `claude-haiku-5-5` 上实际遇到过：输出 150 token 时被标为 `length`。
 - `agent_events.payload` 当前是软 schema：reader 必须容忍旧行缺字段，新增 event 类型优先使用 union 类型与可选字段；需要强校验的读取边界使用 `assertAgentEventShape()`，暂未引入 `event_version` 列。
 - `chat_messages` 是 `agent_events` 的 UI projection。当前 repair 路径可从最新 active / completed root run 重建 assistant suffix；assistant projection 会同时写入 `metadata.agentProjection` 和 `chat_messages.agent_projection_run_id`，后者用于 metadata 损坏或缺失时继续识别 projection run；跨设备只同步 `chat_messages` 而不带 `agent_events` 的场景仍不是首版保证。
 - `suspended` approval run 会在 app 重启后保留未超期的 pending 状态；`settings.agents.approvals.approvalTtlMs` 超期后会在 startup recovery 标记为 `failed(reason="approval_timeout")`，并通过 recoverable runs 暴露。

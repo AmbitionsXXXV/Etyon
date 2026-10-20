@@ -31,7 +31,7 @@ const usage = {
 
 const textStep = (
   text: string,
-  finishReason: "stop" | "tool-calls" = "stop"
+  finishReason: "length" | "stop" | "tool-calls" = "stop"
 ): LanguageModelV3StreamPart[] => [
   { type: "stream-start", warnings: [] },
   { id: "text-1", type: "text-start" },
@@ -453,6 +453,61 @@ describe("runAgentLoop", () => {
     await harness.flush()
     expect(outcome.exitReason).toBe("completed")
     expect(outcome.stepCount).toBe(1)
+  })
+
+  it("fails visibly when the output limit cuts off a tool call", async () => {
+    const execute = vi.fn().mockResolvedValue("ran")
+    const harness = buildHarness([
+      [
+        { type: "stream-start", warnings: [] },
+        {
+          input: "{}",
+          toolCallId: "call-cut-off",
+          toolName: "ping",
+          type: "tool-call"
+        },
+        {
+          finishReason: { raw: "length", unified: "length" },
+          type: "finish",
+          usage
+        }
+      ]
+    ])
+
+    const outcome = await runAgentLoop({
+      maxSteps: 8,
+      messages: userMessages,
+      model: harness.model,
+      tools: {
+        ping: tool({ execute, inputSchema: z.object({}) })
+      },
+      writer: harness.writer
+    })
+
+    await harness.flush()
+    expect(execute).not.toHaveBeenCalled()
+    expect(outcome.exitReason).toBe("model-error")
+    expect(outcome.finishReason).toBe("length")
+    expect(outcome.errorMessage).toContain("output limit")
+    expect(
+      harness.chunks.find((chunk) => chunk.type === "error")
+    ).toMatchObject({ errorText: outcome.errorMessage })
+  })
+
+  it("still completes a text answer cut off by the output limit", async () => {
+    const harness = buildHarness([textStep("一段很长的回答", "length")])
+
+    const outcome = await runAgentLoop({
+      maxSteps: 8,
+      messages: userMessages,
+      model: harness.model,
+      tools: {},
+      writer: harness.writer
+    })
+
+    await harness.flush()
+    expect(outcome.exitReason).toBe("completed")
+    expect(outcome.finishReason).toBe("length")
   })
 
   it("returns model-error when the stream setup throws", async () => {
