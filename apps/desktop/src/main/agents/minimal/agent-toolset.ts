@@ -37,6 +37,7 @@ import {
   buildSearchMemoryTool
 } from "@/main/agents/minimal/memory-tools"
 import { buildProposePlanTool } from "@/main/agents/minimal/propose-plan-tool"
+import { buildPullRequestTool } from "@/main/agents/minimal/pull-request-tool"
 import { buildSkillTool } from "@/main/agents/minimal/skill-tool"
 import { buildTaskTools } from "@/main/agents/minimal/task-tools"
 import {
@@ -85,6 +86,7 @@ export const AGENT_BASE_INSTRUCTIONS = `You are Etyon's local project agent. You
 - write: create or overwrite a file (requires user approval)
 - artifact: publish an .html or .md file from the project as a rendered artifact in the app's preview panel
 - imagen: generate an image from a text prompt; it renders inline in the chat message (available when an OpenAI provider is configured)
+- pull_request: show a pull request merge card in the chat when the user asks to create or show a PR (development builds only; sample data)
 - browser: drive this session's embedded browser — navigate, read text and element refs, screenshot, click, type, scroll, or press a key (each call needs user approval)
 
 Guidelines:
@@ -366,6 +368,9 @@ export const buildAgentToolset = ({
     ...(profile.readonly || !isImageGenerationAvailable()
       ? {}
       : { imagen: buildImagenTool(workspace) }),
+    // Development preview: the card shows sample data, so release builds must
+    // not offer it as if it described the user's real PR.
+    ...(app.isPackaged ? {} : { pull_request: buildPullRequestTool() }),
     ...buildDelegationTools({
       agentRunId,
       chatSessionId,

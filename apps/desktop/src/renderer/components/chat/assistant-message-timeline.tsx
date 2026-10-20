@@ -24,6 +24,7 @@ import {
   APPROVAL_CARD_MOTION,
   InputToolAnsweredLine
 } from "@/renderer/components/chat/input-card-chrome"
+import { PullRequestMessageCard } from "@/renderer/components/chat/pull-request-card"
 import {
   StoryboardCurateCard,
   StoryboardKeyframesLine,
@@ -83,6 +84,7 @@ import type {
   InputToolOutput
 } from "@/renderer/lib/chat/input-tools-ui"
 import { parseChatMessageMetadata } from "@/renderer/lib/chat/message-metadata"
+import { isPullRequestToolPart } from "@/renderer/lib/chat/pull-request-card"
 import {
   isStoryboardKeyframesPart,
   isStoryboardReelPart
@@ -1217,6 +1219,9 @@ export const AssistantMessageTimeline = ({
   const imagenParts = message.parts.filter((part) =>
     isImagenToolPart(part)
   ) as ChatToolPart[]
+  const pullRequestParts = message.parts.filter((part) =>
+    isPullRequestToolPart(part)
+  ) as ChatToolPart[]
   const videogenParts = message.parts.filter((part) =>
     isVideogenToolPart(part)
   ) as ChatToolPart[]
@@ -1273,6 +1278,13 @@ export const AssistantMessageTimeline = ({
           key={`${message.id}-imagen-${part.toolCallId}`}
           part={part}
           sessionId={sessionId}
+        />
+      ))}
+      {pullRequestParts.map((part) => (
+        <PullRequestMessageCard
+          animateEntry={isRunActive}
+          key={`${message.id}-pull-request-${part.toolCallId}`}
+          part={part}
         />
       ))}
       {storyboardKeyframeParts.map((part) => (
