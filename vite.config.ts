@@ -98,6 +98,7 @@ export default defineConfig({
       "eslint/no-nested-ternary": "off",
       "eslint/prefer-named-capture-group": "off",
       "import/consistent-type-specifier-style": "off",
+      "jsx-a11y/label-has-associated-control": "off",
       "node/callback-return": "off",
       "promise/prefer-await-to-callbacks": "off",
       "react/exhaustive-effect-dependencies": "off",
@@ -114,7 +115,8 @@ export default defineConfig({
       "typescript/method-signature-style": "off",
       "unicorn/no-nested-ternary": "off",
       "unicorn/prefer-export-from": "off",
-      "unicorn/prefer-number-coercion": "off"
+      "unicorn/prefer-number-coercion": "off",
+      "unicorn/prefer-string-replace-all": "off"
     })
   },
   staged: {

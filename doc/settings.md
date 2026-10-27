@@ -58,7 +58,11 @@ interface AppSettings {
   ai: {
     defaultModel: string
     defaultProvider:
-      "anthropic" | "gateway" | "moonshot" | "openai" | "zai-coding-plan"
+      | "anthropic"
+      | "gateway"
+      | "moonshot"
+      | "openai"
+      | "zai-coding-plan"
     providers: {
       anthropic: AiProviderConfig
       gateway: AiProviderConfig

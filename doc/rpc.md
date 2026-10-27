@@ -50,8 +50,10 @@ Main (Hono → Fetch RPCHandler → App Router)
 Router 定义在 `apps/desktop/src/main/rpc/router.ts`，引用 `@etyon/rpc` 的 Zod schema：
 
 ```typescript
-import { rpc } from "@/main/rpc/context"
 import { LogEventSchema } from "@etyon/rpc"
+
+import { rpc } from "@/main/rpc/context"
+
 import { dispatch, enrichLogEvent } from "../logger"
 
 export const loggerEmit = rpc
@@ -92,6 +94,7 @@ await rpcClient.logger.emit({
 
 ```typescript
 import { useMutation } from "@tanstack/react-query"
+
 import { orpc } from "./lib/rpc"
 
 const mutation = useMutation(orpc.logger.emit.mutationOptions())

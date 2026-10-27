@@ -7,8 +7,8 @@
 HeroUI Pro 组件应使用组件子路径导入，避免依赖根入口的转导出：
 
 ```ts
-import { ChatTool } from "@heroui-pro/react/chat-tool"
 import { BarChart } from "@heroui-pro/react/bar-chart"
+import { ChatTool } from "@heroui-pro/react/chat-tool"
 import { Resizable } from "@heroui-pro/react/resizable"
 ```
 

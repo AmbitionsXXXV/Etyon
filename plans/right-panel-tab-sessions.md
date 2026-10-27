@@ -33,7 +33,12 @@
 
 ```ts
 type PanelSurfaceKind =
-  "artifact" | "browser" | "changes" | "commit" | "files" | "terminal"
+  | "artifact"
+  | "browser"
+  | "changes"
+  | "commit"
+  | "files"
+  | "terminal"
 interface ChatPanelTab {
   id: PanelSurfaceKind
   kind: PanelSurfaceKind

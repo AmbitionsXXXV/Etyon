@@ -117,3 +117,4 @@ generated-images
 
 # Etyon-generated files (auto-added)
 generated-videos/
+.vitest/
