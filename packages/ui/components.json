@@ -19,5 +19,13 @@
   },
   "rtl": false,
   "menuColor": "default",
-  "menuAccent": "subtle"
+  "menuAccent": "subtle",
+  "registries": {
+    "@affectui": {
+      "url": "https://registry.collectui.pro/api/r/affectui/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${AFFECTUI_TOKEN}"
+      }
+    }
+  }
 }
