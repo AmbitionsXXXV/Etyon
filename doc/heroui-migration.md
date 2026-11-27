@@ -10,6 +10,12 @@
 - 核心包装层采用薄适配：组件内部直接使用 HeroUI 组件，旧 shadcn prop 只保留必要桥接，不继续复制旧视觉设计。
 - 核心差异集中在 app theme build 和 token 扩展层处理，业务组件不再承担样式兼容逻辑。
 
+## 设计来源
+
+- UI 设计基准是 HeroUI Pro Figma Kit V3（桌面端）：<https://www.figma.com/design/nRbnGuNO14dIW0SXOUGApy>。Kit 的 `02_Theme (HeroUI)` 变量集合（Light / Dark）对应 `@heroui/styles` 默认主题，阴影样式 `shadow-surface`、`shadow-field`、`shadow-overlay` 对应 `--surface-shadow`、`--field-shadow`、`--overlay-shadow`。
+- HeroUI Pro Native Figma Kit：<https://www.figma.com/design/VXpMgrYghWoFbTFgHZB2Fs>。仓库目前没有 React Native 应用，留作移动端参考。
+- 组件外观以 Kit 为准，`globals.css` 不再对 HeroUI 的 `.input`、`.textarea`、`.select__trigger`、`.number-field`、`.checkbox` 做全局样式覆盖；需要调整时改主题 token，而不是覆盖组件 class。
+
 ## 样式系统共存
 
 - `packages/ui/src/styles/globals.css` 的导入顺序是： `tailwindcss` -> `@heroui/styles` -> `@heroui-pro/react/css` -> `tw-animate-css` -> `shadcn/tailwind.css` -> 项目主题文件。
