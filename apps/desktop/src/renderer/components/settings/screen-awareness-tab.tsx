@@ -1,7 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
-import { Button, Card, Chip, Switch } from "@heroui/react"
+import { Button, Card, Chip, Switch, toast } from "@heroui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
 
 import { orpc, rpcClient } from "@/renderer/lib/rpc"
 
@@ -41,7 +40,7 @@ export const ScreenAwarenessTab = ({ active }: { active: boolean }) => {
   const update = useMutation({
     mutationFn: async (enabled: boolean) =>
       await rpcClient.settings.update({ screenAwareness: { enabled } }),
-    onError: () => toast.error(t("settings.screenAwareness.failed")),
+    onError: () => toast.danger(t("settings.screenAwareness.failed")),
     onSuccess: (value) =>
       queryClient.setQueryData(
         orpc.settings.get.queryOptions({}).queryKey,
@@ -53,10 +52,10 @@ export const ScreenAwarenessTab = ({ active }: { active: boolean }) => {
       await window.electron.ipcRenderer.invoke(
         "screen-awareness:open-onboarding"
       ),
-    onError: () => toast.error(t("settings.screenAwareness.failed")),
+    onError: () => toast.danger(t("settings.screenAwareness.failed")),
     onSuccess: (started) => {
       if (!started) {
-        toast.error(t("settings.screenAwareness.failed"))
+        toast.danger(t("settings.screenAwareness.failed"))
       }
     }
   })
@@ -64,7 +63,7 @@ export const ScreenAwarenessTab = ({ active }: { active: boolean }) => {
     mutationFn: async () => {
       await window.electron.clearScreenAwarenessCaptures()
     },
-    onError: () => toast.error(t("settings.screenAwareness.failed")),
+    onError: () => toast.danger(t("settings.screenAwareness.failed")),
     onSuccess: () => toast.success(t("settings.screenAwareness.cleared"))
   })
   if (!active) {

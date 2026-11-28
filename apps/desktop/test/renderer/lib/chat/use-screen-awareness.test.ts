@@ -28,7 +28,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@etyon/i18n/react", () => ({
   useI18n: () => ({ t: state.translate })
 }))
-vi.mock("sonner", () => ({ toast: { error: state.toast } }))
+vi.mock("@heroui/react", () => ({ toast: { danger: state.toast } }))
 vi.mock("@/renderer/lib/rpc", () => ({
   orpc: {
     chatSessions: {

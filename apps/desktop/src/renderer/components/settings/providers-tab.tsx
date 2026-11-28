@@ -8,7 +8,6 @@ import type {
   ProviderFetchModelsOutput,
   StoredProviderModel
 } from "@etyon/rpc"
-import { ScrollArea } from "@etyon/ui/components/scroll-area"
 import {
   Select,
   SelectContent,
@@ -18,7 +17,14 @@ import {
   SelectValue
 } from "@etyon/ui/components/select"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Checkbox, Input, Switch, Tooltip } from "@heroui/react"
+import {
+  Button,
+  Checkbox,
+  Input,
+  ScrollShadow,
+  Switch,
+  Tooltip
+} from "@heroui/react"
 import {
   AiImageIcon,
   BrainIcon,
@@ -841,7 +847,7 @@ export const ProvidersTab = ({
             value={providerSearchValue}
           />
 
-          <ScrollArea className="mt-3 min-h-0 flex-1">
+          <ScrollShadow className="mt-3 min-h-0 flex-1">
             <div className="space-y-2 pr-2">
               {filteredProviders.length === 0 && (
                 <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
@@ -892,7 +898,7 @@ export const ProvidersTab = ({
                 )
               })}
             </div>
-          </ScrollArea>
+          </ScrollShadow>
         </div>
 
         <motion.div
@@ -1132,7 +1138,7 @@ export const ProvidersTab = ({
                 </div>
               </div>
 
-              <ScrollArea className="mt-3 min-h-0 flex-1 pr-1.5">
+              <ScrollShadow className="mt-3 min-h-0 flex-1 pr-1.5">
                 <div className="space-y-2 pr-2">
                   {filteredModels.length === 0 && (
                     <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
@@ -1149,7 +1155,7 @@ export const ProvidersTab = ({
                     />
                   ))}
                 </div>
-              </ScrollArea>
+              </ScrollShadow>
             </div>
           </div>
         </motion.div>

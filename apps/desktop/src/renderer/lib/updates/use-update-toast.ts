@@ -1,6 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { UpdateStatus } from "@etyon/rpc"
-import { toast } from "@etyon/ui/components/sonner"
+import { toast } from "@heroui/react"
 import { useEffect } from "react"
 
 import { rpcClient } from "@/renderer/lib/rpc"
@@ -48,17 +48,21 @@ export const useUpdateToast = ({ enabled }: { enabled: boolean }): void => {
           return
         }
 
-        toast(t("settings.about.updates.toast.title", { version }), {
-          action: {
-            label: t("settings.about.updates.toast.action"),
-            onClick: () => {
-              window.electron.ipcRenderer.send(
-                "open-settings",
-                ABOUT_SETTINGS_TAB
-              )
+        const toastId = toast(
+          t("settings.about.updates.toast.title", { version }),
+          {
+            actionProps: {
+              children: t("settings.about.updates.toast.action"),
+              onPress: () => {
+                window.electron.ipcRenderer.send(
+                  "open-settings",
+                  ABOUT_SETTINGS_TAB
+                )
+                toast.close(toastId)
+              }
             }
           }
-        })
+        )
 
         await rpcClient.settings.update({
           updates: { ...settings.updates, lastNotifiedVersion: version }

@@ -1,6 +1,6 @@
 import { useI18n } from "@etyon/i18n/react"
+import { toast } from "@heroui/react"
 import { useEffect } from "react"
-import { toast } from "sonner"
 
 import {
   clearScreenAwarenessCaptures,
@@ -97,7 +97,7 @@ export const useScreenAwareness = (enabled: boolean): void => {
           await deliver(capture, recovered)
         } catch {
           if (!disposed) {
-            toast.error(t("chat.screenAwareness.errors.routing-failed"))
+            toast.danger(t("chat.screenAwareness.errors.routing-failed"))
           }
         }
       })()
@@ -114,7 +114,7 @@ export const useScreenAwareness = (enabled: boolean): void => {
       window.electron.onScreenAwarenessCapture(enqueue)
     const removeErrorListener = window.electron.onScreenAwarenessError(
       (error) => {
-        toast.error(t("chat.screenAwareness.failed"), {
+        toast.danger(t("chat.screenAwareness.failed"), {
           description: t(getScreenAwarenessErrorKey(error.code))
         })
       }
@@ -130,7 +130,7 @@ export const useScreenAwareness = (enabled: boolean): void => {
         }
       } catch {
         if (!disposed) {
-          toast.error(t("chat.screenAwareness.errors.routing-failed"))
+          toast.danger(t("chat.screenAwareness.errors.routing-failed"))
         }
       }
     })()

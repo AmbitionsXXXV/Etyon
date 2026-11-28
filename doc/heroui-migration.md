@@ -10,6 +10,12 @@
 - 核心包装层采用薄适配：组件内部直接使用 HeroUI 组件，旧 shadcn prop 只保留必要桥接，不继续复制旧视觉设计。
 - 核心差异集中在 app theme build 和 token 扩展层处理，业务组件不再承担样式兼容逻辑。
 
+## 设计来源
+
+- UI 设计基准是 HeroUI Pro Figma Kit V3（桌面端）：<https://www.figma.com/design/nRbnGuNO14dIW0SXOUGApy>。Kit 的 `02_Theme (HeroUI)` 变量集合（Light / Dark）对应 `@heroui/styles` 默认主题，阴影样式 `shadow-surface`、`shadow-field`、`shadow-overlay` 对应 `--surface-shadow`、`--field-shadow`、`--overlay-shadow`。
+- HeroUI Pro Native Figma Kit：<https://www.figma.com/design/VXpMgrYghWoFbTFgHZB2Fs>。仓库目前没有 React Native 应用，留作移动端参考。
+- 组件外观以 Kit 为准，`globals.css` 不再对 HeroUI 的 `.input`、`.textarea`、`.select__trigger`、`.number-field`、`.checkbox` 做全局样式覆盖；需要调整时改主题 token，而不是覆盖组件 class。
+
 ## 样式系统共存
 
 - `packages/ui/src/styles/globals.css` 的导入顺序是： `tailwindcss` -> `@heroui/styles` -> `@heroui-pro/react/css` -> `tw-animate-css` -> `shadcn/tailwind.css` -> 项目主题文件。
@@ -34,6 +40,10 @@
 - `Separator`：直接使用 HeroUI `Separator`。
 - `Empty`：根节点使用 HeroUI `EmptyState`，子组件保持原有导出。
 - `Switch` / `Checkbox`：直接使用 HeroUI compound API，仅桥接旧 `checked`、`defaultChecked`、`onCheckedChange`。
+- `Tooltip`：业务侧直接使用 HeroUI `Tooltip` / `Tooltip.Trigger` / `Tooltip.Content`，不再需要 `TooltipProvider`；`@etyon/ui/components/tooltip` 已删除。`SidebarMenuButton` 的 `tooltip` prop 没有调用方，随之移除。
+- `ScrollArea`：改用 HeroUI `ScrollShadow`，`@etyon/ui/components/scroll-area` 已删除。
+- 通知：`sonner` 和 `@etyon/ui/components/sonner` 已移除，根布局挂载 HeroUI `Toast.Provider`，业务侧从 `@heroui/react` 导入 `toast`（`toast.error` 对应 `toast.danger`，sonner 的 `action` 对应 `actionProps`）。
+- `Sheet`：`Sidebar` 的窄窗口模式改用 HeroUI `Drawer`，`@etyon/ui/components/sheet` 已删除。
 
 ## 图标约定
 
@@ -42,8 +52,7 @@
 
 ## 暂保留组件
 
-- `Tooltip`：当前调用依赖 Base UI 的元素式 `render` API，暂保留现有实现。
-- `Dialog` / `Sheet`：当前关闭按钮、portal、overlay 和动画依赖 Base UI Dialog API，后续单独迁移。
+- `Dialog`：当前关闭按钮、portal、overlay 和动画依赖 Base UI Dialog API，后续单独迁移。
 - `Select` / `Combobox`：当前 positioner、scroll arrow、chips、input-group 组合较深，后续按组件逐个复刻。
 - `Sidebar`：继续作为单独阶段处理。现有桌面固定、offcanvas、动画、宽度调整和 macOS 交通灯避让逻辑不能直接替换。
 

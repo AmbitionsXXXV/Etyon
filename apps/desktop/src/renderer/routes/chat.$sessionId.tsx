@@ -18,7 +18,7 @@ import { cn } from "@etyon/ui/lib/utils"
 import { ChatMessage } from "@heroui-pro/react"
 import { Resizable } from "@heroui-pro/react/resizable"
 import type { PanelImperativeHandle } from "@heroui-pro/react/resizable"
-import { Button, Chip, ScrollShadow, TextArea } from "@heroui/react"
+import { Button, Chip, ScrollShadow, TextArea, toast } from "@heroui/react"
 import {
   ArrowDown02Icon,
   ArrowReloadHorizontalIcon,
@@ -36,7 +36,6 @@ import { getToolName, isToolUIPart } from "ai"
 import { AnimatePresence, motion } from "motion/react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode, RefObject, UIEvent } from "react"
-import { toast } from "sonner"
 import { ThinkingOrb } from "thinking-orbs"
 
 import { AgentRunInspector } from "@/renderer/components/chat/agent-run-inspector"
@@ -1836,7 +1835,7 @@ const ChatRuntime = ({
         ids.map((id) => window.electron.dismissScreenAwarenessCapture(id))
       )
       if (results.some((result) => result.status === "rejected")) {
-        toast.error(t("chat.screenAwareness.errors.cleanup-failed"))
+        toast.danger(t("chat.screenAwareness.errors.cleanup-failed"))
       }
     },
     [t]
