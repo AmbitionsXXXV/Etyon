@@ -21,6 +21,7 @@
 - 现有 color schema 文件直接覆盖 HeroUI 主 token：`accent`、`background`、`foreground`、`surface`、`overlay`、`default`、`field-*`、`success`、`warning`、`danger`、`segment`、`border`、`separator`、`focus`、`link`。
 - 旧 shadcn / Etyon 变量只作为兼容别名存在，并映射到 HeroUI token：`primary -> accent`、`secondary -> default`、`card -> surface`、`popover -> overlay`、`ring -> focus`、`destructive -> danger`。
 - `sidebar-*`、`chart-*`、`muted-foreground`、`input` 仍是项目扩展 token，但由 `globals.css` 统一从 HeroUI token 派生，schema 文件不再单独维护这些项目变量。
+- 自定义主题（设置里的 4 色主题）由 `apps/desktop/src/renderer/lib/color-schema/custom-theme.ts` 展开成同一组 HeroUI 主 token，以未分层的 `<style>` 注入，`data-theme` 保持 `light` / `dark` 作为基底，并用 `data-custom-theme` 标记当前主题。`customDarkThemeId` / `customLightThemeId` 分别记录深色、浅色下选中的主题；选择任何内置 schema 会清除对应的自定义选择。
 - 液态玻璃模式继续覆盖 `background`、`surface`、`overlay`、`sidebar`，并通过兼容别名自动影响 `card`、`popover` 等旧调用点。
 
 ## 已迁移组件

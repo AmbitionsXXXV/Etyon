@@ -33,11 +33,13 @@ interface ColorSchemaBlockProps<TValue extends ColorSchemaValue> {
 }
 
 interface ColorSchemaTabProps {
+  activeCustomThemeIds: readonly (string | null)[]
   darkColorSchema: DarkColorSchema
   darkColorSchemaOptions: ColorSchemaOption<DarkColorSchema>[]
   heroUiProColorSchemaPairOptions: ColorSchemaPairOption[]
   lightColorSchema: LightColorSchema
   lightColorSchemaOptions: ColorSchemaOption<LightColorSchema>[]
+  onApplyTheme: (theme: CustomTheme) => void
   onColorSchemaPairChange: (value: {
     darkColorSchema: DarkColorSchema
     lightColorSchema: LightColorSchema
@@ -162,11 +164,13 @@ const ColorSchemaPairSelector = ({
 )
 
 export const ColorSchemaTab = ({
+  activeCustomThemeIds,
   darkColorSchema,
   darkColorSchemaOptions,
   heroUiProColorSchemaPairOptions,
   lightColorSchema,
   lightColorSchemaOptions,
+  onApplyTheme,
   onColorSchemaPairChange,
   onCreateTheme,
   onDarkColorSchemaChange,
@@ -259,7 +263,9 @@ export const ColorSchemaTab = ({
               <div className="space-y-4">
                 {themes.map((theme) => (
                   <CustomThemeCard
+                    isActive={activeCustomThemeIds.includes(theme.id)}
                     key={theme.id}
+                    onApplyTheme={onApplyTheme}
                     onDeleteTheme={setThemePendingDelete}
                     theme={theme}
                   />

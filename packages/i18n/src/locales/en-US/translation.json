@@ -1170,9 +1170,11 @@
     },
     "customThemes": {
       "actions": {
+        "apply": "Apply",
         "create": "Create Theme",
         "delete": "Delete"
       },
+      "active": "Active",
       "delete": {
         "confirm": "Delete Theme",
         "description": "Delete \"{{name}}\" from custom themes? This change will be part of your unsaved settings until you save.",

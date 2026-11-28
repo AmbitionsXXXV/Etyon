@@ -23,6 +23,7 @@ import {
   applySettings,
   watchSystemTheme
 } from "./lib/settings"
+import type { ColorSchemaSettings } from "./lib/settings"
 import { queryClient } from "./query-client"
 
 import "@etyon/ui/globals.css"
@@ -113,10 +114,7 @@ const RendererRoot = ({
   useEffect(() => {
     const removeListener = window.electron.ipcRenderer.on(
       "settings-preview-color-schemas",
-      (
-        _,
-        nextSettings: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
-      ) => {
+      (_, nextSettings: ColorSchemaSettings) => {
         if (!isSettingsWindowMode) {
           applyColorSchemaPreview(nextSettings)
         }

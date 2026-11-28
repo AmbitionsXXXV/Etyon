@@ -269,6 +269,9 @@ export const createSettingsWindow = (tab?: string) => {
   settingsWindow.on("closed", () => {
     const currentSettings = getSettings()
     const preview = {
+      customDarkThemeId: currentSettings.customDarkThemeId,
+      customLightThemeId: currentSettings.customLightThemeId,
+      customThemes: currentSettings.customThemes,
       darkColorSchema: currentSettings.darkColorSchema,
       lightColorSchema: currentSettings.lightColorSchema
     }
