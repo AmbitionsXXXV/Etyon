@@ -168,7 +168,14 @@ const handleAppReady = async (): Promise<void> => {
     "settings-preview-color-schemas",
     (
       event,
-      preview: Pick<AppSettings, "darkColorSchema" | "lightColorSchema">
+      preview: Pick<
+        AppSettings,
+        | "customDarkThemeId"
+        | "customLightThemeId"
+        | "customThemes"
+        | "darkColorSchema"
+        | "lightColorSchema"
+      >
     ) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed() && win.webContents.id !== event.sender.id) {

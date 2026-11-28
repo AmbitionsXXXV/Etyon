@@ -1170,9 +1170,11 @@
     },
     "customThemes": {
       "actions": {
+        "apply": "应用",
         "create": "创建主题",
         "delete": "删除"
       },
+      "active": "使用中",
       "delete": {
         "confirm": "删除主题",
         "description": "确定要删除「{{name}}」吗？该变更会作为未保存的设置保留，直到你点击保存。",

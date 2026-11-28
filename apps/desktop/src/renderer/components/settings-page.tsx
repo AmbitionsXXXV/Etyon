@@ -231,6 +231,7 @@ export const SettingsPage = ({
     handleChatChange,
     handleCloseToTrayChange,
     handleColorSchemaPairChange,
+    handleCustomThemeApply,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,
@@ -517,6 +518,10 @@ export const SettingsPage = ({
 
               {activeSection === "color-schema" && (
                 <ColorSchemaTab
+                  activeCustomThemeIds={[
+                    draft.customDarkThemeId,
+                    draft.customLightThemeId
+                  ]}
                   darkColorSchema={draft.darkColorSchema}
                   darkColorSchemaOptions={darkColorSchemaOptions}
                   heroUiProColorSchemaPairOptions={
@@ -524,6 +529,7 @@ export const SettingsPage = ({
                   }
                   lightColorSchema={draft.lightColorSchema}
                   lightColorSchemaOptions={lightColorSchemaOptions}
+                  onApplyTheme={handleCustomThemeApply}
                   onColorSchemaPairChange={handleColorSchemaPairChange}
                   onCreateTheme={handleCustomThemeCreate}
                   onDarkColorSchemaChange={handleDarkColorSchemaChange}

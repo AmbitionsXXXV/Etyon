@@ -248,7 +248,12 @@ export const TerminalPanel = ({
         })
       })
       themeObserver.observe(document.documentElement, {
-        attributeFilter: ["class", "data-liquid-glass", "data-theme"],
+        attributeFilter: [
+          "class",
+          "data-custom-theme",
+          "data-liquid-glass",
+          "data-theme"
+        ],
         attributes: true
       })
       cleanups.push(() => themeObserver.disconnect())

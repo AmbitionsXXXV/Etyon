@@ -1,21 +1,29 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { CustomTheme } from "@etyon/rpc"
-import { Button } from "@heroui/react"
+import { Button, Chip } from "@heroui/react"
 import { useCallback, useMemo } from "react"
 
 import { buildPresetLabelMap, buildTypeLabelMap } from "../utils/theme-labels"
 import { ThemePreview } from "./theme-preview"
 
 export const CustomThemeCard = ({
+  isActive,
+  onApplyTheme,
   onDeleteTheme,
   theme
 }: {
+  isActive: boolean
+  onApplyTheme: (theme: CustomTheme) => void
   onDeleteTheme: (theme: CustomTheme) => void
   theme: CustomTheme
 }) => {
   const { t } = useI18n()
   const presetLabels = useMemo(() => buildPresetLabelMap(t), [t])
   const typeLabels = useMemo(() => buildTypeLabelMap(t), [t])
+
+  const handleApply = useCallback(() => {
+    onApplyTheme(theme)
+  }, [onApplyTheme, theme])
 
   const handleDelete = useCallback(() => {
     onDeleteTheme(theme)
@@ -32,9 +40,20 @@ export const CustomThemeCard = ({
               {typeLabels[theme.type as keyof typeof typeLabels]}
             </div>
           </div>
-          <Button onPress={handleDelete} type="button" variant="danger-soft">
-            {t("settings.customThemes.actions.delete")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isActive ? (
+              <Chip color="accent" size="sm" variant="soft">
+                {t("settings.customThemes.active")}
+              </Chip>
+            ) : (
+              <Button onPress={handleApply} type="button" variant="secondary">
+                {t("settings.customThemes.actions.apply")}
+              </Button>
+            )}
+            <Button onPress={handleDelete} type="button" variant="danger-soft">
+              {t("settings.customThemes.actions.delete")}
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

@@ -204,17 +204,29 @@ export const useSettingsPageDraft = () => {
 
   const draftDarkColorSchema = draft?.darkColorSchema
   const draftLightColorSchema = draft?.lightColorSchema
+  const draftCustomDarkThemeId = draft?.customDarkThemeId ?? null
+  const draftCustomLightThemeId = draft?.customLightThemeId ?? null
+  const draftCustomThemes = draft?.customThemes
 
   useEffect(() => {
-    if (!draftDarkColorSchema || !draftLightColorSchema) {
+    if (!draftDarkColorSchema || !draftLightColorSchema || !draftCustomThemes) {
       return
     }
 
     window.electron.ipcRenderer.send("settings-preview-color-schemas", {
+      customDarkThemeId: draftCustomDarkThemeId,
+      customLightThemeId: draftCustomLightThemeId,
+      customThemes: draftCustomThemes,
       darkColorSchema: draftDarkColorSchema,
       lightColorSchema: draftLightColorSchema
     })
-  }, [draftDarkColorSchema, draftLightColorSchema])
+  }, [
+    draftCustomDarkThemeId,
+    draftCustomLightThemeId,
+    draftCustomThemes,
+    draftDarkColorSchema,
+    draftLightColorSchema
+  ])
 
   useEffect(
     () => () => {
@@ -222,6 +234,9 @@ export const useSettingsPageDraft = () => {
 
       if (nextSavedSnapshot) {
         window.electron.ipcRenderer.send("settings-preview-color-schemas", {
+          customDarkThemeId: nextSavedSnapshot.customDarkThemeId,
+          customLightThemeId: nextSavedSnapshot.customLightThemeId,
+          customThemes: nextSavedSnapshot.customThemes,
           darkColorSchema: nextSavedSnapshot.darkColorSchema,
           lightColorSchema: nextSavedSnapshot.lightColorSchema
         })
@@ -273,11 +288,30 @@ export const useSettingsPageDraft = () => {
         : prev
     )
   }, [])
+  const handleCustomThemeApply = useCallback((theme: CustomTheme) => {
+    setDraft((prev) => {
+      if (!prev) {
+        return prev
+      }
+
+      return theme.type === "dark"
+        ? { ...prev, customDarkThemeId: theme.id }
+        : { ...prev, customLightThemeId: theme.id }
+    })
+  }, [])
   const handleCustomThemeDelete = useCallback((themeId: string) => {
     setDraft((prev) =>
       prev
         ? {
             ...prev,
+            customDarkThemeId:
+              prev.customDarkThemeId === themeId
+                ? null
+                : prev.customDarkThemeId,
+            customLightThemeId:
+              prev.customLightThemeId === themeId
+                ? null
+                : prev.customLightThemeId,
             customThemes: prev.customThemes.filter(
               (theme) => theme.id !== themeId
             )
@@ -286,7 +320,10 @@ export const useSettingsPageDraft = () => {
     )
   }, [])
   const handleDarkColorSchemaChange = useCallback(
-    (v: DarkColorSchema) => updateDraftRef.current("darkColorSchema", v),
+    (v: DarkColorSchema) =>
+      setDraft((prev) =>
+        prev ? { ...prev, customDarkThemeId: null, darkColorSchema: v } : prev
+      ),
     []
   )
   const handleFontFamilyChange = useCallback(
@@ -298,7 +335,10 @@ export const useSettingsPageDraft = () => {
     []
   )
   const handleLightColorSchemaChange = useCallback(
-    (v: LightColorSchema) => updateDraftRef.current("lightColorSchema", v),
+    (v: LightColorSchema) =>
+      setDraft((prev) =>
+        prev ? { ...prev, customLightThemeId: null, lightColorSchema: v } : prev
+      ),
     []
   )
   const handleColorSchemaPairChange = useCallback(
@@ -313,6 +353,8 @@ export const useSettingsPageDraft = () => {
         prev
           ? {
               ...prev,
+              customDarkThemeId: null,
+              customLightThemeId: null,
               darkColorSchema,
               lightColorSchema
             }
@@ -439,6 +481,7 @@ export const useSettingsPageDraft = () => {
     handleChatChange,
     handleCloseToTrayChange,
     handleColorSchemaPairChange,
+    handleCustomThemeApply,
     handleCustomThemeCreate,
     handleCustomThemeDelete,
     handleDarkColorSchemaChange,

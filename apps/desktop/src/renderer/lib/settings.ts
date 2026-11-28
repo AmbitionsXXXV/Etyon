@@ -1,5 +1,10 @@
 import type { AppSettings, Theme } from "@etyon/rpc"
 
+import {
+  buildCustomThemeCss,
+  resolveActiveCustomTheme
+} from "@/renderer/lib/color-schema/custom-theme"
+import type { CustomThemeSelection } from "@/renderer/lib/color-schema/custom-theme"
 import { resolveHeroUiProThemeName } from "@/renderer/lib/color-schema/heroui-pro-themes"
 import type { HeroUiProThemeName } from "@/renderer/lib/color-schema/heroui-pro-themes"
 
@@ -17,12 +22,15 @@ const THEME_TRANSITION_MS = 200
  */
 export const HEROUI_PRO_THEME_STYLESHEET_ID = "etyon-heroui-pro-theme"
 
+const CUSTOM_THEME_STYLE_ID = "etyon-custom-theme"
+
 const darkMediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
 
-type ColorSchemaSettings = Pick<
+export type ColorSchemaSettings = Pick<
   AppSettings,
   "darkColorSchema" | "lightColorSchema"
->
+> &
+  CustomThemeSelection
 
 type ThemeColorSettings = ColorSchemaSettings & Pick<AppSettings, "theme">
 
@@ -58,6 +66,29 @@ const syncHeroUiProThemeStylesheet = (themeName: string) => {
   link.id = HEROUI_PRO_THEME_STYLESHEET_ID
   link.rel = "stylesheet"
   document.head.append(link)
+}
+
+const syncCustomThemeStyle = (root: HTMLElement, css: string | null) => {
+  const existingStyle = document.head.querySelector<HTMLStyleElement>(
+    `#${CUSTOM_THEME_STYLE_ID}`
+  )
+
+  if (css === null) {
+    existingStyle?.remove()
+    delete root.dataset.customTheme
+    return
+  }
+
+  if (existingStyle) {
+    if (existingStyle.textContent !== css) {
+      existingStyle.textContent = css
+    }
+  } else {
+    const style = document.createElement("style")
+    style.id = CUSTOM_THEME_STYLE_ID
+    style.textContent = css
+    document.head.append(style)
+  }
 }
 
 const resolvePrefersDark = (theme: Theme) =>
@@ -100,10 +131,23 @@ const applyResolvedColorTheme = (
   prefersDark: boolean
 ) => {
   const root = document.documentElement
-  const themeName = resolveThemeName(settings, prefersDark)
+  const customTheme = resolveActiveCustomTheme(settings, prefersDark)
   clearLegacyColorSchemaAttributes(root)
+
+  if (customTheme) {
+    // Custom themes layer their tokens over HeroUI's plain light/dark base.
+    const themeName = prefersDark ? "dark" : "light"
+    root.dataset.theme = themeName
+    syncHeroUiProThemeStylesheet(themeName)
+    syncCustomThemeStyle(root, buildCustomThemeCss(customTheme))
+    root.dataset.customTheme = customTheme.id
+    return
+  }
+
+  const themeName = resolveThemeName(settings, prefersDark)
   root.dataset.theme = themeName
   syncHeroUiProThemeStylesheet(themeName)
+  syncCustomThemeStyle(root, null)
 }
 
 const beginThemeTransition = () => {

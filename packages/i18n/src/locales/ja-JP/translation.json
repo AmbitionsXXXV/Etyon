@@ -1170,9 +1170,11 @@
     },
     "customThemes": {
       "actions": {
+        "apply": "適用",
         "create": "テーマを作成",
         "delete": "削除"
       },
+      "active": "使用中",
       "delete": {
         "confirm": "テーマを削除",
         "description": "「{{name}}」をカスタムテーマから削除しますか？この変更は保存するまで未保存の設定として保持されます。",
