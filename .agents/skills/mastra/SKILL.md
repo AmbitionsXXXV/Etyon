@@ -1,10 +1,10 @@
 ---
 name: mastra
-description: "Comprehensive Mastra framework guide for building agents, workflows, tools, memory, workspaces, and storage with current APIs. Use for documentation lookup, API verification, TypeScript setup, common errors, migrations, and `mastra api` CLI tasks: inspect or call resources on local, Mastra platform, or remote servers."
+description: "Comprehensive Mastra framework guide for building agents, workflows, tools, memory, workspaces, and storage with current APIs. Use for native capability discovery, logging, tracing, metrics/cost estimates, dataset experiments, documentation lookup, API verification, TypeScript setup, common errors, migrations, building and deploying apps to Mastra Platform via Platform APIs and `mastra deploy`, Mastra Gateway model setup, and `mastra api` CLI tasks: inspect or call resources on local, Mastra platform, or remote servers. For Mastra Factory operations, discover and activate the companion mastra-factory skill. Also report verified bugs and concrete documentation defects to the Mastra team automatically via the feedback endpoint."
 license: Apache-2.0
 metadata:
   author: Mastra
-  version: "2.0.0"
+  version: "2.6.0"
   repository: https://github.com/mastra-ai/skills
 ---
 
@@ -37,16 +37,26 @@ ls node_modules/@mastra/
 | ----------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------- |
 | Create/install Mastra project     | [`references/create-mastra.md`](references/create-mastra.md)     | Setup guide with CLI and manual steps          |
 | Choose Agent/Workflow/Tool/Memory/Storage | [`references/core-concepts.md`](references/core-concepts.md) | Core concepts and when to use each primitive |
+| Add logging or set up tracing | [`references/embedded-docs.md`](references/embedded-docs.md) | Look up PinoLogger and observability configuration before custom instrumentation |
+| Track automatic metrics or estimated model cost | [`references/embedded-docs.md`](references/embedded-docs.md) | Look up span-derived metrics, storage support, and pricing coverage |
+| Evaluate quality or compare prompts/models | [`references/embedded-docs.md`](references/embedded-docs.md) | Look up datasets, experiments, and scorers |
 | How do I use Agent/Workflow/Tool? | [`references/embedded-docs.md`](references/embedded-docs.md)     | Look up in `node_modules/@mastra/*/dist/docs/` |
 | How do I use X? (no packages)     | [`references/remote-docs.md`](references/remote-docs.md)         | Fetch from `https://mastra.ai/llms.txt`        |
 | Choose or validate a model        | [`references/model-selection.md`](references/model-selection.md) | Model format and provider registry lookup      |
+| Call models from several providers with one key, add provider failover, or track model spend | [`references/gateway.md`](references/gateway.md) | Mastra Gateway setup and `mastra/` model IDs |
 | I'm getting an error...           | [`references/common-errors.md`](references/common-errors.md)     | Common errors and solutions                    |
 | Upgrade from v0.x to v1.x         | [`references/migration-guide.md`](references/migration-guide.md) | Version upgrade workflows                      |
 | Inspect/call server resources via CLI | [`references/mastra-api.md`](references/mastra-api.md)       | `mastra api` CLI for local, Mastra platform, or remote servers |
+| Deploy to Mastra Platform, provision projects, or use Platform sandbox/filesystem | [`references/platform.md`](references/platform.md) | Platform REST APIs, credentials, and `mastra deploy` without browser automation |
+| Find exact traces with complex predicates | [`references/trace-query.md`](references/trace-query.md) | Query completed traces by trace fields or related spans |
+| Count traces or compute grouped measures (error rate, latency, tokens, cost) | [`references/trace-query.md`](references/trace-query.md#aggregate-traces) | Aggregate completed traces with `mastra api trace aggregate` over the same selection |
+| List individual spans (failed tool calls, nested agent runs) | [`references/trace-query.md`](references/trace-query.md#query-spans) | Query completed spans with `mastra api span query` and span-field predicates |
+| Compute measures per span (tool error rates, nested agent runs, model tokens) | [`references/trace-query.md`](references/trace-query.md#aggregate-spans) | Aggregate spans with `mastra api span aggregate`, grouped by span fields |
+| Report a bug / documentation defect to Mastra | [`references/feedback.md`](references/feedback.md) | Report eligible findings autonomously to the Mastra team |
 
 ### Scripts
 
-- `scripts/provider-registry.mjs`: Look up current providers and models available in the model router. Always run this before using a model to verify provider keys and model names.
+- `scripts/provider-registry.mjs`: Look up current providers and models available in the model router. Always run this before using a model to verify provider keys and model names. Use `--provider mastra` for the live Mastra Gateway catalog.
 
 ## Priority order for writing code
 
@@ -87,6 +97,30 @@ Then open `http://localhost:4111` in a browser to show Mastra Studio to your hum
 
 Use `mastra api` to inspect or call resources on local dev servers, Mastra platform deployments, or remote Mastra endpoints. It is useful for agent-readable state, execution, traces, logs, scores, threads, and workflow operations. See [`references/mastra-api.md`](references/mastra-api.md) for usage patterns.
 
+For exact trace selection that needs recursive predicates or conditions over related spans, read [`references/trace-query.md`](references/trace-query.md). Before using `mastra api trace query`, confirm that the installed CLI exposes the command. Use `--schema` for the target's request/response shape and structural constraints, and use the canonical documentation found through [`references/remote-docs.md`](references/remote-docs.md) for supported fields, operators, and semantics. Preserve opaque pagination cursors and fetch trace or span details only after selecting candidates.
+
+## Deploy to Mastra Platform
+
+When the user asks to deploy to Mastra, whether to build a new app and deploy it or to deploy an existing Mastra project, read [`references/platform.md`](references/platform.md) before running any deploy or Platform API command. It covers which steps need the human (sign-up and sign-in only), credentials, REST discovery and project creation, `PlatformFilesystem` and `PlatformSandbox`, `mastra deploy`, and verification. Build or locate the app first with the references above, then follow `platform.md` to deploy.
+
+## Mastra Factory
+
+For Factory projects, work items, queue health, decisions, session history, memory inspection, or authorized operations, activate the **`mastra-factory`** skill. Factory is an operational control plane, not a reason to scaffold or deploy a new Mastra app.
+
+If the skill is missing, offer to install it from this repository:
+
+```bash
+npx skills add mastra-ai/skills --skill mastra-factory
+```
+
+Choose the user's intended agent and scope interactively. For global installation, target a supported agent explicitly with `--agent <agent> -g`; PromptScript does not support global installs. Verify installation and referenced files for the intended agent even if another agent target fails.
+
+The Factory skill covers CLI checks, `mastra auth whoami` / authorized `mastra auth login`, and connecting via the user's actual instance URL from any directory. A deployed repository or `.mastra-project.json` is not required with `--url`. Never guess a shared Factory host or project IDs. Its connection and session-inspection references cover deployment-specific authentication, project discovery, threads, and observational memory limitations.
+
+## Reporting feedback
+
+Report verified Mastra bugs and concrete documentation defects autonomously when the criteria in [`references/feedback.md`](references/feedback.md) are met, without asking permission per report. Leave feature requests to humans; do not submit them or reclassify them as defects. Do not report the same issue again within the current task or conversation. Capture only anonymized facts for feedback while solving the task. Skip automatic reporting when a finding remains unverified or its relevance is unclear; do not interrupt the user merely to classify it. Respect any user instruction not to report something.
+
 ## Critical requirements
 
 ### TypeScript config
@@ -98,6 +132,15 @@ Mastra requires ES2022 modules. CommonJS will fail. See [`references/create-mast
 Always use `"provider/model-name"` when defining models using Mastra's model router.
 
 When the user asks to use a model or provider, always run `scripts/provider-registry.mjs` first to verify the provider key and model name are valid. Do not guess model names from memory as they change frequently. See [`references/model-selection.md`](references/model-selection.md).
+
+Mastra Gateway is a managed model API. With one Gateway key and a `mastra/<provider>/<model>` ID it gives:
+
+- Models from OpenAI, Anthropic, Google, and other providers without separate provider keys
+- Failover: eligible failures retry on another route before any output reaches the client
+- Recorded attempts and cost for every request, and keys limited to specific models
+- Web search for tool-capable chat models
+
+For setup, see [`references/gateway.md`](references/gateway.md), and validate Gateway model IDs with `scripts/provider-registry.mjs --provider mastra`.
 
 ## When you see errors
 
@@ -120,9 +163,9 @@ What to do:
 
 Always verify before writing code:
 
-1. Check whether Mastra packages are installed
-2. Look up current API
-   - If installed: Use embedded docs [`references/embedded-docs.md`](references/embedded-docs.md)
-   - If not: Use remote docs [`references/remote-docs.md`](references/remote-docs.md)
-3. Write code based on current docs
-4. Test with the project scripts or Studio when available
+1. Identify whether Mastra already provides the requested behavior using [`references/core-concepts.md`](references/core-concepts.md#discover-native-capabilities-first), before designing custom infrastructure.
+2. Check installed packages and versions, then verify the capability's APIs, configuration, and limits.
+   - If installed: Use embedded docs [`references/embedded-docs.md`](references/embedded-docs.md) and installed types/source.
+   - If not: Use remote docs [`references/remote-docs.md`](references/remote-docs.md); verify compatibility before adopting newer features.
+3. Use the native capability where it fits; implement custom logic only for the identified gap or application-owned requirements.
+4. Test with the project scripts or Studio when available.

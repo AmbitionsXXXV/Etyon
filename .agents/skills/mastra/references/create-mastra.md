@@ -36,11 +36,13 @@ bun create mastra@latest
 
 ## CLI flags
 
-**Skip the example agent:**
+**Create an empty project:**
 
 ```bash
-npm create mastra@latest --no-example
+npm create mastra@latest my-project --empty
 ```
+
+`--empty` and `--template` are separate creation modes. The `--llm` (`-l`) and `--llm-api-key` options apply only to the default starter.
 
 **Use a specific template:**
 
@@ -220,3 +222,5 @@ After creating your project with `create mastra`:
 - [Agents](https://mastra.ai/docs/agents/overview)
 - [Workflows](https://mastra.ai/docs/workflows/overview)
 - [GitHub](https://github.com/mastra-ai/mastra)
+
+To deploy the project to Mastra Platform, see [`platform.md`](platform.md).
