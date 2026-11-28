@@ -22,13 +22,8 @@ import {
   SidebarTrigger,
   useSidebar
 } from "@etyon/ui/components/sidebar"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button, Input } from "@heroui/react"
+import { Button, Input, Tooltip } from "@heroui/react"
 import {
   Archive02Icon,
   Copy02Icon,
@@ -1298,8 +1293,10 @@ const ProjectGroupsSection = ({
           addProjectButton
         ) : (
           <Tooltip>
-            <TooltipTrigger render={addProjectButton} />
-            <TooltipContent side="bottom">{addProjectLabel}</TooltipContent>
+            <Tooltip.Trigger>{addProjectButton}</Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">
+              {addProjectLabel}
+            </Tooltip.Content>
           </Tooltip>
         )}
 
@@ -1578,18 +1575,20 @@ export const AppSidebar = () => {
           <SidebarTrigger aria-label={t("sidebar.toggleSidebar")} />
 
           <Tooltip>
-            <TooltipTrigger render={searchButton} />
-            <TooltipContent side="bottom">{t("sidebar.search")}</TooltipContent>
+            <Tooltip.Trigger>{searchButton}</Tooltip.Trigger>
+            <Tooltip.Content placement="bottom">
+              {t("sidebar.search")}
+            </Tooltip.Content>
           </Tooltip>
 
           {isCreatingChatSession ? (
             newChatButton
           ) : (
             <Tooltip>
-              <TooltipTrigger render={newChatButton} />
-              <TooltipContent side="bottom">
+              <Tooltip.Trigger>{newChatButton}</Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">
                 {t("actions.newChat")}
-              </TooltipContent>
+              </Tooltip.Content>
             </Tooltip>
           )}
         </>

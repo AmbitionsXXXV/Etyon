@@ -3,20 +3,9 @@ import { useRender } from "@base-ui/react/use-render"
 import { Button } from "@etyon/ui/components/button"
 import { Input } from "@etyon/ui/components/input"
 import { Separator } from "@etyon/ui/components/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle
-} from "@etyon/ui/components/sheet"
 import { Skeleton } from "@etyon/ui/components/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
+import { Drawer } from "@heroui/react"
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { cva } from "class-variance-authority"
@@ -208,27 +197,26 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          dir={dir}
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE
-            } as React.CSSProperties
-          }
-          side={side}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+      <Drawer.Backdrop isOpen={openMobile} onOpenChange={setOpenMobile}>
+        <Drawer.Content placement={side}>
+          <Drawer.Dialog
+            aria-label="Sidebar"
+            data-sidebar="sidebar"
+            data-slot="sidebar"
+            data-mobile="true"
+            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
+            style={
+              {
+                "--sidebar-width": SIDEBAR_WIDTH_MOBILE
+              } as React.CSSProperties
+            }
+          >
+            <div className="flex h-full w-full flex-col" dir={dir}>
+              {children}
+            </div>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
     )
   }
 
@@ -542,18 +530,13 @@ function SidebarMenuButton({
   isActive = false,
   variant = "default",
   size = "default",
-  tooltip,
   className,
   ...props
 }: useRender.ComponentProps<"button"> &
   React.ComponentProps<"button"> & {
     isActive?: boolean
-    tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const { isMobile, state } = useSidebar()
-  const tooltipContentProps =
-    typeof tooltip === "string" ? { children: tooltip } : tooltip
-  const comp = useRender({
+  return useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
@@ -561,7 +544,7 @@ function SidebarMenuButton({
       },
       props
     ),
-    render: tooltipContentProps ? <TooltipTrigger render={render} /> : render,
+    render,
     state: {
       active: isActive,
       sidebar: "menu-button",
@@ -569,22 +552,6 @@ function SidebarMenuButton({
       slot: "sidebar-menu-button"
     }
   })
-
-  if (!tooltipContentProps) {
-    return comp
-  }
-
-  return (
-    <Tooltip>
-      {comp}
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed" || isMobile}
-        {...tooltipContentProps}
-      />
-    </Tooltip>
-  )
 }
 
 function SidebarMenuAction({

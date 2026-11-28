@@ -40,6 +40,10 @@
 - `Separator`：直接使用 HeroUI `Separator`。
 - `Empty`：根节点使用 HeroUI `EmptyState`，子组件保持原有导出。
 - `Switch` / `Checkbox`：直接使用 HeroUI compound API，仅桥接旧 `checked`、`defaultChecked`、`onCheckedChange`。
+- `Tooltip`：业务侧直接使用 HeroUI `Tooltip` / `Tooltip.Trigger` / `Tooltip.Content`，不再需要 `TooltipProvider`；`@etyon/ui/components/tooltip` 已删除。`SidebarMenuButton` 的 `tooltip` prop 没有调用方，随之移除。
+- `ScrollArea`：改用 HeroUI `ScrollShadow`，`@etyon/ui/components/scroll-area` 已删除。
+- 通知：`sonner` 和 `@etyon/ui/components/sonner` 已移除，根布局挂载 HeroUI `Toast.Provider`，业务侧从 `@heroui/react` 导入 `toast`（`toast.error` 对应 `toast.danger`，sonner 的 `action` 对应 `actionProps`）。
+- `Sheet`：`Sidebar` 的窄窗口模式改用 HeroUI `Drawer`，`@etyon/ui/components/sheet` 已删除。
 
 ## 图标约定
 
@@ -48,8 +52,7 @@
 
 ## 暂保留组件
 
-- `Tooltip`：当前调用依赖 Base UI 的元素式 `render` API，暂保留现有实现。
-- `Dialog` / `Sheet`：当前关闭按钮、portal、overlay 和动画依赖 Base UI Dialog API，后续单独迁移。
+- `Dialog`：当前关闭按钮、portal、overlay 和动画依赖 Base UI Dialog API，后续单独迁移。
 - `Select` / `Combobox`：当前 positioner、scroll arrow、chips、input-group 组合较深，后续按组件逐个复刻。
 - `Sidebar`：继续作为单独阶段处理。现有桌面固定、offcanvas、动画、宽度调整和 macOS 交通灯避让逻辑不能直接替换。
 

@@ -5,15 +5,8 @@ import {
   SidebarTrigger,
   useSidebar
 } from "@etyon/ui/components/sidebar"
-import { Toaster } from "@etyon/ui/components/sonner"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from "@etyon/ui/components/tooltip"
 import { cn } from "@etyon/ui/lib/utils"
-import { Button } from "@heroui/react"
+import { Button, Toast, Tooltip } from "@heroui/react"
 import { NoteEditIcon, Search01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { TanStackDevtools } from "@tanstack/react-devtools"
@@ -109,20 +102,20 @@ const InsetHeader = () => {
             <SidebarTrigger aria-label={t("sidebar.toggleSidebar")} />
 
             <Tooltip>
-              <TooltipTrigger render={searchButton} />
-              <TooltipContent side="bottom">
+              <Tooltip.Trigger>{searchButton}</Tooltip.Trigger>
+              <Tooltip.Content placement="bottom">
                 {t("sidebar.search")}
-              </TooltipContent>
+              </Tooltip.Content>
             </Tooltip>
 
             {isCreatingChatSession ? (
               newChatButton
             ) : (
               <Tooltip>
-                <TooltipTrigger render={newChatButton} />
-                <TooltipContent side="bottom">
+                <Tooltip.Trigger>{newChatButton}</Tooltip.Trigger>
+                <Tooltip.Content placement="bottom">
                   {t("actions.newChat")}
-                </TooltipContent>
+                </Tooltip.Content>
               </Tooltip>
             )}
           </motion.div>
@@ -153,67 +146,65 @@ const RootComponent = () => {
     // instant cut when the OS asks for it; CSS-driven motion carries its own
     // `motion-reduce:` variants (see lib/motion.ts).
     <MotionConfig reducedMotion="user">
-      <TooltipProvider>
-        {isAppShellRoute ? (
-          <SidebarProvider
-            style={
-              {
-                "--sidebar-width": `${sidebarWidthPx}px`
-              } as React.CSSProperties
-            }
+      {isAppShellRoute ? (
+        <SidebarProvider
+          style={
+            {
+              "--sidebar-width": `${sidebarWidthPx}px`
+            } as React.CSSProperties
+          }
+        >
+          <div data-first-light-region="">
+            <AppSidebar />
+          </div>
+
+          <SidebarInset
+            className="relative min-h-0 overflow-hidden"
+            data-first-light-region=""
           >
-            <div data-first-light-region="">
-              <AppSidebar />
-            </div>
+            <InsetHeader />
 
-            <SidebarInset
-              className="relative min-h-0 overflow-hidden"
-              data-first-light-region=""
-            >
-              <InsetHeader />
-
-              <div className="flex min-h-0 flex-1 flex-col">
-                <Outlet />
-              </div>
-            </SidebarInset>
-          </SidebarProvider>
-        ) : (
-          <>
-            <TitleBar />
-
-            <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
+            <div className="flex min-h-0 flex-1 flex-col">
               <Outlet />
             </div>
-          </>
-        )}
+          </SidebarInset>
+        </SidebarProvider>
+      ) : (
+        <>
+          <TitleBar />
 
-        <Toaster />
+          <div style={{ paddingTop: TITLE_BAR_HEIGHT }}>
+            <Outlet />
+          </div>
+        </>
+      )}
 
-        <TanStackDevtools
-          plugins={[
-            {
-              name: "TanStack Query",
-              render: <ReactQueryDevtoolsPanel />
-            },
-            {
-              name: "TanStack Router",
-              render: <TanStackRouterDevtoolsPanel />
-            },
-            {
-              name: "TanStack Hotkeys",
-              render: renderHotkeysDevtoolsPanel
-            },
-            {
-              name: "TanStack Form",
-              render: <FormDevtoolsPanel />
-            },
-            {
-              name: "TanStack Pacer",
-              render: renderPacerDevtoolsPanel
-            }
-          ]}
-        />
-      </TooltipProvider>
+      <Toast.Provider />
+
+      <TanStackDevtools
+        plugins={[
+          {
+            name: "TanStack Query",
+            render: <ReactQueryDevtoolsPanel />
+          },
+          {
+            name: "TanStack Router",
+            render: <TanStackRouterDevtoolsPanel />
+          },
+          {
+            name: "TanStack Hotkeys",
+            render: renderHotkeysDevtoolsPanel
+          },
+          {
+            name: "TanStack Form",
+            render: <FormDevtoolsPanel />
+          },
+          {
+            name: "TanStack Pacer",
+            render: renderPacerDevtoolsPanel
+          }
+        ]}
+      />
     </MotionConfig>
   )
 }

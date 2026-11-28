@@ -1,9 +1,8 @@
 import { useI18n } from "@etyon/i18n/react"
 import type { BuiltInPlugin } from "@etyon/rpc"
-import { ScrollArea } from "@etyon/ui/components/scroll-area"
 import { Skeleton } from "@etyon/ui/components/skeleton"
 import { cn } from "@etyon/ui/lib/utils"
-import { Switch } from "@heroui/react"
+import { ScrollShadow, Switch } from "@heroui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { motion } from "motion/react"
 import { useCallback, useMemo, useState } from "react"
@@ -92,7 +91,7 @@ const PluginDetailPanel = ({
         </Switch>
       </div>
 
-      <ScrollArea className="mt-4 min-h-0 flex-1">
+      <ScrollShadow className="mt-4 min-h-0 flex-1">
         <div className="space-y-4 pr-2">
           <div className="rounded-xl border border-border bg-background/50 p-3">
             <p className="text-xs text-muted-foreground">
@@ -111,7 +110,7 @@ const PluginDetailPanel = ({
             ))}
           </div>
         </div>
-      </ScrollArea>
+      </ScrollShadow>
     </div>
   )
 }
@@ -175,7 +174,7 @@ export const PluginsTab = () => {
       transition={{ duration: 0.28, ease: SETTINGS_PAGE_EASE_CURVE }}
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/80 p-3">
-        <ScrollArea className="min-h-0 flex-1">
+        <ScrollShadow className="min-h-0 flex-1">
           <div className="space-y-2 pr-2">
             {pluginsQuery.isPending && (
               <>
@@ -193,7 +192,7 @@ export const PluginsTab = () => {
               />
             ))}
           </div>
-        </ScrollArea>
+        </ScrollShadow>
       </div>
 
       <PluginDetailPanel

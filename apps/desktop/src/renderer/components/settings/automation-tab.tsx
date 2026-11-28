@@ -6,7 +6,6 @@ import type {
   AutomationTask,
   AutomationTaskDraft
 } from "@etyon/rpc/schemas/automation"
-import { ScrollArea } from "@etyon/ui/components/scroll-area"
 import {
   Button,
   Card,
@@ -15,6 +14,7 @@ import {
   Input,
   Label,
   ListBox,
+  ScrollShadow,
   Select,
   Switch,
   TextArea,
@@ -583,7 +583,7 @@ export const AutomationTab = ({ active }: { active: boolean }) => {
           {t("error")}
         </p>
       ) : null}
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollShadow className="min-h-0 flex-1">
         <div className="space-y-4 pr-3 pb-4">
           {automation.isPending ? (
             <p className="text-sm text-muted-foreground">{t("loading")}</p>
@@ -664,7 +664,7 @@ export const AutomationTab = ({ active }: { active: boolean }) => {
             tasks={tasks}
           />
         </div>
-      </ScrollArea>
+      </ScrollShadow>
     </div>
   )
 }
